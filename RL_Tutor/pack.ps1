@@ -5,7 +5,7 @@
     Or right-click > Run with PowerShell.
 
     Excludes .venv (~770 MB of installed packages), __pycache__ and screenshot
-    folders. The result is ~160 KB.
+    folders. The result is ~490 KB.
 #>
 
 $ErrorActionPreference = "Stop"

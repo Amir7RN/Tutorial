@@ -26,10 +26,20 @@ effective inertia, bandwidth and safety envelope. The first half is that plant.
 
 ## Run it
 
+Starting from a fresh machine:
+
+```bash
+git clone https://github.com/Amir7RN/Tutorial.git
+cd Tutorial/RL_Tutor
+```
+
+Then:
+
 **Windows** — double-click `run.bat`.
 **macOS / Linux** — `chmod +x run.sh` once, then `./run.sh`.
 
-You need **Python 3.10 or newer** installed. Nothing else.
+You need **Python 3.10 or newer** installed. Nothing else. (On Windows, tick
+**"Add python.exe to PATH"** in the installer.)
 
 The first run builds a private virtual environment in `.venv/` and installs
 PySide6, numpy and matplotlib **into it** — your system Python is never touched,
@@ -50,7 +60,7 @@ python -m app.main
 ### Sending it to somebody else
 
 Run `pack.ps1` (right-click → *Run with PowerShell*). It writes a clean
-`RL_Tutor.zip` next to the folder — about **160 KB**.
+`RL_Tutor.zip` next to the folder — about **490 KB**.
 
 It deliberately leaves out `.venv/` (a built one is ~770 MB of installed
 packages, and it would not work on their machine anyway), plus `__pycache__/`
