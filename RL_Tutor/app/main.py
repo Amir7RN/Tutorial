@@ -36,7 +36,7 @@ def build_pages():
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("RL Tutor — Frozen Lake")
+        self.setWindowTitle("Control & RL Tutor — actuators, impedance, Frozen Lake")
         self.resize(1560, 980)
 
         root = QHBoxLayout(self)
@@ -51,10 +51,10 @@ class MainWindow(QWidget):
         sl.setContentsMargins(0, 0, 0, 10)
         sl.setSpacing(0)
 
-        t = QLabel("RL Tutor")
+        t = QLabel("Control & RL Tutor")
         t.setObjectName("SidebarTitle")
         sl.addWidget(t)
-        s = QLabel("Frozen Lake · from your notes")
+        s = QLabel("dynamics · impedance · RL · from your notes")
         s.setObjectName("SidebarSub")
         sl.addWidget(s)
 

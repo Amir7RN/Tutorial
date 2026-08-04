@@ -1,15 +1,28 @@
-# RL Tutor
+# Control & RL Tutor
 
-An interactive, animated workbench for the reinforcement-learning fundamentals in
-`RL.pdf` (pages 1, 3, 4, 5, 6, 7, 8, 11), built around the Frozen Lake environment.
+An interactive, animated workbench for the fundamentals of **robot control,
+actuator dynamics and reinforcement learning** — built from `Impedance_Material.pdf`
+(pages 1–6, 9, 10), the Best/Rouse/Gregg impedance-control paper
+(`ImpedanceControl.pdf`), and `RL.pdf` (pages 1, 3, 4, 5, 6, 7, 8, 11).
 
-29 pages, every algorithm live and steppable, every formula rendered, every code
+51 pages, every algorithm live and steppable, every formula rendered, every code
 panel pulled from the real source with `inspect.getsource` so nothing on screen
 can drift out of sync with what actually ran.
 
-Written to be read **in order** by someone who has not done RL before: page 1 is
-a game you play with the arrow keys, and every symbol introduced later refers
-back to something you have already felt.
+The tutor is in two halves and is written to be read **in order**:
+
+1. **Control & dynamics (pages 1–22)** — what the world physically feels when it
+   touches the robot, and how a controller can shape that. Starts from
+   `J_eff = J_m + J_L` and ends at the biomechanics that motivate the whole
+   design.
+2. **Reinforcement learning (pages 23–51)** — how a policy is found for a machine
+   whose dynamics you now understand. Page 23 is a game you play with the arrow
+   keys, and every symbol introduced later refers back to something you have
+   already felt.
+
+The join between the two halves is not decorative. An RL agent never learns a
+control law in the abstract; it learns one for a specific plant with a specific
+effective inertia, bandwidth and safety envelope. The first half is that plant.
 
 ## Run it
 
@@ -37,22 +50,26 @@ python -m app.main
 ### Sending it to somebody else
 
 Run `pack.ps1` (right-click → *Run with PowerShell*). It writes a clean
-`RL_Tutor.zip` next to the folder — about **120 KB**.
+`RL_Tutor.zip` next to the folder — about **160 KB**.
 
 It deliberately leaves out `.venv/` (a built one is ~770 MB of installed
 packages, and it would not work on their machine anyway), plus `__pycache__/`
 and any screenshot folders.
 
 The recipient unzips it anywhere and double-clicks `run.bat` (or `./run.sh`).
-They do **not** need this repo, your Python installation, `RL.pdf`, or any prior
-setup — only **Python 3.10+**.
+They do **not** need this repo, your Python installation, the source PDFs, or
+any prior setup — only **Python 3.10+**.
 
 ## Layout
 
 ```
 RL_Tutor/
   run.bat                  launcher
-  rlcore/                  THE ALGORITHMS -- pure Python, zero Qt
+  ctrlcore/                THE PHYSICS -- pure Python, zero Qt
+    actuators.py             J_eff for DD/SEA/PEA, gearing, square-cube scaling
+    impedance.py             position / torque / impedance / admittance control
+    neuro.py                 Hill muscle model, positive force feedback
+  rlcore/                  THE RL ALGORITHMS -- pure Python, zero Qt
     frozen_lake.py           environment: build_model() and FrozenLake()
     dp.py                    policy eval/improve, policy iteration, value iteration
     mc.py                    MC prediction (FVMC/EVMC), MC control
@@ -61,14 +78,36 @@ RL_Tutor/
     main.py                  window + sidebar
     theme.py                 palette and stylesheet
     widgets/                 grid painter, code pane, math renderer, plots
-    pages/                   the 29 pages (intro.py holds the opening sequence)
-      bellman.py               pages 12-15: one page per Bellman equation
+    pages/                   the 51 pages
+      motors.py                pages 1-5:   actuator mechanics
+      paradigms.py             pages 6-12:  the four control paradigms
+      design.py                pages 13-15: drivetrain choice, scaling, 1X Neo
+      proprio.py               pages 16-18: proprioception
+      forcefb.py               pages 19-20: positive force feedback
+      biodesign.py             pages 21-22: bio -> robot translation
+      intro.py                 pages 23-27: the RL opening sequence
+      bellman.py               pages 34-37: one page per Bellman equation
   tests/
-    test_core.py             correctness checks -- run this first
+    test_ctrl.py             correctness checks for ctrlcore
+    test_core.py             correctness checks for rlcore
     smoke_gui.py             builds every page headless and screenshots it
 ```
 
-`rlcore/` imports nothing from `app/`. You can use it standalone:
+Neither `ctrlcore/` nor `rlcore/` imports anything from `app/`. Both are usable
+standalone:
+
+```python
+from ctrlcore import j_eff_sea, sea_bandwidth_hz, two_controller_demo
+
+# an SEA hides the rotor at impact frequencies and not at low ones
+print(j_eff_sea(0.04, 0.06, 300, omega=0.0))    # 0.10  = Jm + JL
+print(j_eff_sea(0.04, 0.06, 300, omega=1e5))    # 0.06  = JL alone
+print(sea_bandwidth_hz(300, 0.06))              # ~11 Hz
+
+# two controllers, same tau_ff, very different K and B -> identical nominal torque
+_, _, tau_a, tau_b, _, _ = two_controller_demo(160, 9.6, 45, 2.7, perturb_deg=0)
+print(max(abs(a - b) for a, b in zip(tau_a, tau_b)))   # 0.0
+```
 
 ```python
 from rlcore import *
@@ -76,13 +115,92 @@ from rlcore import *
 P = build_model(slip="classic", reward="shaped")
 pi, V, sweeps = value_iteration(P, gamma=0.99)
 print(sweeps, round(V[0], 4), [ACTION_ARROWS[a] for a in pi[:4]])
-
-env = FrozenLake(slip="classic", reward="shaped", seed=0)
-Q, pi_mc, stats = mc_control(env, episodes=30000)
-print(stats["success_rate"])
 ```
 
-## The pages
+## Part I — Control & Dynamics (pages 1–22)
+
+The order is **mechanics before control before biology**, because you cannot
+argue about impedance control until you know what the environment actually feels
+when it touches the robot, and that number is fixed by hardware long before any
+software runs.
+
+| # | Page | Source |
+|---|------|--------|
+| | **Actuators** — what the world actually feels | |
+| 1 | Effective Inertia *(the vocabulary, then direct drive from first principles)* | material p.1–3 |
+| 2 | Series Elastic Actuators *(the spring between, derived in full)* | material p.2 |
+| 3 | Parallel Elastic Actuators *(the spring alongside; negative effective inertia)* | material p.3 |
+| 4 | DD vs SEA vs PEA *(torque, speed, inertia, bandwidth, responsiveness)* | material p.2–3 |
+| 5 | Gearing & Reflected Inertia *(the N² square law kills transparency)* | material p.1 |
+| | **Control Paradigms** — four answers to one question | |
+| 6 | The Goal of Control *(from scratch: what is a controller even for?)* | — |
+| 7 | Position Control *(command where; accept whatever force that takes)* | — |
+| 8 | Torque & Current Control *(τ = K_t·I, and when it is a lie)* | — |
+| 9 | Impedance Control *(motion in → force out; the virtual spring)* | material p.1 · Hogan 1984 |
+| 10 | Admittance Control *(force in → motion out; the ghost robot)* | material p.1 |
+| 11 | Impedance vs Admittance *(the decision, and the hardware that forces it)* | material p.1 |
+| 12 | The Impedance Spectrum *(they were all one controller all along)* | ImpedanceControl.pdf |
+| | **Robot Design** | |
+| 13 | Which Actuator, Which Robot *(humanoid vs biped vs quadruped)* | material p.4 |
+| 14 | Scaling Up: The Square-Cube Law *(m∝L³, τ∝L², J∝L⁵)* | material p.4 |
+| 15 | Case Study: 1X Neo *(tendon-driven proprioceptive QDD)* | material p.5 |
+| | **Proprioception** | |
+| 16 | Proprioception in Biology *(spindles, GTOs, and the timescales)* | material p.6 |
+| 17 | Robotic Proprioception *(transparency is the prerequisite, not the goal)* | material p.6 |
+| 18 | Active Proprioceptive Compliance *(software-defined compliance, three layers)* | material p.6 |
+| | **Force Feedback** | |
+| 19 | Positive Force Feedback *(why "positive" is not a mistake)* | material p.9 |
+| 20 | Closing the Force Loop *(the maths, live, and the honesty test)* | material p.9 |
+| | **Bio → Robot** | |
+| 21 | Actuation & Sensing *(muscles and receptors as design requirements)* | material p.10 |
+| 22 | Skin & Bone *(the structures that shape force before control runs)* | material p.10 |
+
+### What the interactive pages actually let you do
+
+- **Pages 1–4** sweep effective inertia against interaction frequency ω. The
+  whole SEA argument is one plot: `J_eff → J_m + J_L` when you push slowly and
+  `→ J_L` at impact, so the rotor is *mechanically hidden* during exactly the
+  events that would hurt someone. The PEA plot goes **negative** at low ω, which
+  is gravity compensation drawn as a curve.
+- **Page 5** turns the gear ratio and shows `J_m · N²` on a log axis next to what
+  a merely-linear penalty would look like. At 100:1 the human feels the rotor
+  10,000× heavier than it is.
+- **Pages 7–10** run the same 6 N·m human push through four different
+  controllers on the same joint, so the trade is visible rather than asserted.
+  Page 10's **stiction slider** demonstrates the bypass: crank gearbox friction
+  right up and the admittance response barely changes, because the force sensor
+  sits *outside* the transmission.
+- **Page 12** is the sharpest one. Two impedance controllers with the same
+  feedforward torque but very different stiffness produce **bit-identical** torque
+  under nominal kinematics — drag the perturbation slider off zero and they
+  separate immediately. That is Property 3 of Best/Rouse/Gregg, and its
+  consequence is that *tuning K and B by watching nominal walking is
+  uninformative*, because those parameters have no effect there.
+- **Page 17** lets you raise the gear ratio and drop transmission efficiency, and
+  plots what the controller *believes* the joint torque is against what the joint
+  actually delivers. The widening gap is a robot losing its sense of touch.
+- **Page 20** runs one gait cycle of an ankle plantarflexor with the reflex loop
+  closed. Raise `k_f` and the push-off peak grows out of an unchanging EMG
+  command. Then **switch the phase gate off** and watch the same gain become a
+  runaway — which is the point: positive force feedback is safe because it is
+  phase-gated and time-limited, not because the loop gain is small.
+
+### The through-line
+
+Three sentences carry the whole first half:
+
+1. **Effective inertia is a function of frequency, not a constant.** That single
+   fact is what separates DD, SEA and PEA, and it is why "how heavy is the robot"
+   is not a well-posed question until you say how fast you are pushing it.
+2. **Proprioception is not about what variables you know; it is about where the
+   information comes from.** External forces must propagate back to the actuator.
+   A 100:1 harmonic drive breaks that, and no sampling rate repairs it.
+3. **Position, impedance and torque control are one controller with one knob.**
+   `‖Z‖ = |K| + |B|` slides you from prioritising nominal torques to prioritising
+   nominal positions. Almost every published "impedance controller" is somewhere
+   in the middle of that line.
+
+## Part II — Reinforcement Learning (pages 23–51)
 
 The order is deliberately **concrete before abstract**. You walk the lake by
 hand before anything is given a symbol, and no page shows a number whose origin
@@ -91,41 +209,41 @@ has not already been built up.
 | # | Page | Notes page |
 |---|------|-----------|
 | | **Start Here** — the environment, then the vocabulary | |
-| 1 | What is Reinforcement Learning? *(you play it, by hand)* | p.1, p.6 |
-| 2 | The Frozen Lake *(the board and its geometry)* | p.1 |
-| 3 | Stochastic Transitions *(the slippery ice, with real probabilities)* | p.1 |
-| 4 | Rewards *(what the lake pays you; sparse vs shaped)* | p.1, p.6 §2.2.5 |
-| 5 | Return & the Discount Factor *(a list of rewards → one number)* | p.1, p.6 |
-| 6 | Policies *(the thing we are searching for)* | p.1, p.6 |
-| 7 | The Markov Decision Process *(all five pieces, formally named)* | p.1 |
+| 23 | What is Reinforcement Learning? *(you play it, by hand)* | p.1, p.6 |
+| 24 | The Frozen Lake *(the board and its geometry)* | p.1 |
+| 25 | Stochastic Transitions *(the slippery ice, with real probabilities)* | p.1 |
+| 26 | Rewards *(what the lake pays you; sparse vs shaped)* | p.1, p.6 §2.2.5 |
+| 27 | Return & the Discount Factor *(a list of rewards → one number)* | p.1, p.6 |
+| 28 | Policies *(the thing we are searching for)* | p.1, p.6 |
+| 29 | The Markov Decision Process *(all five pieces, formally named)* | p.1 |
 | | **Value Functions** — how good is a square? | |
-| 8 | V(s) — State Value | p.1 §2.6.2 |
-| 9 | Q(s,a) — Action Value | p.1 §2.6.3 |
-| 10 | V vs Q — the Difference | p.1, p.7 |
-| 11 | The Bellman Equations *(all four at once — the map)* | p.1, p.5 |
-| 12 | Bellman ① V<sup>π</sup> *(expectation — drag π(a\|s) and watch V move)* | p.1, p.5 |
-| 13 | Bellman ② Q<sup>π</sup> *(the π-average, delayed one step)* | p.1, p.5 |
-| 14 | Bellman ③ V\* *(optimality — swap max for min and see)* | p.1, p.5 |
-| 15 | Bellman ④ Q\* *(the max, delayed one step → Q-learning)* | p.1, p.5 |
+| 30 | V(s) — State Value | p.1 §2.6.2 |
+| 31 | Q(s,a) — Action Value | p.1 §2.6.3 |
+| 32 | V vs Q — the Difference | p.1, p.7 |
+| 33 | The Bellman Equations *(all four at once — the map)* | p.1, p.5 |
+| 34 | Bellman ① V<sup>π</sup> *(expectation — drag π(a\|s) and watch V move)* | p.1, p.5 |
+| 35 | Bellman ② Q<sup>π</sup> *(the π-average, delayed one step)* | p.1, p.5 |
+| 36 | Bellman ③ V\* *(optimality — swap max for min and see)* | p.1, p.5 |
+| 37 | Bellman ④ Q\* *(the max, delayed one step → Q-learning)* | p.1, p.5 |
 | | **Dynamic Programming** — solve it, knowing the ice | |
-| 16 | Policy Evaluation | p.4, p.6 |
-| 17 | Policy Improvement | p.4, p.6 |
-| 18 | Policy Iteration | p.3, p.4 |
-| 19 | Value Iteration | p.3, p.4 |
-| 20 | Policy vs Value Iteration | p.3, p.4 |
+| 38 | Policy Evaluation | p.4, p.6 |
+| 39 | Policy Improvement | p.4, p.6 |
+| 40 | Policy Iteration | p.3, p.4 |
+| 41 | Value Iteration | p.3, p.4 |
+| 42 | Policy vs Value Iteration | p.3, p.4 |
 | | **Monte Carlo** — learn it, *not* knowing the ice | |
-| 21 | Monte Carlo = Averaging | p.5 |
-| 22 | MC Prediction (FVMC/EVMC) | p.5 §4.2–4.3 |
-| 23 | MC Control (GPI) | p.5 §4.4 |
+| 43 | Monte Carlo = Averaging | p.5 |
+| 44 | MC Prediction (FVMC/EVMC) | p.5 §4.2–4.3 |
+| 45 | MC Control (GPI) | p.5 §4.4 |
 | | **Beyond** | |
-| 24 | Exploration vs Exploitation | p.1 §2.5 |
-| 25 | Model-Based vs Model-Free | p.4, p.5 |
-| 26 | Hyperparameters | p.6 §2.6 |
-| 27 | What "Convergence" Means | p.11 |
-| 28 | Code Lab | — |
-| 29 | Adam, Backprop & BatchNorm | p.8 |
+| 46 | Exploration vs Exploitation | p.1 §2.5 |
+| 47 | Model-Based vs Model-Free | p.4, p.5 |
+| 48 | Hyperparameters | p.6 §2.6 |
+| 49 | What "Convergence" Means | p.11 |
+| 50 | Code Lab | — |
+| 51 | Adam, Backprop & BatchNorm | p.8 |
 
-Pages 12–15 exist because page 11 is a summary, and a summary is the wrong place
+Pages 34–37 exist because page 33 is a summary, and a summary is the wrong place
 to learn four equations that look interchangeable side by side. Each of the four
 gets its own page with the arithmetic written out branch by branch off the real
 lake, an interactive backup tree, and the plots that make the operator visible.
@@ -138,6 +256,22 @@ stamps `NUM` onto each class from its position in `PAGE_CLASSES`, so reordering
 that one list renumbers the headers and the sidebar together.
 
 ## Conventions
+
+### Control
+
+| symbol | meaning |
+|--------|---------|
+| `J_m` | motor (rotor) inertia |
+| `J_L` | limb / load inertia |
+| `k` | spring stiffness |
+| `ω` | frequency of the interaction — a property of what is happening, not of the robot |
+| `K, B` | virtual stiffness and damping of an impedance controller |
+| `τ_ff` | feedforward torque — what the controller outputs while tracking perfectly |
+| `θ_d` | desired trajectory — where you actually want the joint |
+| `θ_eq` | equilibrium angle — a *control input*, generally **not** where you want the joint |
+| `‖Z‖` | impedance magnitude, `\|K\| + \|B\|` |
+
+### Reinforcement learning
 
 Everything uses the **Gymnasium FrozenLake-v1** convention, so results are
 comparable with published numbers:
@@ -166,9 +300,39 @@ Two knobs are exposed everywhere, because the choice changes the answer:
 ## Verification
 
 ```
+python tests/test_ctrl.py     # all must pass
 python tests/test_core.py     # all must pass
-python tests/smoke_gui.py     # builds all 29 pages, screenshots to _shots/
+python tests/smoke_gui.py     # builds all 51 pages, screenshots to _shots/
 ```
+
+`test_ctrl.py` checks, among other things:
+
+- direct-drive `J_eff` is `J_m + J_L` and is **frequency independent**
+- SEA `J_eff → J_m + J_L` as ω→0 and **collapses onto `J_L`** as ω→∞ — the rotor
+  really is hidden at impact
+- the SEA antiresonance sits exactly at `√(k/J_m)` and blows up approaching it
+- bandwidth is `(1/2π)√(k/J_L)`, rises with stiffness, falls with load, and lands
+  in the 10–20 Hz band for plausible humanoid numbers
+- PEA `J_eff` goes **negative** at low ω and passes through exactly zero at
+  `√(k/(J_m+J_L))`
+- some angle always exists at which a tuned PEA spring lets the motor supply
+  **zero** torque
+- reflected inertia is `J_m·N²`, and 100:1 gives exactly 10,000×
+- scaling: mass ∝ L³, torque ∝ L², inertia ∝ L⁵, and torque-per-kg **falls** as
+  the robot grows
+- `θ_eq ↔ τ_ff` round-trips exactly between the two parameterisations
+- **Property 3 / Corollary 3.1**: two controllers with the same `τ_ff` but very
+  different `K` and `B` produce identical torque under nominal kinematics, and
+  diverge off-nominal
+- `‖Z‖ = 0` never returns to its target; a stiffer controller deviates less and
+  pushes harder — the compliance/accuracy trade, as an assertion
+- **the admittance bypass**: 25 N·m of gearbox stiction changes the response by
+  <25%, because the force sensor is outside the transmission
+- Hill force-length peaks at optimal length and is symmetric; force-velocity is
+  1.0 at zero velocity, collapses when shortening fast, and saturates at the 1.8
+  eccentric plateau
+- closing the force loop amplifies force **without changing the EMG command**,
+  and the phase gate is what keeps a high-gain loop bounded
 
 `test_core.py` checks, among other things:
 
@@ -194,7 +358,7 @@ python tests/smoke_gui.py     # builds all 29 pages, screenshots to _shots/
 
 ## Notes on the C++ files in the parent folder
 
-Covered in detail on page 28 (Code Lab). Summary:
+Covered in detail on page 50 (Code Lab). Summary:
 
 - `RL-FrozenLake_ValIter.cpp` — **correct**. (`theta = 1e-100` is below double
   precision, so it stops on bit-equality rather than the threshold. Harmless.)
