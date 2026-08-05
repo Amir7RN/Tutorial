@@ -3,9 +3,9 @@
 Robotics study repository: an interactive **Control & RL Tutor** desktop app, plus
 the C++ algorithm implementations and source PDFs it was built from.
 
-The main thing here is **[`RL_Tutor/`](RL_Tutor/)** — a 51-page interactive
-workbench covering actuator dynamics, impedance control, proprioception and
-reinforcement learning. Every algorithm is live and steppable, every formula is
+The main thing here is **[`RL_Tutor/`](RL_Tutor/)** — a 53-page interactive
+workbench covering real-time control, actuator dynamics, impedance control,
+proprioception and reinforcement learning. Every algorithm is live and steppable, every formula is
 rendered, and every code panel is pulled from the real source at runtime so
 nothing on screen can drift out of sync with what actually ran.
 
@@ -75,7 +75,7 @@ and no page shows a number whose origin has not already been built up.
 ```bash
 python tests/test_ctrl.py     # physics: actuators, impedance, muscle model
 python tests/test_core.py     # RL: Bellman, DP, Monte Carlo
-python tests/smoke_gui.py     # builds all 51 pages headless, screenshots to _shots/
+python tests/smoke_gui.py     # builds all 53 pages headless, screenshots to _shots/
 ```
 
 All three should exit clean.
@@ -102,18 +102,19 @@ unzips it anywhere and double-clicks `run.bat`. They need only Python 3.10+.
 
 ## What's in the tutor
 
-**Part I — Control & Dynamics (pages 1–22)**
+**Part I — Control & Dynamics (pages 1–24)**
 
 | Pages | Section | Covers |
 |---|---|---|
-| 1–5 | Actuators | Effective inertia derived for direct drive, series elastic and parallel elastic; the three compared on torque, speed, inertia, bandwidth and responsiveness; the N² reflected-inertia square law |
-| 6–12 | Control Paradigms | The goal of control from scratch, then position, torque/current, impedance and admittance control — when, why, and what each costs — ending with the impedance spectrum that unifies them |
-| 13–15 | Robot Design | Actuator choice per robot type, the square-cube law, 1X Neo as a case study |
-| 16–18 | Proprioception | Biological sensing, mechanical transparency as the prerequisite, software-defined active compliance |
-| 19–20 | Force Feedback | What positive force feedback actually is, the Hill-model maths, and the test for whether you have really built one |
-| 21–22 | Bio → Robot | Translating human actuation, sensing, skin and bone into design requirements |
+| 1 | Real-Time | Hard vs firm vs soft real-time; sampling rate vs Nyquist vs actual bandwidth; aliasing; transport delay; FreeRTOS scheduling, priority inversion and the rate-monotonic bound |
+| 2–6 | Actuators | Effective inertia derived for direct drive, series elastic and parallel elastic; the three compared on torque, speed, inertia and bandwidth; the N² reflected-inertia square law and three ways out of it |
+| 7–14 | Control Paradigms | The goal of control from scratch, then position, PID-in-practice, torque/current, impedance and admittance — when, why, and what each costs — ending with the impedance spectrum that unifies them |
+| 15–17 | Robot Design | Actuator choice per robot type, the square-cube law, 1X Neo as a case study |
+| 18–20 | Proprioception | Biological sensing, mechanical transparency as the prerequisite, software-defined active compliance |
+| 21–22 | Force Feedback | What positive force feedback actually is, the Hill-model maths, and the test for whether you have really built one |
+| 23–24 | Bio → Robot | Translating human actuation, sensing, skin and bone into design requirements |
 
-**Part II — Reinforcement Learning (pages 23–51)** — Frozen Lake end to end:
+**Part II — Reinforcement Learning (pages 25–53)** — Frozen Lake end to end:
 the MDP, value functions, all four Bellman equations one page each, dynamic
 programming, Monte Carlo, and the surrounding ideas.
 
@@ -136,7 +137,7 @@ Full page-by-page table, the maths, the conventions and what the tests check:
 | `RL-FrozenLake_ValIter.cpp`, `RL-FrozenLake_Prob.cpp`, `RL-FrozenLake_MontoCarlo.cpp` | Frozen Lake in C++ |
 | `LSTM_PRedict.py` | LSTM prediction in Python |
 
-The three Frozen Lake C++ files are dissected on **page 50 (Code Lab)** of the
+The three Frozen Lake C++ files are dissected on **page 52 (Code Lab)** of the
 tutor, which walks through two real bugs in `RL-FrozenLake_Prob.cpp` and one in
 `RL-FrozenLake_MontoCarlo.cpp`.
 
@@ -151,7 +152,7 @@ g++ -O2 -std=c++17 Astar.cpp -o Astar
 
 | File | Used for |
 |---|---|
-| `Impedance_Material.pdf` | Handwritten notes behind tutor pages 1–22 |
-| `ImpedanceControl.pdf` | Best, Rouse & Gregg — the decoupled impedance controller, page 12 |
-| `RL.pdf` | Reinforcement learning notes behind pages 23–51 |
+| `Impedance_Material.pdf` | Handwritten notes behind tutor pages 2–24 |
+| `ImpedanceControl.pdf` | Best, Rouse & Gregg — the decoupled impedance controller, page 14 |
+| `RL.pdf` | Reinforcement learning notes behind pages 25–53 |
 | `HumanoidMotionPlanner.pdf` | Motion planning reference |

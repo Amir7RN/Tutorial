@@ -8,6 +8,7 @@ computed here, so the GUI can be thrown away and the physics still runs
     actuators.py   effective inertia for DD / SEA / PEA, gearing, scaling
     impedance.py   position / torque / impedance / admittance control
     neuro.py       Hill muscle model and positive force feedback
+    realtime.py    sampling, jitter, latency, and a PID that survives hardware
 """
 
 from .actuators import (  # noqa: F401
@@ -24,7 +25,11 @@ from .actuators import (  # noqa: F401
     pea_resonance_rad_s,
     reflected_inertia,
     scale_factors,
+    sea_antiresonance_rad_s,
     sea_bandwidth_hz,
+    sea_deflection_ratio,
+    sea_resonance_rad_s,
+    sea_transmissibility,
     spring_torque,
 )
 from .impedance import (  # noqa: F401
@@ -42,6 +47,21 @@ from .impedance import (  # noqa: F401
     run_torque,
     tau_ff_from_deviation,
     two_controller_demo,
+)
+from .realtime import (  # noqa: F401
+    PID,
+    RTTrace,
+    TaskProfile,
+    alias_frequency,
+    delay_limited_bandwidth,
+    delay_phase_lag_deg,
+    derivative_error_from_jitter,
+    nyquist,
+    practical_bandwidth,
+    rate_monotonic_bound,
+    run_aliasing,
+    run_pid,
+    sample_jitter,
 )
 from .neuro import (  # noqa: F401
     FORCE_SOURCES,

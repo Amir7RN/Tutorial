@@ -14,5 +14,6 @@ from .common import (  # noqa: F401
     stat_row,
     title,
 )
+from .diagram import BlockDiagram  # noqa: F401
 from .grid import GridView  # noqa: F401
 from .plot import MplCanvas  # noqa: F401

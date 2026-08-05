@@ -89,15 +89,108 @@ def j_eff_sea(j_m: float, j_l: float, k: float, omega: float) -> float:
                       energy. The environment feels only the light limb --
                       the rotor is mechanically hidden.
 
-    Between them sits omega = sqrt(k / J_m), where the denominator crosses
-    zero: the motor-on-spring antiresonance. `math.inf` is returned there;
-    physically real damping keeps it finite but large, and it is exactly the
-    frequency at which an SEA control loop wants to ring.
+    Between those two limits sit a resonance PAIR, and this is where the
+    plot gets interesting:
+
+        omega_a = sqrt(k / J_m)                    ANTIRESONANCE, J_eff -> inf
+                  The motor-on-spring rings and acts as a tuned mass damper,
+                  pinning the load. `math.inf` is returned exactly there;
+                  real damping keeps it finite but large.
+
+        omega_r = sqrt(k (J_m + J_L) / (J_m J_L))  RESONANCE, J_eff = 0
+                  The two masses swing against each other. The load moves
+                  for almost no applied torque.
+
+    Between omega_a and omega_r, J_eff computes NEGATIVE. That is not a
+    magic material. Dividing torque by s^2 theta expresses every impedance
+    as an "equivalent inertia", and a negative answer simply means the
+    driving-point impedance in that band is dominated by STIFFNESS rather
+    than by mass -- the force leads the displacement instead of lagging it.
+    It is a bookkeeping artifact of the units, not negative mass.
     """
     denom = k - j_m * omega * omega
     if abs(denom) < 1e-12:
         return math.inf
     return j_l + k * j_m / denom
+
+
+def sea_antiresonance_rad_s(k: float, j_m: float) -> float:
+    r"""
+    LOAD-SIDE ANTIRESONANCE:  omega_a = sqrt(k / J_m)
+
+    The motor-on-its-spring is a mass-spring oscillator in its own right, and
+    this is its natural frequency. At exactly this frequency it acts as a
+    tuned mass damper on the load: push the load here and the motor-spring
+    pair absorbs the motion and pins it. J_eff -> infinity.
+
+    This is a LOAD-SIDE phenomenon. It answers "what happens if the WORLD
+    shakes the joint?", not "how fast can I command the motor?".
+    """
+    if j_m <= 0 or k <= 0:
+        return 0.0
+    return math.sqrt(k / j_m)
+
+
+def sea_resonance_rad_s(k: float, j_m: float, j_l: float) -> float:
+    r"""
+    SYSTEM RESONANCE:  omega_r = sqrt( k (J_m + J_L) / (J_m J_L) ) = sqrt(k/mu)
+
+    where mu = J_m J_L / (J_m + J_L) is the reduced inertia. This is the two
+    masses swinging against each other through the spring. Here J_eff = 0:
+    the load can be moved with almost no effort, because the spring and the
+    inertia cancel.
+
+    Always ABOVE the antiresonance. Between the two, the load-side J_eff is
+    negative -- see `j_eff_sea` for what that actually means.
+    """
+    if j_m <= 0 or j_l <= 0 or k <= 0:
+        return 0.0
+    return math.sqrt(k * (j_m + j_l) / (j_m * j_l))
+
+
+def sea_transmissibility(k: float, j_l: float, omega: float) -> float:
+    r"""
+    MOTOR-SIDE BANDWIDTH, as a magnitude:
+
+        theta_L / theta_m = k / (k - J_L omega^2)
+
+    Hold the motor under stiff position control and wiggle it. How much of
+    that motion reaches the load? Below sqrt(k/J_L), all of it. Above, the
+    spring absorbs the motion and the load stops following: the response
+    rolls off as 1/omega^2.
+
+    THIS is the number that limits trajectory tracking and force control.
+    It is a different question, with a different answer, from the load-side
+    antiresonance above -- which is the single most common confusion about
+    series elastic actuators.
+    """
+    denom = k - j_l * omega * omega
+    if abs(denom) < 1e-12:
+        return math.inf
+    return abs(k / denom)
+
+
+def sea_deflection_ratio(j_m: float, k: float, omega: float) -> float:
+    r"""
+    How much the spring is actually bending, per radian of load motion:
+
+        (theta_m - theta_L) / theta_L = -J_m omega^2 / (k + J_m s^2)
+        magnitude = J_m omega^2 / |k - J_m omega^2|
+
+    The answer to "at low frequency, is the spring deflecting at all?"
+
+    It is -- but only by omega^2, so at low frequency the deflection is
+    nearly zero. The spring bends by exactly the amount needed to generate
+    the force that accelerates the rotor, and no more. The motor really is
+    rotating down there, which is precisely why you feel J_m + J_L.
+
+    At high frequency the rotor cannot be accelerated, the ratio grows past
+    1, and the spring takes essentially all of the relative motion.
+    """
+    denom = abs(k - j_m * omega * omega)
+    if denom < 1e-12:
+        return math.inf
+    return j_m * omega * omega / denom
 
 
 def sea_bandwidth_hz(k: float, j_l: float) -> float:
@@ -145,19 +238,36 @@ def j_eff_pea(j_m: float, j_l: float, k: float, omega: float) -> float:
     Three regimes, and this is the whole PEA story:
 
         omega -> inf   J_eff -> J_m + J_l
-                       Shake it fast and the spring has no time to help.
-                       You feel the full machine -- a PEA gives NO impact
-                       protection, unlike an SEA.
+                       Shake it fast and the spring's k*theta torque is
+                       negligible beside the inertial J*omega^2*theta term.
+                       You feel the FULL machine, rotor included.
 
-        omega -> 0     J_eff -> large and NEGATIVE
-                       Move slowly and the stored spring torque pushes the
-                       load for you. This is gravity compensation: the joint
-                       behaves as if it had negative mass, wanting to
-                       accelerate on its own.
+                       A PEA therefore gives NO impact protection. This is
+                       the single biggest difference from an SEA, which
+                       drops to J_l up here. The spring is rigid-in-effect
+                       during an impact not because it is stiff, but because
+                       there is no time for it to matter.
 
         omega = sqrt(k / (J_m + J_l))    J_eff = 0
-                       Resonance. Spring and inertia cancel exactly and the
-                       joint can be moved with almost no effort.
+                       Resonance. Spring and inertia torques cancel exactly
+                       and the joint can be moved with almost no effort.
+
+        omega -> 0     J_eff -> large and NEGATIVE
+                       Read this one carefully, because the arithmetic
+                       invites a wrong story. It does NOT mean the joint has
+                       negative mass or spontaneously accelerates.
+
+                       Dividing everything by s^2 theta forces a spring into
+                       inertia units, and a spring's impedance carries the
+                       opposite sign to a mass's. So "J_eff < 0" says only:
+                       BELOW RESONANCE THIS JOINT FEELS LIKE A SPRING, NOT
+                       LIKE A MASS. Push it slowly and what pushes back is
+                       stiffness. If that spring was sized against gravity,
+                       the stiffness is holding the limb up so the motor
+                       does not have to.
+
+                       The honest engineering statement is about torque, not
+                       inertia -- see `motor_torque_pea`.
     """
     if omega == 0.0:
         return -math.inf

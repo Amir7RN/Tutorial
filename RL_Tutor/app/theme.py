@@ -43,6 +43,7 @@ HEAT_POS    = QColor("#1f7a4d")
 # Per-page accent used by the sidebar
 SECTION_COLORS = {
     # control & dynamics
+    "Real-Time":         BAD,
     "Actuators":         CYAN,
     "Control Paradigms": ACCENT,
     "Robot Design":      GOOD,

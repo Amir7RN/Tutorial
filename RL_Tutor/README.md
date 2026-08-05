@@ -5,20 +5,26 @@ actuator dynamics and reinforcement learning** — built from `Impedance_Materia
 (pages 1–6, 9, 10), the Best/Rouse/Gregg impedance-control paper
 (`ImpedanceControl.pdf`), and `RL.pdf` (pages 1, 3, 4, 5, 6, 7, 8, 11).
 
-51 pages, every algorithm live and steppable, every formula rendered, every code
+53 pages, every algorithm live and steppable, every formula rendered, every code
 panel pulled from the real source with `inspect.getsource` so nothing on screen
 can drift out of sync with what actually ran.
 
 The tutor is in two halves and is written to be read **in order**:
 
-1. **Control & dynamics (pages 1–22)** — what the world physically feels when it
-   touches the robot, and how a controller can shape that. Starts from
-   `J_eff = J_m + J_L` and ends at the biomechanics that motivate the whole
-   design.
-2. **Reinforcement learning (pages 23–51)** — how a policy is found for a machine
-   whose dynamics you now understand. Page 23 is a game you play with the arrow
+1. **Control & dynamics (pages 1–24)** — what the world physically feels when it
+   touches the robot, and how a controller can shape that. Starts from real-time
+   constraints and `J_eff = J_m + J_L`, and ends at the biomechanics that
+   motivate the whole design.
+2. **Reinforcement learning (pages 25–53)** — how a policy is found for a machine
+   whose dynamics you now understand. Page 25 is a game you play with the arrow
    keys, and every symbol introduced later refers back to something you have
    already felt.
+
+**Page 1 is real-time control**, on purpose. Every later page makes a claim about
+how fast something can respond, and every one of those claims is bounded by
+sampling, delay and scheduling. The single most useful thing on it: your loop
+rate is *not* your bandwidth — a 1 kHz loop buys you roughly 50–100 Hz of
+control authority, and the mechanics may cap you lower still.
 
 The join between the two halves is not decorative. An RL agent never learns a
 control law in the abstract; it learns one for a specific plant with a specific
@@ -76,9 +82,12 @@ any prior setup — only **Python 3.10+**.
 RL_Tutor/
   run.bat                  launcher
   ctrlcore/                THE PHYSICS -- pure Python, zero Qt
-    actuators.py             J_eff for DD/SEA/PEA, gearing, square-cube scaling
+    actuators.py             J_eff for DD/SEA/PEA, the three SEA frequencies,
+                             gearing, square-cube scaling
     impedance.py             position / torque / impedance / admittance control
     neuro.py                 Hill muscle model, positive force feedback
+    realtime.py              sampling, aliasing, jitter, scheduling, and a PID
+                             with anti-windup and a filtered derivative
   rlcore/                  THE RL ALGORITHMS -- pure Python, zero Qt
     frozen_lake.py           environment: build_model() and FrozenLake()
     dp.py                    policy eval/improve, policy iteration, value iteration
@@ -88,15 +97,18 @@ RL_Tutor/
     main.py                  window + sidebar
     theme.py                 palette and stylesheet
     widgets/                 grid painter, code pane, math renderer, plots
-    pages/                   the 51 pages
-      motors.py                pages 1-5:   actuator mechanics
-      paradigms.py             pages 6-12:  the four control paradigms
-      design.py                pages 13-15: drivetrain choice, scaling, 1X Neo
-      proprio.py               pages 16-18: proprioception
-      forcefb.py               pages 19-20: positive force feedback
-      biodesign.py             pages 21-22: bio -> robot translation
-      intro.py                 pages 23-27: the RL opening sequence
-      bellman.py               pages 34-37: one page per Bellman equation
+    widgets/diagram.py       BlockDiagram -- the control block diagrams
+    pages/                   the 53 pages
+      realtime.py              page  1:     real-time control
+      motors.py                pages 2-6:   actuator mechanics
+      paradigms.py             pages 7-14:  the control paradigms
+      pid.py                   page  9:     PID in practice
+      design.py                pages 15-17: drivetrain choice, scaling, 1X Neo
+      proprio.py               pages 18-20: proprioception
+      forcefb.py               pages 21-22: positive force feedback
+      biodesign.py             pages 23-24: bio -> robot translation
+      intro.py                 pages 25-29: the RL opening sequence
+      bellman.py               pages 36-39: one page per Bellman equation
   tests/
     test_ctrl.py             correctness checks for ctrlcore
     test_core.py             correctness checks for rlcore
@@ -127,7 +139,7 @@ pi, V, sweeps = value_iteration(P, gamma=0.99)
 print(sweeps, round(V[0], 4), [ACTION_ARROWS[a] for a in pi[:4]])
 ```
 
-## Part I — Control & Dynamics (pages 1–22)
+## Part I — Control & Dynamics (pages 1–24)
 
 The order is **mechanics before control before biology**, because you cannot
 argue about impedance control until you know what the environment actually feels
@@ -136,34 +148,37 @@ software runs.
 
 | # | Page | Source |
 |---|------|--------|
+| | **Real-Time** — the constraint everything else is bounded by | |
+| 1 | Real-Time Control *(hard vs soft, Nyquist, aliasing, jitter, FreeRTOS scheduling)* | — |
 | | **Actuators** — what the world actually feels | |
-| 1 | Effective Inertia *(the vocabulary, then direct drive from first principles)* | material p.1–3 |
-| 2 | Series Elastic Actuators *(the spring between, derived in full)* | material p.2 |
-| 3 | Parallel Elastic Actuators *(the spring alongside; negative effective inertia)* | material p.3 |
-| 4 | DD vs SEA vs PEA *(torque, speed, inertia, bandwidth, responsiveness)* | material p.2–3 |
-| 5 | Gearing & Reflected Inertia *(the N² square law kills transparency)* | material p.1 |
+| 2 | Effective Inertia *(direct drive, and what J_eff means for design, motor spec and control)* | material p.1–3 |
+| 3 | Series Elastic Actuators *(the spring between, and the **three** frequencies people conflate)* | material p.2 |
+| 4 | Parallel Elastic Actuators *(the spring alongside; what negative J_eff really means)* | material p.3 |
+| 5 | DD vs SEA vs PEA *(torque, speed, inertia, bandwidth — and which is "better", per band)* | material p.2–3 |
+| 6 | Gearing & Reflected Inertia *(the N² square law, and three ways out of it)* | material p.1 |
 | | **Control Paradigms** — four answers to one question | |
-| 6 | The Goal of Control *(from scratch: what is a controller even for?)* | — |
-| 7 | Position Control *(command where; accept whatever force that takes)* | — |
-| 8 | Torque & Current Control *(τ = K_t·I, and when it is a lie)* | — |
-| 9 | Impedance Control *(motion in → force out; the virtual spring)* | material p.1 · Hogan 1984 |
-| 10 | Admittance Control *(force in → motion out; the ghost robot)* | material p.1 |
-| 11 | Impedance vs Admittance *(the decision, and the hardware that forces it)* | material p.1 |
-| 12 | The Impedance Spectrum *(they were all one controller all along)* | ImpedanceControl.pdf |
+| 7 | The Goal of Control *(the agent–environment loop, shared with the RL half)* | — |
+| 8 | Position Control *(command where; accept whatever force that takes)* | — |
+| 9 | PID in Practice *(anti-windup, derivative filtering, and what jitter breaks)* | real-time |
+| 10 | Torque & Current Control *(the cascade: every paradigm is current control underneath)* | — |
+| 11 | Impedance Control *(motion in → force out; θ_eq vs θ_d; PD vs impedance)* | material p.1 · Hogan 1984 |
+| 12 | Admittance Control *(force in → motion out; the shape of the response)* | material p.1 |
+| 13 | Impedance vs Admittance *(the decision, and the hardware that forces it)* | material p.1 |
+| 14 | The Impedance Spectrum *(they were all one controller all along)* | ImpedanceControl.pdf |
 | | **Robot Design** | |
-| 13 | Which Actuator, Which Robot *(humanoid vs biped vs quadruped)* | material p.4 |
-| 14 | Scaling Up: The Square-Cube Law *(m∝L³, τ∝L², J∝L⁵)* | material p.4 |
-| 15 | Case Study: 1X Neo *(tendon-driven proprioceptive QDD)* | material p.5 |
+| 15 | Which Actuator, Which Robot *(humanoid vs biped vs quadruped)* | material p.4 |
+| 16 | Scaling Up: The Square-Cube Law *(m∝L³, τ∝L², J∝L⁵)* | material p.4 |
+| 17 | Case Study: 1X Neo *(tendon-driven proprioceptive QDD)* | material p.5 |
 | | **Proprioception** | |
-| 16 | Proprioception in Biology *(spindles, GTOs, and the timescales)* | material p.6 |
-| 17 | Robotic Proprioception *(transparency is the prerequisite, not the goal)* | material p.6 |
-| 18 | Active Proprioceptive Compliance *(software-defined compliance, three layers)* | material p.6 |
+| 18 | Proprioception in Biology *(spindles, GTOs, and the timescales)* | material p.6 |
+| 19 | Robotic Proprioception *(transparency is the prerequisite, not the goal)* | material p.6 |
+| 20 | Active Proprioceptive Compliance *(software-defined compliance, three layers)* | material p.6 |
 | | **Force Feedback** | |
-| 19 | Positive Force Feedback *(why "positive" is not a mistake)* | material p.9 |
-| 20 | Closing the Force Loop *(the maths, live, and the honesty test)* | material p.9 |
+| 21 | Positive Force Feedback *(why "positive" is not a mistake)* | material p.9 |
+| 22 | Closing the Force Loop *(the maths, live, and the honesty test)* | material p.9 |
 | | **Bio → Robot** | |
-| 21 | Actuation & Sensing *(muscles and receptors as design requirements)* | material p.10 |
-| 22 | Skin & Bone *(the structures that shape force before control runs)* | material p.10 |
+| 23 | Actuation & Sensing *(muscles and receptors as design requirements)* | material p.10 |
+| 24 | Skin & Bone *(the structures that shape force before control runs)* | material p.10 |
 
 ### What the interactive pages actually let you do
 
@@ -197,20 +212,27 @@ software runs.
 
 ### The through-line
 
-Three sentences carry the whole first half:
+Five sentences carry the whole first half:
 
-1. **Effective inertia is a function of frequency, not a constant.** That single
+1. **Your loop rate is not your bandwidth.** 1 kHz sampling → 500 Hz Nyquist →
+   ~50–100 Hz of usable control authority, and that only if delay does not cap
+   you lower. Order of who wins, worst first: mechanics → delay → sample rate →
+   CPU speed. People optimise that list backwards.
+2. **Sensing bandwidth ≠ actuation bandwidth.** An SEA spring is an excellent,
+   fast torque sensor *and* a hard limit on how fast you can change joint torque.
+   You can know instantly and still be unable to act.
+3. **Effective inertia is a function of frequency, not a constant.** That single
    fact is what separates DD, SEA and PEA, and it is why "how heavy is the robot"
    is not a well-posed question until you say how fast you are pushing it.
-2. **Proprioception is not about what variables you know; it is about where the
+4. **Proprioception is not about what variables you know; it is about where the
    information comes from.** External forces must propagate back to the actuator.
    A 100:1 harmonic drive breaks that, and no sampling rate repairs it.
-3. **Position, impedance and torque control are one controller with one knob.**
+5. **Position, impedance and torque control are one controller with one knob.**
    `‖Z‖ = |K| + |B|` slides you from prioritising nominal torques to prioritising
    nominal positions. Almost every published "impedance controller" is somewhere
    in the middle of that line.
 
-## Part II — Reinforcement Learning (pages 23–51)
+## Part II — Reinforcement Learning (pages 25–53)
 
 The order is deliberately **concrete before abstract**. You walk the lake by
 hand before anything is given a symbol, and no page shows a number whose origin
@@ -219,41 +241,41 @@ has not already been built up.
 | # | Page | Notes page |
 |---|------|-----------|
 | | **Start Here** — the environment, then the vocabulary | |
-| 23 | What is Reinforcement Learning? *(you play it, by hand)* | p.1, p.6 |
-| 24 | The Frozen Lake *(the board and its geometry)* | p.1 |
-| 25 | Stochastic Transitions *(the slippery ice, with real probabilities)* | p.1 |
-| 26 | Rewards *(what the lake pays you; sparse vs shaped)* | p.1, p.6 §2.2.5 |
-| 27 | Return & the Discount Factor *(a list of rewards → one number)* | p.1, p.6 |
-| 28 | Policies *(the thing we are searching for)* | p.1, p.6 |
-| 29 | The Markov Decision Process *(all five pieces, formally named)* | p.1 |
+| 25 | What is Reinforcement Learning? *(you play it, by hand)* | p.1, p.6 |
+| 26 | The Frozen Lake *(the board and its geometry)* | p.1 |
+| 27 | Stochastic Transitions *(the slippery ice, with real probabilities)* | p.1 |
+| 28 | Rewards *(what the lake pays you; sparse vs shaped)* | p.1, p.6 §2.2.5 |
+| 29 | Return & the Discount Factor *(a list of rewards → one number)* | p.1, p.6 |
+| 30 | Policies *(the thing we are searching for)* | p.1, p.6 |
+| 31 | The Markov Decision Process *(all five pieces, formally named)* | p.1 |
 | | **Value Functions** — how good is a square? | |
-| 30 | V(s) — State Value | p.1 §2.6.2 |
-| 31 | Q(s,a) — Action Value | p.1 §2.6.3 |
-| 32 | V vs Q — the Difference | p.1, p.7 |
-| 33 | The Bellman Equations *(all four at once — the map)* | p.1, p.5 |
-| 34 | Bellman ① V<sup>π</sup> *(expectation — drag π(a\|s) and watch V move)* | p.1, p.5 |
-| 35 | Bellman ② Q<sup>π</sup> *(the π-average, delayed one step)* | p.1, p.5 |
-| 36 | Bellman ③ V\* *(optimality — swap max for min and see)* | p.1, p.5 |
-| 37 | Bellman ④ Q\* *(the max, delayed one step → Q-learning)* | p.1, p.5 |
+| 32 | V(s) — State Value | p.1 §2.6.2 |
+| 33 | Q(s,a) — Action Value | p.1 §2.6.3 |
+| 34 | V vs Q — the Difference | p.1, p.7 |
+| 35 | The Bellman Equations *(all four at once — the map)* | p.1, p.5 |
+| 36 | Bellman ① V<sup>π</sup> *(expectation — drag π(a\|s) and watch V move)* | p.1, p.5 |
+| 37 | Bellman ② Q<sup>π</sup> *(the π-average, delayed one step)* | p.1, p.5 |
+| 38 | Bellman ③ V\* *(optimality — swap max for min and see)* | p.1, p.5 |
+| 39 | Bellman ④ Q\* *(the max, delayed one step → Q-learning)* | p.1, p.5 |
 | | **Dynamic Programming** — solve it, knowing the ice | |
-| 38 | Policy Evaluation | p.4, p.6 |
-| 39 | Policy Improvement | p.4, p.6 |
-| 40 | Policy Iteration | p.3, p.4 |
-| 41 | Value Iteration | p.3, p.4 |
-| 42 | Policy vs Value Iteration | p.3, p.4 |
+| 40 | Policy Evaluation | p.4, p.6 |
+| 41 | Policy Improvement | p.4, p.6 |
+| 42 | Policy Iteration | p.3, p.4 |
+| 43 | Value Iteration | p.3, p.4 |
+| 44 | Policy vs Value Iteration | p.3, p.4 |
 | | **Monte Carlo** — learn it, *not* knowing the ice | |
-| 43 | Monte Carlo = Averaging | p.5 |
-| 44 | MC Prediction (FVMC/EVMC) | p.5 §4.2–4.3 |
-| 45 | MC Control (GPI) | p.5 §4.4 |
+| 45 | Monte Carlo = Averaging | p.5 |
+| 46 | MC Prediction (FVMC/EVMC) | p.5 §4.2–4.3 |
+| 47 | MC Control (GPI) | p.5 §4.4 |
 | | **Beyond** | |
-| 46 | Exploration vs Exploitation | p.1 §2.5 |
-| 47 | Model-Based vs Model-Free | p.4, p.5 |
-| 48 | Hyperparameters | p.6 §2.6 |
-| 49 | What "Convergence" Means | p.11 |
-| 50 | Code Lab | — |
-| 51 | Adam, Backprop & BatchNorm | p.8 |
+| 48 | Exploration vs Exploitation | p.1 §2.5 |
+| 49 | Model-Based vs Model-Free | p.4, p.5 |
+| 50 | Hyperparameters | p.6 §2.6 |
+| 51 | What "Convergence" Means | p.11 |
+| 52 | Code Lab | — |
+| 53 | Adam, Backprop & BatchNorm | p.8 |
 
-Pages 34–37 exist because page 33 is a summary, and a summary is the wrong place
+Pages 36–39 exist because page 35 is a summary, and a summary is the wrong place
 to learn four equations that look interchangeable side by side. Each of the four
 gets its own page with the arithmetic written out branch by branch off the real
 lake, an interactive backup tree, and the plots that make the operator visible.
@@ -312,7 +334,7 @@ Two knobs are exposed everywhere, because the choice changes the answer:
 ```
 python tests/test_ctrl.py     # all must pass
 python tests/test_core.py     # all must pass
-python tests/smoke_gui.py     # builds all 51 pages, screenshots to _shots/
+python tests/smoke_gui.py     # builds all 53 pages, screenshots to _shots/
 ```
 
 `test_ctrl.py` checks, among other things:
@@ -343,6 +365,26 @@ python tests/smoke_gui.py     # builds all 51 pages, screenshots to _shots/
   eccentric plateau
 - closing the force loop amplifies force **without changing the EMG command**,
   and the phase gate is what keeps a high-gain loop bounded
+- the **three SEA frequencies are three different numbers**: the antiresonance
+  `√(k/J_m)`, the system resonance `√(k(J_m+J_L)/(J_m J_L))` which sits above it
+  and where `J_eff = 0`, and the motor-side bandwidth `(1/2π)√(k/J_L)` which is
+  none of the above
+- spring deflection **vanishes as ω²** at low frequency (it deflects, but barely)
+  and exceeds the load's own motion above the antiresonance
+- motor→load transmissibility is ≈1 well below `f_n` and rolls off above it
+- at impact, **a PEA presents `J_m + J_L` and an SEA presents `J_L`** — the one
+  difference that matters, asserted directly
+- Nyquist is `f_s/2`, but usable bandwidth is `f_s/15`, and **delay imposes a
+  separate ceiling that more sampling cannot buy back**
+- 950 Hz sampled at 1 kHz folds to exactly 50 Hz
+- the rate-monotonic bound falls monotonically toward `ln 2`
+- **10% timing jitter produces ~9% derivative error** — the D term takes the
+  damage, and P/I do not
+- **windup**: with a blocked joint and a saturated actuator, an unprotected
+  integrator grows >2× larger than a clamped one, and that stored area becomes
+  real overshoot the moment the joint is released
+- an **unfiltered derivative chatters >2× more** than a filtered one under
+  encoder noise
 
 `test_core.py` checks, among other things:
 
@@ -368,7 +410,7 @@ python tests/smoke_gui.py     # builds all 51 pages, screenshots to _shots/
 
 ## Notes on the C++ files in the parent folder
 
-Covered in detail on page 50 (Code Lab). Summary:
+Covered in detail on page 52 (Code Lab). Summary:
 
 - `RL-FrozenLake_ValIter.cpp` — **correct**. (`theta = 1e-100` is below double
   precision, so it stops on bit-equality rather than the threshold. Harmless.)

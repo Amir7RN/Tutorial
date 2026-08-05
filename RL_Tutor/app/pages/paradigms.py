@@ -37,6 +37,7 @@ from ctrlcore.impedance import (
 )
 from .. import theme
 from ..widgets import (
+    BlockDiagram,
     Card,
     CodePane,
     MplCanvas,
@@ -53,6 +54,57 @@ from .base import Page
 from .motors import slider, slider_row
 
 SECTION = "Control Paradigms"
+
+
+def _rl_mapping_table():
+    """Control vocabulary <-> RL vocabulary, for the second half of the tutor."""
+    return _table(
+        ["In control", "In reinforcement learning", "On a real robot"],
+        [("Controller", "Policy  π(a|s)",
+          "The code in the 1 kHz interrupt"),
+         ("Control input  u, τ", "Action  a",
+          "Motor current, i.e. joint torque"),
+         ("State  θ, θ̇", "State  s",
+          "Encoder counts and their derivative"),
+         ("Plant / process", "Environment",
+          "The limb, the gearbox, the floor"),
+         ("Reference / setpoint  θ_d", "Goal, or part of the reward",
+          "Where you want the joint"),
+         ("Cost  J = ∫ e² + ρu²", "Reward  r  (negated)",
+          "Error, effort, and what you are willing to trade"),
+         ("Disturbance  τ_ext", "Environment stochasticity",
+          "The person leaning on the arm")],
+        col0=175, colw=245, height=390)
+
+
+def _pd_vs_imp_table():
+    return _table(
+        ["", "PD position control", "Impedance control"],
+        [("The equation", "τ = −K_p e − K_d ė",
+          "τ = −K e − B ė + τ_ff   (identical when τ_ff = 0)"),
+         ("What you are trying to achieve",
+          "Make e small. Error is the enemy.",
+          "Make the force–displacement RELATIONSHIP what you specified. Error "
+          "is the mechanism, not the failure."),
+         ("How you pick the gains",
+          "As high as stability allows. Higher = better tracking.",
+          "To hit a target stiffness in N·m/rad, chosen for the task. Often "
+          "deliberately LOW."),
+         ("Is there a τ_ff?",
+          "No. Any steady load must be paid for with standing error, or by an "
+          "integrator.",
+          "Yes, and it is the whole point: hold the load WITHOUT error, and let "
+          "K and B govern only the response to surprises."),
+         ("What K means physically",
+          "A tuning knob. Units are incidental.",
+          "The stiffness a human feels. You could measure it with a spring "
+          "scale."),
+         ("Response to a person pushing",
+          "A disturbance to be rejected. Push harder.",
+          "An interaction to be shaped. Yield by exactly τ_ext/K."),
+         ("Typical gain magnitude",
+          "As high as possible", "Often 10–100× lower, on purpose")],
+        col0=200, colw=290, height=520)
 
 
 def _table(headers, rows, col0=170, colw=280, height=None):
@@ -87,6 +139,31 @@ class GoalOfControlPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        # ---- the loop, before any equations ---------------------------------
+        loop = Card("first: the picture, and it is the same picture as "
+                    "reinforcement learning")
+        loop.add(body(
+            "Later in this tutor you will meet an <b>agent</b> that takes an "
+            "<b>action</b>, an <b>environment</b> that responds with a new "
+            "<b>state</b> and a <b>reward</b>, and a <b>policy</b> that decides "
+            "what to do next. Control is that identical loop with different "
+            "vocabulary — and seeing the correspondence early makes both halves "
+            "of this tutor easier."))
+        self.d_loop = BlockDiagram(width=7.4, height=2.1)
+        loop.add(self.d_loop)
+        loop.add(_rl_mapping_table())
+        loop.add(body(
+            "<b>The one real difference:</b> RL <i>learns</i> the policy from "
+            "experience; classical control <i>derives</i> it from a model. The "
+            "loop, the causality, and the fact that the environment gets the "
+            "last word are all identical.<br><br>"
+            "And note what the environment is in a robot: <b>gravity, the floor, "
+            "the object being carried, and the person leaning on the arm</b>. It "
+            "is not noise to be rejected. It is the other half of the system.",
+            dim=True))
+        self.add(loop)
+        self._draw_loop()
 
         self.add(callout(
             "<b>The naive goal.</b> \"Make the joint go where I tell it.\"<br><br>"
@@ -174,10 +251,52 @@ class GoalOfControlPage(Page):
 
         self.add(body(
             "The next four pages take these one at a time: what it is, when to "
-            "use it, why, and what it costs you. Then page 12 shows that they "
-            "were all secretly the same equation.", dim=True))
+            "use it, why, and what it costs you. Then the Impedance Spectrum page "
+            "shows that they were all secretly the same equation.", dim=True))
+
+        # ---- what "good" means -----------------------------------------------
+        g2 = Card("what a controller is judged on — five things, always in tension")
+        g2.add(body(
+            "<b>1 · Stability.</b> Does it stay bounded? Non-negotiable, and the "
+            "first thing every other property is traded against.<br><br>"
+            "<b>2 · Tracking / steady-state accuracy.</b> Does it get there, and "
+            "stay there under load? This is what integral action buys.<br><br>"
+            "<b>3 · Bandwidth / responsiveness.</b> How fast can it correct? "
+            "Bounded by mechanics and by delay, as the last five pages "
+            "established.<br><br>"
+            "<b>4 · Disturbance rejection.</b> How hard does it fight what it did "
+            "not expect? Note this is the <i>same</i> knob as compliance, "
+            "measured with the opposite sign — a robot that rejects disturbances "
+            "well is a robot that fights people.<br><br>"
+            "<b>5 · Robustness.</b> Does it still work when the payload changes, "
+            "the joint heats up, or the model is 20% wrong? A controller tuned to "
+            "the edge of stability on a bench is not a controller."))
+        g2.add(body(
+            "<b>The reason interaction control exists at all</b> is that #4 is "
+            "the wrong objective when a person is involved. A perfect "
+            "disturbance-rejecting controller treats a human hand as an error to "
+            "be crushed. Impedance control is what you get when you decide that "
+            "the right goal is not to <i>reject</i> the interaction but to "
+            "<b>shape</b> it.", dim=True))
+        self.add(g2)
 
         self.finish()
+
+    def _draw_loop(self):
+        d = self.d_loop
+        d.band(0.15, 3.05, 0.45, 1.95, "the robot's side", theme.ACCENT)
+        d.band(4.75, 7.85, 0.45, 1.95, "the world's side", theme.WARN)
+        d.block(1.6, 1.35, "Controller / Policy", colour=theme.ACCENT,
+                w=1.9, sub="decides what to do")
+        d.block(6.3, 1.35, "Plant + Environment", colour=theme.WARN, w=2.1,
+                sub="gravity, floor, objects, people")
+        d.arrow(2.6, 1.35, 5.2, 1.35, "action:  torque / position command")
+        d.feedback(6.3, 1.35, 1.6, 1.11,
+                   "state: θ, θ̇, measured force   —   the environment always answers",
+                   drop=0.72)
+        d.note(4.0, 0.30, "the environment gets the last word",
+               colour=theme.TEXT_FAINT)
+        d.done()
 
 
 # ==========================================================================
@@ -194,6 +313,8 @@ class PositionControlPage(Page):
         super().__init__(parent)
 
         c = Card("what it is")
+        self.d_pos = BlockDiagram(width=7.4, height=2.0)
+        c.add(self.d_pos)
         c.add(math_label(r"\tau = -K_p(\theta - \theta_d) "
                          r"- K_d(\dot\theta - \dot\theta_d)", 17))
         c.add(body(
@@ -263,10 +384,39 @@ class PositionControlPage(Page):
 
         self.add(callout(
             "<b>Position control is a special case of impedance control</b> — the "
-            "one where the feedforward torque is zero. Hold that thought; page 12 "
-            "makes it exact.", "key"))
+            "one where the feedforward torque is zero. Hold that thought; the "
+            "Impedance Spectrum page makes it exact.", "key"))
 
+        pid = Card("in practice this is a PID, and PIDs have failure modes")
+        pid.add(body(
+            "Everything above is the <b>PD</b> part. Add an integrator and you "
+            "can finally hold a load with zero steady-state error — at the cost "
+            "of phase margin, and of <b>windup</b> whenever the actuator "
+            "saturates.<br><br>"
+            "Timing matters too: if the loop jitters, it is the <b>D</b> term "
+            "that breaks, because it is the only one that divides by Δt.<br><br>"
+            "The next page is entirely about those failures and their fixes."))
+        self.add(pid)
+
+        self._draw_diagram()
         self.finish()
+
+    def _draw_diagram(self):
+        d = self.d_pos
+        d.sum(0.75, 1.35, signs=("+", "−"))
+        d.block(2.3, 1.35, "PD / PID", colour=theme.ACCENT, w=1.3,
+                sub="K_p e + K_d ė")
+        d.plant(5.0, 1.35, "Joint", sub="J θ̈ + b θ̇ = τ + τ_ext", w=1.7)
+        d.arrow(0.15, 1.35, 0.59, 1.35, "θ_d")
+        d.arrow(0.91, 1.35, 1.65, 1.35, "e")
+        d.arrow(2.95, 1.35, 4.15, 1.35, "τ  (via motor current)")
+        d.arrow(5.85, 1.35, 7.4, 1.35, "θ")
+        d.arrow(5.0, 2.15, 5.0, 1.62, "τ_ext  (the world pushes)",
+                colour=theme.WARN, dashed=True)
+        d.feedback(6.9, 1.35, 0.75, 1.13, "measured θ, θ̇", drop=0.62)
+        d.note(2.3, 0.42, "torque is an OUTPUT here — whatever the error demands",
+               colour=theme.TEXT_FAINT)
+        d.done()
 
     def _redraw(self):
         kp = float(self.s_kp.value())
@@ -308,6 +458,57 @@ class TorqueControlPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        # ---- the cascade, which answers most of the confusion ----------------
+        casc = Card("the cascade — and yes, position control is ALSO current "
+                    "control")
+        casc.add(body(
+            "This is the picture that dissolves the question \"what is the "
+            "reference in torque control?\" Every electric drive is the same "
+            "nest of loops:"))
+        self.d_casc = BlockDiagram(width=7.6, height=2.4)
+        casc.add(self.d_casc)
+        casc.add(body(
+            "<b>Read it from the inside out.</b> The current loop is always "
+            "there, always running at 10–40 kHz, and it is the only thing that "
+            "actually touches the hardware. Everything outside it exists purely "
+            "to <b>generate its setpoint</b>."))
+        casc.add(body(
+            "<b>So what distinguishes the paradigms is WHERE YOU INJECT.</b><br><br>"
+            "&nbsp;&nbsp;• <b>Position control</b> — inject at the outermost "
+            "loop. Position error generates a velocity reference, which "
+            "generates a current reference.<br>"
+            "&nbsp;&nbsp;• <b>Torque control</b> — <b>bypass the outer loops "
+            "entirely</b> and write the current reference yourself.<br>"
+            "&nbsp;&nbsp;• <b>Impedance control</b> — also injects at the current "
+            "reference, but computes it from position error.<br>"
+            "&nbsp;&nbsp;• <b>Admittance control</b> — injects at the outermost "
+            "loop, computing the <i>position</i> reference from measured force."))
+        casc.add(body(
+            "You were right to be suspicious: <b>they are all current control at "
+            "the bottom.</b> \"Torque control\" does not mean a different "
+            "actuator — it means you took responsibility for the current "
+            "reference instead of letting a cascade of error loops produce it.",
+            dim=True))
+        self.add(casc)
+
+        self.add(callout(
+            "<b>\"So in torque control, what IS the reference?\"</b><br><br>"
+            "There isn't one, in the feedback sense — and that is the defining "
+            "property, not an omission. Torque control is <b>open loop in "
+            "position</b>. The torque command comes from outside the loop "
+            "entirely:<br><br>"
+            "&nbsp;&nbsp;• <b>Inverse dynamics</b> — τ = M(q)q̈<sub>d</sub> + "
+            "C(q,q̇)q̇ + g(q). You computed what torque the motion requires.<br>"
+            "&nbsp;&nbsp;• <b>An impedance law</b> — τ from position error, which "
+            "makes it an impedance controller.<br>"
+            "&nbsp;&nbsp;• <b>A trajectory optimiser</b>, offline.<br>"
+            "&nbsp;&nbsp;• <b>An RL policy</b> emitting joint torques directly — "
+            "this is what most locomotion policies do.<br>"
+            "&nbsp;&nbsp;• <b>A human</b>, through a haptic device.<br><br>"
+            "The <i>only</i> feedback loop that remains closed is the current "
+            "loop making sure the commanded torque is actually delivered. Where "
+            "the joint ends up is the world's business.", "key"))
 
         c = Card("what it is — and why it is really CURRENT control")
         c.add(body(
@@ -391,7 +592,40 @@ class TorqueControlPage(Page):
         self.s_tau.valueChanged.connect(self._redraw)
         self._redraw()
 
+        self._draw_cascade()
         self.finish()
+
+    def _draw_cascade(self):
+        d = self.d_casc
+        d.band(0.15, 7.9, 0.30, 2.28, "position control injects HERE ↴",
+               theme.ACCENT)
+        d.band(2.35, 7.9, 0.55, 1.95, "velocity loop", theme.VIOLET)
+        d.band(4.75, 7.9, 0.78, 1.72, "current loop  10–40 kHz", theme.GOOD)
+
+        d.sum(0.72, 1.30, signs=("+", "−"))
+        d.block(1.75, 1.30, "position\nloop", colour=theme.ACCENT, w=1.0)
+        d.sum(2.72, 1.30, signs=("+", "−"))
+        d.block(3.62, 1.30, "velocity\nloop", colour=theme.VIOLET, w=0.95)
+        d.sum(4.52, 1.30, signs=("+", "−"))
+        d.block(5.45, 1.30, "current\nloop", colour=theme.GOOD, w=0.95)
+        d.plant(6.95, 1.30, "Motor + Joint", sub="τ = K_t·I", w=1.35)
+
+        d.arrow(0.16, 1.30, 0.56, 1.30, "θ_d")
+        d.arrow(0.88, 1.30, 1.25, 1.30)
+        d.arrow(2.25, 1.30, 2.56, 1.30, "θ̇_d", fontsize=6.8)
+        d.arrow(2.88, 1.30, 3.14, 1.30)
+        d.arrow(4.10, 1.30, 4.36, 1.30, "I_d", fontsize=6.8)
+        d.arrow(4.68, 1.30, 4.97, 1.30)
+        d.arrow(5.93, 1.30, 6.28, 1.30, "V", fontsize=6.8)
+        d.arrow(7.62, 1.30, 7.9, 1.30)
+
+        d.note(2.4, 2.12, "torque control writes I_d directly — everything to "
+                          "its left is skipped",
+               colour=theme.WARN, ha="left", fontsize=6.9)
+        d.arrow(4.52, 2.02, 4.52, 1.50, colour=theme.WARN, dashed=True)
+        d.note(4.0, 0.16, "every paradigm ends at the same current loop",
+               colour=theme.TEXT_FAINT)
+        d.done()
 
     def _redraw(self):
         tau = self.s_tau.value() * 0.1
@@ -437,6 +671,8 @@ class ImpedanceControlPage(Page):
             "key"))
 
         e = Card("the control law")
+        self.d_imp = BlockDiagram(width=7.4, height=2.0)
+        e.add(self.d_imp)
         e.add(math_label(r"\tau = K(X_d - X_m) + B(\dot X_d - \dot X_m)", 18))
         e.add(body(
             "<b>K</b> — virtual stiffness. How hard it resists displacement.<br>"
@@ -512,6 +748,113 @@ class ImpedanceControlPage(Page):
             "where you wanted. θ_eq = θ_d + (τ_ff + Bθ̇_d)/K. Two controllers "
             "with wildly different θ_eq can produce identical walking.", "warn"))
 
+        # ---- PD vs impedance --------------------------------------------------
+        self.add(hline())
+        self.add(title("\"I still can't separate PD control from impedance "
+                       "control\" — because structurally they are the same"))
+
+        pd = Card("the honest answer")
+        pd.add(body(
+            "You are not missing something. Put them side by side:"))
+        pd.add(math_label(r"\text{PD:}\quad \tau = -K_p(\theta-\theta_d) "
+                          r"- K_d(\dot\theta-\dot\theta_d)", 15))
+        pd.add(math_label(r"\text{Impedance:}\quad \tau = -K(\theta-\theta_d) "
+                          r"- B(\dot\theta-\dot\theta_d) + \tau_{ff}", 15))
+        pd.add(body(
+            "<b>Set τ<sub>ff</sub> = 0 and they are character-for-character "
+            "identical.</b> Any PD position controller <i>is</i> an impedance "
+            "controller. The equation cannot tell you which one you are running."))
+        pd.add(_pd_vs_imp_table())
+        pd.add(body(
+            "<b>The practical test:</b> ask what happens when you <b>double the "
+            "gains</b>. If your answer is \"tracking gets better\", you are "
+            "thinking in position control. If it is \"the joint gets stiffer, "
+            "which is a physical property I chose deliberately and could have "
+            "chosen differently\", you are thinking in impedance.<br><br>"
+            "Same code. Different question being asked of it. That is genuinely "
+            "the whole distinction, and being clear-eyed about that is more "
+            "useful than inventing one.", dim=True))
+        self.add(pd)
+
+        # ---- theta_eq ---------------------------------------------------------
+        self.add(hline())
+        self.add(title("Why θ_eq is not θ_d — and how it is actually chosen"))
+
+        eq = Card("the joint is not alone")
+        eq.add(body(
+            "If the joint were floating in space, commanding θ_eq would put it at "
+            "θ_eq and there would be no puzzle. But a prosthetic ankle is being "
+            "pressed by the ground and driven by the user. Those interaction "
+            "torques τ<sub>ext</sub> do not go away because your controller "
+            "ignores them."))
+        eq.add(body("At equilibrium the controller torque balances the external "
+                    "torque:"))
+        eq.add(math_label(r"K(\theta_{eq} - \theta) = -\tau_{ext} "
+                          r"\quad\Rightarrow\quad "
+                          r"\theta = \theta_{eq} + \frac{\tau_{ext}}{K}", 16))
+        eq.add(body(
+            "So the joint settles <b>offset from θ_eq</b> by exactly "
+            "τ<sub>ext</sub>/K. To make it land on the angle you actually want, "
+            "you must aim <b>off-target</b>, by that same offset:"))
+        eq.add(math_label(r"\theta_{eq} = \theta_d - \frac{\tau_{ext}}{K} "
+                          r"\;=\; \theta_d + \frac{\tau_{ff} + B\dot\theta_d}{K}",
+                          16))
+        eq.add(body(
+            "<b>That is the entire mystery.</b> θ_eq is not a target — it is a "
+            "target <i>pre-distorted</i> by the load you expect. Like aiming "
+            "upwind. Softer spring (small K) → bigger offset. Stiff spring "
+            "(large K) → θ_eq ≈ θ_d, which is why nobody notices this in "
+            "high-gain position control.", dim=True))
+        self.add(eq)
+
+        how = Card("so how do you choose it? Not by trial and error.")
+        how.add(body(
+            "<b>1 · From biomechanics data (the usual answer for prostheses).</b> "
+            "Able-bodied datasets give you both the joint angle <i>and</i> the "
+            "joint moment through the gait cycle. Set θ_d to the measured angle "
+            "and τ<sub>ff</sub> to the measured moment. Then compute θ_eq. Both "
+            "inputs are <b>directly observable in a motion-capture lab</b>; θ_eq "
+            "is not, which is exactly why parameterising by it was a bad "
+            "idea.<br><br>"
+            "<b>2 · From a dynamic model.</b> Inverse dynamics or trajectory "
+            "optimisation gives you the τ<sub>ff</sub> that produces the motion "
+            "you want.<br><br>"
+            "<b>3 · By learning it.</b> An RL policy that outputs joint torque is "
+            "producing τ<sub>ff</sub>, whether or not it was told so — and you "
+            "can differentiate the policy to read off the K and B it implicitly "
+            "chose. That is Property 2 on the Impedance Spectrum page.<br><br>"
+            "<b>4 · Trial and error</b> — the historical method, and the reason "
+            "impedance tuning has a reputation for being black magic. You are "
+            "hand-tuning a quantity that has no physical referent."))
+        how.add(body(
+            "<b>The paper's point in one line:</b> stop parameterising by "
+            "(K, B, θ_eq), which nobody can observe or interpret. Parameterise "
+            "by (K, B, τ_ff, θ_d), where θ_d is <i>where you want the joint</i> "
+            "and τ_ff is <i>the torque that gets it there</i> — both meaningful, "
+            "both measurable.", dim=True))
+        self.add(how)
+
+        # ---- what is being modelled -------------------------------------------
+        mod = Card("\"what is the spring-damper modelling — motor↔link, or "
+                   "link↔environment?\"")
+        mod.add(body(
+            "<b>Link ↔ environment. The interaction port.</b><br><br>"
+            "The virtual spring-damper describes the relationship between "
+            "<b>how far the robot is from its reference</b> and <b>the force it "
+            "exchanges with whatever it is touching</b>. You are specifying what "
+            "the robot <i>feels like to push</i>.<br><br>"
+            "It is <b>not</b> a model of the motor-to-link drivetrain. That "
+            "physical chain — rotor, gearbox, spring, link — is the <i>plant</i>, "
+            "and it is what determines whether you can successfully render the "
+            "impedance you asked for. The impedance law is the behaviour you "
+            "want; the drivetrain decides whether you get it."))
+        mod.add(body(
+            "This is why the actuator pages came first. Asking for K = 5 N·m/rad "
+            "on a joint whose reflected inertia is 0.1 kg·m² behind a stiction "
+            "band is asking for something the hardware will simply not deliver — "
+            "and the controller has no way to tell you.", dim=True))
+        self.add(mod)
+
         code = Card("the entire controller")
         pane = CodePane(get_source(impedance_torque))
         pane.sizeHintLine(11)
@@ -522,7 +865,32 @@ class ImpedanceControlPage(Page):
             dim=True))
         self.add(code)
 
+        self._draw_diagram()
         self.finish()
+
+    def _draw_diagram(self):
+        d = self.d_imp
+        d.sum(0.75, 1.35, signs=("+", "−"))
+        d.block(2.15, 1.35, "K, B", colour=theme.GOOD, w=1.15,
+                sub="virtual spring-damper")
+        d.sum(3.25, 1.35, signs=("+", "+"))
+        d.plant(5.1, 1.35, "Joint + Environment",
+                sub="the impedance is rendered HERE", w=2.0)
+        d.arrow(0.15, 1.35, 0.59, 1.35, "θ_d")
+        d.arrow(0.91, 1.35, 1.55, 1.35, "e")
+        d.arrow(2.73, 1.35, 3.09, 1.35)
+        d.arrow(3.41, 1.35, 4.1, 1.35, "τ")
+        # feedforward rail: in from the right, then down into the summing node
+        d.ax.plot([5.85, 3.25], [2.05, 2.05], color=theme.VIOLET, lw=1.4,
+                  ls="--")
+        d.note(4.55, 2.22, "τ_ff  feedforward torque", colour=theme.VIOLET,
+               fontsize=7.4)
+        d.arrow(3.25, 2.05, 3.25, 1.53, colour=theme.VIOLET, dashed=True)
+        d.arrow(6.1, 1.35, 7.4, 1.35, "θ")
+        d.feedback(6.9, 1.35, 0.75, 1.13, "measured θ, θ̇  —  MOTION IN", drop=0.62)
+        d.note(2.15, 0.40, "FORCE OUT: torque proportional to displacement",
+               colour=theme.GOOD)
+        d.done()
 
     def _redraw(self):
         k = float(self.s_k.value())
@@ -578,6 +946,9 @@ class AdmittanceControlPage(Page):
             "outputs <b>motion</b>. Same physics, opposite causality, and the "
             "choice between them is decided almost entirely by your gearbox.",
             "key"))
+
+        self.d_adm = BlockDiagram(width=7.6, height=2.3)
+        self.add(self.d_adm)
 
         # ---- the translator -------------------------------------------------
         t = Card("the \"translator\": from force to motion")
@@ -686,7 +1057,88 @@ class AdmittanceControlPage(Page):
             "stiff motor. The motor moves to \"admit\" the force, which makes the "
             "beam feel compliant to the person touching it.", "good"))
 
+        # ---- the shape of the response ---------------------------------------
+        self.add(hline())
+        self.add(title("\"What exactly is the relation between force and motion? "
+                       "How smooth, how fast?\""))
+
+        sh = Card("read it off the virtual model — all three parameters have "
+                  "a job")
+        sh.add(body(
+            "Apply a constant force F to M<sub>v</sub>ẍ + B<sub>v</sub>ẋ + "
+            "K<sub>v</sub>x = F and the answer is a first-order velocity "
+            "response with a very concrete shape:"))
+        sh.add(math_label(r"\dot x(t) = \frac{F}{B_v}\left(1 - "
+                          r"e^{-t/(M_v/B_v)}\right)", 17))
+        sh.add(body(
+            "<b>Terminal velocity = F / B<sub>v</sub>.</b> This is the "
+            "\"gearing\" of the interaction: push with 10 N against "
+            "B<sub>v</sub> = 5 and the robot ends up moving at 2 units/s. "
+            "<b>B<sub>v</sub> sets how far you get per newton.</b><br><br>"
+            "<b>Time constant = M<sub>v</sub> / B<sub>v</sub>.</b> How long it "
+            "takes to reach that speed. <b>M<sub>v</sub> sets the smoothness and "
+            "the lag.</b> Big M<sub>v</sub> feels like pushing a heavy trolley: "
+            "gradual, forgiving, hard to jerk. Small M<sub>v</sub> feels darty "
+            "and immediate — and amplifies every bit of sensor noise into "
+            "motion.<br><br>"
+            "<b>Initial acceleration = F / M<sub>v</sub>.</b> The instant "
+            "response to your push.<br><br>"
+            "<b>K<sub>v</sub> decides whether it comes back.</b> At 0 (the usual "
+            "choice) the robot stays wherever you left it — a frictionless cart. "
+            "Non-zero, and it drifts back to a home pose, which you sometimes "
+            "want for a tool holder and almost never want for hand-guiding."))
+        sh.add(body(
+            "<b>And deceleration is symmetric:</b> let go, and the velocity "
+            "decays with the same M<sub>v</sub>/B<sub>v</sub>. That is why "
+            "hand-guided industrial arms feel like they are moving through "
+            "syrup — the damping is deliberately high so the arm stops promptly "
+            "when you release it, rather than coasting into something.",
+            dim=True))
+        self.add(sh)
+
+        self.add(callout(
+            "<b>Typical numbers, for a hand-guided arm.</b> Aim for a terminal "
+            "velocity around 0.1–0.3 m/s at a comfortable 20–30 N push, and a "
+            "time constant of 0.1–0.3 s. Faster than that and the arm feels "
+            "twitchy and unsafe; slower and it feels like it is resisting "
+            "you.<br><br>"
+            "<b>The stability limit.</b> You cannot simply keep lowering "
+            "M<sub>v</sub> to make it feel lighter. Rendering a virtual mass much "
+            "below the true joint inertia demands high loop gain, and high loop "
+            "gain plus sensor delay is exactly the recipe for oscillation on "
+            "contact. This is the well-known result that <b>admittance control "
+            "goes unstable against stiff environments</b> — press a rigid wall "
+            "and a tiny motion produces a huge force change, which the loop turns "
+            "into a bigger motion. Impedance control has the mirror-image failure: "
+            "stable on walls, useless in free space behind a gearbox.", "warn"))
+
+        self._draw_diagram()
         self.finish()
+
+    def _draw_diagram(self):
+        d = self.d_adm
+        d.band(3.35, 7.9, 0.55, 2.02, "the robot's own stiff inner loop",
+               theme.ACCENT)
+        d.block(1.05, 1.35, "F/T sensor", colour=theme.WARN, w=1.15,
+                sub="at the contact point")
+        d.block(2.75, 1.35, "virtual model", colour=theme.VIOLET, w=1.25,
+                sub="M_v ẍ + B_v ẋ + K_v x = F")
+        d.sum(4.35, 1.35, signs=("+", "−"))
+        d.block(5.45, 1.35, "stiff PID", colour=theme.ACCENT, w=1.05)
+        d.plant(7.05, 1.35, "Geared joint", sub="high friction, not backdrivable",
+                w=1.5)
+        d.arrow(0.2, 1.35, 0.45, 1.35)
+        d.note(0.12, 1.62, "human push", colour=theme.WARN, fontsize=6.9,
+               ha="left")
+        d.arrow(1.65, 1.35, 2.1, 1.35, "F", fontsize=7)
+        d.arrow(3.4, 1.35, 4.17, 1.35, "x_ref", fontsize=7)
+        d.arrow(4.53, 1.35, 4.9, 1.35)
+        d.arrow(6.0, 1.35, 6.28, 1.35, "τ", fontsize=7)
+        d.feedback(7.6, 1.35, 4.35, 1.13, "measured θ", drop=0.55)
+        d.note(2.75, 0.32, "FORCE IN → MOTION OUT", colour=theme.VIOLET)
+        d.note(1.05, 2.15, "sensor is OUTSIDE the gearbox — this is the bypass",
+               colour=theme.WARN, fontsize=6.9, ha="left")
+        d.done()
 
     def _redraw(self):
         m = self.s_m.value() * 0.1

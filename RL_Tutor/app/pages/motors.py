@@ -38,7 +38,11 @@ from ctrlcore.actuators import (
     motor_torque_pea,
     pea_resonance_rad_s,
     reflected_inertia,
+    sea_antiresonance_rad_s,
     sea_bandwidth_hz,
+    sea_deflection_ratio,
+    sea_resonance_rad_s,
+    sea_transmissibility,
     spring_torque,
 )
 from .. import theme
@@ -68,6 +72,139 @@ def slider(lo, hi, val, step=1):
     s.setValue(val)
     s.setSingleStep(step)
     return s
+
+
+def _compare_table():
+    """Direct drive vs geared, same output torque, real-ish numbers."""
+    rows = [
+        ("Rotor inertia  Jₘ", "0.0040 kg·m²  (big rotor)",
+         "0.00004 kg·m²  (100× lighter)"),
+        ("Gear ratio  N", "1 : 1", "50 : 1"),
+        ("Reflected rotor  Jₘ·N²", "0.0040", "0.00004 × 2500 = 0.100"),
+        ("Limb inertia  Jʟ", "0.025", "0.025"),
+        ("J_eff at the joint", "0.029 kg·m²", "0.125 kg·m²   (4.3× worse)"),
+        ("Backdriveable?", "yes — push it and the rotor turns",
+         "no — stiction may need 20 N before anything moves"),
+        ("Motor mass", "heavy", "light, but the gearbox is not"),
+        ("Force sensing", "free, from motor current",
+         "current tells you about the gearbox, not the world"),
+    ]
+    t = QTableWidget(len(rows), 3)
+    t.setHorizontalHeaderLabels(["", "Direct drive, big motor",
+                                 "Small motor + 50:1 gearbox"])
+    for r, cells in enumerate(rows):
+        for c, v in enumerate(cells):
+            it = QTableWidgetItem(v)
+            it.setFlags(Qt.ItemIsEnabled)
+            t.setItem(r, c, it)
+    t.verticalHeader().setVisible(False)
+    t.setWordWrap(True)
+    t.resizeRowsToContents()
+    t.setColumnWidth(0, 170)
+    t.setColumnWidth(1, 250)
+    t.setColumnWidth(2, 300)
+    t.setMinimumHeight(44 + 46 * len(rows))
+    return t
+
+
+def _verdict_table():
+    """Which J_eff you want, band by band."""
+    rows = [
+        ("LOW ω\nslow lean, holding a\npose, human leading",
+         "MODERATE — you want some",
+         "Too low and the joint is floppy: it drifts under its own weight, "
+         "wanders when bumped, and feels dead to a human trying to guide it. "
+         "You want enough impedance here to hold a pose and reject slow "
+         "disturbances. This is the one band where MORE is often right.",
+         "PEA wins: it removes the gravity torque without needing the motor."),
+        ("MID ω\nthe robot's own\nmotions, 1–30 Hz",
+         "SMOOTH — flat is what you want",
+         "This is your working band, so what matters is not the level but the "
+         "SHAPE. Resonances and antiresonances here are poison: they make the "
+         "plant gain swing wildly with frequency, which no fixed set of gains "
+         "can handle. A flat curve is a plant you can tune once and trust.",
+         "DD wins: flat everywhere by construction. SEA's resonance pair often "
+         "lands exactly here, which is why SEAs are harder to tune."),
+        ("HIGH ω\nimpacts, collisions,\nsomeone's hand",
+         "AS LOW AS POSSIBLE",
+         "Collision energy is ½·J_eff·ω². This is the number that decides "
+         "whether a mistake is a bump or an injury, and no controller reaches up "
+         "here to help — an impact is broadband, far above any loop bandwidth. "
+         "Whatever mechanics presents is what lands.",
+         "SEA wins outright: J_eff drops to J_L, the rotor is disconnected. "
+         "PEA does nothing here. DD gives you the full machine."),
+    ]
+    t = QTableWidget(len(rows), 4)
+    t.setHorizontalHeaderLabels(
+        ["Band", "What you want", "Why", "Who wins"])
+    for r, cells in enumerate(rows):
+        for c, v in enumerate(cells):
+            it = QTableWidgetItem(v)
+            it.setFlags(Qt.ItemIsEnabled)
+            t.setItem(r, c, it)
+    t.verticalHeader().setVisible(False)
+    t.setWordWrap(True)
+    t.resizeRowsToContents()
+    for c, w in enumerate((150, 175, 330, 270)):
+        t.setColumnWidth(c, w)
+    t.setMinimumHeight(360)
+    return t
+
+
+def _decision_table():
+    """Machine type -> topology, with real examples."""
+    rows = [
+        ("Humanoid arm, works beside people",
+         "SEA, or QDD + soft body",
+         "Baxter/Sawyer (SEA); 1X Neo (QDD + polymer skin + proprioception)",
+         "Impact energy is the binding constraint. Either filter it "
+         "mechanically or keep J_eff tiny everywhere."),
+        ("Humanoid / biped leg",
+         "Hybrid: SEA ankle, PEA knee, QDD hip",
+         "Agility Digit, Cassie, ANYmal",
+         "Ankle takes the ground impacts; knee holds the body weight for hours; "
+         "hip needs speed for swing."),
+        ("Running quadruped",
+         "QDD, low ratio (~6:1)",
+         "MIT Cheetah, Mini Cheetah",
+         "Leg repositioning speed beats everything. A 10 Hz mechanical filter "
+         "would fight the gait. Compliance is done in software."),
+        ("Industrial arm, caged",
+         "High-ratio geared, position control",
+         "Classic 6-axis welders and palletisers",
+         "Nothing unexpected is in the workspace, so precision and stiffness "
+         "dominate. Backdrivability is irrelevant."),
+        ("Collaborative manipulator",
+         "Geared + joint torque sensors",
+         "KUKA LBR iiwa, Franka Emika",
+         "The third path: keep the gearbox, and buy back torque control with a "
+         "sensor on the OUTPUT side, past the friction."),
+        ("Prosthesis / exoskeleton",
+         "SEA, or geared + admittance",
+         "Powered ankle prostheses; most exos",
+         "Attached to a person, so compliance is safety. The spring doubles as "
+         "the torque sensor and stores push-off energy."),
+        ("Surgical / precision tool",
+         "Stiff, geared, high-resolution",
+         "da Vinci and similar",
+         "Compliance is the enemy. Safety comes from scale, limits and the "
+         "human in the loop, not from being soft."),
+    ]
+    t = QTableWidget(len(rows), 4)
+    t.setHorizontalHeaderLabels(
+        ["Machine", "Topology", "Real examples", "Why"])
+    for r, cells in enumerate(rows):
+        for c, v in enumerate(cells):
+            it = QTableWidgetItem(v)
+            it.setFlags(Qt.ItemIsEnabled)
+            t.setItem(r, c, it)
+    t.verticalHeader().setVisible(False)
+    t.setWordWrap(True)
+    t.resizeRowsToContents()
+    for c, w in enumerate((200, 200, 230, 300)):
+        t.setColumnWidth(c, w)
+    t.setMinimumHeight(500)
+    return t
 
 
 def slider_row(label, sld, readout):
@@ -193,10 +330,169 @@ class EffectiveInertiaPage(Page):
         self._redraw()
 
         self.add(callout(
-            "The rotor share is the number to watch. On a direct-drive joint the "
-            "motor's own mass is <b>always visible</b> to the world — it is never "
-            "hidden, at any speed. Everything that follows is an attempt to hide "
-            "it without giving up the ability to feel.", "key"))
+            "<b>Reading the sliders as engineering, not as a curve.</b> The line "
+            "height <i>is</i> the performance. Three things scale directly with "
+            "it:<br><br>"
+            "&nbsp;&nbsp;• <b>Collision energy</b> ½·J<sub>eff</sub>·ω² — double "
+            "J<sub>eff</sub>, double the energy delivered into whatever you "
+            "hit.<br>"
+            "&nbsp;&nbsp;• <b>Torque to accelerate</b> τ = J<sub>eff</sub>·α — "
+            "double it, and every motion costs twice the torque, so you size a "
+            "bigger motor, which raises J<sub>m</sub>, which… (this loop is real "
+            "and it is why big robots are hard).<br>"
+            "&nbsp;&nbsp;• <b>Achievable bandwidth</b> ω<sub>bw</sub> ∝ "
+            "√(K/J<sub>eff</sub>) — quadrupling the inertia halves the speed at "
+            "which the joint can respond, for the same gain.<br><br>"
+            "The <b>rotor share</b> is the specifically damning number: on a "
+            "direct drive the motor's own mass is <b>always visible</b> to the "
+            "world, at every frequency. It is never hidden. Everything in the "
+            "next four pages is an attempt to hide it without losing the ability "
+            "to feel.", "key"))
+
+        # ---- why it matters -------------------------------------------------
+        self.add(hline())
+        self.add(title("Why J_eff decides the design, the motor and the controller"))
+
+        m = Card("1 · for mechanism design — watch out for DISTAL mass")
+        m.add(body(
+            "Inertia about a joint is <b>Σ m<sub>i</sub> d<sub>i</sub>²</b>. The "
+            "distance is <b>squared</b>, so mass at the end of the linkage is "
+            "punished quadratically. A 1 kg motor at the wrist costs a shoulder "
+            "joint <i>sixteen times</i> more inertia than the same motor at "
+            "0.25 of the reach."))
+        m.add(body(
+            "<b>This is why real robots look the way they do:</b><br>"
+            "&nbsp;&nbsp;• <b>Proximal actuator placement</b> — put the motors in "
+            "the torso or upper arm and transmit power outward. Tendons/cables "
+            "(1X Neo, most dexterous hands), belts, or push-rods.<br>"
+            "&nbsp;&nbsp;• <b>Parallel &amp; closed-chain mechanisms</b> — delta "
+            "robots and five-bar linkages exist almost entirely to keep actuator "
+            "mass at the base. Same reason for differential wrists.<br>"
+            "&nbsp;&nbsp;• <b>Lightweight distal links</b> — carbon fibre "
+            "forearms, hollow sections, and accepting the structural compliance "
+            "that comes with them.<br>"
+            "&nbsp;&nbsp;• <b>Biology did this first</b> — your calf muscles sit "
+            "high on the shin and pull the foot through the Achilles tendon. "
+            "Almost no muscle mass is in the foot."))
+        self.add(m)
+
+        s = Card("2 · for motor specification")
+        s.add(body(
+            "The number a datasheet will not tell you directly is the "
+            "<b>inertia match</b>, J<sub>L</sub>/J<sub>m</sub> (reflected "
+            "through the gearing).<br><br>"
+            "&nbsp;&nbsp;• <b>Ratio ≈ 1–3</b> is the classic servo sweet spot: "
+            "best acceleration per amp, well-damped, easy to tune.<br>"
+            "&nbsp;&nbsp;• <b>Ratio ≫ 10</b> (load dominates) — the motor "
+            "struggles to control the load; resonances show up; you need a "
+            "gearbox or a bigger motor.<br>"
+            "&nbsp;&nbsp;• <b>Ratio ≪ 1</b> (rotor dominates) — you are mostly "
+            "spending torque accelerating your own rotor. This is what "
+            "over-gearing does, and it is the whole problem on page 5.<br><br>"
+            "So J<sub>eff</sub> is not just an output of the design — it is the "
+            "<b>input to motor sizing</b>. Pick the topology first, compute "
+            "J<sub>eff</sub>, then choose the motor."))
+        self.add(s)
+
+        c = Card("3 · for control — and what you can and cannot fix in software")
+        c.add(body(
+            "<b>What control CAN do:</b><br>"
+            "&nbsp;&nbsp;• <b>Feedforward / computed torque.</b> If you know "
+            "J(q), compute τ = J(q)q̈<sub>d</sub> + C(q,q̇)q̇ + g(q) and apply it "
+            "directly. The feedback loop then only has to correct model error "
+            "instead of fighting the full inertia. This is the single biggest "
+            "win available and it costs nothing but a model.<br>"
+            "&nbsp;&nbsp;• <b>Inertia shaping.</b> With force feedback you can "
+            "make the joint <i>feel</i> lighter than it is — admittance control "
+            "with M<sub>v</sub> &lt; J<sub>real</sub>.<br>"
+            "&nbsp;&nbsp;• <b>Input shaping / notch filters</b> for the "
+            "resonances that light distal links introduce."))
+        c.add(body(
+            "<b>What control CANNOT do — and this is the important half.</b> "
+            "Every one of those tricks works <b>only inside the loop "
+            "bandwidth</b>. Above it, the physical inertia is exactly what the "
+            "world feels, because the controller has not noticed yet.<br><br>"
+            "An impact is <b>broadband</b> — a 1 ms collision has energy out to "
+            "hundreds of Hz, far above any joint loop. So during the event that "
+            "actually matters for safety, your beautiful inertia-shaping law "
+            "contributes <b>nothing</b>. Whatever J<sub>eff</sub> the mechanics "
+            "presents up there is what hits the person.<br><br>"
+            "How far can you push inertia shaping? Roughly: rendering "
+            "M<sub>v</sub> much below J<sub>real</sub> demands loop gain, and "
+            "loop gain plus delay is instability. A factor of 2–5 is realistic; "
+            "a factor of 100 is not. <b>You cannot software your way out of a "
+            "heavy rotor.</b>", dim=True))
+        self.add(c)
+
+        # ---- DD vs geared, with numbers --------------------------------------
+        g = Card("\"big low-inertia motor\" vs \"small motor + gearbox\" — "
+                 "the same joint, two ways")
+        g.add(body(
+            "Both deliver 40 N·m at the joint. They are not remotely the same "
+            "machine."))
+        g.add(_compare_table())
+        g.add(body(
+            "The geared version has a rotor <b>100× lighter</b> and still ends up "
+            "presenting <b>4× more inertia</b> to the world, because N² = 2,500 "
+            "beats the mass saving comfortably. And that inertia arrives with "
+            "backlash and stiction attached.", dim=True))
+        self.add(g)
+
+        b = Card("so what bandwidth does each actually get?")
+        b.add(body(
+            "First, separate the three numbers from the Real-Time page — this is "
+            "where people go wrong:<br><br>"
+            "&nbsp;&nbsp;<b>Current loop:</b> 10–40 kHz on both. Electrical, and "
+            "essentially free.<br>"
+            "&nbsp;&nbsp;<b>Joint control loop:</b> 1–4 kHz on both. This is your "
+            "<i>sample rate</i>, not your bandwidth.<br>"
+            "&nbsp;&nbsp;<b>Usable force/impedance bandwidth:</b> this is where "
+            "they diverge, and it is set by <b>mechanics</b>, not by the CPU."))
+        b.add(body(
+            "<table cellpadding='6'>"
+            "<tr><td><b>Direct drive / QDD</b></td><td><b>50–100+ Hz</b></td>"
+            "<td>Limited by structural resonance of the link, encoder noise and "
+            "loop delay. Nothing mechanical is filtering the force path.</td></tr>"
+            "<tr><td><b>High-ratio geared</b></td><td><b>~10–30 Hz</b></td>"
+            "<td>Limited by friction nonlinearity, backlash, and torsional "
+            "windup of the flexspline. The gearbox is a low-pass filter you did "
+            "not ask for — and worse, a <i>nonlinear</i> one.</td></tr>"
+            "<tr><td><b>SEA</b></td><td><b>10–20 Hz</b></td>"
+            "<td>Limited by the spring-load resonance. Page 3 derives it.</td>"
+            "</tr></table>"))
+        b.add(body(
+            "<b>Notice all three sit far below the 1 kHz loop rate.</b> That is "
+            "the answer to \"we sample at 1 kHz, so why can't we react in 1 ms?\" "
+            "— the sampling is not the constraint. The mechanics is.", dim=True))
+        self.add(b)
+
+        self.add(callout(
+            "<b>Real machines, so the numbers mean something.</b><br><br>"
+            "&nbsp;&nbsp;• <b>MIT Cheetah 3 / Mini Cheetah</b> — QDD, ~6:1. "
+            "Chose low reflected inertia over torque density so the legs could "
+            "sense ground contact through the motors alone. No force sensors in "
+            "the feet at all.<br>"
+            "&nbsp;&nbsp;• <b>KUKA LBR iiwa / Franka</b> — high-ratio harmonic "
+            "drives <i>plus a torque sensor on every joint output</i>. That third "
+            "option recovers torque control without backdrivability, at "
+            "considerable cost. Page 6 returns to it.<br>"
+            "&nbsp;&nbsp;• <b>ANYmal</b> — SEA legs (ANYdrive). Accepted ~10 Hz "
+            "joint bandwidth to get passive impact survival on rough terrain.<br>"
+            "&nbsp;&nbsp;• <b>Universal Robots cobots</b> — geared and "
+            "position-controlled, with collision detection from motor current. "
+            "Safe by <i>stopping</i>, not by being compliant. A completely "
+            "different safety philosophy, and a legitimate one.", "good"))
+
+        self.add(callout(
+            "<b>The takeaway, in one line each.</b><br><br>"
+            "<b>Mechanism design:</b> keep mass proximal, because d² is "
+            "merciless.<br>"
+            "<b>Motor spec:</b> aim for an inertia match near 1–3 <i>after</i> "
+            "choosing the topology.<br>"
+            "<b>Control:</b> feedforward what you know; and accept that above "
+            "your bandwidth, mechanics is the only controller you have.<br><br>"
+            "This is why this tutorial puts actuator mechanics before control "
+            "theory, and real-time behaviour before both.", "good"))
 
         self.finish()
 
@@ -270,6 +566,26 @@ class SEAPage(Page):
                          16))
         self.add(d)
 
+        # ---- THE key clarification -------------------------------------------
+        self.add(callout(
+            "<b>Before the plot: three different frequencies live on this "
+            "actuator, and conflating them is the #1 source of confusion about "
+            "SEAs.</b> They answer three different questions.<br><br>"
+            "<b>1 · f<sub>n</sub> = (1/2π)√(k/J<sub>L</sub>) — the MOTOR-side "
+            "question.</b> \"If I command the motor to move, how fast can the "
+            "load follow?\" This is your <b>control bandwidth</b>: trajectory "
+            "tracking, force control, reflexes.<br><br>"
+            "<b>2 · ω<sub>a</sub> = √(k/J<sub>m</sub>) — the LOAD-side "
+            "antiresonance.</b> \"If the <i>world</i> shakes the joint, what "
+            "happens?\" The motor-on-its-spring rings and pins the load. "
+            "J<sub>eff</sub> → ∞.<br><br>"
+            "<b>3 · ω<sub>r</sub> = √(k(J<sub>m</sub>+J<sub>L</sub>)/"
+            "(J<sub>m</sub>J<sub>L</sub>)) — the system resonance.</b> The two "
+            "masses swing against each other. J<sub>eff</sub> = 0.<br><br>"
+            "The J<sub>eff</sub> plot below shows <b>2 and 3</b>. The bandwidth "
+            "number is <b>1</b>, a different transfer function entirely, plotted "
+            "separately further down.", "warn"))
+
         # ---- the two limits ----------------------------------------------
         lim = Card("the two limits — this is the whole argument for SEAs")
         g = QGridLayout()
@@ -314,10 +630,12 @@ class SEAPage(Page):
         i.add_layout(slider_row("Limb  Jʟ", self.s_jl, self.l_jl))
         i.add_layout(slider_row("Spring  k  (N·m/rad)", self.s_k, self.l_k))
 
-        self.st_bw = Stat("bandwidth f_n", "--", theme.GOOD)
-        self.st_anti = Stat("antiresonance", "--", theme.BAD)
+        self.st_anti = Stat("ω_a antiresonance", "--", theme.BAD)
+        self.st_res = Stat("ω_r resonance", "--", theme.VIOLET)
         self.st_hi = Stat("J_eff at impact", "--", theme.ACCENT)
-        i.add_layout(stat_row(self.st_bw, self.st_anti, self.st_hi))
+        self.st_defl = Stat("spring deflection @1 rad/s", "--", theme.TEXT_DIM)
+        i.add_layout(stat_row(self.st_anti, self.st_res, self.st_hi,
+                              self.st_defl))
 
         self.canvas = MplCanvas(width=7.4, height=3.1)
         i.add(self.canvas)
@@ -325,36 +643,123 @@ class SEAPage(Page):
 
         for s in (self.s_jm, self.s_jl, self.s_k):
             s.valueChanged.connect(self._redraw)
-        self._redraw()
+        # _redraw() also fills canvas_bw, which is built further down the page,
+        # so the first call is deferred to the end of __init__.
 
-        # ---- bandwidth ------------------------------------------------------
-        bw = Card("the mechanical low-pass filter")
+        # ---- is the spring deflecting? ---------------------------------------
+        d2 = Card("\"below the antiresonance, is the spring deflecting at all?\"")
+        d2.add(body(
+            "<b>Yes — but by an amount that vanishes as ω².</b> Solve the same "
+            "equations for the deflection instead of the inertia:"))
+        d2.add(math_label(r"\left|\frac{\theta_m - \theta_L}{\theta_L}\right| = "
+                          r"\frac{J_m\,\omega^2}{\left|k - J_m\omega^2\right|}",
+                          16))
+        d2.add(body(
+            "At low frequency this is ≈ J<sub>m</sub>ω²/k — near zero. The spring "
+            "bends by <b>exactly</b> the amount needed to generate the force that "
+            "accelerates the rotor, and no more.<br><br>"
+            "So the answer to \"is it the motor rotating, or the spring "
+            "deflecting?\" is: <b>overwhelmingly the motor rotating</b>, with a "
+            "sliver of deflection. That is precisely <i>why</i> you feel "
+            "J<sub>m</sub> + J<sub>L</sub> down there — the rotor really is being "
+            "dragged along, so its mass really is in your hand."))
+        d2.add(body(
+            "As ω rises past ω<sub>a</sub>, the ratio passes 1 and keeps growing: "
+            "now the spring is taking most of the relative motion and the rotor "
+            "is barely moving. <b>The handover from \"motor moves\" to \"spring "
+            "bends\" IS the transition on the plot.</b>", dim=True))
+        self.add(d2)
+
+        # ---- what happens after the antiresonance ----------------------------
+        d3 = Card("\"and after the antiresonance it just converges to Jʟ — what "
+                  "does that mean physically?\"")
+        d3.add(body(
+            "Above ω<sub>r</sub> the rotor is <b>inertially unreachable</b>. To "
+            "move it that fast you would need a force the spring cannot transmit "
+            "in the time available, so from the load's point of view the far end "
+            "of the spring might as well be <b>bolted to the wall</b>."))
+        d3.add(body(
+            "The load is then a mass on a spring anchored to ground. Push it fast "
+            "enough and the spring force kθ becomes negligible next to the "
+            "inertial force J<sub>L</sub>ω²θ — so what you feel is a "
+            "<b>free mass J<sub>L</sub></b>, and nothing else.<br><br>"
+            "<b>That is the safety mechanism, stated properly:</b> the rotor is "
+            "not \"absorbed\" or \"cushioned\". It is <b>disconnected</b>. During "
+            "a fast impact the motor is not part of the collision at all.",
+            dim=True))
+        self.add(d3)
+
+        # ---- motor-side bandwidth --------------------------------------------
+        self.add(hline())
+        self.add(title("Now the MOTOR side — a different question, a different "
+                       "plot"))
+
+        bw = Card("motor → load transmissibility")
         bw.add(body(
-            "The spring and the load form a resonant pair with natural "
-            "frequency"))
+            "Everything above was the world pushing the load. Now hold the motor "
+            "under stiff position control and wiggle <i>it</i>. How much of that "
+            "motion reaches the arm?"))
+        bw.add(math_label(r"\frac{\theta_L}{\theta_m} = \frac{k}{J_L s^2 + k} "
+                          r"\quad\Rightarrow\quad "
+                          r"\left|\frac{\theta_L}{\theta_m}\right| = "
+                          r"\frac{k}{\left|k - J_L\omega^2\right|}", 16))
         bw.add(math_label(r"f_n = \frac{1}{2\pi}\sqrt{\frac{k}{J_L}}", 17))
         bw.add(body(
-            "Try to command the joint faster than f<sub>n</sub> and the spring "
-            "simply absorbs the motion instead of passing it to the arm. That is "
-            "what \"the spring is a low-pass filter\" means, literally."))
-        bw.add(body(
-            "<b>What \"bandwidth\" means here — precisely.</b> When people say "
-            "\"SEAs have lower bandwidth\" they are <i>not</i> talking about "
-            "sensor bandwidth or controller sampling rate. They mean: <b>the "
-            "fastest frequency at which joint torque can be accurately "
-            "controlled and modified.</b> How quickly can the actuator change "
-            "force at the joint in response to a disturbance? This is a "
-            "<b>physical limit, not a software one.</b> Sample at 10 kHz with a "
-            "perfect control law and you are still bounded by "
-            "τ<sub>response</sub> ≥ 1/ω<sub>n</sub>."))
-        bw.add(body(
-            "<table cellpadding='6'>"
-            "<tr><td><b>Direct drive</b></td><td>50–100 Hz or higher</td></tr>"
-            "<tr><td><b>SEA</b></td><td>often limited to 10–20 Hz</td></tr>"
-            "</table>"
-            "10 Hz is fine for walking. It is too slow for a cat-like reflex or "
-            "for catching a falling object."))
+            "Below f<sub>n</sub>, the load follows the motor faithfully. Above "
+            "it, the spring absorbs the motion and the response rolls off as "
+            "1/ω². <b>This is the number that limits trajectory tracking, force "
+            "control and reflexes.</b> This is \"the bandwidth\"."))
+        self.canvas_bw = MplCanvas(width=7.4, height=2.8)
+        bw.add(self.canvas_bw)
         self.add(bw)
+
+        self.add(callout(
+            "<b>\"But the spring IS a force sensor — so why do I care about "
+            "delay? Just measure the force and tell the motor to react.\"</b><br><br>"
+            "This is the right question, and the answer is a clean split:<br><br>"
+            "&nbsp;&nbsp;<b>Sensing bandwidth is high.</b> You are correct — "
+            "spring deflection gives you an excellent, high-bandwidth torque "
+            "measurement. You will <i>know</i> about the disturbance almost "
+            "instantly.<br><br>"
+            "&nbsp;&nbsp;<b>Actuation bandwidth is low.</b> But to <i>change the "
+            "joint torque</i>, the motor must change the spring's deflection — "
+            "and to do that it must accelerate J<sub>m</sub> through a finite "
+            "spring. That is a physical process bounded by f<sub>n</sub>. No "
+            "amount of knowing helps.<br><br>"
+            "<b>You can sense fast and still act slowly.</b> Knowing that a car "
+            "is about to hit you does not make you able to move. That single "
+            "distinction — <b>force sensing bandwidth ≠ force control "
+            "bandwidth</b> — is the whole reason SEAs trade safety for speed.",
+            "key"))
+
+        num = Card("so what do 50–100 Hz and 10–20 Hz actually mean?")
+        num.add(body(
+            "They are <b>closed-loop force-control bandwidths</b>: the frequency "
+            "at which commanded joint torque still tracks to −3 dB. They are "
+            "<b>not</b> sample rates and they are <b>not</b> sensor bandwidths."))
+        num.add(body(
+            "Your 1 kHz control loop sits far above all of them, and that is "
+            "correct and necessary — you need 10–20× oversampling to close a loop "
+            "at all (see the Real-Time page). But the loop rate is a "
+            "<b>ceiling</b>. The mechanics sets the actual number:<br><br>"
+            "&nbsp;&nbsp;<b>Direct drive, 50–100 Hz</b> — no mechanical filter in "
+            "the force path. Limited by link structural resonance, encoder noise "
+            "and loop delay.<br>"
+            "&nbsp;&nbsp;<b>SEA, 10–20 Hz</b> — limited by f<sub>n</sub> = "
+            "(1/2π)√(k/J<sub>L</sub>). A <b>physical</b> limit. Sample at 10 kHz "
+            "with a perfect control law and it does not move."))
+        num.add(body(
+            "<b>What 10 Hz buys and costs, concretely:</b> a 10 Hz bandwidth "
+            "means the joint can meaningfully change its torque about every "
+            "100 ms. Walking has a ~1 s cycle, so 10 Hz is comfortable. Catching "
+            "a dropped mug takes ~150 ms of total reaction — 10 Hz is marginal. "
+            "Recovering from a shove that started 50 ms ago — 10 Hz is too "
+            "slow.<br><br>"
+            "For scale: a human ankle reflex fires at 30–50 ms (≈20–30 Hz "
+            "equivalent), and passive tendon stiffness acts at 0 ms. Biology "
+            "solves this by having <i>both</i>, which is exactly the layered "
+            "answer 1X arrived at.", dim=True))
+        self.add(num)
 
         self.add(callout(
             "<b>Why the motor needs to \"feel the world\" at all.</b> Control is "
@@ -372,6 +777,84 @@ class SEAPage(Page):
             "<i>after</i> the deflection, and the reflex-like response is "
             "delayed. That delay is mechanical and no amount of sampling rate "
             "removes it.", "key"))
+
+        # ---- what the spring is and is not for --------------------------------
+        purpose = Card("\"is the spring protective, or are we trying to get more "
+                       "torque at the joint?\"")
+        purpose.add(body(
+            "<b>Purely protective — plus two side benefits. It buys you no "
+            "torque whatsoever.</b><br><br>"
+            "The spring is in <b>series</b>, so every newton-metre still passes "
+            "through it from the motor. Peak joint torque is exactly the motor's "
+            "peak torque, unchanged. A series spring cannot add force any more "
+            "than a longer rope can pull harder.<br><br>"
+            "What it actually buys:<br>"
+            "&nbsp;&nbsp;<b>1 · Impact protection</b> — J<sub>eff</sub> → "
+            "J<sub>L</sub> at collision frequencies. The point.<br>"
+            "&nbsp;&nbsp;<b>2 · A torque sensor for free</b> — measure deflection, "
+            "multiply by k. No strain gauges.<br>"
+            "&nbsp;&nbsp;<b>3 · Energy storage</b> — like a tendon, store in one "
+            "gait phase and release in the next.<br><br>"
+            "And what it costs: <b>bandwidth</b>. That is the entire trade."))
+        purpose.add(body(
+            "<b>If you want more torque, that is the PEA on the next page</b> — "
+            "spring in <i>parallel</i>, so motor and spring add. Series buys "
+            "safety; parallel buys torque and efficiency. Different position in "
+            "the drivetrain, completely different function.", dim=True))
+        self.add(purpose)
+
+        # ---- the stiffness trade ---------------------------------------------
+        kk = Card("\"so is higher stiffness better?\" — k is the safety ⇄ speed dial")
+        kk.add(body(
+            "Neither higher nor lower is better. k is the one knob that sets "
+            "where you sit on the trade, and it moves <b>three things at "
+            "once</b>:"))
+        kk.add(body(
+            "<table cellpadding='6'>"
+            "<tr><th align='left'>Raising k</th><th align='left'>Effect</th></tr>"
+            "<tr><td>Bandwidth f<sub>n</sub> ∝ √k</td><td><b>Better.</b> Faster "
+            "reflexes, better tracking.</td></tr>"
+            "<tr><td>Impact protection</td><td><b>Worse.</b> J<sub>eff</sub> "
+            "stays at J<sub>m</sub>+J<sub>L</sub> up to a higher frequency, so "
+            "less of the impact spectrum gets filtered.</td></tr>"
+            "<tr><td>Force resolution</td><td><b>Worse.</b> Deflection per N·m is "
+            "1/k, so a stiff spring makes a poor sensor — the deflection "
+            "disappears into encoder quantisation.</td></tr>"
+            "<tr><td>Energy stored</td><td><b>Less</b> at a given torque "
+            "(E = τ²/2k).</td></tr>"
+            "</table>"))
+        kk.add(body(
+            "<b>How it is chosen in practice:</b> pick the softest spring whose "
+            "f<sub>n</sub> still clears your fastest required motion, then check "
+            "that the deflection at peak torque fits the mechanism and resolves "
+            "well on your encoder. Typical result for a humanoid leg: f<sub>n</sub> "
+            "around 10–20 Hz, deflection of a few degrees at rated torque.",
+            dim=True))
+        self.add(kk)
+
+        rw = Card("where SEAs actually are, and where they are deliberately not")
+        rw.add(body(
+            "<b>Used:</b><br>"
+            "&nbsp;&nbsp;• <b>Agility Digit / Cassie</b> — SEA in the legs. A "
+            "walking robot in warehouses among people; passive impact survival is "
+            "worth more than reflex speed.<br>"
+            "&nbsp;&nbsp;• <b>ANYmal (ANYdrive)</b> — SEA legs for rough-terrain "
+            "quadruped work. Rocks and steps are exactly the broadband impacts a "
+            "spring is good at.<br>"
+            "&nbsp;&nbsp;• <b>Baxter / Sawyer</b> — the original \"safe around "
+            "untrained people\" arms. SEA in every joint.<br>"
+            "&nbsp;&nbsp;• <b>Powered ankle prostheses</b> — the spring doubles as "
+            "the torque sensor <i>and</i> stores push-off energy, mimicking the "
+            "Achilles tendon.<br><br>"
+            "<b>Deliberately avoided:</b><br>"
+            "&nbsp;&nbsp;• <b>MIT Cheetah</b> — running needs fast leg "
+            "repositioning; a 10 Hz filter fights you.<br>"
+            "&nbsp;&nbsp;• <b>1X Neo</b> — rejected SEAs explicitly for bandwidth, "
+            "and recovered safety through a soft body plus proprioceptive "
+            "control instead. See the case-study page.<br>"
+            "&nbsp;&nbsp;• <b>Surgical and machining robots</b> — compliance is "
+            "the enemy of precision."))
+        self.add(rw)
 
         pc = Card("pros and cons, plainly")
         pc.add(body(
@@ -397,6 +880,7 @@ class SEAPage(Page):
             "sensing."))
         self.add(pc)
 
+        self._redraw()
         self.finish()
 
     def _vals(self):
@@ -410,33 +894,64 @@ class SEAPage(Page):
         self.l_jl.setText(f"{jl:.3f}")
         self.l_k.setText(f"{k:.0f}")
 
-        self.st_bw.set(f"{sea_bandwidth_hz(k, jl):.1f} Hz")
-        self.st_anti.set(f"{math.sqrt(k / jm):.0f} rad/s")
+        anti = sea_antiresonance_rad_s(k, jm)
+        res = sea_resonance_rad_s(k, jm, jl)
+        self.st_anti.set(f"{anti:.0f} rad/s")
+        self.st_res.set(f"{res:.0f} rad/s")
         self.st_hi.set(f"{jl:.3f}")
+        self.st_defl.set(f"{sea_deflection_ratio(jm, k, 1.0) * 100:.2f}%")
 
+        # ---- load-side effective inertia ---------------------------------
         c = self.canvas
         c.clear()
         ws = [10 ** (x / 40.0) for x in range(-40, 141)]
-        anti = math.sqrt(k / jm)
+        span = jm + jl
 
-        below = [w for w in ws if w < anti * 0.985]
-        above = [w for w in ws if w > anti * 1.015]
-        for seg, lab in ((below, "SEA"), (above, None)):
+        below = [w for w in ws if w < anti * 0.98]
+        mid = [w for w in ws if anti * 1.02 < w < res * 0.995]
+        above = [w for w in ws if w > res * 1.005]
+        for seg, lab in ((below, "SEA — load side"), (mid, None), (above, None)):
             if seg:
                 c.ax.semilogx(seg, [j_eff_sea(jm, jl, k, w) for w in seg],
                               color=theme.GOOD, lw=2.4, label=lab)
-        c.ax.axhline(jm + jl, color=theme.TEXT_FAINT, lw=1.1, ls="--",
+        c.ax.axhline(span, color=theme.TEXT_FAINT, lw=1.1, ls="--",
                      label="Jₘ+Jʟ  (ω→0)")
         c.ax.axhline(jl, color=theme.ACCENT, lw=1.1, ls=":",
-                     label="Jʟ  (ω→∞)")
-        c.ax.axvline(anti, color=theme.BAD, lw=1.0, alpha=0.7)
-        c.ax.text(anti, (jm + jl) * 1.5, "  antiresonance\n  √(k/Jₘ)",
-                  color=theme.BAD, fontsize=7.5, va="bottom")
-        c.ax.set_xlabel("interaction frequency ω  (rad/s)")
+                     label="Jʟ  (ω→∞)  ← the safety number")
+        c.ax.axhline(0, color=theme.BORDER, lw=1.0)
+        c.ax.axvline(anti, color=theme.BAD, lw=1.1, alpha=0.8)
+        c.ax.text(anti, span * 1.35, " ω_a\n antiresonance\n √(k/Jₘ)",
+                  color=theme.BAD, fontsize=7.2, va="bottom")
+        c.ax.axvline(res, color=theme.VIOLET, lw=1.1, alpha=0.8)
+        c.ax.text(res, -span * 1.3, " ω_r\n resonance\n J_eff = 0",
+                  color=theme.VIOLET, fontsize=7.2, va="top")
+        c.ax.set_xlabel("frequency the WORLD pushes the load at,  ω (rad/s)")
         c.ax.set_ylabel("J_eff  (kg·m²)")
-        c.ax.set_ylim(0, (jm + jl) * 2.6)
-        c.legend(loc="upper right")
+        c.ax.set_ylim(-span * 2.0, span * 2.4)
+        c.legend(loc="upper left")
         c.refresh()
+
+        # ---- motor-side transmissibility ----------------------------------
+        cb = self.canvas_bw
+        cb.clear()
+        wn = math.sqrt(k / jl)
+        lo = [w for w in ws if w < wn * 0.97]
+        hi = [w for w in ws if w > wn * 1.03]
+        for seg, lab in ((lo, "θʟ / θₘ"), (hi, None)):
+            if seg:
+                cb.ax.loglog(seg, [sea_transmissibility(k, jl, w) for w in seg],
+                             color=theme.CYAN, lw=2.4, label=lab)
+        cb.ax.axhline(1.0, color=theme.TEXT_FAINT, lw=1.1, ls="--",
+                      label="load follows motor 1:1")
+        cb.ax.axvline(wn, color=theme.GOOD, lw=1.3)
+        cb.ax.text(wn, 0.02, f"  f_n = {sea_bandwidth_hz(k, jl):.1f} Hz\n"
+                             f"  = {wn:.0f} rad/s",
+                   color=theme.GOOD, fontsize=7.5)
+        cb.ax.set_xlabel("frequency the MOTOR is commanded at,  ω (rad/s)")
+        cb.ax.set_ylabel("|θʟ / θₘ|")
+        cb.ax.set_ylim(1e-2, 1e2)
+        cb.legend(loc="lower left")
+        cb.refresh()
 
 
 # ==========================================================================
@@ -470,22 +985,64 @@ class PEAPage(Page):
         d.add(math_label(r"J_{eff}(\omega) = (J_m + J_L) - \frac{k}{\omega^2}", 16))
         self.add(d)
 
-        r = Card("three regimes — and one of them is strange")
+        r = Card("three regimes — and one of them is a trap")
         r.add(body(
             "<b>ω → ∞ &nbsp;(fast).</b> The k/ω² term goes to zero and "
-            "J<sub>eff</sub> ≈ J<sub>m</sub> + J<sub>L</sub>. Shake the robot "
-            "fast and the spring has no time to help. You feel the full weight of "
-            "motor <i>and</i> load. <b>A PEA gives no impact protection.</b>"))
-        r.add(body(
-            "<b>ω → 0 &nbsp;(slow).</b> The k/ω² term becomes very large and the "
-            "effective inertia goes <b>large and negative</b>. This is gravity "
-            "compensation: move slowly and the stored spring torque pushes the "
-            "load for you. The joint behaves as if it had <i>negative mass</i> — "
-            "it wants to accelerate on its own from the stored spring energy."))
+            "J<sub>eff</sub> → <b>J<sub>m</sub> + J<sub>L</sub></b>. You feel the "
+            "full machine, rotor included. <b>A PEA gives no impact "
+            "protection.</b>"))
+        r.add(callout(
+            "<b>\"But if I shake it fast the spring can't bend, so motor and "
+            "spring are locked — shouldn't the link not move at all? And why "
+            "isn't it J<sub>L</sub>?\"</b><br><br>"
+            "Two things to separate here.<br><br>"
+            "<b>First: it is NOT J<sub>L</sub>. It is J<sub>m</sub> + "
+            "J<sub>L</sub>.</b> If you were expecting J<sub>L</sub>, you are "
+            "thinking of the SEA. That drop to J<sub>L</sub> is the <i>one thing</i> "
+            "a series spring does and a parallel spring cannot. In a PEA the "
+            "motor is <b>rigidly bolted to the joint</b> — there is no compliance "
+            "in the force path at all, so the rotor is always along for the "
+            "ride.<br><br>"
+            "<b>Second: the spring is not \"locked\" or acting as a stiff rod.</b> "
+            "It is deflecting by exactly θ, the same as always — it is in "
+            "parallel, so it stretches by whatever the joint moves. Its torque "
+            "kθ is perfectly real. It is just <b>negligible in comparison</b>: "
+            "the inertial torque grows as Jω²θ while the spring torque stays at "
+            "kθ, so by ω = 10ω<sub>r</sub> the spring contributes 1% of the "
+            "total. It is not overpowered — it is out-scaled.<br><br>"
+            "Contrast with the SEA, where at high ω the spring is doing the "
+            "<i>opposite</i>: taking essentially all the relative motion and "
+            "thereby disconnecting the rotor. Series compliance decouples masses. "
+            "Parallel compliance never can.", "warn"))
         r.add(body(
             "<b>ω = √(k/(J<sub>m</sub>+J<sub>L</sub>)) &nbsp;(resonance).</b> "
-            "J<sub>eff</sub> = 0 exactly. Spring and inertia cancel and you can "
-            "move the joint with almost zero effort."))
+            "J<sub>eff</sub> = 0 exactly. The spring's restoring torque and the "
+            "inertial torque cancel, so a tiny applied torque produces large "
+            "motion. Bounce the joint at its natural frequency and it costs "
+            "almost nothing — the same reason a child on a swing needs only small "
+            "pushes."))
+        r.add(body(
+            "<b>ω → 0 &nbsp;(slow).</b> J<sub>eff</sub> goes large and "
+            "<b>negative</b>. Read this one carefully."))
+        r.add(callout(
+            "<b>What \"negative effective inertia\" does and does not mean.</b><br><br>"
+            "It does <b>not</b> mean the joint has negative mass, or that it "
+            "spontaneously accelerates, or that you get energy for free. I "
+            "over-stated this in an earlier version of this page and it is worth "
+            "correcting plainly.<br><br>"
+            "Dividing every torque by s²θ forces <i>everything</i> into inertia "
+            "units — but a spring's impedance carries the opposite sign to a "
+            "mass's, because a spring's force is in phase with displacement while "
+            "a mass's is in phase with acceleration (180° apart). So a negative "
+            "number here says exactly one thing:<br><br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;<b>Below resonance, this joint feels like a "
+            "SPRING, not like a MASS.</b><br><br>"
+            "Push it slowly and what pushes back is stiffness. Which is useful "
+            "and real — if that spring was sized against gravity, its stiffness "
+            "is holding the limb up so the motor does not have to. But the honest "
+            "statement is about <b>torque</b>, not inertia, which is why the "
+            "gravity-compensation section below is the one that actually "
+            "matters.", "bad"))
         self.add(r)
 
         # ---- interactive 1: frequency ---------------------------------------
@@ -531,13 +1088,33 @@ class PEAPage(Page):
         g.add(math_label(r"k\,(\theta_0 - \theta) \approx m\,g\,L\,\sin\theta", 16))
         self.add(g)
 
-        i2 = Card("tune the spring, watch the motor's workload")
+        i2 = Card("tune the spring — what you are minimising, and why you cannot "
+                  "win everywhere")
         i2.add(body(
-            "The green curve is what the motor must still supply. Where it "
-            "crosses zero the spring is doing <b>100% of the work</b> and the "
-            "motor draws no current at all — no heat, no battery drain. You can "
-            "only get that at one or two angles: pick the pose the robot holds "
-            "the longest.", dim=True))
+            "<b>The objective:</b> <i>minimise |τ<sub>m</sub>| — the green curve — "
+            "over the range of angles the robot actually spends its time in.</b> "
+            "Nothing else. Not peak torque, not stiffness: <b>motor effort while "
+            "holding a pose</b>, because that is what turns into heat and flat "
+            "batteries."))
+        i2.add(body(
+            "<b>What you may change:</b> the spring stiffness k and its rest "
+            "angle θ₀ — those are your design freedoms. The limb mass slider is "
+            "there to show you that a spring tuned for one payload is "
+            "<b>mistuned for another</b>; gravity is not yours to choose.<br><br>"
+            "<b>Why you cannot zero it everywhere:</b> gravity torque goes as "
+            "<b>sin θ</b> and a linear spring goes as <b>θ₀ − θ</b>. A straight "
+            "line cannot match a sine. It can cross it at <b>two angles at most</b>, "
+            "and that is your entire budget.<br><br>"
+            "<b>So the real design question is: which pose do you want free?</b> "
+            "Standing? Mid-stance? Arms-forward-holding-a-box? Put your two "
+            "crossings there. Everywhere else the motor pays — and on the far "
+            "side, it pays <i>double</i>, because it is now fighting the spring "
+            "as well as gravity."))
+        i2.add(body(
+            "Try it: set θ₀ ≈ 55° and watch the green curve sit near zero across "
+            "the mid-range. Then drag the limb mass and watch that carefully "
+            "tuned cancellation fall apart. That is a robot picking up an "
+            "unexpected payload.", dim=True))
         self.s_k2 = slider(1, 300, 90)
         self.s_th0 = slider(-90, 90, 55)
         self.s_mass = slider(1, 200, 60)
@@ -760,15 +1337,65 @@ class ActuatorCompare(Page):
         t.add(tbl)
         self.add(t)
 
+        # ---- answering "which is better" head on ------------------------------
+        self.add(hline())
+        self.add(title("\"So is higher J_eff better? Flat better? Negative "
+                       "better?\" — answered directly"))
+
+        ans = Card("there is no globally better curve. There is a better curve "
+                   "AT EACH FREQUENCY.")
+        ans.add(body(
+            "That is the whole point of plotting against ω, and it is why the "
+            "question has no single answer. Break it into the three bands that "
+            "correspond to three different things that can go wrong:"))
+        ans.add(_verdict_table())
+        ans.add(body(
+            "<b>Read the three rows as three different accidents.</b> Row 1 is a "
+            "robot that is too floppy to be useful. Row 2 is a robot that rings "
+            "when you push it. Row 3 is a robot that breaks someone's hand. They "
+            "are not the same failure and they do not have the same fix.",
+            dim=True))
+        self.add(ans)
+
+        w = Card("and \"is higher bandwidth always better?\" — no")
+        w.add(body(
+            "<b>What more bandwidth buys:</b> faster reflexes, better trajectory "
+            "tracking, the ability to catch things and recover from shoves, and "
+            "stiffer rendered impedance without instability.<br><br>"
+            "<b>What it costs:</b><br>"
+            "&nbsp;&nbsp;• <b>Noise.</b> Loop gain rises with bandwidth, and so "
+            "does the amplification of encoder quantisation. Audible whine, motor "
+            "heating, worn bearings.<br>"
+            "&nbsp;&nbsp;• <b>Robustness.</b> A high-bandwidth loop reaches up "
+            "into frequencies where your model is wrong — unmodelled structural "
+            "resonances, cable dynamics, payload flex. It will find them and "
+            "excite them.<br>"
+            "&nbsp;&nbsp;• <b>Safety.</b> Bandwidth is the ability to apply force "
+            "quickly, which is also the ability to <i>hurt</i> quickly.<br><br>"
+            "<b>The right target is \"enough\", not \"maximum\":</b> comfortably "
+            "above your fastest required motion, comfortably below your first "
+            "unmodelled resonance. For a walking humanoid leg, 10–30 Hz. For a "
+            "manipulator doing contact tasks, 50–100 Hz. For a surgical tool, "
+            "higher still — and none of them wants \"as much as possible\"."))
+        self.add(w)
+
+        d = Card("the decision table — what to actually build")
+        d.add(_decision_table())
+        self.add(d)
+
         self.add(callout(
             "<b>Design rule of thumb.</b> Ask what frequency the danger arrives "
             "at.<br><br>"
             "• Danger is a <b>collision</b> (high ω) → you need the inertia "
-            "hidden up there → <b>SEA</b>.<br>"
+            "hidden up there → <b>SEA</b>, or a soft body.<br>"
             "• Danger is a <b>flat battery</b> (holding a pose, ω ≈ 0) → you need "
-            "inertia subtracted down there → <b>PEA</b>.<br>"
+            "the gravity torque taken off the motor → <b>PEA</b>.<br>"
             "• Danger is <b>being too slow</b> (catching, balancing) → you cannot "
-            "afford any filter → <b>DD/QDD</b> plus software compliance.", "key"))
+            "afford any mechanical filter → <b>DD/QDD</b> plus software "
+            "compliance.<br><br>"
+            "And note these compose: a real humanoid leg can be <b>QDD hip, SEA "
+            "ankle, PEA knee</b>, because the three joints face three different "
+            "dangers.", "key"))
 
         self.finish()
 
@@ -915,6 +1542,47 @@ class GearingPage(Page):
             "feels your 1 N push and says: <i>\"I will start the motor for you so "
             "you don't have to fight my 10,000× inertia.\"</i>", dim=True))
         self.add(b)
+
+        third = Card("the third option nobody mentions: sense AFTER the gearbox")
+        third.add(body(
+            "Impedance needs backdrivability. Admittance needs a sensor at the "
+            "contact point. There is a middle path that is what most "
+            "collaborative arms actually do:<br><br>"
+            "<b>Put a torque sensor on the joint OUTPUT — downstream of the "
+            "gearbox.</b>"))
+        third.add(body(
+            "Now the friction, backlash and reflected inertia of the transmission "
+            "are all <i>inside</i> the loop, between the motor and the sensor. "
+            "The controller closes on the torque that is <b>actually leaving the "
+            "joint</b>, so the gearbox's sins become a disturbance to be "
+            "rejected rather than a wall you cannot see through.<br><br>"
+            "This is how <b>KUKA LBR iiwa</b> and <b>Franka Emika</b> do genuine "
+            "impedance control through 100:1 harmonic drives. It is also how "
+            "high-end SEAs work — the spring <i>is</i> an output-side torque "
+            "sensor, just a mechanical one."))
+        third.add(body(
+            "<b>The costs:</b> a strain-gauge torque sensor per joint is "
+            "expensive, adds compliance (it must deflect to measure), adds a "
+            "failure mode, and its bandwidth and noise now cap your torque loop. "
+            "You have also not fixed the <b>inertia</b> — during an impact faster "
+            "than your loop, the reflected N²J<sub>m</sub> still arrives. Sensing "
+            "after the gearbox buys you control authority, not passive safety.",
+            dim=True))
+        self.add(third)
+
+        self.add(callout(
+            "<b>Three ways out of a gearbox, ranked by what they actually "
+            "fix.</b><br><br>"
+            "<b>1 · Don't gear.</b> QDD. Fixes sensing <i>and</i> inertia. Costs "
+            "torque density and motor mass.<br>"
+            "<b>2 · Output-side torque sensor.</b> Fixes sensing. Does <b>not</b> "
+            "fix inertia. Costs money and adds compliance.<br>"
+            "<b>3 · F/T sensor at the contact point + admittance.</b> Fixes "
+            "sensing at one point only. Does <b>not</b> fix inertia. Goes "
+            "unstable against stiff contact.<br><br>"
+            "Note that none of them fixes reflected inertia except the first. "
+            "Once N² inertia exists, only mechanics removes it — which is the "
+            "same lesson as page 2.", "key"))
 
         self.add(callout(
             "<b>Interview-ready summary.</b> \"The bypass happens because we "
