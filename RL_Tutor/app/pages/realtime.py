@@ -212,6 +212,91 @@ class RealTimePage(Page):
         self.s_rate.valueChanged.connect(self._redraw_alias)
         self._redraw_alias()
 
+        # ---- reconstruction vs "it looks wrong" -------------------------------
+        r = Card("\"2× is not enough, 3× still looks wrong, 4× is fine\" — "
+                 "what is going on")
+        r.add(body(
+            "Run the widget above with the true signal at <b>1000 Hz</b> and walk "
+            "the sample rate up. Four regimes, and only the first one is actually "
+            "aliasing:"))
+        r.add(body(
+            "&nbsp;&nbsp;• <b>f<sub>s</sub> = 1500 Hz (1.5×).</b> Below Nyquist. "
+            "The 1 kHz signal folds to |1000 − 1500| = <b>500 Hz</b> and is "
+            "<i>gone</i>. Information destroyed at the ADC. Nothing recovers "
+            "it.<br>"
+            "&nbsp;&nbsp;• <b>f<sub>s</sub> = 2000 Hz (exactly 2×).</b> The bound "
+            "is <b>strict</b>: the theorem says f<sub>s</sub> &gt; 2f, not ≥. At "
+            "exactly 2× you get two samples per cycle at one fixed pair of phases. "
+            "Land them on the zero crossings and every sample reads zero — the "
+            "sine has vanished entirely. Land them elsewhere and you recover the "
+            "frequency but the <i>wrong amplitude</i>. Exactly-2× is the failure "
+            "case, not the success case.<br>"
+            "&nbsp;&nbsp;• <b>f<sub>s</sub> = 3913 Hz (3.913×).</b> Comfortably "
+            "above Nyquist. The stat correctly reports 1000 Hz and \"below "
+            "Nyquist: yes\". <b>Nothing is folded and nothing is lost</b> — yet "
+            "the red trace looks like a wobbling, amplitude-modulated mess that "
+            "clearly is not your sine.<br>"
+            "&nbsp;&nbsp;• <b>f<sub>s</sub> = 4000 Hz (exactly 4×).</b> Suddenly "
+            "clean and stable."))
+        r.add(body(
+            "The 3913 → 4000 jump is the one that feels like magic, and it is "
+            "not. <b>Nothing changed about the information content.</b> Both rates "
+            "capture the 1 kHz sine perfectly. What changed is how the samples "
+            "<i>look when you draw straight lines between them</i>.", dim=True))
+        r.add(title("Two different claims that get collapsed into one", 15))
+        r.add(body(
+            "<b>1 · What Nyquist actually promises.</b> If f<sub>s</sub> &gt; 2f, "
+            "the samples contain <i>enough information</i> to reconstruct the "
+            "original signal <b>exactly</b>. That is a statement about "
+            "information, not about appearance. And the reconstruction it promises "
+            "is a specific one — the ideal low-pass, i.e. <b>sinc "
+            "interpolation</b>:"))
+        r.add(math_label(r"x(t) = \sum_{n=-\infty}^{\infty} x[n]\;"
+                         r"\mathrm{sinc}\!\left(\frac{t - nT_s}{T_s}\right)", 16))
+        r.add(body(
+            "Every reconstructed point is a weighted sum over <b>all</b> the "
+            "samples, not just the two nearest. Run that on the 3913 Hz samples "
+            "and the exact 1 kHz sine comes back."))
+        r.add(body(
+            "<b>2 · What the plot draws.</b> Straight lines between adjacent "
+            "samples. Linear interpolation is a crude, badly-shaped low-pass "
+            "filter, and it only <i>looks</i> like a sine when you have roughly "
+            "<b>10+ samples per cycle</b>. At 3.9 samples per cycle it cannot, "
+            "however much information is present."))
+        r.add(body(
+            "<b>So why does 4× look clean and 3.913× not?</b> The ratio "
+            "f<sub>s</sub>/f<sub>sig</sub> is what decides the picture. At exactly "
+            "<b>4.000</b>, every cycle is sampled at the same four phases (0°, "
+            "90°, 180°, 270°). The polyline is therefore exactly periodic with the "
+            "signal, with constant peak height — it reads as a clean waveform "
+            "(albeit a triangular-looking one, which is still not the sine).<br><br>"
+            "At <b>3.913</b>, each sample advances the phase by 360°×1000/3913 = "
+            "<b>92.0°</b>, so the sampling phase <i>creeps</i>. Some cycles get "
+            "sampled near the peaks, others near the zero crossings, and the "
+            "polyline's apparent amplitude breathes at the beat rate between the "
+            "sample grid and the signal. That envelope is a <b>drawing artifact</b> "
+            "— a beat between two rates — not a folded frequency. The closer the "
+            "ratio sits to 2, the fewer distinct phases you visit and the uglier "
+            "it gets, which is why the classic \"picture of aliasing\" in "
+            "textbooks is often not aliasing at all.", dim=True))
+        self.add(r)
+
+        self.add(callout(
+            "<b>Three jobs, three different numbers — this is the whole "
+            "resolution.</b><br><br>"
+            "&nbsp;&nbsp;• <b>To not lose the information:</b> f<sub>s</sub> "
+            "&gt; 2·f, strictly, with an analog anti-alias filter. This is "
+            "Nyquist, and it is the <i>only</i> thing Nyquist claims.<br>"
+            "&nbsp;&nbsp;• <b>To make the waveform look right</b> when you connect "
+            "the dots (a plot, a scope, a naive numerical derivative): "
+            "<b>≥10 samples per cycle</b>.<br>"
+            "&nbsp;&nbsp;• <b>To control at that frequency:</b> "
+            "<b>10–20× f</b>, because you must additionally pay ZOH delay, "
+            "compute delay and phase margin.<br><br>"
+            "\"2× is not enough\" is true for jobs two and three and false for "
+            "job one. Nobody says which job they mean, which is exactly why this "
+            "is confusing.", "key"))
+
         # ---- scheduling -------------------------------------------------------
         self.add(hline())
         self.add(title("Scheduling: FreeRTOS and friends"))
