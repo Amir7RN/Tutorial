@@ -136,7 +136,101 @@ class FirstOrderPage(Page):
             "learn what a pole does before there are two of them interacting.",
             "key"))
 
-        w = Card("where they come from — you already have four of these")
+        # ---- the physical picture, before any algebra ---------------------
+        ph = Card("first: what a first-order system physically IS — no equation "
+                  "needed")
+        ph.add(body(
+            "Forget transfer functions for a moment. A system is first order "
+            "when it has exactly <b>two</b> physical features:"))
+        ph.add(body(
+            "&nbsp;&nbsp;<b>1 · One thing that stores.</b> A reservoir with a "
+            "level in it. A spinning mass stores <i>speed</i>. A coil stores "
+            "<i>current</i>. A hot motor stores <i>heat</i>.<br>"
+            "&nbsp;&nbsp;<b>2 · One thing that drains, in proportion to how much "
+            "is stored.</b> Friction drags harder the faster you spin. "
+            "Resistance drops more voltage the more current flows. A hot object "
+            "loses heat faster the hotter it is."))
+        ph.add(callout(
+            "<b>The whole behaviour follows from those two sentences.</b> You "
+            "pour in at a constant rate. The level rises. But the fuller it "
+            "gets, the faster it leaks — so the rise slows down. Eventually the "
+            "leak exactly matches the pour, and the level stops.<br><br>"
+            "That is the entire story of every first-order response you will "
+            "ever see: <b>a race between a constant fill and a leak that grows "
+            "with the level</b>, ending in a draw.", "key"))
+        ph.add(body(
+            "<b>Take the joint you actually have.</b> Apply a constant torque τ "
+            "to a joint with inertia J and bearing friction b. It speeds up. As "
+            "it speeds up, friction fights back harder — bω. When bω has grown "
+            "to equal τ, the net torque is zero and the joint holds that speed "
+            "forever.<br><br>"
+            "Nothing else happens. It does not overshoot, it does not ring, it "
+            "does not hunt. It fills up and stops. If your real joint does "
+            "something else, it is not first order and you have found a second "
+            "energy store you had not accounted for.", dim=True))
+        self.add(ph)
+
+        # ---- the equation, built from the picture -------------------------
+        d = Card("now the equation — it is the picture, written down")
+        d.add(body(
+            "Newton for that joint. Rate of change of the stored quantity = "
+            "what you put in, minus what leaks out:"))
+        d.add(math_label(r"J\,\dot\omega \;=\; \tau \;-\; b\,\omega", 17))
+        d.add(body(
+            "&nbsp;&nbsp;<b>J ω̇</b> — the store filling up<br>"
+            "&nbsp;&nbsp;<b>τ</b> — the fill rate, constant<br>"
+            "&nbsp;&nbsp;<b>b ω</b> — the leak, and note it is proportional to "
+            "<b>ω</b>, the level itself. That proportionality is the whole "
+            "mechanism.", dim=True))
+        d.add(body(
+            "Move the leak across and divide by b, purely to make the shape "
+            "obvious:"))
+        d.add(math_label(r"\frac{J}{b}\,\dot\omega + \omega = \frac{\tau}{b}"
+                         r"\qquad\text{i.e.}\qquad "
+                         r"\tau_{c}\,\dot y + y = K u", 17))
+        d.add(body(
+            "<b>That is the canonical first-order equation, and it was not "
+            "handed to you — it came out of \"one store, one leak\".</b> Every "
+            "first-order system in engineering is this equation with different "
+            "words for the store and the leak.", dim=True))
+        self.add(d)
+
+        # ---- what each symbol physically is -------------------------------
+        s = Card("what every symbol in it physically means")
+        s.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>Symbol</b></td><td><b>Made of</b></td>"
+            "<td><b>What it physically is</b></td></tr>"
+            "<tr><td><b>K</b><br>DC gain</td><td>1/b — one over the leak</td>"
+            "<td><b>How far it eventually gets, per unit of input.</b> A leakier "
+            "system settles lower for the same push. Nothing to do with speed — "
+            "purely \"where does it end up\".</td></tr>"
+            "<tr><td><b>τ<sub>c</sub></b><br>time constant</td>"
+            "<td>J/b — store divided by leak</td>"
+            "<td><b>How long it takes.</b> A bigger store takes longer to fill; "
+            "a bigger leak drains it faster, so it reaches balance sooner. "
+            "Seconds.</td></tr>"
+            "<tr><td><b>the pole</b><br>s = −1/τ<sub>c</sub></td>"
+            "<td>b/J — leak divided by store</td>"
+            "<td><b>A rate. Units of 1/seconds.</b> Literally \"how many times "
+            "per second this system forgets what you did to it\". The minus sign "
+            "means forgetting, not growing.</td></tr>"
+            "</table>"))
+        s.add(callout(
+            "<b>The single most useful mental image for the time constant.</b> "
+            "At the instant you apply the input, the leak is still zero, so the "
+            "system is rising at its fastest. <b>If it kept rising at that "
+            "initial rate, it would arrive at the final value in exactly "
+            "τ<sub>c</sub> seconds.</b><br><br>"
+            "It does not, because the leak grows as it climbs — so instead it "
+            "gets <b>63.2%</b> of the way there in τ<sub>c</sub>. That is where "
+            "the famous number comes from. It is not a definition; it is what is "
+            "left over after the leak has had τ<sub>c</sub> seconds to fight "
+            "back. The dashed tangent line in the plot below is that "
+            "\"if it kept going\" line.", "key"))
+        self.add(s)
+
+        w = Card("the same two features, four different physical dresses")
         w.add(body(
             "<table cellpadding='6'>"
             "<tr><td><b>Motor winding</b></td><td>L·di/dt + R·i = V</td>"
@@ -157,28 +251,61 @@ class FirstOrderPage(Page):
             "(resistance, friction, conduction). One store, one pole.", dim=True))
         self.add(w)
 
-        e = Card("the equation, and its single pole")
-        e.add(math_label(r"\tau \dot y + y = K u \qquad\Longrightarrow\qquad "
-                         r"G(s) = \frac{K}{\tau s + 1}", 17))
+        # ---- what a pole physically is ------------------------------------
+        self.add(hline())
+        self.add(title("What a \"pole\" physically is — and why the s-plane is "
+                       "not mystical"))
+
+        e = Card("a pole is a rate, not a piece of notation")
         e.add(body(
-            "The <b>pole</b> is the value of s that makes the denominator zero: "
-            "s = −1/τ. That number is not a bookkeeping detail — it is literally "
-            "the exponent of the response:"))
-        e.add(math_label(r"y(t) = K\left(1 - e^{-t/\tau}\right) "
-                         r"= K\left(1 - e^{\,p\,t}\right), \quad p = -1/\tau",
+            "In transfer-function form the same system is written"))
+        e.add(math_label(r"G(s) = \frac{K}{\tau_c s + 1}", 17))
+        e.add(body(
+            "and the <b>pole</b> is the value of s that makes the bottom zero: "
+            "s = −1/τ<sub>c</sub>. People treat that as bookkeeping. It is not. "
+            "Look at what it physically is:"))
+        e.add(math_label(r"s = -\frac{1}{\tau_c} = -\frac{b}{J} "
+                         r"\qquad \left[\;\frac{1}{\text{seconds}}\;\right]", 17))
+        e.add(body(
+            "<b>It is the leak divided by the store, and its units are "
+            "1/seconds — a rate.</b> Specifically the rate at which this system "
+            "forgets. A pole at −20 means \"this thing loses 20 e-foldings of "
+            "memory per second\"; a pole at −2 means it is ten times more "
+            "stubborn.<br><br>"
+            "And that is exactly why it shows up as the exponent:"))
+        e.add(math_label(r"y(t) = K\left(1 - e^{-t/\tau_c}\right) "
+                         r"= K\left(1 - e^{\,p\,t}\right), \quad p = -1/\tau_c",
                          16))
         e.add(body(
-            "<b>Read that correspondence and keep it.</b> A pole at s = p "
-            "contributes a term e<sup>pt</sup> to the response. Everything else "
-            "in these five pages is a consequence:<br><br>"
-            "&nbsp;&nbsp;• p negative (left half plane) → e<sup>pt</sup> decays "
-            "→ <b>stable</b><br>"
-            "&nbsp;&nbsp;• p positive (right half plane) → e<sup>pt</sup> grows "
-            "→ <b>unstable</b><br>"
-            "&nbsp;&nbsp;• p = 0 → e<sup>0</sup> = 1, never decays → "
-            "<b>marginal</b> (this is an integrator)<br>"
-            "&nbsp;&nbsp;• <b>further left = faster decay.</b> The real part IS "
-            "the decay rate."))
+            "<b>A pole at s = p contributes a term e<sup>pt</sup>.</b> Keep that "
+            "sentence; the whole of the next four pages is consequences of "
+            "it:<br><br>"
+            "&nbsp;&nbsp;• <b>p negative</b> — the leak wins, memory fades, "
+            "e<sup>pt</sup> decays → <b>stable</b><br>"
+            "&nbsp;&nbsp;• <b>p positive</b> — something is <i>feeding</i> the "
+            "store instead of draining it, so it grows → <b>unstable</b>. "
+            "Physically: negative friction. It sounds exotic until you meet an "
+            "inverted pendulum, where gravity does exactly that.<br>"
+            "&nbsp;&nbsp;• <b>p = 0</b> — no leak at all. Whatever you put in "
+            "stays in, forever → <b>marginal</b>. This is a frictionless joint: "
+            "give it a push and it coasts for ever. Also called an "
+            "integrator.<br>"
+            "&nbsp;&nbsp;• <b>further left = forgets faster.</b> The real part "
+            "<i>is</i> the decay rate. Nothing is being encoded or hidden."))
+        e.add(callout(
+            "<b>So what are the axes of the s-plane?</b> They are two physical "
+            "rates, and that is all.<br><br>"
+            "&nbsp;&nbsp;• <b>Horizontal (real part): the decay rate</b>, in "
+            "1/seconds. How fast the response dies away. Left = dies. Right = "
+            "grows.<br>"
+            "&nbsp;&nbsp;• <b>Vertical (imaginary part): the ringing rate</b>, in "
+            "rad/s. How fast it wobbles while doing so. A first-order system has "
+            "nothing to wobble with, so its pole sits flat on the horizontal "
+            "axis — no vertical component at all.<br><br>"
+            "A pole is therefore a single point saying \"this system contains a "
+            "motion that dies at <i>this</i> rate while wiggling at <i>that</i> "
+            "one\". The next page gives it something to wiggle with, and the "
+            "pole lifts off the axis.", "key"))
         e.add(body(
             "The τ landmarks worth memorising, because you will read them off "
             "oscilloscopes for the rest of your life: "
@@ -192,7 +319,11 @@ class FirstOrderPage(Page):
         i.add(body(
             "Drag τ and watch two things move together: the pole slides along "
             "the real axis, and the response changes speed. They are the same "
-            "fact drawn twice.", dim=True))
+            "fact drawn twice — a pole at −20 1/s and a 50 ms time constant are "
+            "the same sentence in two languages.<br><br>"
+            "The <b>dashed tangent</b> is the \"if the leak never grew\" line. "
+            "Where it crosses the final value is exactly t = τ<sub>c</sub>, "
+            "always, for any τ<sub>c</sub> and any K.", dim=True))
         self.s_tau = slider(2, 200, 50)          # x1 ms
         self.s_k = slider(1, 50, 10)             # x0.1
         self.l_tau, self.l_k = QLabel(), QLabel()
@@ -215,6 +346,33 @@ class FirstOrderPage(Page):
         self.add(hline())
         self.add(title("The same pole, seen in frequency"))
 
+        no = Card("why it physically cannot overshoot — the argument, not the "
+                  "assertion")
+        no.add(body(
+            "Textbooks state \"first-order systems do not overshoot\" as a fact "
+            "to memorise. It is a two-line physical argument, and understanding "
+            "it is what makes the next page make sense.<br><br>"
+            "<b>To overshoot, a system has to arrive at its destination still "
+            "carrying something that pushes it past.</b> Ask what that "
+            "something could be here.<br><br>"
+            "The joint reaches its final speed at the exact moment the friction "
+            "torque bω has grown to equal the applied torque τ. At that instant "
+            "the <b>net torque is precisely zero</b>. There is nothing left "
+            "pushing. And the only quantity the system stores <i>is</i> the one "
+            "you are watching — the speed. There is no second reservoir holding "
+            "back some surplus that could carry it further."))
+        no.add(callout(
+            "<b>Overshoot is momentum, and momentum needs a second store.</b> "
+            "The system has to be able to hold energy in a form that is <i>not</i> "
+            "the output variable, so that when the output reaches its target the "
+            "hidden store is still full and shoves it past.<br><br>"
+            "One store means the output <i>is</i> the state. Reaching the target "
+            "means the state is at its final value. Nothing is left over. So it "
+            "arrives and stops — always, for any input, at any gain.<br><br>"
+            "Give the system a spring as well as a mass and you have somewhere "
+            "to hide that surplus. That is the whole of the next page.", "key"))
+        self.add(no)
+
         f = Card("the corner frequency, and where −3 dB comes from")
         f.add(math_label(r"G(j\omega) = \frac{K}{1 + j\omega\tau}, \qquad "
                          r"|G| = \frac{K}{\sqrt{1+(\omega\tau)^2}}, \qquad "
@@ -227,6 +385,18 @@ class FirstOrderPage(Page):
             "Beyond the corner the magnitude falls at <b>−20 dB/decade</b> "
             "(a factor of 10 in frequency costs a factor of 10 in amplitude) and "
             "the phase heads for <b>−90° and stops</b>."))
+        f.add(body(
+            "<b>What that phase lag physically is.</b> Push the joint back and "
+            "forth with a slow sinusoidal torque and the speed follows you "
+            "almost exactly — friction dominates, and friction has no memory, so "
+            "there is nothing to lag (0°). Now push very fast. The friction "
+            "term never gets a chance to matter; the inertia takes over, and "
+            "speed becomes the <i>integral</i> of your push. An integral of a "
+            "sine peaks a <b>quarter cycle</b> after the sine does — that is "
+            "90°, and it cannot get worse, because there is only one "
+            "integration to do.<br><br>"
+            "So the −90° asymptote is not a curve fit. It is \"one energy store "
+            "= one integration = at most a quarter cycle of lag\".", dim=True))
         f.add(callout(
             "<b>That −90° ceiling is the most important fact on this page.</b> "
             "An oscillation needs the loop to return a signal exactly inverted "
@@ -234,6 +404,11 @@ class FirstOrderPage(Page):
             "ever supply 90°. So no matter how large you make the proportional "
             "gain, <b>a first-order plant with proportional feedback cannot be "
             "destabilised</b>. Infinite gain margin, provably.<br><br>"
+            "Physically: to make something oscillate you have to push it in "
+            "<i>exactly the wrong phase</i> — arriving to help just as it is "
+            "heading the other way, a <b>half</b> cycle behind. One store buys "
+            "you a quarter cycle. You are short by a quarter, and no amount of "
+            "gain manufactures phase.<br><br>"
             "Which is why, when something you modelled as first order starts "
             "ringing, the model is wrong — there is a second energy store, a "
             "resonance, or a delay you have not accounted for. The ringing is "
@@ -314,6 +489,11 @@ class FirstOrderPage(Page):
         a1.axhline(k, color=theme.TEXT_FAINT, lw=1.1, ls="--", label="final K")
         a1.axhline(0.632 * k, color=theme.GOOD, lw=1.0, ls=":", label="63.2%")
         a1.axvline(tau * 1000, color=theme.GOOD, lw=1.0, ls=":")
+        # the initial slope, extended: "if the leak never grew" -- it always
+        # crosses the final value at exactly t = tau
+        a1.plot([0.0, tau * 1000], [0.0, k], color=theme.WARN, lw=1.3, ls="--",
+                label="initial slope, extended")
+        a1.scatter([tau * 1000], [k], s=28, color=theme.WARN, zorder=6)
         a1.set_xlabel("time (ms)")
         a1.set_ylabel("y")
         a1.set_title("step response", fontsize=9)
@@ -384,25 +564,154 @@ class SecondOrderPage(Page):
         super().__init__(parent)
 
         self.add(callout(
-            "<b>The second store changes everything.</b> A mass can hold kinetic "
-            "energy and a spring can hold potential energy, and the two can "
-            "hand it back and forth. That exchange is what oscillation IS — and "
-            "a first-order system, with only one store, has nobody to hand it "
-            "to.", "key"))
+            "<b>Add one thing to the last page: a second place to keep "
+            "energy.</b><br><br>"
+            "The joint on the previous page had a mass (which stores speed) and "
+            "friction (which only drains). Bolt a spring to it. Now there are "
+            "<b>two</b> stores — the mass holds <i>kinetic</i> energy, the "
+            "spring holds <i>potential</i> energy — and, crucially, they can "
+            "<b>hand it to each other</b>.<br><br>"
+            "That handover is what oscillation physically <i>is</i>. Not a "
+            "mathematical property of a quadratic; a literal sloshing of energy "
+            "between two containers.", "key"))
 
-        e = Card("the canonical form, and the two numbers that replace three")
-        e.add(math_label(r"J\ddot\theta + B\dot\theta + K\theta = \tau", 17))
+        # ---- the physical mechanism ---------------------------------------
+        ph = Card("watch the energy move — this is the whole page")
+        ph.add(body(
+            "Pull the joint 20° away from rest and let go. Follow the energy, "
+            "not the angle:"))
+        ph.add(body(
+            "&nbsp;&nbsp;<b>1.</b> At full deflection: the spring is stretched, "
+            "so all the energy is <b>potential</b>. The joint is not moving — "
+            "zero kinetic.<br>"
+            "&nbsp;&nbsp;<b>2.</b> The spring pulls it back. Potential drains, "
+            "kinetic fills. The joint speeds up.<br>"
+            "&nbsp;&nbsp;<b>3.</b> It passes through the rest position. The "
+            "spring is now relaxed — <b>zero potential</b> — so all the energy "
+            "has become <b>kinetic</b>. Which means this is the moment it is "
+            "moving <b>fastest</b>.<br>"
+            "&nbsp;&nbsp;<b>4.</b> And that is the answer. <b>It cannot stop "
+            "at its destination, because it arrives there at maximum "
+            "speed.</b> It sails through and starts compressing the spring on "
+            "the far side.<br>"
+            "&nbsp;&nbsp;<b>5.</b> Kinetic drains back into potential until it "
+            "stops — overshot — and the whole thing runs in reverse."))
+        ph.add(callout(
+            "<b>Overshoot is momentum, and momentum is energy hiding in the "
+            "other store.</b><br><br>"
+            "That is exactly what the previous page said was impossible with one "
+            "store: reaching the target means the state is at its final value, "
+            "with nothing left over. Here, reaching the target means the "
+            "<i>spring</i> is at its final value while the <i>mass</i> is still "
+            "carrying everything. Something is left over, and it is left over "
+            "somewhere you were not looking.<br><br>"
+            "Every overshoot you have ever seen on a robot is this. Every "
+            "oscillation is energy that has nowhere to go and two places to "
+            "be.", "key"))
+        ph.add(body(
+            "<b>Now add the damper back in.</b> It does not participate in the "
+            "trade — it only takes. Each pass, some of the energy leaves as "
+            "heat, so the amount being handed back and forth shrinks, and the "
+            "swings get smaller. The three regimes everyone memorises are just "
+            "three answers to \"how much does the damper steal per swing?\"",
+            dim=True))
+        self.add(ph)
+
+        # ---- energy trade interactive --------------------------------------
+        ie = Card("see the trade: release it from 20° and watch the two stores")
+        ie.add(body(
+            "Left: the angle. Right: where the energy actually is. Blue is "
+            "stored in the <b>spring</b>, orange is carried by the <b>mass</b>, "
+            "and the pale line is the total — everything the damper has not yet "
+            "turned into heat.<br><br>"
+            "<b>Start at ζ = 0.</b> The two curves swap perfectly and the total "
+            "is a flat line: nothing is lost, so it rings forever. Every time "
+            "the angle crosses zero, the spring's energy is zero and the mass "
+            "holds all of it — that peak in the orange curve <i>is</i> the "
+            "overshoot, before it happens.<br><br>"
+            "<b>Now raise ζ.</b> The total starts falling. At ζ = 1 the trade "
+            "barely completes once: the damper drains the spring before enough "
+            "of it can become speed, so the mass never gets the momentum to "
+            "carry past. That is critical damping, and it is an energy "
+            "statement, not a root-locus one.", dim=True))
+        self.s_ze = slider(0, 250, 30)           # x0.01
+        self.l_ze = QLabel()
+        ie.add_layout(slider_row("damping ζ (×0.01)", self.s_ze, self.l_ze))
+        self.st_lost = Stat("energy left after one swing", "--", theme.VIOLET)
+        self.st_cross = Stat("zero crossings", "--", theme.WARN)
+        self.st_peakke = Stat("peak kinetic share", "--", theme.ACCENT)
+        self.st_reg = Stat("regime", "--", theme.GOOD)
+        ie.add_layout(stat_row(self.st_lost, self.st_cross, self.st_peakke,
+                               self.st_reg))
+        self.ce = MplCanvas(width=7.4, height=3.0, ncols=2)
+        ie.add(self.ce)
+        self.add(ie)
+        self.s_ze.valueChanged.connect(self._redraw_energy)
+        self._redraw_energy()
+
+        # ---- the equation, built from the picture -------------------------
+        e = Card("the equation is those three sentences, written down")
+        e.add(math_label(r"J\ddot\theta + B\dot\theta + K\theta = \tau", 18))
+        e.add(body(
+            "&nbsp;&nbsp;<b>J θ̈</b> — the <b>mass</b>. Stores kinetic energy; "
+            "resists changes of speed. This is the store the previous page "
+            "had.<br>"
+            "&nbsp;&nbsp;<b>K θ</b> — the <b>spring</b>. Stores potential "
+            "energy; pulls harder the further you are from rest. <b>This term is "
+            "the new one, and it is the entire difference between the two "
+            "pages.</b><br>"
+            "&nbsp;&nbsp;<b>B θ̇</b> — the <b>damper</b>. Stores nothing; "
+            "converts motion into heat, in proportion to speed.<br>"
+            "&nbsp;&nbsp;<b>τ</b> — what you push with."))
+        e.add(body(
+            "Delete the K term and you are back to the first-order joint: one "
+            "store, one leak, no overshoot. Delete the B term and nothing ever "
+            "removes energy, so it rings forever. <b>The interesting behaviour "
+            "lives entirely in the ratio between those two.</b>", dim=True))
         e.add(body("Divide through by J and the three physical parameters "
-                   "collapse into two dimensionless-ish ones:"))
+                   "collapse into two more useful ones:"))
         e.add(math_label(r"G(s) = \frac{\omega_n^2}{s^2 + 2\zeta\omega_n s "
                          r"+ \omega_n^2}, \qquad "
                          r"\omega_n = \sqrt{K/J}, \qquad "
                          r"\zeta = \frac{B}{2\sqrt{KJ}}", 17))
         e.add(body(
-            "<b>ω<sub>n</sub> — natural frequency.</b> How fast it wants to "
-            "move. Sets the timescale of everything.<br>"
-            "<b>ζ — damping ratio.</b> Whether it overshoots, and by how much. "
-            "Dimensionless, and the single most useful number in control."))
+            "<b>ω<sub>n</sub> — how fast the energy sloshes.</b> Read "
+            "√(K/J) physically: a <i>stiffer</i> spring hands the energy back "
+            "faster, so the trade happens quicker; a <i>heavier</i> mass takes "
+            "longer to turn around, so it happens slower. ω<sub>n</sub> is "
+            "literally the rate of that handover, in rad/s — and it is the "
+            "frequency the joint would ring at with <b>no damper at all</b>."))
+        e.add(body(
+            "<b>ζ — what fraction of the sloshing the damper eats.</b> This one "
+            "is worth unpacking, because \"damping ratio\" hides a ratio of "
+            "<i>what</i> to <i>what</i>. The bottom of that fraction, "
+            "2√(KJ), is not arbitrary — it is <b>exactly the amount of damping "
+            "that would just barely stop the trade from happening at all</b>. "
+            "So:"))
+        e.add(math_label(r"\zeta = \frac{B}{2\sqrt{KJ}} "
+                         r"= \frac{\text{the damping you have}}"
+                         r"{\text{the damping that would just kill the "
+                         r"oscillation}}", 15))
+        e.add(body(
+            "It is dimensionless because it compares damping with damping. "
+            "ζ = 0.3 means \"I have 30% of the damping needed to suppress the "
+            "sloshing entirely\", which is why it, and not B, predicts the "
+            "overshoot.<br><br>"
+            "<b>The same number, read a second way: how much the damper steals "
+            "per swing.</b> Successive <i>peaks</i> shrink by a fixed factor "
+            "every cycle — that is the logarithmic decrement:"))
+        e.add(math_label(r"\frac{\theta_{k+1}}{\theta_k} "
+                         r"= e^{-2\pi\zeta/\sqrt{1-\zeta^2}}, \qquad "
+                         r"\frac{E_{k+1}}{E_k} "
+                         r"= e^{-4\pi\zeta/\sqrt{1-\zeta^2}}", 16))
+        e.add(body(
+            "Energy carries the <b>square</b> of the amplitude, so it falls "
+            "twice as fast in the exponent — which is why the widget above "
+            "reports 28% of the energy surviving one swing at ζ = 0.1, while "
+            "the <i>amplitude</i> at that ζ is still 53% of what it was. Both "
+            "numbers are correct; they are measuring different things, and "
+            "confusing them is a standard way to misread a decay trace.",
+            dim=True))
         e.add(callout(
             "<b>This is the impedance-control connection, and it is exact.</b> "
             "When you chose K and B on the Impedance Control page you were not "
@@ -416,21 +725,82 @@ class SecondOrderPage(Page):
             "right there in the algebra.", "warn"))
         self.add(e)
 
-        p = Card("where the poles are, and how to read the picture")
+        r = Card("the five regimes, as energy accounting")
+        r.add(body(
+            "Every one of these is the same question — <b>can the spring get "
+            "enough energy into the mass, before the damper takes it, for the "
+            "mass to carry past the target?</b>"))
+        r.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>ζ &lt; 0</b></td>"
+            "<td>Something <i>adds</i> energy every swing instead of removing "
+            "it — negative damping. The trade continues and grows. "
+            "<b>Unstable.</b> Physically real: a controller feeding back with "
+            "the wrong sign, or a delay that makes a correction arrive as a "
+            "push.</td></tr>"
+            "<tr><td><b>ζ = 0</b></td>"
+            "<td>Nothing takes anything. The energy trades perfectly, forever. "
+            "<b>Marginal.</b> An undamped SEA spring, or a frictionless "
+            "joint.</td></tr>"
+            "<tr><td><b>0 &lt; ζ &lt; 1</b></td>"
+            "<td>The damper takes a slice each swing, but not enough to stop "
+            "the trade. It rings, and each ring is smaller. "
+            "<b>Underdamped</b> — and this is where nearly every real robot "
+            "joint lives.</td></tr>"
+            "<tr><td><b>ζ = 1</b></td>"
+            "<td>The damper takes it at exactly the rate the spring can hand it "
+            "over. The mass never accumulates enough speed to overshoot — not "
+            "even slightly — and it gets home as fast as that allows. "
+            "<b>Critically damped</b>: the fastest arrival with no "
+            "overshoot.</td></tr>"
+            "<tr><td><b>ζ &gt; 1</b></td>"
+            "<td>The damper is greedier than the spring is generous. Most of "
+            "the potential energy leaves as heat before it can become motion, "
+            "so the joint <i>oozes</i> home. <b>Overdamped</b> — and slower "
+            "than critical, which surprises people who assume more damping is "
+            "safer.</td></tr>"
+            "</table>"))
+        r.add(body(
+            "Note what is <i>not</i> in that table: ω<sub>n</sub>. The regime is "
+            "decided entirely by ζ. ω<sub>n</sub> only sets how fast the whole "
+            "story plays out.", dim=True))
+        self.add(r)
+
+        p = Card("where the poles are — and why the picture looks like that")
         p.add(math_label(r"s = -\zeta\omega_n \pm j\,\omega_n\sqrt{1-\zeta^2}",
                          17))
         p.add(body(
-            "The geometry is worth internalising, because experienced people "
-            "read pole plots instead of step responses:<br><br>"
-            "&nbsp;&nbsp;• <b>Distance from the origin = ω<sub>n</sub>.</b> The "
-            "poles ride on a circle of radius ω<sub>n</sub>. Changing ζ alone "
-            "slides them <i>around</i> that circle.<br>"
-            "&nbsp;&nbsp;• <b>Angle from the negative real axis = arccos ζ.</b> "
-            "So a line at 45° through the origin is the ζ = 0.707 line.<br>"
-            "&nbsp;&nbsp;• <b>Real part = −ζω<sub>n</sub> = the decay rate.</b> "
-            "Settling time depends on this and nothing else.<br>"
-            "&nbsp;&nbsp;• <b>Imaginary part = ω<sub>d</sub> = the ring "
-            "frequency.</b> What you actually hear."))
+            "The previous page said the two axes of the s-plane are two physical "
+            "rates: <b>horizontal = how fast it dies, vertical = how fast it "
+            "wiggles</b>. A first-order pole had nothing to wiggle with and sat "
+            "on the axis. Now there are two stores trading, so the pole lifts "
+            "off — and each part of that expression is one of those rates:"))
+        p.add(body(
+            "&nbsp;&nbsp;• <b>Real part = −ζω<sub>n</sub></b> — the decay rate. "
+            "How fast the damper is draining the total. It is exactly the "
+            "\"pole = leak/store\" of the previous page, and settling time "
+            "depends on it and nothing else.<br>"
+            "&nbsp;&nbsp;• <b>Imaginary part = ω<sub>d</sub> = "
+            "ω<sub>n</sub>√(1−ζ²)</b> — the rate the energy is actually "
+            "sloshing. Note it is <i>slower</i> than ω<sub>n</sub>: the damper "
+            "is stealing energy mid-trade, so each round trip takes longer. "
+            "This is the frequency you hear.<br>"
+            "&nbsp;&nbsp;• <b>Distance from the origin = ω<sub>n</sub></b> — "
+            "Pythagoras on the two above. The poles ride a circle of radius "
+            "ω<sub>n</sub>, so changing ζ alone slides them <i>around</i> that "
+            "circle without changing how energetic the system is, only how the "
+            "energy is split between dying and wiggling.<br>"
+            "&nbsp;&nbsp;• <b>Angle from the negative real axis = arccos ζ</b> — "
+            "therefore the angle <i>is</i> the damping. Straight left on the "
+            "axis is ζ = 1 (all decay, no wiggle); straight up is ζ = 0 (all "
+            "wiggle, no decay); 45° is ζ = 0.707."))
+        p.add(callout(
+            "<b>So a pole plot is a picture of how a system spends its "
+            "energy.</b> How far left = how fast it gives it up. How far up = "
+            "how fast it passes it back and forth. That is the whole reason "
+            "experienced people read pole plots instead of step responses — the "
+            "two things you care about are on two perpendicular axes instead of "
+            "tangled together in one curve.", "key"))
         p.add(body(
             "<table cellpadding='6'>"
             "<tr><td><b>ζ &lt; 0</b></td><td>poles in the RIGHT half plane</td>"
@@ -562,6 +932,82 @@ class SecondOrderPage(Page):
             "implementation's.", "warn"))
 
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_energy(self):
+        """
+        Free release from 20 degrees, integrated directly in (theta, omega) so
+        the two energy stores are the actual state variables rather than
+        something recovered from a canonical form. J = 1, so K = wn^2 and
+        B = 2*zeta*wn.
+        """
+        z = self.s_ze.value() / 100.0
+        self.l_ze.setText(f"{z:.2f}")
+        wn = 10.0
+        k, b = wn * wn, 2.0 * z * wn
+
+        th, w = math.radians(20.0), 0.0
+        dt, dur = 2e-3, 1.6
+        ts, ths, ke, pe = [], [], [], []
+
+        def acc(x, v):
+            return -b * v - k * x
+
+        for i in range(int(dur / dt)):
+            ts.append(i * dt)
+            ths.append(th)
+            ke.append(0.5 * w * w)
+            pe.append(0.5 * k * th * th)
+            k1a, k1b = w, acc(th, w)
+            k2a, k2b = w + dt / 2 * k1b, acc(th + dt / 2 * k1a, w + dt / 2 * k1b)
+            k3a, k3b = w + dt / 2 * k2b, acc(th + dt / 2 * k2a, w + dt / 2 * k2b)
+            k4a, k4b = w + dt * k3b, acc(th + dt * k3a, w + dt * k3b)
+            th += dt / 6 * (k1a + 2 * k2a + 2 * k3a + k4a)
+            w += dt / 6 * (k1b + 2 * k2b + 2 * k3b + k4b)
+
+        total = [a + p for a, p in zip(ke, pe)]
+        e0 = total[0]
+        # "how much does the damper steal per swing" -- the energy still in the
+        # system one full damped period later, which is the number the prose
+        # above is about
+        if z < 1.0:
+            t_swing = 2 * math.pi / (wn * math.sqrt(1 - z * z))
+            idx = min(int(t_swing / dt), len(total) - 1)
+            self.st_lost.set(f"{total[idx]/e0*100:.1f}%")
+        else:
+            self.st_lost.set("no swing")
+        crossings = sum(1 for a, b_ in zip(ths, ths[1:]) if a * b_ < 0)
+        self.st_cross.set(str(crossings))
+        self.st_peakke.set(f"{max(k_ / e0 for k_ in ke)*100:.0f}%")
+        if z <= 0.001:
+            reg, col = "undamped", theme.BAD
+        elif z < 0.999:
+            reg, col = "underdamped", theme.WARN if z < 0.5 else theme.GOOD
+        elif z < 1.001:
+            reg, col = "critical", theme.GOOD
+        else:
+            reg, col = "overdamped", theme.WARN
+        self.st_reg.set(reg)
+        self.st_reg.set_color(col)
+
+        c = self.ce
+        c.clear()
+        a1, a2 = c.axes
+        a1.plot(ts, [math.degrees(x) for x in ths], color=theme.ACCENT, lw=2.0)
+        a1.axhline(0, color=theme.TEXT_FAINT, lw=1.1, ls="--", label="rest")
+        a1.set_xlabel("time (s)")
+        a1.set_ylabel("θ (°)")
+        a1.set_title("the angle", fontsize=9)
+        c.legend(a1, loc="upper right")
+        a2.plot(ts, pe, color=theme.ACCENT, lw=1.7, label="spring (potential)")
+        a2.plot(ts, ke, color=theme.WARN, lw=1.7, label="mass (kinetic)")
+        a2.plot(ts, total, color=theme.TEXT_FAINT, lw=1.5, ls="--",
+                label="total — the rest is heat")
+        a2.set_xlabel("time (s)")
+        a2.set_ylabel("energy (J, per unit inertia)")
+        a2.set_title("where the energy is", fontsize=9)
+        c.legend(a2, loc="upper right")
+        c.refresh()
 
     # ------------------------------------------------------------------
     def _redraw_zeta(self):
