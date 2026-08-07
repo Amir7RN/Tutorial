@@ -12,14 +12,15 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QKeySequence, QShortcut
+from PySide6.QtGui import QColor, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
+    QLineEdit,
     QStackedWidget,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -54,15 +55,27 @@ class MainWindow(QWidget):
         t = QLabel("Control & RL Tutor")
         t.setObjectName("SidebarTitle")
         sl.addWidget(t)
-        s = QLabel("dynamics · impedance · RL · from your notes")
+        s = QLabel("dynamics · control · impedance · RL")
         s.setObjectName("SidebarSub")
         sl.addWidget(s)
 
-        self.nav = QListWidget()
-        self.nav.setVerticalScrollMode(QListWidget.ScrollPerPixel)
+        self.filter = QLineEdit()
+        self.filter.setObjectName("NavFilter")
+        self.filter.setPlaceholderText("filter pages…   (Ctrl+F)")
+        self.filter.setClearButtonEnabled(True)
+        self.filter.textChanged.connect(self._apply_filter)
+        sl.addWidget(self.filter)
+
+        self.nav = QTreeWidget()
+        self.nav.setHeaderHidden(True)
+        self.nav.setIndentation(11)
+        self.nav.setRootIsDecorated(True)
+        self.nav.setExpandsOnDoubleClick(False)
+        self.nav.setVerticalScrollMode(QTreeWidget.ScrollPerPixel)
         sl.addWidget(self.nav, 1)
 
-        hint = QLabel("Ctrl+← / Ctrl+→   prev / next page")
+        hint = QLabel("Ctrl+← / Ctrl+→   prev / next page\n"
+                      "click a section to expand it")
         hint.setStyleSheet(
             f"color:{theme.TEXT_FAINT}; font-size:10px; padding:8px 16px;"
             f"background:transparent;")
@@ -75,63 +88,104 @@ class MainWindow(QWidget):
         root.addWidget(self.stack, 1)
 
         self.pages = build_pages()
-        current_section = None
-        self._index_map = {}     # nav row -> stack index
+        self._page_items = {}        # stack index  -> QTreeWidgetItem
+        self._section_items = {}     # section name -> QTreeWidgetItem
+
+        sec_font = QFont("Segoe UI", 8)
+        sec_font.setBold(True)
+        sec_font.setLetterSpacing(QFont.AbsoluteSpacing, 1.1)
 
         for i, page in enumerate(self.pages):
             self.stack.addWidget(page)
-            if page.SECTION != current_section:
-                current_section = page.SECTION
-                hdr = QListWidgetItem(current_section.upper())
-                hdr.setFlags(Qt.NoItemFlags)
-                f = QFont("Segoe UI", 8)
-                f.setBold(True)
-                f.setLetterSpacing(QFont.AbsoluteSpacing, 1.1)
-                hdr.setFont(f)
-                from PySide6.QtGui import QColor
-                hdr.setForeground(QColor(
-                    theme.SECTION_COLORS.get(current_section, theme.TEXT_FAINT)))
-                self.nav.addItem(hdr)
-            item = QListWidgetItem(f"{page.NUM} · {page.TITLE}")
-            self.nav.addItem(item)
-            self._index_map[self.nav.row(item)] = i
+            sec = page.SECTION
+            top = self._section_items.get(sec)
+            if top is None:
+                top = QTreeWidgetItem(self.nav, [sec.upper()])
+                # a section header groups; it never navigates anywhere itself
+                top.setFlags(Qt.ItemIsEnabled)
+                top.setFont(0, sec_font)
+                top.setForeground(0, QColor(
+                    theme.SECTION_COLORS.get(sec, theme.TEXT_FAINT)))
+                top.setData(0, Qt.UserRole, None)
+                self._section_items[sec] = top
+            item = QTreeWidgetItem(top, [f"{page.NUM} · {page.TITLE}"])
+            item.setData(0, Qt.UserRole, i)
+            self._page_items[i] = item
 
-        self.nav.currentRowChanged.connect(self._nav_changed)
+        # page counts on the headers, now that every page has been placed
+        for sec, top in self._section_items.items():
+            top.setText(0, f"{sec.upper()}   ({top.childCount()})")
+
+        self.nav.collapseAll()
+        self.nav.currentItemChanged.connect(self._nav_changed)
+        self.nav.itemClicked.connect(self._item_clicked)
+
         self._current = 0
-        first = next(r for r in self._index_map)
-        self.nav.setCurrentRow(first)
+        self.select_page(0)
 
         QShortcut(QKeySequence("Ctrl+Right"), self, self.next_page)
         QShortcut(QKeySequence("Ctrl+Left"), self, self.prev_page)
+        QShortcut(QKeySequence("Ctrl+F"), self, self.filter.setFocus)
 
-    def _nav_changed(self, row):
-        if row not in self._index_map:
+    # ------------------------------------------------------------------
+    def select_page(self, idx: int):
+        """Navigate to a page by stack index, expanding its section."""
+        item = self._page_items.get(idx)
+        if item is None:
             return
-        idx = self._index_map[row]
-        if idx == self._current:
+        parent = item.parent()
+        if parent is not None and not parent.isExpanded():
+            parent.setExpanded(True)
+        self.nav.setCurrentItem(item)
+        self.nav.scrollToItem(item)
+
+    def _item_clicked(self, item, _column):
+        """Clicking a section header toggles it -- headers are not selectable,
+        so this is the only way they respond."""
+        if item.data(0, Qt.UserRole) is None:
+            item.setExpanded(not item.isExpanded())
+
+    def _nav_changed(self, cur, _prev):
+        if cur is None:
+            return
+        idx = cur.data(0, Qt.UserRole)
+        if idx is None or idx == self._current:
             return
         self.pages[self._current].on_hide()
         self._current = idx
         self.stack.setCurrentIndex(idx)
         self.pages[idx].on_show()
 
-    def _row_for_page(self, page_idx):
-        for row, idx in self._index_map.items():
-            if idx == page_idx:
-                return row
-        return None
+    def _apply_filter(self, text: str):
+        """Hide pages that do not match; hide sections left with no matches."""
+        q = text.strip().lower()
+        for sec, top in self._section_items.items():
+            shown = 0
+            for k in range(top.childCount()):
+                child = top.child(k)
+                hit = (not q
+                       or q in child.text(0).lower()
+                       or q in sec.lower())
+                child.setHidden(not hit)
+                shown += 1 if hit else 0
+            top.setHidden(shown == 0)
+            if q:
+                top.setExpanded(shown > 0)
+        if not q:
+            # restore the accordion, keeping the section you are reading open
+            self.nav.collapseAll()
+            item = self._page_items.get(self._current)
+            if item is not None and item.parent() is not None:
+                item.parent().setExpanded(True)
+                self.nav.scrollToItem(item)
 
     def next_page(self):
         if self._current + 1 < len(self.pages):
-            r = self._row_for_page(self._current + 1)
-            if r is not None:
-                self.nav.setCurrentRow(r)
+            self.select_page(self._current + 1)
 
     def prev_page(self):
         if self._current > 0:
-            r = self._row_for_page(self._current - 1)
-            if r is not None:
-                self.nav.setCurrentRow(r)
+            self.select_page(self._current - 1)
 
     def closeEvent(self, ev):
         for p in self.pages:
@@ -164,9 +218,7 @@ def main():
                 print(f"selftest OK: {len(w.pages)} pages -> {out}")
                 app.quit()
                 return
-            row = w._row_for_page(i)
-            if row is not None:
-                w.nav.setCurrentRow(row)
+            w.select_page(i)
             app.processEvents()
             w.grab().save(os.path.join(out, f"{i+1:02d}_{w.pages[i].TITLE[:2].strip()}.png"))
             state["i"] += 1

@@ -7,7 +7,11 @@ computed here, so the GUI can be thrown away and the physics still runs
 
     actuators.py   effective inertia for DD / SEA / PEA, gearing, scaling
     impedance.py   position / torque / impedance / admittance control
+    linear.py      LTI systems: poles, step response, Bode, margins, Nyquist,
+                   Routh, root locus, compensators, pole placement, observers
     neuro.py       Hill muscle model and positive force feedback
+    nonlinear.py   the pendulum, phase portraits, limit cycles, and the six
+                   nonlinear control approaches
     realtime.py    sampling, jitter, latency, and a PID that survives hardware
 """
 
@@ -47,6 +51,77 @@ from .impedance import (  # noqa: F401
     run_torque,
     tau_ff_from_deviation,
     two_controller_demo,
+)
+from .linear import (  # noqa: F401
+    TF,
+    Margins,
+    StateSpace,
+    StepMetrics,
+    bode,
+    classify_stability,
+    critical_gain,
+    ctrb,
+    damped_frequency,
+    encirclements,
+    first_order,
+    geared_joint_plant,
+    impulse_response,
+    is_controllable,
+    is_observable,
+    is_stable,
+    joint_wn_zeta,
+    lag,
+    lead,
+    lead_phase_deg,
+    log_freqs,
+    lqr,
+    margins,
+    margins_with_delay,
+    notch,
+    nyquist_points,
+    observer_gain,
+    obsv,
+    overshoot_fraction,
+    peak_time,
+    phase_margin_of_zeta,
+    pid_tf,
+    place_poles,
+    poly_roots,
+    resonant_peak_db,
+    root_locus,
+    routh_rhp_count,
+    routh_table,
+    run_velocity_observer,
+    second_order,
+    second_order_step,
+    settling_time,
+    simulate_ss,
+    step_metrics,
+    step_response,
+    tf_to_ss,
+    vector_margin,
+    zeta_from_overshoot,
+)
+from .nonlinear import (  # noqa: F401
+    Pendulum,
+    backlash,
+    computed_torque,
+    coulomb_friction,
+    deadzone,
+    describing_function_saturation,
+    energy_swingup,
+    gain_scheduled_pd,
+    gravity_comp_pd,
+    large_angle_period,
+    lyapunov_pd_pendulum,
+    lyapunov_rate,
+    pd_controller,
+    phase_field,
+    run_stick_slip,
+    saturation,
+    separatrix,
+    sliding_mode,
+    trajectory,
 )
 from .realtime import (  # noqa: F401
     PID,

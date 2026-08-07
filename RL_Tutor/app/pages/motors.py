@@ -491,8 +491,11 @@ class EffectiveInertiaPage(Page):
             "choosing the topology.<br>"
             "<b>Control:</b> feedforward what you know; and accept that above "
             "your bandwidth, mechanics is the only controller you have.<br><br>"
-            "This is why this tutorial puts actuator mechanics before control "
-            "theory, and real-time behaviour before both.", "good"))
+            "This is why this tutorial puts actuator mechanics before the "
+            "control <i>paradigms</i>, and real-time behaviour before "
+            "everything. The linear-systems pages came first only to give you "
+            "the vocabulary — \"pole\", \"damping\", \"margin\" — that the "
+            "sentence above is written in.", "good"))
 
         self.finish()
 

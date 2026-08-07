@@ -27,6 +27,9 @@ BAD         = "#f85149"
 VIOLET      = "#a371f7"
 CYAN        = "#39c5cf"
 PINK        = "#f778ba"
+ORANGE      = "#f0883e"
+TEAL        = "#2dd4bf"
+INDIGO      = "#8b8cf7"
 
 # Grid cell colours
 C_FROZEN    = "#1d2733"
@@ -44,6 +47,9 @@ HEAT_POS    = QColor("#1f7a4d")
 SECTION_COLORS = {
     # control & dynamics
     "Real-Time":         BAD,
+    "Systems & Stability": ORANGE,
+    "Controller Design": TEAL,
+    "Nonlinear":         INDIGO,
     "Actuators":         CYAN,
     "Control Paradigms": ACCENT,
     "Robot Design":      GOOD,
@@ -117,6 +123,33 @@ QListWidget::item:hover {{ background: {BG_RAISED}; color: {TEXT}; }}
 QListWidget::item:selected {{
     background: {ACCENT_DIM}; color: #ffffff; font-weight: 600;
 }}
+
+/* ---------- sidebar tree (collapsible sections) ---------- */
+QTreeWidget {{
+    background: transparent; border: none; outline: none;
+    padding: 0 6px; show-decoration-selected: 1;
+}}
+QTreeWidget::item {{
+    padding: 5px 6px; border-radius: 6px; color: {TEXT_DIM};
+    margin: 1px 0;
+}}
+QTreeWidget::item:hover {{ background: {BG_RAISED}; color: {TEXT}; }}
+QTreeWidget::item:selected {{
+    background: {ACCENT_DIM}; color: #ffffff; font-weight: 600;
+}}
+QTreeWidget::branch {{ background: transparent; }}
+QTreeWidget::branch:has-children:closed {{
+    image: none; border-image: none;
+}}
+QTreeWidget::branch:has-children:open {{
+    image: none; border-image: none;
+}}
+#NavFilter {{
+    background: {BG_INPUT}; border: 1px solid {BORDER}; border-radius: 6px;
+    padding: 5px 9px; margin: 0 14px 8px 14px; color: {TEXT};
+    font-size: 12px;
+}}
+#NavFilter:focus {{ border-color: {ACCENT_DIM}; }}
 
 /* ---------- cards ---------- */
 #Card {{

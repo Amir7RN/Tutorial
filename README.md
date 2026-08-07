@@ -3,9 +3,9 @@
 Robotics study repository: an interactive **Control & RL Tutor** desktop app, plus
 the C++ algorithm implementations and source PDFs it was built from.
 
-The main thing here is **[`RL_Tutor/`](RL_Tutor/)** — a 53-page interactive
-workbench covering real-time control, actuator dynamics, impedance control,
-proprioception and reinforcement learning. Every algorithm is live and steppable, every formula is
+The main thing here is **[`RL_Tutor/`](RL_Tutor/)** — a 64-page interactive
+workbench covering real-time control, classical control theory, actuator
+dynamics, impedance control, proprioception and reinforcement learning. Every algorithm is live and steppable, every formula is
 rendered, and every code panel is pulled from the real source at runtime so
 nothing on screen can drift out of sync with what actually ran.
 
@@ -65,7 +65,9 @@ python -m app.main
 
 ### Using it
 
-`Ctrl+←` / `Ctrl+→` move between pages. The sidebar jumps anywhere directly.
+`Ctrl+←` / `Ctrl+→` move between pages. The sidebar groups the 64 pages into
+collapsible sections — click a section header to expand it — and `Ctrl+F` jumps
+to the filter box if you know what you are looking for.
 
 Start at page 1 and read in order — the tutor is written concrete-before-abstract,
 and no page shows a number whose origin has not already been built up.
@@ -75,10 +77,11 @@ and no page shows a number whose origin has not already been built up.
 ```bash
 python tests/test_ctrl.py     # physics: actuators, impedance, muscle model
 python tests/test_core.py     # RL: Bellman, DP, Monte Carlo
-python tests/smoke_gui.py     # builds all 53 pages headless, screenshots to _shots/
+python tests/test_linear.py   # control theory: poles, margins, observers, nonlinear
+python tests/smoke_gui.py     # builds all 64 pages headless, screenshots to _shots/
 ```
 
-All three should exit clean.
+All four should exit clean.
 
 ### Troubleshooting
 
@@ -102,19 +105,22 @@ unzips it anywhere and double-clicks `run.bat`. They need only Python 3.10+.
 
 ## What's in the tutor
 
-**Part I — Control & Dynamics (pages 1–24)**
+**Part I — Control & Dynamics (pages 1–35)**
 
 | Pages | Section | Covers |
 |---|---|---|
 | 1 | Real-Time | Hard vs firm vs soft real-time; sampling rate vs Nyquist vs actual bandwidth; aliasing; transport delay; FreeRTOS scheduling, priority inversion and the rate-monotonic bound |
-| 2–6 | Actuators | Effective inertia derived for direct drive, series elastic and parallel elastic; the three compared on torque, speed, inertia and bandwidth; the N² reflected-inertia square law and three ways out of it |
-| 7–14 | Control Paradigms | The goal of control from scratch, then position, PID-in-practice, torque/current, impedance and admittance — when, why, and what each costs — ending with the impedance spectrum that unifies them |
-| 15–17 | Robot Design | Actuator choice per robot type, the square-cube law, 1X Neo as a case study |
-| 18–20 | Proprioception | Biological sensing, mechanical transparency as the prerequisite, software-defined active compliance |
-| 21–22 | Force Feedback | What positive force feedback actually is, the Hill-model maths, and the test for whether you have really built one |
-| 23–24 | Bio → Robot | Translating human actuation, sensing, skin and bone into design requirements |
+| 2–6 | Systems & Stability | First-order and second-order systems from their poles; ζ and ω_n and the joint tuning they really are; stability, marginal stability and Routh–Hurwitz; Bode plots with gain and phase margin; the Nyquist criterion, encirclements and the vector margin |
+| 7–10 | Controller Design | Root locus and what P, I and D each do to the poles; balancing an inverted pendulum; lead, lag and notch compensators designed rather than tuned; state feedback, controllability and pole placement; LQR; Luenberger observers, observability, the separation principle and the disturbance observer that gives you force sensing without a force sensor |
+| 11–12 | Nonlinear | What superposition was buying you; the six places a robot breaks it; phase portraits, basins and separatrices; limit cycles from stiction; then gain scheduling, computed torque, sliding mode, Lyapunov and passivity |
+| 13–17 | Actuators | Effective inertia derived for direct drive, series elastic and parallel elastic; the three compared on torque, speed, inertia and bandwidth; the N² reflected-inertia square law and three ways out of it |
+| 18–25 | Control Paradigms | The goal of control from scratch, then position, PID-in-practice, torque/current, impedance and admittance — when, why, and what each costs — ending with the impedance spectrum that unifies them |
+| 26–28 | Robot Design | Actuator choice per robot type, the square-cube law, 1X Neo as a case study |
+| 29–31 | Proprioception | Biological sensing, mechanical transparency as the prerequisite, software-defined active compliance |
+| 32–33 | Force Feedback | What positive force feedback actually is, the Hill-model maths, and the test for whether you have really built one |
+| 34–35 | Bio → Robot | Translating human actuation, sensing, skin and bone into design requirements |
 
-**Part II — Reinforcement Learning (pages 25–53)** — Frozen Lake end to end:
+**Part II — Reinforcement Learning (pages 36–64)** — Frozen Lake end to end:
 the MDP, value functions, all four Bellman equations one page each, dynamic
 programming, Monte Carlo, and the surrounding ideas.
 
@@ -137,7 +143,7 @@ Full page-by-page table, the maths, the conventions and what the tests check:
 | `RL-FrozenLake_ValIter.cpp`, `RL-FrozenLake_Prob.cpp`, `RL-FrozenLake_MontoCarlo.cpp` | Frozen Lake in C++ |
 | `LSTM_PRedict.py` | LSTM prediction in Python |
 
-The three Frozen Lake C++ files are dissected on **page 52 (Code Lab)** of the
+The three Frozen Lake C++ files are dissected on **page 63 (Code Lab)** of the
 tutor, which walks through two real bugs in `RL-FrozenLake_Prob.cpp` and one in
 `RL-FrozenLake_MontoCarlo.cpp`.
 
@@ -152,7 +158,7 @@ g++ -O2 -std=c++17 Astar.cpp -o Astar
 
 | File | Used for |
 |---|---|
-| `Impedance_Material.pdf` | Handwritten notes behind tutor pages 2–24 |
-| `ImpedanceControl.pdf` | Best, Rouse & Gregg — the decoupled impedance controller, page 14 |
-| `RL.pdf` | Reinforcement learning notes behind pages 25–53 |
+| `Impedance_Material.pdf` | Handwritten notes behind tutor pages 13–35 |
+| `ImpedanceControl.pdf` | Best, Rouse & Gregg — the decoupled impedance controller, page 25 |
+| `RL.pdf` | Reinforcement learning notes behind pages 36–64 |
 | `HumanoidMotionPlanner.pdf` | Motion planning reference |
