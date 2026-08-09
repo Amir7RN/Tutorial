@@ -14,7 +14,7 @@ before the first-order pages and answers, in order:
     not a contradiction
 
 Nothing here is derived. It is the map you look at before walking into the
-territory, and every claim on it is discharged somewhere in pages 3-8.
+territory, and every claim on it is discharged somewhere in pages 3-10.
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ _BUILDS = [
         note="One storage element, no dissipation at all. Order 1 — and the "
              "single pole sits at the origin, so it never settles: a constant "
              "torque just keeps accelerating it. This is the integrator from "
-             "page 5.",
+             "page 7.",
     ),
     dict(
         name="2 · rotor + bearing friction   (torque → SPEED)",
@@ -153,9 +153,11 @@ class ControlProblemPage(Page):
             "right.</b> A plant has some behaviour of its own. You want "
             "different behaviour. So you characterise what it does, decide what "
             "you want instead, and add a controller that closes the gap. "
-            "Everything in the next six pages is <i>characterising</i>, and "
-            "everything in the six after that is <i>closing the gap</i>. This "
-            "page is the map.", "key"))
+            "Pages 3 and 4 are the two questions that have to be settled before "
+            "any of it works — <b>how you measure a real joint</b>, and <b>how "
+            "a line of software can possibly change what metal does</b>. Pages "
+            "5 to 10 are <i>characterising</i>, and 14 to 17 are <i>closing "
+            "the gap</i>. This page is the map.", "key"))
 
         # ---- the four steps -------------------------------------------------
         f = Card("every control problem, in four steps — and where each one "
@@ -167,7 +169,7 @@ class ControlProblemPage(Page):
             "Push it and watch. This is the <b>plant</b>, and its unforced "
             "behaviour is the <b>open-loop response</b>. Characterising it means "
             "answering: how fast, how far, does it overshoot, can it be "
-            "destabilised. <i>Pages 3–8 are entirely this.</i></td></tr>"
+            "destabilised. <i>Pages 3–10 are entirely this.</i></td></tr>"
 
             "<tr><td><b>2</b></td>"
             "<td><b>What do you want instead?</b><br>"
@@ -188,7 +190,7 @@ class ControlProblemPage(Page):
 
             "<tr><td><b>4</b></td>"
             "<td><b>Add a controller and close the loop.</b><br>"
-            "P, PD, PI, PID, lead, lag, state feedback. <i>Pages 11–14.</i> "
+            "P, PD, PI, PID, lead, lag, state feedback. <i>Pages 14–17.</i> "
             "And the sentence that makes it all one subject: <b>a controller "
             "does not change the plant. It moves the plant's poles.</b> The "
             "metal is unchanged; feedback rearranges where the roots of the "
@@ -450,7 +452,7 @@ class ControlProblemPage(Page):
             "<b>Second order.</b>", "key"))
         pp.add(body(
             "<b>The standard name for this is observability, and it is a whole "
-            "page later on (page 15).</b> A state that produces no signature at "
+            "page later on (page 17).</b> A state that produces no signature at "
             "your sensor is called <b>unobservable</b>, and a transfer function "
             "silently drops every unobservable mode — which is why the "
             "<i>transfer-function order</i> can be lower than the number of "
@@ -568,36 +570,46 @@ class ControlProblemPage(Page):
         self.add(w)
 
         # ---- roadmap ---------------------------------------------------------
-        rm = Card("what the next six pages do, and why in that order")
+        rm = Card("what the next eight pages do, and why in that order")
         rm.add(body(
             "<table cellpadding='7'>"
-            "<tr><td width='34'><b>3</b></td><td><b>What a first-order system "
-            "is.</b> One storage element. How you identify order on real "
-            "hardware, and what the answer buys you.</td></tr>"
-            "<tr><td><b>4</b></td><td><b>The time constant and the pole.</b> "
+            "<tr><td width='34'><b>3</b></td><td><b>Measuring a real joint.</b> "
+            "Where J, b and k actually come from. Four bench experiments, and "
+            "the regression that gets all of them at once — because every "
+            "number on every later page is one you had to go and "
+            "measure.</td></tr>"
+            "<tr><td><b>4</b></td><td><b>How software changes physics.</b> The "
+            "one that has to be settled before poles mean anything: you cannot "
+            "change J with a gain, so how does a gain change the behaviour? "
+            "Answer: it adds a term to the equation of motion.</td></tr>"
+            "<tr><td><b>5</b></td><td><b>What a first-order system is.</b> One "
+            "storage element. How you identify order on real hardware, and what "
+            "the answer buys you.</td></tr>"
+            "<tr><td><b>6</b></td><td><b>The time constant and the pole.</b> "
             "How fast, expressed three equivalent ways. Where 0.63 comes from. "
             "Why the current loop runs at 20 kHz.</td></tr>"
-            "<tr><td><b>5</b></td><td><b>The pole at the origin.</b> A storage "
+            "<tr><td><b>7</b></td><td><b>The pole at the origin.</b> A storage "
             "element with no dissipation. Why position is second order, and why "
             "the I term works.</td></tr>"
-            "<tr><td><b>6</b></td><td><b>First order in frequency.</b> Shake it "
+            "<tr><td><b>8</b></td><td><b>First order in frequency.</b> Shake it "
             "with a sine instead of stepping it. Bandwidth, dB, phase lag — the "
             "language every datasheet and every loop-shaping argument "
             "uses.</td></tr>"
-            "<tr><td><b>7</b></td><td><b>The s-plane.</b> The two axes, what "
+            "<tr><td><b>9</b></td><td><b>The s-plane.</b> The two axes, what "
             "the imaginary part physically is, and the second storage element "
             "that creates it.</td></tr>"
-            "<tr><td><b>8</b></td><td><b>Second-order systems.</b> ω<sub>n</sub> "
-            "and ζ — and the fact that the K and B of an impedance controller "
-            "<i>are</i> ω<sub>n</sub> and ζ. This is where every robot joint you "
-            "will tune actually lives.</td></tr>"
+            "<tr><td><b>10</b></td><td><b>Second-order systems.</b> "
+            "ω<sub>n</sub> and ζ — and the fact that the K and B of an "
+            "impedance controller <i>are</i> ω<sub>n</sub> and ζ. This is where "
+            "every robot joint you will tune actually lives.</td></tr>"
             "</table>"))
         rm.add(callout(
-            "<b>Read them as one argument, not six topics.</b> Count the "
-            "storage elements → that gives the order → the order gives the "
-            "number of poles → each pole's position gives one rate → those "
-            "rates are the whole behaviour → and a controller is a device for "
-            "moving them. Every page is one link in that chain.", "good"))
+            "<b>Read them as one argument, not eight topics.</b> Measure the "
+            "plant → count the storage elements → that gives the order → the "
+            "order gives the number of poles → each pole's position gives one "
+            "rate → those rates are the whole behaviour → and a controller is a "
+            "device for moving them, by adding terms to the equation. Every "
+            "page is one link in that chain.", "good"))
         self.add(rm)
 
         self.finish()

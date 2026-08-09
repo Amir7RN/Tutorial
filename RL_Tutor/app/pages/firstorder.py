@@ -445,13 +445,13 @@ class FirstOrderPage(Page):
             "doing useful work every cycle. A joint with τ = 300 ms cannot "
             "respond to anything you send it faster than a few Hz, so a 20 kHz "
             "position loop is 19,900 wasted computations per second and three "
-            "extra sources of noise. <i>Page 3 makes this a calculator.</i>"
+            "extra sources of noise. <i>Page 6 makes this a calculator.</i>"
             "</td></tr>"
             "<tr><td><b>2</b></td>"
             "<td><b>Whether you are allowed to turn the gain up.</b><br>"
             "A first-order plant with proportional feedback <b>cannot be "
             "destabilised at any gain</b> — that is a theorem, not a rule of "
-            "thumb, and it is proved on page 4. So when a loop is first order "
+            "thumb, and it is proved on page 8. So when a loop is first order "
             "you tune it by turning the knob until it is fast enough and then "
             "stopping. When it is second order you cannot, and the entire "
             "controller-design half of this tutor exists for that case."
@@ -857,7 +857,7 @@ class TimeConstantPage(Page):
             "&nbsp;&nbsp;• <b>memoryless</b> — a genuine, standard term for a "
             "component whose output depends only on the input <i>right now</i>: "
             "a resistor, ideal viscous friction, a gain. It has no state, so "
-            "there is nothing for it to be late with. Used correctly on page 4 "
+            "there is nothing for it to be late with. Used correctly on page 8 "
             "when friction is said to have no memory.<br>"
             "&nbsp;&nbsp;• <b>fading memory</b> — a real term in systems theory "
             "for exactly the property being described here: the influence of the "
@@ -936,7 +936,7 @@ class TimeConstantPage(Page):
             "changes speed — they are the same fact drawn twice. A pole at "
             "−20 1/s and a 50 ms time constant are one sentence in two "
             "languages, and the bandwidth chip is the third translation "
-            "(page 4 earns it).", dim=True))
+            "(page 8 earns it).", dim=True))
         self.s_tau = slider(2, 200, 50)          # ms
         self.s_k = slider(1, 50, 10)             # x0.1
         self.l_tau, self.l_k = QLabel(), QLabel()
@@ -2479,7 +2479,7 @@ class SPlanePage(Page):
             "&nbsp;&nbsp;• <b>Horizontal — the real part σ: the decay rate</b>, "
             "in 1/seconds. How fast the motion dies. Left = dies (stable). "
             "Right = grows (unstable). Further left = decays faster. This is "
-            "the pole you already met two pages ago.<br>"
+            "the pole you already met on page 6.<br>"
             "&nbsp;&nbsp;• <b>Vertical — the imaginary part ω: the ring "
             "rate</b>, in rad/s. How fast it wobbles on the way. A first-order "
             "system has nothing to wobble with, so ω = 0 and its pole sits flat "

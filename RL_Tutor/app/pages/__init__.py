@@ -54,6 +54,7 @@ from .ctrldesign import (
     StateFeedbackPage,
 )
 from .orient import ControlProblemPage
+from .plant import MeasuringPage, SoftwarePhysicsPage
 from .firstorder import (
     FirstOrderFreqPage,
     FirstOrderPage,
@@ -119,90 +120,92 @@ PAGE_CLASSES = [
     RealTimePage,          # 1   sampling, Nyquist, jitter, scheduling
     # ---- Linear systems: what "pole", "damping" and "margin" mean ---------
     ControlProblemPage,    # 2   what we are doing, and what "order" is for
-    FirstOrderPage,        # 3   one store, one drain -- and what that buys you
-    TimeConstantPage,      # 4   tau, 0.63, and the pole as a decay rate
-    IntegratorPage,        # 5   the pole at s = 0: a store with no drain
-    FirstOrderFreqPage,    # 6   the corner, -3 dB, and the 90 deg ceiling
-    SPlanePage,            # 7   what j is; the second store that lifts a pole
-    SecondOrderPage,       # 8   wn and zeta, and every joint you will tune
-    StabilityPage,         # 9   LHP, marginal, Routh-Hurwitz
-    BodePage,              # 10  gain and phase margin, and PM = damping
-    NyquistPage,           # 11  the -1 point, encirclements, vector margin
+    MeasuringPage,         # 3   where J, b and k actually come from
+    SoftwarePhysicsPage,   # 4   how a gain changes an equation of motion
+    FirstOrderPage,        # 5   one store, one drain -- and what that buys you
+    TimeConstantPage,      # 6   tau, 0.63, and the pole as a decay rate
+    IntegratorPage,        # 7   the pole at s = 0: a store with no drain
+    FirstOrderFreqPage,    # 8   the corner, -3 dB, and the 90 deg ceiling
+    SPlanePage,            # 9   what j is; the second store that lifts a pole
+    SecondOrderPage,       # 10  wn and zeta, and every joint you will tune
+    StabilityPage,         # 11  LHP, marginal, Routh-Hurwitz
+    BodePage,              # 12  gain and phase margin, and PM = damping
+    NyquistPage,           # 13  the -1 point, encirclements, vector margin
     # ---- Controller design: moving the poles on purpose -------------------
-    StabilisingPage,       # 12  root locus, and why D is the term that saves you
-    LeadLagPage,           # 13  lead, lag, notch -- and why notches betray you
-    StateFeedbackPage,     # 14  place every pole at once; LQR
-    ObserverPage,          # 15  estimate what you cannot measure; disturbance obs
+    StabilisingPage,       # 14  root locus, and why D is the term that saves you
+    LeadLagPage,           # 15  lead, lag, notch -- and why notches betray you
+    StateFeedbackPage,     # 16  place every pole at once; LQR
+    ObserverPage,          # 17  estimate what you cannot measure; disturbance obs
     # ---- Nonlinear: what all of the above was assuming --------------------
-    NonlinearSystemsPage,  # 16  superposition dies; limit cycles, basins
-    NonlinearControlPage,  # 17  computed torque, sliding mode, passivity
+    NonlinearSystemsPage,  # 18  superposition dies; limit cycles, basins
+    NonlinearControlPage,  # 19  computed torque, sliding mode, passivity
     # ---- Actuators: what the world actually feels -------------------------
-    EffectiveInertiaPage,  # 18  J_eff, and direct drive from first principles
-    SEAPage,               # 19  spring between motor and load
-    PEAPage,               # 20  spring alongside; what negative J_eff means
-    ActuatorCompare,       # 21  torque, speed, inertia, bandwidth head to head
-    GearingPage,           # 22  the N^2 square law kills transparency
+    EffectiveInertiaPage,  # 20  J_eff, and direct drive from first principles
+    SEAPage,               # 21  spring between motor and load
+    PEAPage,               # 22  spring alongside; what negative J_eff means
+    ActuatorCompare,       # 23  torque, speed, inertia, bandwidth head to head
+    GearingPage,           # 24  the N^2 square law kills transparency
     # ---- Control paradigms: four answers to one question ------------------
-    GoalOfControlPage,     # 23  what is a controller even for?
-    PositionControlPage,   # 24  command where
-    PIDPracticePage,       # 25  anti-windup, D filtering, what jitter breaks
-    TorqueControlPage,     # 26  command how hard
-    ImpedanceControlPage,  # 27  command the relationship (motion in, force out)
-    AdmittanceControlPage, # 28  command the relationship the other way round
-    ImpVsAdmPage,          # 29  the decision, and the hardware that forces it
-    SpectrumPage,          # 30  they were all one controller all along
+    GoalOfControlPage,     # 25  what is a controller even for?
+    PositionControlPage,   # 26  command where
+    PIDPracticePage,       # 27  anti-windup, D filtering, what jitter breaks
+    TorqueControlPage,     # 28  command how hard
+    ImpedanceControlPage,  # 29  command the relationship (motion in, force out)
+    AdmittanceControlPage, # 30  command the relationship the other way round
+    ImpVsAdmPage,          # 31  the decision, and the hardware that forces it
+    SpectrumPage,          # 32  they were all one controller all along
     # ---- Robot design ------------------------------------------------------
-    ActuatorChoicePage,    # 31  humanoid vs biped vs quadruped
-    ScalingPage,           # 32  the square-cube law and hybrid actuation
-    NeoPage,               # 33  case study: 1X Neo
+    ActuatorChoicePage,    # 33  humanoid vs biped vs quadruped
+    ScalingPage,           # 34  the square-cube law and hybrid actuation
+    NeoPage,               # 35  case study: 1X Neo
     # ---- Proprioception -----------------------------------------------------
-    BioProprioPage,        # 34  spindles, GTOs, and the timescales
-    RobotProprioPage,      # 35  transparency is the prerequisite
-    ActiveCompliancePage,  # 36  software-defined compliance, three layers
+    BioProprioPage,        # 36  spindles, GTOs, and the timescales
+    RobotProprioPage,      # 37  transparency is the prerequisite
+    ActiveCompliancePage,  # 38  software-defined compliance, three layers
     # ---- Force feedback -----------------------------------------------------
-    PFFIntroPage,          # 37  what positive force feedback actually is
-    PFFMathPage,           # 38  closing the loop, and the honesty test
+    PFFIntroPage,          # 39  what positive force feedback actually is
+    PFFMathPage,           # 40  closing the loop, and the honesty test
     # ---- Bio -> robot -------------------------------------------------------
-    BioActuationPage,      # 39  actuation and sensing
-    BioStructurePage,      # 40  skin and bone
+    BioActuationPage,      # 41  actuation and sensing
+    BioStructurePage,      # 42  skin and bone
     # ======================================================================
     # REINFORCEMENT LEARNING
     # ======================================================================
     # ---- Start Here: the environment, then the vocabulary ----------------
-    WhatIsRLPage,          # 41  play it yourself
-    FrozenLakePage,        # 42  the board
-    TransitionsPage,       # 43  the slippery ice, with real probabilities
-    RewardPage,            # 44  what the lake pays you
-    ReturnPage,            # 45  a list of rewards -> one number, via gamma
-    PolicyPage,            # 46  the thing we are searching for
-    MDPPage,               # 47  all five pieces, formally named
+    WhatIsRLPage,          # 43  play it yourself
+    FrozenLakePage,        # 44  the board
+    TransitionsPage,       # 45  the slippery ice, with real probabilities
+    RewardPage,            # 46  what the lake pays you
+    ReturnPage,            # 47  a list of rewards -> one number, via gamma
+    PolicyPage,            # 48  the thing we are searching for
+    MDPPage,               # 49  all five pieces, formally named
     # ---- Value Functions: how good is a square? ---------------------------
-    StateValuePage,        # 48
-    ActionValuePage,       # 49
-    VvsQPage,              # 50
-    BellmanPage,           # 51  all four at once -- the summary
+    StateValuePage,        # 50
+    ActionValuePage,       # 51
+    VvsQPage,              # 52
+    BellmanPage,           # 53  all four at once -- the summary
     # ---- one page per Bellman equation, in full arithmetic ----------------
-    BellmanExpVPage,       # 52  V^pi  expectation
-    BellmanExpQPage,       # 53  Q^pi  expectation
-    BellmanOptVPage,       # 54  V*    optimality
-    BellmanOptQPage,       # 55  Q*    optimality
+    BellmanExpVPage,       # 54  V^pi  expectation
+    BellmanExpQPage,       # 55  Q^pi  expectation
+    BellmanOptVPage,       # 56  V*    optimality
+    BellmanOptQPage,       # 57  Q*    optimality
     # ---- Dynamic Programming: solve it, knowing the ice -------------------
-    PolicyEvalPage,        # 56
-    PolicyImprovePage,     # 57
-    PolicyIterationPage,   # 58
-    ValueIterationPage,    # 59
-    CompareDPPage,         # 60
+    PolicyEvalPage,        # 58
+    PolicyImprovePage,     # 59
+    PolicyIterationPage,   # 60
+    ValueIterationPage,    # 61
+    CompareDPPage,         # 62
     # ---- Monte Carlo: learn it, NOT knowing the ice -----------------------
-    MCIntroPage,           # 61
-    MCPredictionPage,      # 62
-    MCControlPage,         # 63
+    MCIntroPage,           # 63
+    MCPredictionPage,      # 64
+    MCControlPage,         # 65
     # ---- Beyond -----------------------------------------------------------
-    BanditPage,            # 64
-    ModelPage,             # 65
-    HyperPage,             # 66
-    ConvergencePage,       # 67
-    CodeLabPage,           # 68
-    AdamPage,              # 69
+    BanditPage,            # 66
+    ModelPage,             # 67
+    HyperPage,             # 68
+    ConvergencePage,       # 69
+    CodeLabPage,           # 70
+    AdamPage,              # 71
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read
