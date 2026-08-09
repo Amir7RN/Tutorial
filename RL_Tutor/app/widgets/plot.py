@@ -55,11 +55,19 @@ class MplCanvas(FigureCanvasQTAgg):
                         labelcolor=theme.TEXT, fontsize=8, framealpha=0.95, **kw)
         return leg
 
-    def refresh(self):
-        try:
-            self.fig.tight_layout()
-        except Exception:
-            pass
+    def refresh(self, layout=True):
+        """
+        Redraw. `layout=False` skips tight_layout, which is the expensive part
+        (roughly 60% of a redraw) and is only needed when the set of artists
+        or the tick labels have actually changed. Animated widgets rebuild
+        their axes once with layout=True and then push new data every frame
+        with layout=False.
+        """
+        if layout:
+            try:
+                self.fig.tight_layout()
+            except Exception:
+                pass
         self.draw_idle()
 
     def clear(self):
