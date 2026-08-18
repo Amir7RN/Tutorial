@@ -290,6 +290,67 @@ def resonant_peak_db(zeta: float) -> float:
     return 20.0 * math.log10(1.0 / (2.0 * zeta * math.sqrt(1.0 - zeta * zeta)))
 
 
+def resonant_frequency(zeta: float, wn: float) -> float:
+    r"""
+    Where the magnitude response actually peaks:
+
+        w_r = wn sqrt(1 - 2 zeta^2)        for zeta < 1/sqrt(2)
+
+    Returns 0 when zeta >= 0.707, because there is NO peak at all then -- the
+    curve falls monotonically from DC.
+
+    This is the third of three frequencies people routinely conflate, and they
+    are genuinely different numbers:
+
+        w_n = sqrt(K/J)                 undamped natural -- the pole radius
+        w_d = wn sqrt(1 - zeta^2)       damped ringing -- what a step response
+                                        rings at
+        w_r = wn sqrt(1 - 2 zeta^2)     resonant peak -- what a swept sine
+                                        peaks at
+
+    and w_r < w_d < w_n for any zeta > 0. At zeta = 0.3: 0.956, 0.954, 1.0
+    times wn -- close enough to be indistinguishable in a plot. At zeta = 0.6:
+    0.529, 0.8, 1.0 -- not close at all.
+    """
+    if zeta >= 1.0 / math.sqrt(2.0) or wn <= 0:
+        return 0.0
+    return wn * math.sqrt(1.0 - 2.0 * zeta * zeta)
+
+
+def bandwidth_second_order(zeta: float, wn: float) -> float:
+    r"""
+    The -3 dB bandwidth of the standard second-order system:
+
+        w_bw = wn sqrt( 1 - 2 z^2 + sqrt(2 - 4 z^2 + 4 z^4) )
+
+    For zeta = 0.707 this is almost exactly wn, which is one more reason that
+    value is the default: the bandwidth and the natural frequency coincide, so
+    the number you designed for is the number you get.
+    """
+    if wn <= 0:
+        return 0.0
+    z2 = zeta * zeta
+    inner = 1.0 - 2.0 * z2 + math.sqrt(max(0.0, 2.0 - 4.0 * z2 + 4.0 * z2 * z2))
+    return wn * math.sqrt(max(0.0, inner))
+
+
+def quality_factor(zeta: float) -> float:
+    r"""
+        Q = 1 / (2 zeta)
+
+    The gain at w = wn exactly, and also -- the physical reading -- the energy
+    stored divided by the energy lost per radian of oscillation. A Q of 50
+    means the system gives back fifty times more than it loses each radian,
+    which is why it rings for a long time and why driving it at resonance
+    builds such large amplitudes.
+
+    Q = 0.5 is critical damping. Robot joints usually want Q below about 1.
+    """
+    if zeta <= 0:
+        return math.inf
+    return 1.0 / (2.0 * zeta)
+
+
 def phase_margin_of_zeta(zeta: float) -> float:
     r"""
     Exact phase margin of the standard second-order loop wn^2/(s(s+2 zeta wn)):

@@ -23,12 +23,14 @@ see a pole move there is no way to check either one.
 
 from __future__ import annotations
 
+import cmath
 import math
 
 from PySide6.QtWidgets import QComboBox, QLabel
 
 from ctrlcore.linear import (
     TF,
+    bandwidth_second_order,
     bode,
     damped_frequency,
     geared_joint_plant,
@@ -41,6 +43,8 @@ from ctrlcore.linear import (
     overshoot_fraction,
     peak_time,
     poly_roots,
+    quality_factor,
+    resonant_frequency,
     resonant_peak_db,
     routh_rhp_count,
     routh_table,
@@ -459,6 +463,168 @@ class SecondOrderPage(Page):
             s.valueChanged.connect(self._redraw_joint)
         self._redraw_joint()
 
+        # ==================================================================
+        # frequency response -- the magnitude-vs-omega family
+        # ==================================================================
+        self.add(hline())
+        self.add(title("The same system, shaken instead of stepped — where the "
+                       "resonance comes from"))
+
+        fr = Card("stop letting go of it, and start shaking it")
+        fr.add(body(
+            "Everything above released the joint and watched. Now do the other "
+            "experiment: drive it with a sinusoidal torque at frequency ω, wait "
+            "for the transient to die, and ask <b>how far does it move</b>. "
+            "Sweep ω and plot the answer. That plot is the frequency response, "
+            "and it has three completely different regions — each one a "
+            "different physical thing doing the resisting."))
+        fr.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>ω ≪ ω<sub>n</sub></b><br><i>slow shaking</i></td>"
+            "<td><b>The spring resists you.</b> You push slowly, the joint has "
+            "all the time in the world to follow, and the only thing opposing "
+            "you is the spring stretching. Amplitude = τ/K — <b>flat</b>, and "
+            "independent of frequency. Motion is <b>in phase</b> with your push "
+            "(0°): you push right, it goes right.</td></tr>"
+            "<tr><td><b>ω ≈ ω<sub>n</sub></b><br><i>resonance</i></td>"
+            "<td><b>Neither spring nor mass resists you — they cancel.</b> The "
+            "spring force and the inertial force are equal and opposite here, "
+            "so the <i>only</i> thing left opposing you is the damper. You are "
+            "pushing at exactly the rate the energy wants to slosh, so every "
+            "push adds energy in step with the motion and it accumulates — "
+            "until the damper's losses grow to match what you are putting in. "
+            "<b>Small damper ⇒ enormous amplitude.</b> Phase is exactly "
+            "<b>−90°</b>.</td></tr>"
+            "<tr><td><b>ω ≫ ω<sub>n</sub></b><br><i>fast shaking</i></td>"
+            "<td><b>The mass resists you.</b> You reverse before the joint has "
+            "gone anywhere; it simply cannot keep up. Amplitude falls as 1/ω² — "
+            "<b>−40 dB/decade</b> — and the motion ends up <b>−180°</b> out of "
+            "phase: you push right and it is still moving left.</td></tr>"
+            "</table>"))
+        fr.add(callout(
+            "<b>Resonance is not a mathematical artifact — it is the energy "
+            "trade being fed.</b><br><br>"
+            "The system already wants to pass energy between spring and mass at "
+            "ω<sub>n</sub>. Drive it at that frequency and your input arrives in "
+            "phase with the velocity every single cycle, so it does positive "
+            "work every cycle, and the stored energy climbs. Nothing stops it "
+            "except the damper, whose losses grow with amplitude. Equilibrium is "
+            "reached when \"energy in per cycle\" equals \"energy the damper "
+            "removes per cycle\".<br><br>"
+            "So the peak height is set by <b>ζ alone</b>, and it is exactly the "
+            "reciprocal of the damping:", "key"))
+        fr.add(math_label(r"|G(j\omega_n)| = \frac{1}{2\zeta} = Q, "
+                          r"\qquad M_r = \frac{1}{2\zeta\sqrt{1-\zeta^2}} "
+                          r"\;\;\text{at}\;\; "
+                          r"\omega_r = \omega_n\sqrt{1-2\zeta^2}", 16))
+        fr.add(body(
+            "<b>Q — the quality factor — is the single most physical number "
+            "here.</b> Q = 1/(2ζ) is the gain at ω<sub>n</sub>, and it is also "
+            "\"energy stored ÷ energy lost per radian\". A joint with ζ = 0.01 "
+            "has Q = 50: shake it at ω<sub>n</sub> with a torque that would "
+            "statically move it 1°, and it will swing <b>50°</b>. That is how a "
+            "trivial vibration destroys a lightly damped structure, and it is "
+            "why the SEA pages care so much about the spring resonance.",
+            dim=True))
+        self.add(fr)
+
+        pk = Card("the peak exists only below ζ = 0.707 — and that is the whole "
+                  "reason for that number")
+        pk.add(body(
+            "Look at ω<sub>r</sub> = ω<sub>n</sub>√(1 − 2ζ²). The moment "
+            "<b>2ζ² &gt; 1</b>, that square root has nothing real left, and "
+            "there is no peak at all — the curve just falls away from DC. That "
+            "threshold is:"))
+        pk.add(math_label(r"\zeta = \frac{1}{\sqrt{2}} = 0.7071", 17))
+        pk.add(body(
+            "<b>And it goes out gracefully, not abruptly</b> — worth knowing, "
+            "because \"the peak disappears at 0.707\" makes it sound like a "
+            "cliff. Feed ζ = 1/√2 into both formulas: ω<sub>r</sub> → 0 "
+            "<i>and</i> M<sub>r</sub> → 1 (0 dB). So as you raise ζ the peak "
+            "slides <b>leftwards toward DC</b> while simultaneously flattening, "
+            "and the two effects finish together. At the threshold the \"peak\" "
+            "is at zero frequency and the same height as the DC gain — which is "
+            "another way of saying there is no peak.", dim=True))
+        pk.add(body(
+            "<b>So ζ = 0.707 is not a taste or a tradition.</b> It is the exact "
+            "boundary between \"this system amplifies some band of frequencies\" "
+            "and \"this system amplifies nothing\". Below it there is a band the "
+            "robot is <i>more</i> sensitive to than DC — feed it a disturbance "
+            "there and you get it back magnified. At and above it, the response "
+            "is <b>maximally flat</b>: every frequency is attenuated or passed, "
+            "none is amplified.<br><br>"
+            "And at ζ = 0.707 the −3 dB bandwidth comes out almost exactly equal "
+            "to ω<sub>n</sub>, so the number you designed for is the number you "
+            "measure. Three good properties at one value of ζ, which is why "
+            "every controls textbook and every servo drive defaults to it."))
+        pk.add(callout(
+            "<b>Three frequencies, and they are not the same number.</b> This "
+            "trips up everybody, and the SEA page made the same complaint about "
+            "actuators.<br><br>"
+            "&nbsp;&nbsp;• <b>ω<sub>n</sub> = √(K/J)</b> — the natural "
+            "frequency. The pole radius. What it would ring at with no damper.<br>"
+            "&nbsp;&nbsp;• <b>ω<sub>d</sub> = ω<sub>n</sub>√(1−ζ²)</b> — what a "
+            "<i>step response</i> actually rings at. Slower, because the damper "
+            "steals energy mid-trade.<br>"
+            "&nbsp;&nbsp;• <b>ω<sub>r</sub> = ω<sub>n</sub>√(1−2ζ²)</b> — where "
+            "a <i>swept sine</i> peaks. Slower still.<br><br>"
+            "Always ω<sub>r</sub> &lt; ω<sub>d</sub> &lt; ω<sub>n</sub>. At "
+            "ζ = 0.1 they are 0.99, 0.995 and 1.0 — indistinguishable, which is "
+            "why nobody notices. At ζ = 0.6 they are <b>0.53, 0.80 and "
+            "1.0</b> — and now confusing them is a 47% error.", "warn"))
+        self.add(pk)
+
+        # ---- interactive: the magnitude/phase family ---------------------
+        i3 = Card("the plot itself — magnitude and phase against ω, for every ζ")
+        i3.add(body(
+            "The pale curves are a family of ζ values so you can see the shape "
+            "change; the bright one is yours. The x-axis is ω/ω<sub>n</sub>, so "
+            "<b>1.0 is always the natural frequency</b> whatever you set it to."
+            "<br><br>"
+            "<b>Three things to check for yourself:</b><br>"
+            "&nbsp;&nbsp;<b>1.</b> Every curve passes through the same point at "
+            "ω/ω<sub>n</sub> = 1 on the <i>phase</i> plot: exactly <b>−90°</b>, "
+            "for every ζ. That is how you find ω<sub>n</sub> from a measured "
+            "plant even when damping has flattened the peak out of "
+            "existence.<br>"
+            "&nbsp;&nbsp;<b>2.</b> Drag ζ down and watch the peak grow without "
+            "limit — and watch the phase transition get <i>sharper</i>. A "
+            "lightly damped system flips from 0° to −180° almost "
+            "instantaneously, which is what makes it so dangerous to wrap a "
+            "loop around.<br>"
+            "&nbsp;&nbsp;<b>3.</b> Walk ζ up towards 0.707 and watch <i>how</i> "
+            "the peak goes. It does not shrink in place — the ω<sub>r</sub> "
+            "marker <b>slides left towards DC</b> while the peak height falls "
+            "to 0 dB, and the two arrive together exactly at ζ = 1/√2. Past "
+            "that there is no peak to find.", dim=True))
+        self.s_zf = slider(3, 200, 30)           # x0.01
+        self.l_zf = QLabel()
+        i3.add_layout(slider_row("damping ζ (×0.01)", self.s_zf, self.l_zf))
+        self.st_mr = Stat("peak height M_r", "--", theme.BAD)
+        self.st_q = Stat("Q = gain at ω_n", "--", theme.VIOLET)
+        self.st_wr = Stat("peak at ω_r", "--", theme.WARN)
+        self.st_bw2 = Stat("−3 dB bandwidth", "--", theme.GOOD)
+        i3.add_layout(stat_row(self.st_mr, self.st_q, self.st_wr, self.st_bw2))
+        self.c3 = MplCanvas(width=7.4, height=3.8, nrows=2)
+        i3.add(self.c3)
+        self.add(i3)
+        self.s_zf.valueChanged.connect(self._redraw_freq)
+        self._redraw_freq()
+
+        self.add(callout(
+            "<b>What this costs you on a real robot.</b> The frequency response "
+            "is not a curiosity — it is the map of which disturbances your "
+            "machine amplifies.<br><br>"
+            "A leg with a lightly damped SEA spring at 12 Hz and ζ = 0.05 has "
+            "<b>Q = 10</b>. Ground texture, a gearbox tooth-mesh harmonic, or a "
+            "gait frequency that happens to land near 12 Hz arrives ten times "
+            "larger at the joint than its actual size. Nothing is wrong with the "
+            "controller; the mechanism is a 10× amplifier in that band.<br><br>"
+            "The three fixes are the three terms: <b>add damping</b> (raise ζ — "
+            "physical or via the loop's D term), <b>move ω<sub>n</sub></b> away "
+            "from the excitation (change K or J), or <b>notch it</b> — with all "
+            "the caveats the Lead/Lag page attaches to notches.", "warn"))
+
         u = Card("why second order is the universal model")
         u.add(body(
             "It is not that the world happens to be second order. It is that "
@@ -497,6 +663,79 @@ class SecondOrderPage(Page):
             "implementation's.", "warn"))
 
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_freq(self):
+        """
+        Magnitude and phase against normalised frequency, with a family of zeta
+        curves behind the selected one. Plotted against w/wn so the natural
+        frequency is always at 1.0 and only the SHAPE varies with zeta -- which
+        is the point being made.
+        """
+        z = self.s_zf.value() / 100.0
+        self.l_zf.setText(f"{z:.2f}")
+        wn = 1.0                       # normalised: x-axis is w/wn
+
+        ratios = [10 ** (-1.0 + 2.0 * i / 259.0) for i in range(260)]
+
+        def mag_phase(zz):
+            m, p = [], []
+            for r in ratios:
+                g = second_order(wn, zz).response(r)
+                m.append(20.0 * math.log10(max(abs(g), 1e-12)))
+                # unwrap by hand: a 2nd-order lag runs 0 -> -180, monotonically
+                ang = math.degrees(cmath.phase(g))
+                if ang > 1.0:
+                    ang -= 360.0
+                p.append(ang)
+            return m, p
+
+        mr_db = resonant_peak_db(z)
+        wr = resonant_frequency(z, wn)
+        q = quality_factor(z)
+        bw = bandwidth_second_order(z, wn)
+        self.st_mr.set("none" if wr <= 0 else f"+{mr_db:.1f} dB")
+        self.st_mr.set_color(theme.GOOD if wr <= 0 else
+                             (theme.WARN if mr_db < 10 else theme.BAD))
+        self.st_q.set(f"{q:.1f}" if math.isfinite(q) else "∞")
+        self.st_wr.set("no peak" if wr <= 0 else f"{wr:.2f} ω_n")
+        self.st_bw2.set(f"{bw:.2f} ω_n")
+
+        c = self.c3
+        c.clear()
+        a1, a2 = c.axes
+        for zz in (0.05, 0.1, 0.2, 0.4, 0.707, 1.0, 2.0):
+            m, p = mag_phase(zz)
+            a1.semilogx(ratios, m, color=theme.TEXT_FAINT, lw=0.9, alpha=0.55)
+            a2.semilogx(ratios, p, color=theme.TEXT_FAINT, lw=0.9, alpha=0.55)
+            a1.text(ratios[-1], m[-1], f" {zz:g}", color=theme.TEXT_FAINT,
+                    fontsize=6.2, va="center")
+        m, p = mag_phase(z)
+        a1.semilogx(ratios, m, color=theme.ACCENT, lw=2.4,
+                    label=f"your ζ = {z:.2f}")
+        a2.semilogx(ratios, p, color=theme.ACCENT, lw=2.4)
+
+        a1.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a1.axhline(-3.0, color=theme.GOOD, lw=1.0, ls=":", label="−3 dB")
+        a1.axvline(1.0, color=theme.VIOLET, lw=1.2, ls="-.", label="ω_n")
+        if wr > 0:
+            a1.axvline(wr, color=theme.BAD, lw=1.2)
+            a1.text(wr, mr_db + 1.5, " ω_r", color=theme.BAD, fontsize=7.5)
+        a1.set_ylim(-45, max(30, mr_db + 8))
+        a1.set_ylabel("|G|  (dB)")
+        a1.set_title("magnitude: the peak is 1/(2ζ) and vanishes above ζ = 0.707",
+                     fontsize=8.5)
+        c.legend(a1, loc="lower left")
+
+        a2.axvline(1.0, color=theme.VIOLET, lw=1.2, ls="-.")
+        a2.axhline(-90.0, color=theme.VIOLET, lw=1.0, ls=":")
+        a2.scatter([1.0], [-90.0], s=45, color=theme.VIOLET, zorder=6)
+        a2.set_ylim(-190, 10)
+        a2.set_ylabel("phase (deg)")
+        a2.set_xlabel("ω / ω_n      (1.0 IS the natural frequency)")
+        a2.set_title("phase: every curve passes −90° at ω_n, whatever ζ is",
+                     fontsize=8.5)
+        c.refresh()
 
     # ------------------------------------------------------------------
     def _redraw_energy(self):

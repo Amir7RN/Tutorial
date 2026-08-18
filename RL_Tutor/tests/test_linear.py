@@ -22,6 +22,10 @@ import numpy as np  # noqa: E402
 
 from ctrlcore.linear import (  # noqa: E402
     TF,
+    bandwidth_second_order,
+    damped_frequency,
+    quality_factor,
+    resonant_frequency,
     classify_stability,
     critical_gain,
     encirclements,
@@ -136,6 +140,46 @@ check("a pure second-order plant also has no critical gain",
       math.isinf(critical_gain(second_order(10.0, 0.5))))
 check("J,K,B -> wn,zeta  (K=100, B=4, J=0.25 -> 20, 0.4)",
       np.allclose(joint_wn_zeta(100.0, 4.0, 0.25), (20.0, 0.4)))
+
+# -- the frequency-domain face of zeta --------------------------------------
+check("Q = 1/(2 zeta), and it IS the gain at wn",
+      approx(quality_factor(0.05), 10.0)
+      and approx(abs(second_order(1.0, 0.05).response(1.0)), 10.0, 1e-9))
+check("the resonant peak sits at wn sqrt(1 - 2 z^2)",
+      approx(resonant_frequency(0.3, 1.0), math.sqrt(1 - 2 * 0.09), 1e-12))
+check("...and there is NO peak at or above zeta = 1/sqrt(2) exactly",
+      resonant_frequency(1 / math.sqrt(2), 1.0) == 0.0
+      and resonant_frequency(0.9, 1.0) == 0.0
+      and resonant_frequency(0.7, 1.0) > 0.0)
+check("the peak does not vanish abruptly -- it slides down to DC and "
+      "flattens: w_r -> 0 and M_r -> 0 dB as zeta -> 1/sqrt(2)",
+      resonant_frequency(0.7070, 1.0) < 0.02
+      and resonant_peak_db(0.7070) < 0.001
+      and resonant_frequency(0.70, 1.0) > 0.1)
+check("the peak found numerically matches the formula",
+      (lambda z: approx(
+          max(((abs(second_order(1.0, z).response(0.2 + 0.002 * i)), 0.2 + 0.002 * i)
+               for i in range(900)))[1],
+          resonant_frequency(z, 1.0), 3e-3))(0.35))
+check("M_r formula matches the numerically found peak height",
+      (lambda z: approx(
+          20 * math.log10(max(abs(second_order(1.0, z).response(0.2 + 0.002 * i))
+                              for i in range(900))),
+          resonant_peak_db(z), 1e-3))(0.35))
+check("the three frequencies are ordered w_r < w_d < w_n, strictly",
+      all(resonant_frequency(z, 1.0) < damped_frequency(z, 1.0) < 1.0
+          for z in (0.1, 0.3, 0.5, 0.7)))
+check("phase is exactly -90 deg at wn, for EVERY zeta",
+      all(approx(math.degrees(np.angle(second_order(1.0, z).response(1.0))),
+                 -90.0, 1e-9)
+          for z in (0.05, 0.2, 0.5, 0.707, 1.0, 3.0)))
+check("bandwidth ~ wn at zeta = 0.707 (why that value is the default)",
+      approx(bandwidth_second_order(0.7071, 1.0), 1.0, 2e-3),
+      bandwidth_second_order(0.7071, 1.0))
+check("bandwidth is the -3 dB point it claims to be",
+      all(approx(20 * math.log10(abs(second_order(1.0, z).response(
+          bandwidth_second_order(z, 1.0)))), -3.0103, 1e-3)
+          for z in (0.2, 0.5, 0.707, 1.5)))
 check("doubling K alone LOWERS zeta by sqrt(2)",
       approx(joint_wn_zeta(200.0, 4.0, 0.25)[1],
              joint_wn_zeta(100.0, 4.0, 0.25)[1] / math.sqrt(2), 1e-9))
