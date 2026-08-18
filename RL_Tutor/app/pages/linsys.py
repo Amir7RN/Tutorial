@@ -385,6 +385,64 @@ class SecondOrderPage(Page):
             "</table>"))
         self.add(p)
 
+        sh = Card("what the curve actually looks like — first order vs second "
+                  "order, side by side")
+        sh.add(body(
+            "Before any formula, the <b>shape</b>, because the two are easy to "
+            "picture wrongly:"))
+        sh.add(body(
+            "<b>First order.</b> Starts at zero, rises smoothly, decelerating "
+            "the whole way, and flattens onto the plateau. <b>Monotonic</b> — "
+            "it never goes down, never crosses its target, never wiggles. One "
+            "clean curve. (The previous page's argument: nothing is left over "
+            "when it arrives.)<br><br>"
+            "<b>Second order, underdamped</b> — the common case on a real "
+            "joint. Starts at zero, rises — and <b>keeps going past the "
+            "target</b>. Comes back down, crosses the target again, <b>dips "
+            "below it</b> (undershoot), turns around, overshoots again but "
+            "less, and keeps swapping sides with each swing smaller than the "
+            "last, converging on the plateau."))
+        sh.add(callout(
+            "<b>The image that gets it right: a bouncing ball.</b> Each bounce "
+            "is smaller than the one before, the bounces get closer together in "
+            "amplitude, and the whole thing converges onto the floor. It does "
+            "not <i>approach</i> the floor smoothly — it repeatedly overshoots "
+            "and comes back, with the excursions shrinking.<br><br>"
+            "And the shrinking follows a rule: the peaks sit on a decaying "
+            "exponential <b>envelope</b>, e<sup>−ζω<sub>n</sub>t</sup>. That "
+            "envelope is <i>the same shape as the entire first-order "
+            "response</i>. So the honest one-liner is: <b>a second-order "
+            "response is a first-order decay with an oscillation living inside "
+            "it.</b><br><br>"
+            "The envelope is drawn as the dashed curves on the plot below, and "
+            "<b>the response touches it exactly at every peak and trough</b> — "
+            "it is the curve the extrema ride on. The envelope is set by the "
+            "<b>real</b> part of the poles (−ζω<sub>n</sub>); the wiggling "
+            "inside it is set by the <b>imaginary</b> part (ω<sub>d</sub>). Two "
+            "parts of the pole, two features of the picture.", "key"))
+        sh.add(body(
+            "<b>And the envelope is where the overshoot formula comes "
+            "from.</b> The first peak happens at t<sub>p</sub> = π/ω<sub>d</sub>. "
+            "Put that into the envelope and the exponent becomes "
+            "ζω<sub>n</sub>·π/(ω<sub>n</sub>√(1−ζ²)) — the ω<sub>n</sub> "
+            "cancels, and what is left is"))
+        sh.add(math_label(r"M_p = e^{-\zeta\omega_n t_p} "
+                          r"= e^{-\pi\zeta/\sqrt{1-\zeta^2}}", 16))
+        sh.add(body(
+            "…the formula from the previous card, derived rather than quoted. "
+            "It also explains, in one line, <b>why overshoot cannot depend on "
+            "ω<sub>n</sub></b>: a faster system has a faster-decaying envelope "
+            "<i>and</i> reaches its peak proportionally sooner, and the two "
+            "effects cancel exactly.", dim=True))
+        sh.add(body(
+            "<b>Raise ζ and the wiggles disappear before the curve does.</b> At "
+            "ζ = 1 there is no crossing at all and the response looks "
+            "first-order-ish again — smooth, monotonic — except that it starts "
+            "flat rather than at full slope, because the mass has to be "
+            "accelerated first. That subtle difference at t = 0 is the "
+            "last visible trace of the second energy store.", dim=True))
+        self.add(sh)
+
         m = Card("the four formulas you will actually use")
         m.add(math_label(r"M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}} \qquad "
                          r"t_s \approx \frac{4}{\zeta\omega_n} \qquad "
@@ -839,9 +897,21 @@ class SecondOrderPage(Page):
         a1.plot(t, y, color=theme.ACCENT if z > 0 else theme.BAD, lw=2.2)
         a1.axhline(1.0, color=theme.TEXT_FAINT, lw=1.1, ls="--")
         if 0 < z < 1:
+            # The peak locus, exp(-zeta*wn*t). Note this is NOT the outer bound
+            # of the sinusoid -- that one is larger by 1/sqrt(1-z^2) and is
+            # touched between the peaks. This curve is the one that passes
+            # exactly THROUGH the extrema of y, which is the one worth drawing:
+            # evaluated at the first peak time it reproduces the overshoot
+            # formula exactly.
+            env = [math.exp(-z * wn * ti) for ti in t]
+            a1.plot(t, [1 + e for e in env], color=theme.VIOLET, lw=1.1,
+                    ls="--", label="envelope  e^(−ζω_n t)")
+            a1.plot(t, [1 - e for e in env], color=theme.VIOLET, lw=1.1,
+                    ls="--")
             a1.axhline(1 + overshoot_fraction(z), color=theme.WARN, lw=1.0,
                        ls=":", label="predicted peak")
             a1.axvline(peak_time(z, wn), color=theme.WARN, lw=1.0, ls=":")
+            a1.set_ylim(min(-0.15, min(y) - 0.1), max(2.1, 1 + env[0] * 1.05))
             c.legend(a1, loc="lower right")
         a1.set_xlabel("time (s)")
         a1.set_ylabel("θ")
@@ -1012,8 +1082,45 @@ class StabilityPage(Page):
         r.add(body(
             "The classic worked example, which is also the standard cautionary "
             "tale about proportional gain:"))
-        r.add(math_label(r"L(s) = \frac{K}{s(s+1)(s+2)} \quad\Longrightarrow"
-                         r"\quad s^3 + 3s^2 + 2s + K = 0", 16))
+        r.add(math_label(r"L(s) = \frac{K}{s(s+1)(s+2)}", 16))
+        r.add(body(
+            "<b>First: where does a characteristic polynomial come from?</b> "
+            "This step gets skipped constantly and then nothing afterwards "
+            "makes sense. You are handed an <i>open-loop</i> L(s) and you need "
+            "the <i>closed-loop</i> denominator. The bridge is the same fact "
+            "the Nyquist page is built on — closed-loop poles are where "
+            "L(s) = −1, i.e. where 1 + L(s) = 0. So write that down and clear "
+            "the fraction:"))
+        r.add(math_label(r"1 + \frac{K}{s(s+1)(s+2)} = 0", 16))
+        r.add(body(
+            "Multiply <b>every term</b> by the denominator s(s+1)(s+2). The "
+            "fraction cancels and the 1 becomes the whole denominator:"))
+        r.add(math_label(r"s(s+1)(s+2) + K = 0", 16))
+        r.add(body("Now just expand the product, left to right:"))
+        r.add(math_label(r"s(s+1) = s^2 + s", 15))
+        r.add(math_label(r"(s^2+s)(s+2) = s^3 + 2s^2 + s^2 + 2s "
+                         r"= s^3 + 3s^2 + 2s", 15))
+        r.add(math_label(r"\boldsymbol{s^3 + 3s^2 + 2s + K = 0}", 17))
+        r.add(callout(
+            "<b>The general rule, so you never have to redo the algebra.</b> "
+            "For L(s) = num/den, clearing the fraction in 1 + num/den = 0 "
+            "always gives<br><br>"
+            "&nbsp;&nbsp;&nbsp;&nbsp;<b>characteristic polynomial = den(L) + "
+            "num(L)</b><br><br>"
+            "Add the numerator to the denominator. That is the entire "
+            "operation, and it is exactly what <code>TF.feedback()</code> does "
+            "in one line of <code>ctrlcore/linear.py</code> — "
+            "<code>poly_add(self.den, self.num)</code>.<br><br>"
+            "Note what it means: the closed-loop poles are the roots of "
+            "den + num, and the open-loop poles were the roots of den alone. "
+            "<b>Feedback mixes the numerator into the denominator</b>, and that "
+            "is why the poles move. Same sentence as the Making It Stable "
+            "page, arrived at from the algebra instead.", "key"))
+        r.add(body(
+            "Those four coefficients — <b>1, 3, 2, K</b> — are what you feed "
+            "into the Routh array. Note K sits in the constant term, which is "
+            "why it ends up in the last row and why the stability condition "
+            "comes out as a bound on K.", dim=True))
         r.add(body(
             "The first column comes out as 1, 3, (6−K)/3, K. For every entry to "
             "stay positive you need <b>0 &lt; K &lt; 6</b>. At exactly K = 6 a "
@@ -1226,8 +1333,124 @@ class BodePage(Page):
             "<b>Targets on real hardware: PM 45–60°, GM 6–12 dB.</b> Below "
             "PM 30° a robot rings visibly and any payload change is a gamble. "
             "Above PM 70° you are almost certainly leaving bandwidth on the "
-            "table.", dim=True))
+            "table. Under 6 dB of gain margin is cutting it thin; far beyond "
+            "12 dB you are usually trading away performance for margin you do "
+            "not need.", dim=True))
         self.add(m)
+
+        # ---- the sign trap ------------------------------------------------
+        sg = Card("the minus sign in GM — where it comes from, and what "
+                  "positive/negative mean")
+        sg.add(body(
+            "Read the gain-margin formula again and notice it has a <b>minus "
+            "sign glued to the front</b>. That is not decoration; it flips the "
+            "convention, and it is the source of a very common mix-up."))
+        sg.add(body(
+            "At a healthy ω<sub>pc</sub> the loop gain is <i>below</i> 1, so "
+            "log<sub>10</sub>|L| is <b>negative</b> — and the leading minus "
+            "turns it <b>positive</b>. So, by construction:"))
+        sg.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>|L| at ω<sub>pc</sub></b></td><td><b>raw dB</b></td>"
+            "<td><b>GM = −(raw dB)</b></td><td><b>meaning</b></td></tr>"
+            "<tr><td>0.25</td><td>−12 dB</td>"
+            "<td style='color:#3fb950'><b>+12 dB</b></td>"
+            "<td>4× of headroom before it oscillates. Comfortable.</td></tr>"
+            "<tr><td>0.5</td><td>−6 dB</td>"
+            "<td style='color:#3fb950'><b>+6 dB</b></td>"
+            "<td>2× of headroom. The usual lower bound.</td></tr>"
+            "<tr><td>1.0</td><td>0 dB</td><td style='color:#d29922'><b>0 dB</b>"
+            "</td><td>Exactly on the edge — sustained oscillation.</td></tr>"
+            "<tr><td>2.0</td><td>+6 dB</td>"
+            "<td style='color:#f85149'><b>−6 dB</b></td>"
+            "<td><b>Already unstable.</b> You are past the edge, not "
+            "approaching it.</td></tr>"
+            "</table>"))
+        sg.add(body(
+            "<b>So for the gain-margin number: positive = safe, negative = "
+            "already unstable, and bigger positive = more room.</b> A negative "
+            "gain margin is not a small margin; it is a statement that the "
+            "nominal design does not work.", dim=True))
+        self.add(sg)
+
+        # ---- the two readings of one axis ---------------------------------
+        self.add(hline())
+        self.add(title("One dB axis, two completely different questions — the "
+                       "mix-up worth killing now"))
+
+        tw = Card("\"is positive dB good or bad?\" — wrong question, until you "
+                  "say which reading")
+        tw.add(body(
+            "Having just been told that <i>negative</i> dB at ω<sub>pc</sub> is "
+            "the safe case, it is very natural to conclude that negative dB is "
+            "generally good — which collides head-on with the first-order "
+            "frequency page, where the flat <b>positive</b> region was the good "
+            "part (faithful tracking) and the rolloff into negative dB was the "
+            "system falling behind.<br><br>"
+            "<b>Both statements are correct.</b> They are answers to two "
+            "different questions that happen to be asked of the same curve, on "
+            "the same axis."))
+        tw.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td></td><td><b>The fidelity reading</b></td>"
+            "<td><b>The stability reading</b></td></tr>"
+            "<tr><td><b>Question</b></td>"
+            "<td>Does the output faithfully follow the input at this "
+            "frequency?</td>"
+            "<td>Is the loop weak enough here to avoid sustaining its own "
+            "oscillation?</td></tr>"
+            "<tr><td><b>Asked of</b></td>"
+            "<td>one block on its own — a plant, a sensor, a filter</td>"
+            "<td>the <i>whole loop</i> L = controller × plant × sensor</td></tr>"
+            "<tr><td><b>Asked where</b></td>"
+            "<td><b>at every frequency</b> — the whole curve is the answer</td>"
+            "<td><b>at exactly one frequency</b> — where the phase is "
+            "−180°</td></tr>"
+            "<tr><td><b>0 dB means</b></td>"
+            "<td>output = input. Perfect tracking.</td>"
+            "<td>the returning signal comes back exactly full-size. The edge of "
+            "instability.</td></tr>"
+            "<tr><td><b>Positive dB</b></td>"
+            "<td><span style='color:#3fb950'>fine</span> — and normal at low "
+            "frequency, where you <i>want</i> strong correction</td>"
+            "<td><span style='color:#f85149'>fatal</span>, but only if it "
+            "happens at ω<sub>pc</sub></td></tr>"
+            "<tr><td><b>Negative dB</b></td>"
+            "<td><span style='color:#d29922'>attenuated</span> — poor tracking, "
+            "but perfectly stable; normal at high frequency</td>"
+            "<td><span style='color:#3fb950'>safe</span> — this is what buys "
+            "you gain margin</td></tr>"
+            "</table>"))
+        tw.add(callout(
+            "<b>Every real loop's magnitude curve is positive at low frequency "
+            "and negative at high frequency.</b> That shape is not a fault to "
+            "be fixed — it is what a working design looks like. High gain down "
+            "low is how you reject disturbances and kill steady-state error; "
+            "rolloff up high is how you ignore noise and stay stable.<br><br>"
+            "So do not scan the curve for its sign. <b>There is exactly one "
+            "frequency where the sign carries a stability verdict, and you have "
+            "to find it on the phase plot first.</b> Everywhere else, the sign "
+            "is telling you about tracking, not about danger.", "key"))
+        tw.add(body(
+            "<b>And now the payoff, which is the nicest result on this "
+            "page.</b> Those two readings are not merely compatible — the "
+            "\"bad\" one causes the \"good\" one.<br><br>"
+            "A plant's magnitude rolloff is poor tracking at high frequency. It "
+            "is <i>also</i> exactly the thing that has already crushed the loop "
+            "gain by the time the phase has crawled around to −180°. The "
+            "attenuation that makes it a bad follower is what makes it a safe "
+            "loop.<br><br>"
+            "That is the mechanism behind the claim on the two previous pages "
+            "that a plain first- or second-order plant cannot be destabilised "
+            "by proportional feedback: <b>one pole runs out of phase at −90° "
+            "and two only reach −180° asymptotically — and by then their own "
+            "rolloff has taken the gain far below 1.</b> Phase and magnitude "
+            "are racing, and for those plants magnitude always wins. "
+            "Instability needs a third pole, a resonance, or a delay — "
+            "something that supplies extra phase <i>without</i> the "
+            "accompanying attenuation. A pure delay is the purest example: "
+            "unlimited phase lag at <b>unity gain</b>, forever.", dim=True))
+        self.add(tw)
 
         pm = Card("phase margin IS damping — the bridge to the last page")
         pm.add(body(
@@ -1247,6 +1470,24 @@ class BodePage(Page):
             "up to ζ ≈ 0.7). And hence the practical translation: <b>\"my loop "
             "has 45° of phase margin\" and \"my robot overshoots about 20%\" "
             "are the same sentence.</b>", dim=True))
+        pm.add(callout(
+            "<b>\"Phase margin is damping\" is not an analogy — it is a "
+            "prediction, and this is what makes the frequency domain worth "
+            "learning.</b><br><br>"
+            "Follow the chain: you measure <b>45° of phase margin</b> on a "
+            "swept sine. The table says that is <b>ζ ≈ 0.43</b>. The "
+            "second-order page says overshoot is e<sup>−πζ/√(1−ζ²)</sup>, which "
+            "at that ζ is <b>≈ 22%</b>. So you now know the robot will "
+            "overshoot its step by about a fifth and ring a couple of visible "
+            "cycles before settling.<br><br>"
+            "<b>You have not run a step.</b> You never commanded a trajectory, "
+            "never watched a transient, and you got the <i>shape</i> of the "
+            "time response — how bouncy, how many wiggles, how far past — out "
+            "of a single number read off a frequency plot.<br><br>"
+            "Backwards works too, and is what you will actually do on hardware: "
+            "the robot overshoots ~20%, so ζ ≈ 0.45, so the loop has roughly "
+            "45° of phase margin, so there is not much room left — stop raising "
+            "the gain.", "key"))
         self.add(pm)
 
         # ---- interactive ------------------------------------------------

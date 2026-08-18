@@ -180,6 +180,40 @@ check("bandwidth is the -3 dB point it claims to be",
       all(approx(20 * math.log10(abs(second_order(1.0, z).response(
           bandwidth_second_order(z, 1.0)))), -3.0103, 1e-3)
           for z in (0.2, 0.5, 0.707, 1.5)))
+# -- the decay envelope the page draws --------------------------------------
+_te, _ye = step_response(second_order(6.0, 0.25), 4.0, 5e-4)
+
+
+def _env(ti, z=0.25, wn=6.0):
+    """The PEAK LOCUS the page draws -- the curve the extrema ride on. The
+    outer bound of the sinusoid is this times 1/sqrt(1-z^2) and is touched
+    between the peaks, not at them; drawing that one instead is a subtle and
+    easy mistake."""
+    return math.exp(-z * wn * ti)
+
+
+check("the response touches the drawn envelope EXACTLY at the first peak",
+      approx(abs(max(_ye) - 1.0), _env(peak_time(0.25, 6.0)), 1e-3),
+      (abs(max(_ye) - 1.0), _env(peak_time(0.25, 6.0))))
+_after_peak = [(t, y) for t, y in zip(_te, _ye) if t > peak_time(0.25, 6.0)]
+check("...and at the first trough too (search AFTER the peak -- before it the "
+      "curve is still climbing from zero and is lower than any trough)",
+      approx(abs(min(y for _, y in _after_peak) - 1.0),
+             _env(2 * peak_time(0.25, 6.0)), 1e-3),
+      (abs(min(y for _, y in _after_peak) - 1.0),
+       _env(2 * peak_time(0.25, 6.0))))
+check("envelope at t_p IS the overshoot formula -- same number, two routes",
+      approx(_env(peak_time(0.25, 6.0)), overshoot_fraction(0.25), 1e-9))
+check("the envelope decays at exactly the pole's real part",
+      approx(-math.log(_env(1.0) / _env(0.0)), 0.25 * 6.0, 1e-9))
+check("the response does stay inside the wider sinusoid bound everywhere",
+      all(abs(y - 1.0) <= _env(t) / math.sqrt(1 - 0.0625) + 1e-6
+          for t, y in zip(_te, _ye)))
+check("underdamped really does undershoot (dip below the target), which "
+      "first order never does",
+      min(_ye[int(len(_ye) * 0.05):]) < 1.0 - 1e-3
+      and min(step_response(first_order(1.0, 0.2), 2.0, 1e-3)[1]) >= -1e-9)
+
 check("doubling K alone LOWERS zeta by sqrt(2)",
       approx(joint_wn_zeta(200.0, 4.0, 0.25)[1],
              joint_wn_zeta(100.0, 4.0, 0.25)[1] / math.sqrt(2), 1e-9))
