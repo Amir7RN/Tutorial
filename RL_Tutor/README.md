@@ -5,17 +5,17 @@ actuator dynamics and reinforcement learning** — built from `Impedance_Materia
 (pages 1–6, 9, 10), the Best/Rouse/Gregg impedance-control paper
 (`ImpedanceControl.pdf`), and `RL.pdf` (pages 1, 3, 4, 5, 6, 7, 8, 11).
 
-71 pages, every algorithm live and steppable, every formula rendered, every code
+72 pages, every algorithm live and steppable, every formula rendered, every code
 panel pulled from the real source with `inspect.getsource` so nothing on screen
 can drift out of sync with what actually ran.
 
 The tutor is in two halves and is written to be read **in order**:
 
-1. **Control & dynamics (pages 1–42)** — what the world physically feels when it
+1. **Control & dynamics (pages 1–43)** — what the world physically feels when it
    touches the robot, and how a controller can shape that. Starts from real-time
    constraints and `J_eff = J_m + J_L`, and ends at the biomechanics that
    motivate the whole design.
-2. **Reinforcement learning (pages 43–71)** — how a policy is found for a machine
+2. **Reinforcement learning (pages 44–72)** — how a policy is found for a machine
    whose dynamics you now understand. Page 43 is a game you play with the arrow
    keys, and every symbol introduced later refers back to something you have
    already felt.
@@ -61,7 +61,7 @@ pip install -r requirements.txt
 python -m app.main
 ```
 
-`Ctrl+←` / `Ctrl+→` move between pages. The sidebar groups the 71 pages into
+`Ctrl+←` / `Ctrl+→` move between pages. The sidebar groups the 72 pages into
 collapsible sections — click a section header to expand it — and `Ctrl+F` focuses
 the filter box.
 
@@ -105,7 +105,7 @@ RL_Tutor/
     theme.py                 palette and stylesheet
     widgets/                 grid painter, code pane, math renderer, plots
     widgets/diagram.py       BlockDiagram -- the control block diagrams
-    pages/                   the 71 pages
+    pages/                   the 72 pages
       realtime.py              page  1:     real-time control
       orient.py                page  2:     the control problem, and what
                                             "order" is actually for
@@ -114,18 +114,19 @@ RL_Tutor/
       firstorder.py            pages 5-9:   first order, one idea per page
       linsys.py                pages 10-13: second order, stability, Bode,
                                             Nyquist
-      ctrldesign.py            pages 14-17: root locus, lead/lag, state
+      zeros.py                 page  14:    what a zero is, and what it does
+      ctrldesign.py            pages 15-18: root locus, lead/lag, state
                                             feedback, observers
-      nonlin.py                pages 18-19: nonlinear systems and control
-      motors.py                pages 20-24: actuator mechanics
-      paradigms.py             pages 25-32: the control paradigms
-      pid.py                   page  27:    PID in practice
-      design.py                pages 33-35: drivetrain choice, scaling, 1X Neo
-      proprio.py               pages 36-38: proprioception
-      forcefb.py               pages 39-40: positive force feedback
-      biodesign.py             pages 41-42: bio -> robot translation
-      intro.py                 pages 43-47: the RL opening sequence
-      bellman.py               pages 54-57: one page per Bellman equation
+      nonlin.py                pages 19-20: nonlinear systems and control
+      motors.py                pages 21-25: actuator mechanics
+      paradigms.py             pages 26-33: the control paradigms
+      pid.py                   page  28:    PID in practice
+      design.py                pages 34-36: drivetrain choice, scaling, 1X Neo
+      proprio.py               pages 37-39: proprioception
+      forcefb.py               pages 40-41: positive force feedback
+      biodesign.py             pages 42-43: bio -> robot translation
+      intro.py                 pages 44-48: the RL opening sequence
+      bellman.py               pages 55-58: one page per Bellman equation
   tests/
     test_ctrl.py             correctness checks for ctrlcore
     test_linear.py           correctness checks for linear.py / nonlinear.py
@@ -157,7 +158,7 @@ pi, V, sweeps = value_iteration(P, gamma=0.99)
 print(sweeps, round(V[0], 4), [ACTION_ARROWS[a] for a in pi[:4]])
 ```
 
-## Part I — Control & Dynamics (pages 1–42)
+## Part I — Control & Dynamics (pages 1–43)
 
 The order is **theory, then mechanics, then control, then biology**. The linear
 systems block comes early only to supply vocabulary: "bandwidth", "damping" and
@@ -184,43 +185,44 @@ robot, and that number is fixed by hardware long before any software runs.
 | 11 | Stability & How to Check It *(LHP, marginal as its own category, Routh–Hurwitz)* | — |
 | 12 | Bode Plots, Gain & Phase Margin *(how far from the edge, and PM ≈ 100ζ)* | — |
 | 13 | The Nyquist Plot *(the −1 point, Z = N + P, and the vector margin that does not lie)* | — |
+| 14 | What a Zero Is *(a zero is a frequency the system refuses to pass; two paths cancelling; the wrong-way step of a right-half-plane zero and the bandwidth ceiling it imposes; and the zero as the destination the closed-loop poles walk toward)* | — |
 | | **Controller Design** — moving the poles on purpose | |
-| 14 | Making It Stable *(root locus; D adds a zero and that is why it damps; the inverted pendulum needs both K_p > mgl and K_d > 0)* | — |
-| 15 | Lead, Lag & Notch *(designed, not tuned — and why a notch betrays you in service)* | — |
-| 16 | State Feedback & Pole Placement *(controllability as a mechanical verdict; Ackermann; LQR)* | — |
-| 17 | Observers & Observability *(Luenberger, duality, separation; the disturbance observer behind "sensorless" collision detection)* | — |
+| 15 | Making It Stable *(root locus; D adds a zero and that is why it damps; the inverted pendulum needs both K_p > mgl and K_d > 0)* | — |
+| 16 | Lead, Lag & Notch *(designed, not tuned — and why a notch betrays you in service)* | — |
+| 17 | State Feedback & Pole Placement *(controllability as a mechanical verdict; Ackermann; LQR)* | — |
+| 18 | Observers & Observability *(Luenberger, duality, separation; the disturbance observer behind "sensorless" collision detection)* | — |
 | | **Nonlinear** — what all of the above was assuming | |
-| 18 | Nonlinear Systems *(the six places a robot breaks superposition; phase portraits, basins, limit cycles from stiction)* | — |
-| 19 | Controlling a Nonlinear Robot *(gain scheduling, computed torque, sliding mode, Lyapunov, passivity — then the handover to RL)* | — |
+| 19 | Nonlinear Systems *(the six places a robot breaks superposition; phase portraits, basins, limit cycles from stiction)* | — |
+| 20 | Controlling a Nonlinear Robot *(gain scheduling, computed torque, sliding mode, Lyapunov, passivity — then the handover to RL)* | — |
 | | **Actuators** — what the world actually feels | |
-| 20 | Effective Inertia *(direct drive, and what J_eff means for design, motor spec and control)* | material p.1–3 |
-| 21 | Series Elastic Actuators *(the spring between, and the **three** frequencies people conflate)* | material p.2 |
-| 22 | Parallel Elastic Actuators *(the spring alongside; what negative J_eff really means)* | material p.3 |
-| 23 | DD vs SEA vs PEA *(torque, speed, inertia, bandwidth — and which is "better", per band)* | material p.2–3 |
-| 24 | Gearing & Reflected Inertia *(the N² square law, and three ways out of it)* | material p.1 |
+| 21 | Effective Inertia *(direct drive, and what J_eff means for design, motor spec and control)* | material p.1–3 |
+| 22 | Series Elastic Actuators *(the spring between, and the **three** frequencies people conflate)* | material p.2 |
+| 23 | Parallel Elastic Actuators *(the spring alongside; what negative J_eff really means)* | material p.3 |
+| 24 | DD vs SEA vs PEA *(torque, speed, inertia, bandwidth — and which is "better", per band)* | material p.2–3 |
+| 25 | Gearing & Reflected Inertia *(the N² square law, and three ways out of it)* | material p.1 |
 | | **Control Paradigms** — four answers to one question | |
-| 25 | The Goal of Control *(the agent–environment loop, shared with the RL half)* | — |
-| 26 | Position Control *(command where; accept whatever force that takes)* | — |
-| 27 | PID in Practice *(anti-windup, derivative filtering, and what jitter breaks)* | real-time |
-| 28 | Torque & Current Control *(the cascade: every paradigm is current control underneath)* | — |
-| 29 | Impedance Control *(motion in → force out; θ_eq vs θ_d; PD vs impedance)* | material p.1 · Hogan 1984 |
-| 30 | Admittance Control *(force in → motion out; the shape of the response)* | material p.1 |
-| 31 | Impedance vs Admittance *(the decision, and the hardware that forces it)* | material p.1 |
-| 32 | The Impedance Spectrum *(they were all one controller all along)* | ImpedanceControl.pdf |
+| 26 | The Goal of Control *(the agent–environment loop, shared with the RL half)* | — |
+| 27 | Position Control *(command where; accept whatever force that takes)* | — |
+| 28 | PID in Practice *(anti-windup, derivative filtering, and what jitter breaks)* | real-time |
+| 29 | Torque & Current Control *(the cascade: every paradigm is current control underneath)* | — |
+| 30 | Impedance Control *(motion in → force out; θ_eq vs θ_d; PD vs impedance)* | material p.1 · Hogan 1984 |
+| 31 | Admittance Control *(force in → motion out; the shape of the response)* | material p.1 |
+| 32 | Impedance vs Admittance *(the decision, and the hardware that forces it)* | material p.1 |
+| 33 | The Impedance Spectrum *(they were all one controller all along)* | ImpedanceControl.pdf |
 | | **Robot Design** | |
-| 33 | Which Actuator, Which Robot *(humanoid vs biped vs quadruped)* | material p.4 |
-| 34 | Scaling Up: The Square-Cube Law *(m∝L³, τ∝L², J∝L⁵)* | material p.4 |
-| 35 | Case Study: 1X Neo *(tendon-driven proprioceptive QDD)* | material p.5 |
+| 34 | Which Actuator, Which Robot *(humanoid vs biped vs quadruped)* | material p.4 |
+| 35 | Scaling Up: The Square-Cube Law *(m∝L³, τ∝L², J∝L⁵)* | material p.4 |
+| 36 | Case Study: 1X Neo *(tendon-driven proprioceptive QDD)* | material p.5 |
 | | **Proprioception** | |
-| 36 | Proprioception in Biology *(spindles, GTOs, and the timescales)* | material p.6 |
-| 37 | Robotic Proprioception *(transparency is the prerequisite, not the goal)* | material p.6 |
-| 38 | Active Proprioceptive Compliance *(software-defined compliance, three layers)* | material p.6 |
+| 37 | Proprioception in Biology *(spindles, GTOs, and the timescales)* | material p.6 |
+| 38 | Robotic Proprioception *(transparency is the prerequisite, not the goal)* | material p.6 |
+| 39 | Active Proprioceptive Compliance *(software-defined compliance, three layers)* | material p.6 |
 | | **Force Feedback** | |
-| 39 | Positive Force Feedback *(why "positive" is not a mistake)* | material p.9 |
-| 40 | Closing the Force Loop *(the maths, live, and the honesty test)* | material p.9 |
+| 40 | Positive Force Feedback *(why "positive" is not a mistake)* | material p.9 |
+| 41 | Closing the Force Loop *(the maths, live, and the honesty test)* | material p.9 |
 | | **Bio → Robot** | |
-| 41 | Actuation & Sensing *(muscles and receptors as design requirements)* | material p.10 |
-| 42 | Skin & Bone *(the structures that shape force before control runs)* | material p.10 |
+| 42 | Actuation & Sensing *(muscles and receptors as design requirements)* | material p.10 |
+| 43 | Skin & Bone *(the structures that shape force before control runs)* | material p.10 |
 
 ### What the interactive pages actually let you do
 
@@ -335,7 +337,7 @@ Five sentences carry the whole first half:
    nominal positions. Almost every published "impedance controller" is somewhere
    in the middle of that line.
 
-## Part II — Reinforcement Learning (pages 43–71)
+## Part II — Reinforcement Learning (pages 44–72)
 
 The order is deliberately **concrete before abstract**. You walk the lake by
 hand before anything is given a symbol, and no page shows a number whose origin
@@ -344,39 +346,39 @@ has not already been built up.
 | # | Page | Notes page |
 |---|------|-----------|
 | | **Start Here** — the environment, then the vocabulary | |
-| 43 | What is Reinforcement Learning? *(you play it, by hand)* | p.1, p.6 |
-| 44 | The Frozen Lake *(the board and its geometry)* | p.1 |
-| 45 | Stochastic Transitions *(the slippery ice, with real probabilities)* | p.1 |
-| 46 | Rewards *(what the lake pays you; sparse vs shaped)* | p.1, p.6 §2.2.5 |
-| 47 | Return & the Discount Factor *(a list of rewards → one number)* | p.1, p.6 |
-| 48 | Policies *(the thing we are searching for)* | p.1, p.6 |
-| 49 | The Markov Decision Process *(all five pieces, formally named)* | p.1 |
+| 44 | What is Reinforcement Learning? *(you play it, by hand)* | p.1, p.6 |
+| 45 | The Frozen Lake *(the board and its geometry)* | p.1 |
+| 46 | Stochastic Transitions *(the slippery ice, with real probabilities)* | p.1 |
+| 47 | Rewards *(what the lake pays you; sparse vs shaped)* | p.1, p.6 §2.2.5 |
+| 48 | Return & the Discount Factor *(a list of rewards → one number)* | p.1, p.6 |
+| 49 | Policies *(the thing we are searching for)* | p.1, p.6 |
+| 50 | The Markov Decision Process *(all five pieces, formally named)* | p.1 |
 | | **Value Functions** — how good is a square? | |
-| 50 | V(s) — State Value | p.1 §2.6.2 |
-| 51 | Q(s,a) — Action Value | p.1 §2.6.3 |
-| 52 | V vs Q — the Difference | p.1, p.7 |
-| 53 | The Bellman Equations *(all four at once — the map)* | p.1, p.5 |
-| 54 | Bellman ① V<sup>π</sup> *(expectation — drag π(a\|s) and watch V move)* | p.1, p.5 |
-| 55 | Bellman ② Q<sup>π</sup> *(the π-average, delayed one step)* | p.1, p.5 |
-| 56 | Bellman ③ V\* *(optimality — swap max for min and see)* | p.1, p.5 |
-| 57 | Bellman ④ Q\* *(the max, delayed one step → Q-learning)* | p.1, p.5 |
+| 51 | V(s) — State Value | p.1 §2.6.2 |
+| 52 | Q(s,a) — Action Value | p.1 §2.6.3 |
+| 53 | V vs Q — the Difference | p.1, p.7 |
+| 54 | The Bellman Equations *(all four at once — the map)* | p.1, p.5 |
+| 55 | Bellman ① V<sup>π</sup> *(expectation — drag π(a\|s) and watch V move)* | p.1, p.5 |
+| 56 | Bellman ② Q<sup>π</sup> *(the π-average, delayed one step)* | p.1, p.5 |
+| 57 | Bellman ③ V\* *(optimality — swap max for min and see)* | p.1, p.5 |
+| 58 | Bellman ④ Q\* *(the max, delayed one step → Q-learning)* | p.1, p.5 |
 | | **Dynamic Programming** — solve it, knowing the ice | |
-| 58 | Policy Evaluation | p.4, p.6 |
-| 59 | Policy Improvement | p.4, p.6 |
-| 60 | Policy Iteration | p.3, p.4 |
-| 61 | Value Iteration | p.3, p.4 |
-| 62 | Policy vs Value Iteration | p.3, p.4 |
+| 59 | Policy Evaluation | p.4, p.6 |
+| 60 | Policy Improvement | p.4, p.6 |
+| 61 | Policy Iteration | p.3, p.4 |
+| 62 | Value Iteration | p.3, p.4 |
+| 63 | Policy vs Value Iteration | p.3, p.4 |
 | | **Monte Carlo** — learn it, *not* knowing the ice | |
-| 63 | Monte Carlo = Averaging | p.5 |
-| 64 | MC Prediction (FVMC/EVMC) | p.5 §4.2–4.3 |
-| 65 | MC Control (GPI) | p.5 §4.4 |
+| 64 | Monte Carlo = Averaging | p.5 |
+| 65 | MC Prediction (FVMC/EVMC) | p.5 §4.2–4.3 |
+| 66 | MC Control (GPI) | p.5 §4.4 |
 | | **Beyond** | |
-| 66 | Exploration vs Exploitation | p.1 §2.5 |
-| 67 | Model-Based vs Model-Free | p.4, p.5 |
-| 68 | Hyperparameters | p.6 §2.6 |
-| 69 | What "Convergence" Means | p.11 |
-| 70 | Code Lab | — |
-| 71 | Adam, Backprop & BatchNorm | p.8 |
+| 67 | Exploration vs Exploitation | p.1 §2.5 |
+| 68 | Model-Based vs Model-Free | p.4, p.5 |
+| 69 | Hyperparameters | p.6 §2.6 |
+| 70 | What "Convergence" Means | p.11 |
+| 71 | Code Lab | — |
+| 72 | Adam, Backprop & BatchNorm | p.8 |
 
 Pages 54–57 exist because page 53 is a summary, and a summary is the wrong place
 to learn four equations that look interchangeable side by side. Each of the four
@@ -438,7 +440,7 @@ Two knobs are exposed everywhere, because the choice changes the answer:
 python tests/test_ctrl.py     # all must pass
 python tests/test_linear.py   # all must pass
 python tests/test_core.py     # all must pass
-python tests/smoke_gui.py     # builds all 71 pages, screenshots to _shots/
+python tests/smoke_gui.py     # builds all 72 pages, screenshots to _shots/
 ```
 
 `test_ctrl.py` checks, among other things:
