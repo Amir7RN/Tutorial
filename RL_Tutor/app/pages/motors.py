@@ -22,11 +22,13 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSlider,
     QTableWidget,
     QTableWidgetItem,
 )
 
+from ctrlcore.realtime import practical_bandwidth
 from ctrlcore.actuators import (
     TOPOLOGY_NAMES,
     gear_output,
@@ -1340,6 +1342,160 @@ class ActuatorCompare(Page):
         t.add(tbl)
         self.add(t)
 
+        # ==================================================================
+        # where each topology's bandwidth actually comes from -- derived,
+        # with the same PD loop closed around all three
+        # ==================================================================
+        self.add(hline())
+        self.add(title("Where does each bandwidth number come from? — close "
+                       "the same loop around all three and look"))
+
+        bw = Card("the three plants, written out, so the ceilings are visible "
+                  "before any gain is chosen")
+        bw.add(body(
+            "The table above asserts \"50–100 Hz, 10–20 Hz, high\". Those "
+            "numbers are not conventions — each one falls out of the plant's "
+            "own equation, and the widget below closes an identical PD position "
+            "loop around all three so you can watch which ceiling stops "
+            "you."))
+        bw.add(math_label(r"P_{DD}(s) = \frac{1}{(J_m+J_L)s^2 + bs}"
+                          r"\qquad\qquad "
+                          r"P_{PEA}(s) = \frac{1}{(J_m+J_L)s^2 + bs + k}", 16))
+        bw.add(math_label(r"P_{SEA}(s) = \frac{k}"
+                          r"{J_mJ_L s^4 + J_m b\,s^3 + k(J_m{+}J_L)s^2 + kb\,s}",
+                          16))
+        bw.add(body(
+            "&nbsp;&nbsp;• <b>Direct drive.</b> One rigid inertia. Nothing in "
+            "the mechanism sets a ceiling at all — its bandwidth is bounded by "
+            "the <i>implementation</i>: loop rate, current-loop lag, encoder "
+            "noise, torque limits. That is why the answer is \"50–100 Hz and "
+            "up\" rather than a formula.<br>"
+            "&nbsp;&nbsp;• <b>SEA.</b> Four poles, and the spring puts a "
+            "resonance at √(k(J<sub>m</sub>+J<sub>L</sub>)/(J<sub>m</sub>"
+            "J<sub>L</sub>)) with an anti-resonance at √(k/J<sub>m</sub>) below "
+            "it. Push crossover toward that pair and the loop rings. <b>The "
+            "ceiling is mechanical</b> — roughly (1/2π)√(k/J<sub>L</sub>), and "
+            "no controller moves it.<br>"
+            "&nbsp;&nbsp;• <b>PEA.</b> Same two-pole shape as direct drive with "
+            "<b>+k added to the stiffness</b>, so the pole pair moves out to "
+            "√(k/(J<sub>m</sub>+J<sub>L</sub>)) — faster, not slower. There is "
+            "no compliance <i>in the force path</i>, so the parallel spring "
+            "costs no bandwidth; what it costs is a permanent bias torque and "
+            "the range of motion the spring will allow."))
+        bw.add(callout(
+            "<b>The one sentence that separates SEA from PEA, and it is the "
+            "sentence people get backwards.</b> A series spring sits "
+            "<i>between</i> the motor and the load, so every newton the motor "
+            "produces has to go through it — it filters the force path, which "
+            "is exactly why it protects, and exactly why it costs bandwidth. A "
+            "parallel spring sits <i>alongside</i>, so the motor's force path "
+            "to the load is still rigid — it adds force without filtering "
+            "anything. <b>Same spring, same stiffness, opposite consequence, "
+            "purely because of where it is bolted.</b>", "key"))
+        self.add(bw)
+
+        ib = Card("three limits, three topologies — find out which one is "
+                  "actually stopping you")
+        ib.add(body(
+            "For each topology the widget computes the three ceilings and takes "
+            "the <b>smallest</b>, because that is what bandwidth actually is. "
+            "Every number traces to a formula, none is a rule of thumb dressed "
+            "up as physics:<br><br>"
+            "&nbsp;&nbsp;• <b>gain limit</b> — what your PD achieves on the "
+            "inertia it can see: (1/2π)√(K<sub>p</sub>/J) for DD and SEA, and "
+            "(1/2π)√((K<sub>p</sub>+k)/J) for PEA, because a parallel spring "
+            "adds its stiffness to yours.<br>"
+            "&nbsp;&nbsp;• <b>implementation limit</b> — f<sub>s</sub>/15, page "
+            "1's number, after sampling, hold and compute delay.<br>"
+            "&nbsp;&nbsp;• <b>mechanical limit</b> — for the SEA, "
+            "(1/2π)√(k/J<sub>L</sub>): above it the spring, not the motor, "
+            "decides what the load does. DD and PEA have no series compliance "
+            "in the force path and therefore no mechanical ceiling of this "
+            "kind at all.<br><br>"
+            "The bars are those ceilings; the diamond is what you actually "
+            "get, and the caption under each says which one bound it.<br><br>"
+            "<b>The edge cases are buttons — press them in this order:</b><br>"
+            "&nbsp;&nbsp;<b>1 · soft spring</b> — the SEA ceiling collapses to a "
+            "few Hz while DD and PEA do not move at all. This is the "
+            "safety/bandwidth trade in one press.<br>"
+            "&nbsp;&nbsp;<b>2 · stiff spring</b> — SEA climbs back toward the "
+            "others and PEA climbs above them, because k is now helping your "
+            "K<sub>p</sub>. A series spring stiff enough to stop costing "
+            "bandwidth is a spring that has stopped protecting anybody.<br>"
+            "&nbsp;&nbsp;<b>3 · heavy load</b> — everything falls, but SEA "
+            "falls fastest: J<sub>L</sub> is inside its ceiling directly.<br>"
+            "&nbsp;&nbsp;<b>4 · crank the gain</b> — DD and PEA keep improving "
+            "until the loop rate stops them; the SEA does not move at all past "
+            "its spring. <b>That is the difference between a ceiling you can "
+            "buy your way past and one you cannot.</b><br>"
+            "&nbsp;&nbsp;<b>5 · slow loop (200 Hz)</b> — now everyone is capped "
+            "by software instead, and the three converge. Page 1's argument, "
+            "landing on hardware.", dim=True))
+        self.s_bjm = slider(1, 200, 40)          # x0.001 kg m^2
+        self.s_bjl = slider(1, 400, 60)          # x0.001
+        self.s_bk = slider(5, 4000, 300)         # N m / rad
+        self.s_bkp = slider(10, 4000, 800)
+        self.s_bkd = slider(0, 400, 60)          # x0.1
+        self.s_bfs = slider(100, 4000, 1000)     # Hz
+        self.l_bjm, self.l_bjl, self.l_bk = QLabel(), QLabel(), QLabel()
+        self.l_bkp, self.l_bkd, self.l_bfs = QLabel(), QLabel(), QLabel()
+        ib.add_layout(slider_row("Motor  Jₘ (×0.001)", self.s_bjm, self.l_bjm))
+        ib.add_layout(slider_row("Limb  Jʟ (×0.001)", self.s_bjl, self.l_bjl))
+        ib.add_layout(slider_row("Spring  k (N·m/rad)", self.s_bk, self.l_bk))
+        ib.add_layout(slider_row("K_p", self.s_bkp, self.l_bkp))
+        ib.add_layout(slider_row("K_d (×0.1)", self.s_bkd, self.l_bkd))
+        ib.add_layout(slider_row("loop rate (Hz)", self.s_bfs, self.l_bfs))
+
+        edge = QHBoxLayout()
+        edge.setSpacing(8)
+        for label, vals in (
+                ("soft spring", dict(k=20)),
+                ("stiff spring", dict(k=3000)),
+                ("heavy load", dict(jl=350)),
+                ("light rotor", dict(jm=3)),
+                ("crank the gain", dict(kp=4000, kd=300)),
+                ("slow loop (200 Hz)", dict(fs=200)),
+                ("reset", dict(jm=40, jl=60, k=300, kp=800, kd=60, fs=1000))):
+            b = QPushButton(label)
+            b.clicked.connect(lambda _=False, v=vals: self._preset_bw(v))
+            edge.addWidget(b)
+        edge.addStretch(1)
+        ib.add_layout(edge)
+
+        self.st_bdd = Stat("direct drive", "--", theme.ACCENT)
+        self.st_bsea = Stat("SEA", "--", theme.GOOD)
+        self.st_bpea = Stat("PEA", "--", theme.VIOLET)
+        self.st_bceil = Stat("SEA ceiling √(k/Jʟ)", "--", theme.WARN)
+        self.st_bimp = Stat("implementation f_s/15", "--", theme.CYAN)
+        ib.add_layout(stat_row(self.st_bdd, self.st_bsea, self.st_bpea,
+                               self.st_bceil, self.st_bimp))
+        self.c_bw = MplCanvas(width=7.6, height=3.2)
+        ib.add(self.c_bw)
+        self.t_bw = body("", dim=True)
+        ib.add(self.t_bw)
+        self.add(ib)
+        for s in (self.s_bjm, self.s_bjl, self.s_bk, self.s_bkp, self.s_bkd,
+                  self.s_bfs):
+            s.valueChanged.connect(self._redraw_bw)
+        self._redraw_bw()
+
+        self.add(callout(
+            "<b>What the widget proves, stated once.</b> Bandwidth is never one "
+            "number — it is the smallest of three:<br><br>"
+            "&nbsp;&nbsp;• <b>what the mechanism allows</b> — the SEA's "
+            "√(k/J<sub>L</sub>), the first structural resonance of a link, the "
+            "backlash in a gearbox<br>"
+            "&nbsp;&nbsp;• <b>what the implementation allows</b> — f<sub>s</sub>/10 "
+            "to f<sub>s</sub>/20 after delay, and less again if your current "
+            "loop is slow<br>"
+            "&nbsp;&nbsp;• <b>what you dare use</b> — noise into the motor, "
+            "unmodelled modes above crossover, and the force this thing can "
+            "apply to a person<br><br>"
+            "Raising gain only helps while the first two are far away. On an "
+            "SEA they never are, which is why SEA bandwidth is quoted as a "
+            "property of the hardware and DD bandwidth is quoted as a property "
+            "of the controller.", "good"))
+
         # ---- answering "which is better" head on ------------------------------
         self.add(hline())
         self.add(title("\"So is higher J_eff better? Flat better? Negative "
@@ -1402,6 +1558,128 @@ class ActuatorCompare(Page):
 
         self.finish()
 
+    # ------------------------------------------------------------------
+    def _preset_bw(self, vals):
+        for key, sld in (("jm", self.s_bjm), ("jl", self.s_bjl),
+                         ("k", self.s_bk), ("kp", self.s_bkp),
+                         ("kd", self.s_bkd), ("fs", self.s_bfs)):
+            if key in vals:
+                sld.blockSignals(True)
+                sld.setValue(vals[key])
+                sld.blockSignals(False)
+        self._redraw_bw()
+
+    def _redraw_bw(self):
+        """
+        Bandwidth as the smallest of three ceilings, computed per topology.
+
+        Nothing here is simulated: each ceiling is a closed-form number, which
+        is the point -- you can see WHICH constraint binds, and watch the
+        binding one change as the hardware changes.
+        """
+        jm = self.s_bjm.value() / 1000.0
+        jl = self.s_bjl.value() / 1000.0
+        k = float(self.s_bk.value())
+        kp = float(self.s_bkp.value())
+        kd = self.s_bkd.value() / 10.0
+        fs = float(self.s_bfs.value())
+        self.l_bjm.setText(f"{jm:.3f}")
+        self.l_bjl.setText(f"{jl:.3f}")
+        self.l_bk.setText(f"{k:.0f}")
+        self.l_bkp.setText(f"{kp:.0f}")
+        self.l_bkd.setText(f"{kd:.1f}")
+        self.l_bfs.setText(f"{fs:.0f} Hz")
+
+        j_tot = jm + jl
+        f_impl = practical_bandwidth(fs)                  # f_s / 15
+        f_gain_rigid = math.sqrt(kp / j_tot) / (2 * math.pi)
+        f_gain_pea = math.sqrt((kp + k) / j_tot) / (2 * math.pi)
+        f_sea_mech = sea_bandwidth_hz(k, jl)              # (1/2pi) sqrt(k/JL)
+
+        limits = {
+            "direct": [("gain", f_gain_rigid), ("loop rate", f_impl),
+                       ("mechanical", math.inf)],
+            "sea": [("gain", f_gain_rigid), ("loop rate", f_impl),
+                    ("mechanical", f_sea_mech)],
+            "pea": [("gain", f_gain_pea), ("loop rate", f_impl),
+                    ("mechanical", math.inf)],
+        }
+        got, binder = {}, {}
+        for key, lims in limits.items():
+            name, val = min(lims, key=lambda kv: kv[1])
+            got[key], binder[key] = val, name
+
+        colours = {"direct": theme.ACCENT, "sea": theme.GOOD,
+                   "pea": theme.VIOLET}
+        for stat, key in ((self.st_bdd, "direct"), (self.st_bsea, "sea"),
+                          (self.st_bpea, "pea")):
+            stat.set(f"{got[key]:.0f} Hz")
+            stat.set_color(colours[key])
+        self.st_bceil.set(f"{f_sea_mech:.0f} Hz")
+        self.st_bimp.set(f"{f_impl:.0f} Hz")
+
+        damping_note = ""
+        if kd < 0.05:
+            damping_note = (" With K<sub>d</sub> at zero none of these three "
+                            "is usable in practice — the number below is what "
+                            "the gain would buy if the ringing were "
+                            "survivable, which it is not.")
+        if binder["sea"] == "mechanical":
+            msg = (f"<b>The SEA is spring-limited at {f_sea_mech:.0f} Hz</b>, "
+                   f"while DD reaches {got['direct']:.0f} Hz and PEA "
+                   f"{got['pea']:.0f} Hz on identical gains and an identical "
+                   "loop rate. Turn K_p up: the other two move, the SEA does "
+                   "not — its ceiling has no gain in it. The only way through "
+                   "is a stiffer spring or a lighter limb, which are both "
+                   "decisions about metal, not code." + damping_note)
+        elif binder["sea"] == "loop rate":
+            msg = (f"<b>Everything is software-limited now.</b> At {fs:.0f} Hz "
+                   f"the loop caps all three at {f_impl:.0f} Hz, below even "
+                   f"the SEA's mechanical {f_sea_mech:.0f} Hz. Buying a "
+                   "stiffer spring here would change nothing at all — the "
+                   "controller is the bottleneck, and that is a genuinely "
+                   "common situation on cheap hardware." + damping_note)
+        else:
+            msg = (f"<b>Gain-limited across the board.</b> Nothing mechanical "
+                   f"or temporal is in the way yet: raise K_p and all three "
+                   f"numbers rise together, until DD and PEA hit "
+                   f"{f_impl:.0f} Hz and the SEA hits {f_sea_mech:.0f} Hz. "
+                   "This is the regime where tuning actually helps, and it is "
+                   "the only one." + damping_note)
+        self.t_bw.setText(msg)
+
+        c = self.c_bw
+        c.clear()
+        cap = max([v for _, v in limits["direct"] + limits["sea"]
+                   + limits["pea"] if math.isfinite(v)] + [f_impl]) * 1.35
+        names = {"direct": "Direct drive", "sea": "SEA", "pea": "PEA"}
+        width = 0.26
+        for i, (label, _) in enumerate(limits["direct"]):
+            xs, hs = [], []
+            for j, key in enumerate(("direct", "sea", "pea")):
+                val = dict(limits[key])[label]
+                xs.append(j + (i - 1) * width)
+                hs.append(cap if math.isinf(val) else val)
+            c.ax.bar(xs, hs, width=width * 0.92, label=label,
+                     color=(theme.CYAN, theme.WARN, theme.BAD)[i], alpha=0.55)
+        for j, key in enumerate(("direct", "sea", "pea")):
+            c.ax.scatter([j], [got[key]], marker="D", s=90,
+                         color=colours[key], zorder=6)
+            c.ax.text(j, got[key] * 1.08,
+                      f"{got[key]:.0f} Hz\nbound by {binder[key]}",
+                      ha="center", fontsize=8, color=colours[key])
+        c.ax.set_xticks([0, 1, 2])
+        c.ax.set_xticklabels([names[k] for k in ("direct", "sea", "pea")],
+                             fontsize=9)
+        c.ax.set_ylabel("bandwidth ceiling (Hz)")
+        c.ax.set_ylim(0, cap)
+        c.ax.set_title("bars are the three ceilings; the diamond is what you "
+                       "get (a bar at the top means 'no limit of that kind')",
+                       fontsize=8)
+        c.legend(loc="upper right")
+        c.refresh()
+
+    # ------------------------------------------------------------------
     def _redraw(self):
         jm = self.s_jm.value() / 1000.0
         jl = self.s_jl.value() / 1000.0

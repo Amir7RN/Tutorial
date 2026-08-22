@@ -171,7 +171,7 @@ robot, and that number is fixed by hardware long before any software runs.
 | # | Page | Source |
 |---|------|--------|
 | | **Real-Time** — the constraint everything else is bounded by | |
-| 1 | Real-Time Control *(hard vs soft, Nyquist, aliasing, jitter, FreeRTOS scheduling)* | — |
+| 1 | Real-Time Control *(hard vs soft, Nyquist, aliasing with the sinc reconstruction drawn next to the polyline so "information destroyed" and "drawing artifact" stop being the same picture, the 950 Hz → 50 Hz fold worked line by line, the three-jobs widget — 2× vs 10× vs 15× — jitter, FreeRTOS scheduling)* | — |
 | | **Systems & Stability** — what "pole", "damping" and "margin" mean | |
 | 2 | The Control Problem *(what we are actually doing; why "order" is the first question; state variables and which parts add one; and why the same hardware is first order in speed and second order in position)* | — |
 | 3 | Measuring a Real Joint *(where J, b and k actually come from: coast-down, torque step, pendulum swing, tap test — and the least-squares regression, plus why the trajectory you drive matters more than the maths)* | — |
@@ -181,14 +181,14 @@ robot, and that number is fixed by hardware long before any software runs.
 | 7 | The Pole at the Origin *(a store with no drain: why its transient never decays, why the I term needs exactly that, and why one moving part still gives you a second-order position loop)* | — |
 | 8 | First Order in Frequency *(the shaker: sine in, sine out; dB, the corner, −3 dB, −20 dB/decade, and the 90° ceiling as a stability theorem)* | — |
 | 9 | The s-Plane & Imaginary Numbers *(j is a quarter turn; the animated phasor; the six modes a linear system can have; what is actually rotating, shown as a phase portrait)* | — |
-| 10 | Second-Order Systems *(ω_n and ζ — and the fact that your impedance K and B **are** ω_n and ζ)* | — |
+| 10 | Second-Order Systems *(ω_n and ζ — and the fact that your impedance K and B **are** ω_n and ζ; then the plant P, the loop gain L and the closed loop T on one pair of axes, because the canonical form is neither open- nor closed-loop but the signature of a complex pole pair; DC gain 1/k vs the resonant peak 1/2ζ)* | — |
 | 11 | Stability & How to Check It *(LHP, marginal as its own category, Routh–Hurwitz)* | — |
-| 12 | Bode Plots, Gain & Phase Margin *(how far from the edge, and PM ≈ 100ζ)* | — |
+| 12 | Bode Plots, Gain & Phase Margin *(how far from the edge, PM ≈ 100ζ, and the 10-second test for which of P, L and T is on your screen — margins are only readable off L)* | — |
 | 13 | The Nyquist Plot *(the −1 point, Z = N + P, and the vector margin that does not lie)* | — |
 | 14 | What a Zero Is *(a zero is a frequency the system refuses to pass; two paths cancelling; the wrong-way step of a right-half-plane zero and the bandwidth ceiling it imposes; and the zero as the destination the closed-loop poles walk toward)* | — |
 | | **Controller Design** — moving the poles on purpose | |
-| 15 | Making It Stable *(root locus; D adds a zero and that is why it damps; the inverted pendulum needs both K_p > mgl and K_d > 0)* | — |
-| 16 | Lead, Lag & Notch *(designed, not tuned — and why a notch betrays you in service)* | — |
+| 15 | Making It Stable *(root locus; D adds a zero and that is why it damps; which direction each of K_p, K_i, K_d drags the poles and what it costs, with pole map, step and load rejection side by side; the inverted pendulum needs both K_p > mgl and K_d > 0; and racing e^(pt) against the crossover your loop rate buys)* | — |
+| 16 | Lead, Lag & Notch *(designed, not tuned; one object K(s+z)/(s+p) whose species is decided by the pole's side of the zero — p → ∞ is an ideal PD, p → 0 is an exact PI, and the lead's pole IS the derivative filter; and why a notch betrays you in service)* | — |
 | 17 | State Feedback & Pole Placement *(controllability as a mechanical verdict; Ackermann; LQR)* | — |
 | 18 | Observers & Observability *(Luenberger, duality, separation; the disturbance observer behind "sensorless" collision detection)* | — |
 | | **Nonlinear** — what all of the above was assuming | |
@@ -198,7 +198,7 @@ robot, and that number is fixed by hardware long before any software runs.
 | 21 | Effective Inertia *(direct drive, and what J_eff means for design, motor spec and control)* | material p.1–3 |
 | 22 | Series Elastic Actuators *(the spring between, and the **three** frequencies people conflate)* | material p.2 |
 | 23 | Parallel Elastic Actuators *(the spring alongside; what negative J_eff really means)* | material p.3 |
-| 24 | DD vs SEA vs PEA *(torque, speed, inertia, bandwidth — and which is "better", per band)* | material p.2–3 |
+| 24 | DD vs SEA vs PEA *(torque, speed, inertia, bandwidth — and which is "better", per band; plus the bandwidth budget: gain limit vs f_s/15 vs the SEA's √(k/J_L), with edge-case buttons for soft/stiff spring, heavy load and a slow loop)* | material p.2–3 |
 | 25 | Gearing & Reflected Inertia *(the N² square law, and three ways out of it)* | material p.1 |
 | | **Control Paradigms** — four answers to one question | |
 | 26 | The Goal of Control *(the agent–environment loop, shared with the RL half)* | — |
