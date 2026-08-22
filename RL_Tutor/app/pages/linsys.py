@@ -707,6 +707,195 @@ class SecondOrderPage(Page):
             "error, no twiddling.", dim=True))
         self.add(u)
 
+        # ==================================================================
+        # open loop vs closed loop vs the raw plant -- the mix-up that the
+        # shared omega_n/zeta vocabulary creates, killed with one picture
+        # ==================================================================
+        self.add(hline())
+        self.add(title("Is the canonical form open-loop or closed-loop? — the "
+                       "question that has no answer, and what to ask instead"))
+
+        top = Card("the honest answer: the form is topology-agnostic")
+        top.add(body(
+            "You have now seen the same expression arrive twice, from opposite "
+            "directions, and it is worth stating flatly that <b>neither one is "
+            "\"the\" canonical second-order system</b>:"))
+        top.add(body(
+            "&nbsp;&nbsp;• <b>As a raw physical plant, no controller anywhere.</b> "
+            "A mass–spring–damper is 1/(Js² + Bs + K) — normalise it and it is "
+            "the canonical form. Nothing has been closed around it. An RLC "
+            "circuit, an SEA spring with its load, a flexible link: all of them, "
+            "open-loop.<br>"
+            "&nbsp;&nbsp;• <b>As the result of closing a loop.</b> Wrap PD "
+            "around a rigid inertia — the card directly above — and the closed "
+            "loop is the canonical form, with K<sub>p</sub> playing the spring "
+            "and K<sub>d</sub> playing the damper. No physical spring exists "
+            "anywhere in that machine."))
+        top.add(callout(
+            "<b>So \"is this formula open-loop or closed-loop?\" is the wrong "
+            "question — it is a question about your particular system, not about "
+            "the formula.</b> The canonical form is the signature of one thing "
+            "and one thing only: <b>a complex-conjugate pole pair</b>. Two poles "
+            "off the real axis, however they got there — bolted on by a "
+            "mechanical spring, or created by feedback out of nothing.<br><br>"
+            "<b>The dividing line you actually want is not open vs closed. It is "
+            "two well-separated REAL poles versus a COMPLEX PAIR.</b> Real, "
+            "separated poles give a monotonic magnitude curve with no peak of "
+            "any kind. A complex pair peaks whenever ζ &lt; 0.707. That is the "
+            "distinction doing all the work, and it applies identically on both "
+            "sides of the feedback wire.", "key"))
+        self.add(top)
+
+        three = Card("three plots, three jobs — and only two of them look alike")
+        three.add(body(
+            "Where the confusion actually bites is that three different objects "
+            "get described with the same ω<sub>n</sub>/ζ words, and people "
+            "expect them to look alike on a Bode plot. Two of them do. The one "
+            "you check stability on does not."))
+        three.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td></td><td><b>1 · the raw plant P(s)</b></td>"
+            "<td><b>2 · the loop gain L(s)</b></td>"
+            "<td><b>3 · the closed loop T(s)</b></td></tr>"
+
+            "<tr><td><b>What it is</b></td>"
+            "<td>one physical object, shaken. No feedback exists.</td>"
+            "<td>controller × plant × sensor, with the feedback wire "
+            "<i>imagined cut</i></td>"
+            "<td>reference in, real output out, feedback actually closed: "
+            "T = L/(1+L)</td></tr>"
+
+            "<tr><td><b>What it answers</b></td>"
+            "<td>what does this hardware amplify, and where does it "
+            "resonate?</td>"
+            "<td><b>how close am I to instability?</b> — gain margin, phase "
+            "margin, the −180° crossing</td>"
+            "<td><b>how will the robot actually behave?</b> — overshoot, "
+            "settling, tracking</td></tr>"
+
+            "<tr><td><b>Magnitude shape</b></td>"
+            "<td>flat at its DC gain, resonant bump if ζ &lt; 0.707, then "
+            "−40 dB/dec</td>"
+            "<td><b>no bump.</b> Starts very high and falls monotonically — "
+            "because it usually contains an integrator</td>"
+            "<td>flat at ≈ 0 dB, bump if the closed-loop ζ &lt; 0.707, then "
+            "rolls off</td></tr>"
+
+            "<tr><td><b>Phase starts at</b></td><td>0°</td>"
+            "<td><b>−90°</b> immediately — that is the integrator, and it is "
+            "the giveaway</td><td>0°</td></tr>"
+
+            "<tr><td><b>Read it for</b></td><td>hardware resonances, Q</td>"
+            "<td>margins — <i>only</i> margins</td>"
+            "<td>overshoot, bandwidth, tracking error</td></tr>"
+            "</table>"))
+        three.add(callout(
+            "<b>The practical rule, and it is worth memorising verbatim.</b> "
+            "Whenever you are checking gain margin, phase margin or the −180° "
+            "crossing, you are looking at <b>L</b> — feedback imagined cut — and "
+            "it will typically have no resonant bump and a phase starting at "
+            "−90°. Whenever you are predicting overshoot, settling time or how "
+            "well a command is tracked, you are looking at <b>T</b> — and that "
+            "is where the bump and the whole ω<sub>n</sub>/ζ step-response story "
+            "genuinely apply.<br><br>"
+            "Plugging numbers read off one picture into a formula meant for the "
+            "other is the single most common way this material goes wrong, and "
+            "it is invisible while you do it, because both pictures are labelled "
+            "with the same two Greek letters.", "warn"))
+        self.add(three)
+
+        # ---- interactive: all three, on one pair of axes -------------------
+        i4 = Card("all three on one figure — magnitude on top, phase below")
+        i4.add(body(
+            "The three curves are computed from one setting of ω<sub>n</sub> and "
+            "ζ, and they are deliberately the <i>related</i> trio, so the "
+            "identity is visible rather than asserted:"))
+        i4.add(math_label(r"P(s) = \frac{1}{k}\cdot"
+                          r"\frac{\omega_n^2}{s^2+2\zeta\omega_n s+\omega_n^2}"
+                          r"\qquad "
+                          r"L(s) = \frac{\omega_n^2}{s\,(s+2\zeta\omega_n)}"
+                          r"\qquad T = \frac{L}{1+L}", 15))
+        i4.add(body(
+            "Do the algebra on T once and the point is made permanently: "
+            "L/(1+L) with that L clears to ω<sub>n</sub>²/(s² + 2ζω<sub>n</sub>s "
+            "+ ω<sub>n</sub>²) — <b>exactly the canonical form</b>. So the green "
+            "curve lies on top of the blue one whenever k = 1, even though blue "
+            "is a raw open-loop resonator and green is an assembled closed loop. "
+            "<b>Same drawing, different roles.</b> Meanwhile the red curve — "
+            "which is the <i>only</i> one of the three you may read a margin "
+            "from — looks nothing like either of them.", dim=True))
+        i4.add(body(
+            "<b>Four things to do with the sliders:</b><br>"
+            "&nbsp;&nbsp;<b>1.</b> Drop ζ below 0.707 and watch blue and green "
+            "grow a bump while red stays perfectly monotonic. The loop gain "
+            "never peaks; the thing it produces does.<br>"
+            "&nbsp;&nbsp;<b>2.</b> Look at the phase plot at the far left. Blue "
+            "and green start at 0°; red starts at <b>−90°</b> and never comes "
+            "back. That single fact identifies which curve you have been handed "
+            "when nobody labelled it.<br>"
+            "&nbsp;&nbsp;<b>3.</b> Move the <b>plant DC gain</b> slider. Blue's "
+            "flat left-hand level moves up and down — that level is <b>1/k</b>, "
+            "the DC gain, and it has nothing whatever to do with resonance. "
+            "Green does not move at all: unity feedback pins the closed loop's "
+            "DC gain at ≈ 1 by construction.<br>"
+            "&nbsp;&nbsp;<b>4.</b> Watch the phase margin stat as ζ changes. It "
+            "is read off red, and it tracks the overshoot of green — which is "
+            "the PM ≈ 100ζ bridge, two pages ahead.", dim=True))
+        self.s_z4 = slider(5, 200, 40)            # x0.01  zeta
+        self.s_k4 = slider(2, 400, 100)           # x0.01  plant DC gain 1/k
+        self.l_z4, self.l_k4 = QLabel(), QLabel()
+        i4.add_layout(slider_row("damping ζ (×0.01)", self.s_z4, self.l_z4))
+        i4.add_layout(slider_row("plant DC gain 1/k", self.s_k4, self.l_k4))
+        self.st_pdc = Stat("plant DC gain", "--", theme.ACCENT)
+        self.st_ppk = Stat("plant peak", "--", theme.CYAN)
+        self.st_tpk = Stat("closed-loop peak", "--", theme.GOOD)
+        self.st_lpm = Stat("phase margin of L", "--", theme.VIOLET)
+        self.st_tos = Stat("overshoot of T", "--", theme.WARN)
+        i4.add_layout(stat_row(self.st_pdc, self.st_ppk, self.st_tpk,
+                               self.st_lpm, self.st_tos))
+        self.c4 = MplCanvas(width=7.6, height=4.4, nrows=2)
+        i4.add(self.c4)
+        self.t4 = body("", dim=True)
+        i4.add(self.t4)
+        self.add(i4)
+        for s in (self.s_z4, self.s_k4):
+            s.valueChanged.connect(self._redraw_three)
+        self._redraw_three()
+
+        two = Card("two separate reasons a magnitude can exceed 1 — do not "
+                   "conflate them")
+        two.add(body(
+            "This is the other half of the same confusion, and it is worth "
+            "isolating because both effects push the curve above 0 dB and they "
+            "have nothing to do with each other."))
+        two.add(body(
+            "<b>Reason 1 — the DC level itself.</b> Put ω → 0 into the canonical "
+            "magnitude and the square-root term goes to 1, leaving:"))
+        two.add(math_label(r"|H(0)| = \frac{1}{k}", 16))
+        two.add(body(
+            "The flat left-hand part of the curve is just the gain constant out "
+            "front. It is above 1 if k &lt; 1, exactly 1 if k = 1, below 1 if "
+            "k &gt; 1. No damping, no resonance, no feedback involved — it is a "
+            "multiplier. A unity-DC-gain system starts at exactly 0 dB, which is "
+            "the normal closed-loop tracking case."))
+        two.add(body(
+            "<b>Reason 2 — the resonant peak, on top of whatever the DC level "
+            "is.</b> Even at k = 1, the curve bumps above its own DC value near "
+            "ω<sub>n</sub> when damping is light:"))
+        two.add(math_label(r"|H|_{\mathrm{peak}} = \frac{1}{k}\cdot"
+                           r"\frac{1}{2\zeta\sqrt{1-\zeta^2}} \approx "
+                           r"\frac{1}{2\zeta k}\ \ (\text{small }\zeta), "
+                           r"\qquad \omega_r = \omega_n\sqrt{1-2\zeta^2}", 16))
+        two.add(callout(
+            "<b>DC level = 1/k. Peak-above-DC ≈ 1/(2ζ).</b> The first is a gain "
+            "you chose; the second is amplification the physics gives you for "
+            "free, and only when ζ &lt; 0.707. A curve sitting at +6 dB on the "
+            "left is <i>not</i> resonating — it has a DC gain of 2. A curve that "
+            "starts at 0 dB and bulges to +14 dB at ω<sub>r</sub> is resonating, "
+            "with Q ≈ 5. Diagnose the left-hand level and the bump "
+            "separately.", "key"))
+        self.add(two)
+
         self.add(callout(
             "<b>And here is the fact that surprises people.</b> A pure "
             "second-order plant <i>still</i> cannot be destabilised by "
@@ -721,6 +910,84 @@ class SecondOrderPage(Page):
             "implementation's.", "warn"))
 
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_three(self):
+        """
+        The raw plant, the loop gain and the closed loop, on one pair of axes.
+
+        The trio is chosen so that T is ALGEBRAICALLY the canonical form: with
+        L = wn^2 / (s(s + 2 zeta wn)), closing unity feedback gives exactly
+        wn^2 / (s^2 + 2 zeta wn s + wn^2). Green therefore lands on blue at
+        k = 1 -- which is the whole point of the widget, and it is a fact
+        rather than a coincidence.
+        """
+        zeta = self.s_z4.value() / 100.0
+        dc = self.s_k4.value() / 100.0          # this is 1/k, the plant DC gain
+        self.l_z4.setText(f"{zeta:.2f}")
+        self.l_k4.setText(f"{dc:.2f}  ({20*math.log10(dc):+.1f} dB)")
+
+        wn = 10.0
+        p = TF([dc * wn * wn], [1.0, 2 * zeta * wn, wn * wn])   # raw plant
+        l = TF([wn * wn], [1.0, 2 * zeta * wn, 0.0])            # loop gain
+        t = l.feedback()                                        # closed loop
+
+        ws = log_freqs(0.05 * wn, 60.0 * wn, 500)
+        _, mp, pp = bode(p, ws)
+        _, ml, pl = bode(l, ws)
+        _, mt, pt = bode(t, ws)
+
+        peaked = zeta < 0.7071
+        mr_db = resonant_peak_db(zeta)         # already in dB, 0 when flat
+        self.st_pdc.set(f"{20*math.log10(dc):+.1f} dB")
+        self.st_ppk.set("none" if not peaked
+                        else f"{mr_db + 20*math.log10(dc):+.1f} dB")
+        self.st_ppk.set_color(theme.CYAN if peaked else theme.TEXT_DIM)
+        self.st_tpk.set("none" if not peaked else f"{mr_db:+.1f} dB")
+        mg = margins(l)
+        self.st_lpm.set(f"{mg.phase_margin_deg:.0f}°")
+        self.st_tos.set(f"{overshoot_fraction(zeta)*100:.0f} %")
+
+        if peaked:
+            self.t4.setText(
+                f"<b>ζ = {zeta:.2f} — below 0.707, so blue and green both "
+                f"peak.</b> The bump is {mr_db:+.1f} dB above the DC level, at "
+                f"ω<sub>r</sub> = {resonant_frequency(zeta, wn):.1f} rad/s. Red "
+                "has no bump and never will: an integrator plus one real pole "
+                "has no complex pair to resonate with — the complex pair only "
+                "appears <i>after</i> the loop is closed, which is why green "
+                "peaks and red does not, from the same system.")
+        else:
+            self.t4.setText(
+                f"<b>ζ = {zeta:.2f} — at or above 0.707, so nothing peaks.</b> "
+                "All three curves are monotonic now, and blue and green are "
+                "still identical to each other while red is still a completely "
+                "different shape starting at −90°. That difference is "
+                "structural, not a damping effect: it survives every setting of "
+                "these sliders.")
+
+        c = self.c4
+        c.clear()
+        a_m, a_p = c.axes
+        for mag, ph, col, lab in (
+                (mp, pp, theme.ACCENT, "P — raw plant, open loop"),
+                (ml, pl, theme.BAD, "L — loop gain (margins live here)"),
+                (mt, pt, theme.GOOD, "T — closed loop (behaviour lives here)")):
+            a_m.semilogx(ws, mag, color=col, lw=2.0, label=lab)
+            a_p.semilogx(ws, ph, color=col, lw=2.0)
+        a_m.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_m.axvline(wn, color=theme.TEXT_FAINT, lw=1.0, ls=":")
+        a_m.set_ylim(-60, 40)
+        a_m.set_ylabel("|·|  (dB)")
+        a_m.set_title("magnitude — dotted line is ω_n", fontsize=9)
+        c.legend(a_m, loc="lower left")
+        a_p.axhline(-90, color=theme.TEXT_FAINT, lw=0.9, ls=":")
+        a_p.axhline(-180, color=theme.BAD, lw=0.9, ls=":")
+        a_p.set_ylabel("phase (deg)")
+        a_p.set_xlabel("frequency ω (rad/s)")
+        a_p.set_title("phase — red starts at −90°, the other two at 0°",
+                      fontsize=9)
+        c.refresh()
 
     # ------------------------------------------------------------------
     def _redraw_freq(self):
@@ -1451,6 +1718,61 @@ class BodePage(Page):
             "accompanying attenuation. A pure delay is the purest example: "
             "unlimited phase lag at <b>unity gain</b>, forever.", dim=True))
         self.add(tw)
+
+        wh = Card("which of the three curves is on your screen — the 10-second "
+                  "identification")
+        wh.add(body(
+            "The second-order page built this in full with all three plotted "
+            "together; here is the operational version, because on this page you "
+            "are about to read numbers off a curve and the numbers are only "
+            "valid for one of them."))
+        wh.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>Curve</b></td><td><b>Tell-tale</b></td>"
+            "<td><b>Legitimate to read off it</b></td></tr>"
+            "<tr><td><b>L</b> — loop gain, feedback cut<br>"
+            "controller × plant × sensor</td>"
+            "<td>starts <b>high</b> at low ω and falls monotonically; phase "
+            "starts at <b>−90°</b> (integrator) or −180° (double integrator); "
+            "usually <i>no</i> resonant bump</td>"
+            "<td><b>GM, PM, ω<sub>gc</sub>, ω<sub>pc</sub></b>, the −1 point, "
+            "everything on this page</td></tr>"
+            "<tr><td><b>T</b> = L/(1+L) — closed loop</td>"
+            "<td>starts flat at ≈ <b>0 dB</b>; bump if the closed-loop ζ &lt; "
+            "0.707; rolls off past the bandwidth; phase starts at 0°</td>"
+            "<td><b>overshoot, settling time, −3 dB bandwidth, tracking "
+            "error</b></td></tr>"
+            "<tr><td><b>P</b> — the raw plant, no loop</td>"
+            "<td>starts flat at its own DC gain 1/k, which is whatever the "
+            "hardware happens to be; resonant bump if the mechanism is "
+            "underdamped; phase starts at 0°</td>"
+            "<td><b>hardware resonances, Q, anti-resonances</b>, what "
+            "frequencies the mechanism amplifies</td></tr>"
+            "</table>"))
+        wh.add(callout(
+            "<b>P and T can look identical and mean completely different "
+            "things.</b> A raw mass–spring–damper and a PD-controlled rigid "
+            "joint both produce the canonical second-order curve — flat, bump, "
+            "rolloff — because both have a complex pole pair. In the first the "
+            "pair is a steel spring; in the second it is your K<sub>p</sub> and "
+            "K<sub>d</sub>, and there is no spring in the machine at all.<br><br>"
+            "So <b>the canonical form is not \"the closed-loop form\" and not "
+            "\"the open-loop form\"</b> — it is the signature of a complex pole "
+            "pair, and it turns up on both sides of the feedback wire. What "
+            "never produces a bump is a chain of well-separated <i>real</i> "
+            "poles, which is what a typical L is made of. That, and not the "
+            "words open/closed, is the distinction that predicts the shape.",
+            "key"))
+        wh.add(body(
+            "<b>One consequence worth stating, since it is the reason margins "
+            "exist at all.</b> You cannot read a margin off T. T is the answer "
+            "<i>after</i> the loop is closed — if it is unstable, T's step "
+            "diverges and there is nothing left to measure a margin against. "
+            "Margins are questions about how much the <i>uncut</i> loop could "
+            "change before the closure goes bad, so they are necessarily "
+            "properties of L. That is why every stability tool on this page and "
+            "the next asks you to cut the wire first.", dim=True))
+        self.add(wh)
 
         pm = Card("phase margin IS damping — the bridge to the last page")
         pm.add(body(

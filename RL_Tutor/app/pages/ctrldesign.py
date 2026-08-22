@@ -37,12 +37,16 @@ from ctrlcore.linear import (
     margins,
     notch,
     overshoot_fraction,
+    pid_tf,
     place_poles,
+    poly_add,
+    poly_mul,
     poly_roots,
     root_locus,
     run_velocity_observer,
     settling_time,
     StateSpace,
+    step_metrics,
     step_response,
 )
 from ctrlcore.nonlinear import Pendulum
@@ -176,6 +180,115 @@ class StabilisingPage(Page):
         self.s_k.valueChanged.connect(self._redraw_locus)
         self._redraw_locus()
 
+        # ---- K_p, K_i, K_d, one at a time --------------------------------
+        self.add(hline())
+        self.add(title("K_p, K_i, K_d — which direction each one drags the "
+                       "poles, and what that costs you"))
+
+        wy = Card("why each term moves the poles the way it does — the "
+                  "mechanism, not the table")
+        wy.add(body(
+            "The table above states the directions. Here is <i>why</i> each one "
+            "is forced, in terms of den + K·num, so none of it has to be "
+            "memorised."))
+        wy.add(body(
+            "<b>K<sub>p</sub> — pure gain, no new poles or zeros. It slides the "
+            "roots along a track that was already fixed.</b><br>"
+            "The locus is drawn by the plant and the other terms; K<sub>p</sub> "
+            "only decides how far along it you sit. For a joint J s² + b s, "
+            "closing P gives J s² + b s + K<sub>p</sub>, so ω<sub>n</sub> = "
+            "√(K<sub>p</sub>/J) rises with gain while ζ = b/(2√(K<sub>p</sub>J)) "
+            "<b>falls</b>. The poles travel out along a circle of growing radius "
+            "and swing upward toward the imaginary axis: <b>faster, and less "
+            "damped, simultaneously.</b> That trade is not a tuning "
+            "failure — it is arithmetic. Raising stiffness without raising "
+            "damping always buys speed with ringing.<br><br>"
+            "<b>K<sub>d</sub> — adds a zero at −K<sub>p</sub>/K<sub>d</sub>, and "
+            "a zero is a destination.</b><br>"
+            "Branches end at zeros, so a left-half-plane zero reaches out and "
+            "bends the locus toward itself — the poles move <b>left</b>, which "
+            "is damping. In the same joint, D shows up as J s² + (b + "
+            "K<sub>d</sub>)s + K<sub>p</sub>: it adds directly to the physical "
+            "friction. Your derivative gain <i>is</i> a damper, in the same "
+            "units, doing the same job.<br><br>"
+            "<b>K<sub>i</sub> — adds a pole at the origin, and the poles have to "
+            "get out of its way.</b><br>"
+            "A pole at s = 0 is a branch start sitting at the worst possible "
+            "place, and the extra −90° of phase it contributes at low frequency "
+            "has to be paid for somewhere. The locus is pushed <b>right</b>, "
+            "toward the imaginary axis: less damping, less margin, and on a "
+            "high-order plant a lower critical gain than you had without it. In "
+            "exchange you get the one thing the other two terms cannot give — "
+            "zero steady-state error against a constant load."))
+        wy.add(callout(
+            "<b>The performance consequences, stated as the four numbers you "
+            "actually care about.</b><br><br>"
+            "&nbsp;&nbsp;• <b>Speed (rise time, bandwidth)</b> — set by how far "
+            "left/out the dominant poles are. K<sub>p</sub> buys it directly; "
+            "K<sub>d</sub> lets you keep buying it without ringing.<br>"
+            "&nbsp;&nbsp;• <b>Overshoot / ringing</b> — set by the poles' angle "
+            "from the real axis (ζ). K<sub>d</sub> improves it; K<sub>p</sub> "
+            "and K<sub>i</sub> both make it worse.<br>"
+            "&nbsp;&nbsp;• <b>Steady-state error</b> — set by the loop's DC "
+            "gain. Only an integrator drives it to exactly zero; K<sub>p</sub> "
+            "only shrinks it, as 1/(1+K<sub>p</sub>·plant DC gain).<br>"
+            "&nbsp;&nbsp;• <b>Noise and effort</b> — K<sub>d</sub> multiplies "
+            "sensor noise by frequency and puts it straight into the motor, "
+            "which is why K<sub>d</sub> is capped in practice by encoder "
+            "resolution and current-loop headroom rather than by "
+            "stability.", "key"))
+        self.add(wy)
+
+        # ---- interactive: PID on a real joint -----------------------------
+        i3 = Card("move one gain at a time and watch all three consequences")
+        i3.add(body(
+            "Plant: the rigid joint from the linear-systems pages, "
+            "1/(0.25 s² + 0.4 s) — one integrator already present, which is why "
+            "a plain P controller can hold a position at all. The D term is "
+            "filtered (τ<sub>d</sub> = 5 ms) because an unfiltered derivative is "
+            "not buildable; that filter is itself a pole, and you can watch it "
+            "on the map.<br><br>"
+            "<b>Left:</b> the closed-loop poles (×) and zeros (○). <b>Middle:</b> "
+            "step response, so you can read overshoot and settling. "
+            "<b>Right:</b> the response to a constant torque disturbance applied "
+            "at t = 0 — a hand pushing on the joint, or gravity on a load.<br><br>"
+            "<b>Four experiments, in this order:</b><br>"
+            "&nbsp;&nbsp;<b>1.</b> Raise K<sub>p</sub> alone. Poles swing "
+            "outward and upward, response gets faster and starts ringing, "
+            "disturbance droop shrinks but never reaches zero.<br>"
+            "&nbsp;&nbsp;<b>2.</b> Now add K<sub>d</sub>. Poles march left and "
+            "down toward the real axis, ringing dies, and you can push "
+            "K<sub>p</sub> higher than before.<br>"
+            "&nbsp;&nbsp;<b>3.</b> Add K<sub>i</sub>. Watch the disturbance "
+            "panel return to zero — and watch the poles creep back toward the "
+            "imaginary axis and the overshoot grow. That is the trade, "
+            "visible.<br>"
+            "&nbsp;&nbsp;<b>4.</b> Push K<sub>i</sub> far with K<sub>d</sub> = "
+            "0. The verdict flips to UNSTABLE. An integrator is the only one of "
+            "the three that can destabilise this plant on its own.", dim=True))
+        self.s_ikp = slider(5, 600, 120)
+        self.s_iki = slider(0, 800, 0)
+        self.s_ikd = slider(0, 400, 40)          # x0.1
+        self.l_ikp, self.l_iki, self.l_ikd = QLabel(), QLabel(), QLabel()
+        i3.add_layout(slider_row("K_p", self.s_ikp, self.l_ikp))
+        i3.add_layout(slider_row("K_i", self.s_iki, self.l_iki))
+        i3.add_layout(slider_row("K_d (×0.1)", self.s_ikd, self.l_ikd))
+        self.st_iover = Stat("overshoot", "--", theme.WARN)
+        self.st_iset = Stat("settling (2%)", "--", theme.GOOD)
+        self.st_isse = Stat("droop under load", "--", theme.BAD)
+        self.st_izeta = Stat("dominant ζ", "--", theme.VIOLET)
+        self.st_ipm = Stat("phase margin", "--", theme.ACCENT)
+        i3.add_layout(stat_row(self.st_iover, self.st_iset, self.st_isse,
+                               self.st_izeta, self.st_ipm))
+        self.c3 = MplCanvas(width=7.6, height=2.9, ncols=3)
+        i3.add(self.c3)
+        self.t3 = body("", dim=True)
+        i3.add(self.t3)
+        self.add(i3)
+        for s in (self.s_ikp, self.s_iki, self.s_ikd):
+            s.valueChanged.connect(self._redraw_pid)
+        self._redraw_pid()
+
         # ---- the unstable case ------------------------------------------
         self.add(hline())
         self.add(title("The genuinely unstable case: an inverted pendulum"))
@@ -258,6 +371,74 @@ class StabilisingPage(Page):
             "by feedback, not hidden."))
         self.add(w)
 
+        w2 = Card("\"you must be faster than the instability\" — unpacked, "
+                  "because every clause is a separate fact")
+        w2.add(body(
+            "<b>e<sup>pt</sup>, and what p physically is.</b> A pole at s = +p "
+            "means the error obeys ė = p·e — the bigger the error, the faster "
+            "it grows. Nothing about that is a controller property; it is the "
+            "hardware falling over. Solve it and the error is e<sub>0</sub>"
+            "e<sup>pt</sup>: multiplied by e every 1/p seconds, and doubled "
+            "every <b>ln2/p</b> seconds. For an inverted pendulum p = √(g/l), "
+            "so <i>shorter is worse</i> — a 1 m pendulum doubles its lean angle "
+            "every 220 ms, a 0.25 m one every 110 ms. This is why a Segway is "
+            "easier to balance than a broom handle, and why balancing a pencil "
+            "on your finger is nearly impossible."))
+        w2.add(body(
+            "<b>Why crossover is the number that has to beat it.</b> "
+            "ω<sub>gc</sub> is where the loop gain passes 1 — above it the loop "
+            "has less than unit authority and is, for practical purposes, not "
+            "correcting anything. So 1/ω<sub>gc</sub> is roughly how long the "
+            "loop takes to respond to a change. Put that next to the doubling "
+            "time: <b>if the error doubles faster than the loop can react, each "
+            "correction is aimed at a state the robot has already left</b>, and "
+            "you are always applying yesterday's answer to a bigger problem. "
+            "The margin you need for that race is where ω<sub>gc</sub> &gt; 2p "
+            "comes from — a factor of two is the minimum anyone quotes, and 5–10× "
+            "is what gets built."))
+        w2.add(callout(
+            "<b>And this is the sentence that connects to page 1.</b> Your "
+            "crossover is bounded above by sampling and delay — roughly "
+            "f<sub>s</sub>/10 to f<sub>s</sub>/20, minus whatever your latency "
+            "costs. The instability rate p is bounded below by physics you "
+            "cannot negotiate with. <b>The controller must fit in the gap, and "
+            "when there is no gap there is no controller</b> — no gain, no "
+            "algorithm, no learning method closes it. That is the real-time "
+            "page's claim arriving as a hard design constraint rather than "
+            "advice.", "warn"))
+        self.add(w2)
+
+        i4 = Card("race the divergence: pick a machine, pick a loop rate")
+        i4.add(body(
+            "Left: the error growing as e<sup>pt</sup>, with the doubling time "
+            "marked, against the loop's response time 1/ω<sub>gc</sub>. Right: "
+            "where your crossover sits relative to the p and 2p lines. The "
+            "sample rate slider caps the crossover through the f<sub>s</sub>/15 "
+            "rule from page 1, so you can watch a perfectly reasonable "
+            "controller become impossible by lowering the loop rate "
+            "alone.", dim=True))
+        self.s_len = slider(5, 200, 100)          # x0.01 m, pendulum length
+        self.s_fs = slider(20, 2000, 500)         # Hz
+        self.l_len, self.l_fs = QLabel(), QLabel()
+        i4.add_layout(slider_row("pendulum length (cm)", self.s_len,
+                                 self.l_len))
+        i4.add_layout(slider_row("loop rate f_s (Hz)", self.s_fs, self.l_fs))
+        self.st_p = Stat("instability rate p", "--", theme.BAD)
+        self.st_dbl = Stat("doubling time", "--", theme.WARN)
+        self.st_wgc = Stat("crossover available", "--", theme.ACCENT)
+        self.st_ratio2 = Stat("ω_gc / p", "--", theme.VIOLET)
+        self.st_race = Stat("verdict", "--", theme.GOOD)
+        i4.add_layout(stat_row(self.st_p, self.st_dbl, self.st_wgc,
+                               self.st_ratio2, self.st_race))
+        self.c4 = MplCanvas(width=7.6, height=2.8, ncols=2)
+        i4.add(self.c4)
+        self.t4 = body("", dim=True)
+        i4.add(self.t4)
+        self.add(i4)
+        for s in (self.s_len, self.s_fs):
+            s.valueChanged.connect(self._redraw_race)
+        self._redraw_race()
+
         self.add(callout(
             "<b>Carry forward.</b> P slides the poles along the locus; D adds a "
             "zero that pulls them left; I adds a pole at the origin that drags "
@@ -267,6 +448,184 @@ class StabilisingPage(Page):
             "domain, where it is easier to be quantitative.", "good"))
 
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_race(self):
+        """
+        The two clocks that decide whether an unstable plant is controllable
+        at all: how fast it diverges, and how fast the loop can answer.
+        """
+        length = self.s_len.value() / 100.0
+        fs = float(self.s_fs.value())
+        self.l_len.setText(f"{length*100:.0f} cm")
+        self.l_fs.setText(f"{fs:.0f} Hz")
+
+        p = math.sqrt(9.81 / length)                  # rad/s, the RHP pole
+        t_double = math.log(2.0) / p
+        wgc = 2.0 * math.pi * (fs / 15.0)             # page 1's f_s/15 rule
+        ratio = wgc / p
+        ok = ratio >= 2.0
+        comfy = ratio >= 5.0
+
+        self.st_p.set(f"{p:.2f} 1/s")
+        self.st_dbl.set(f"{t_double*1000:.0f} ms")
+        self.st_wgc.set(f"{wgc:.0f} rad/s")
+        self.st_ratio2.set(f"{ratio:.1f}×")
+        self.st_race.set("comfortable" if comfy
+                         else ("marginal" if ok else "IMPOSSIBLE"))
+        self.st_race.set_color(theme.GOOD if comfy else
+                               (theme.WARN if ok else theme.BAD))
+
+        if not ok:
+            self.t4.setText(
+                f"<b>No controller exists at this loop rate.</b> The lean angle "
+                f"doubles every {t_double*1000:.0f} ms, and a {fs:.0f} Hz loop "
+                f"buys about {wgc:.0f} rad/s of crossover — under the 2p = "
+                f"{2*p:.1f} rad/s floor. Raise the loop rate, or lengthen the "
+                "pendulum. Nothing you do inside the controller helps.")
+        elif not comfy:
+            self.t4.setText(
+                f"<b>Marginal.</b> ω<sub>gc</sub>/p = {ratio:.1f}, just over "
+                "the factor of two that is quoted as the minimum. It will "
+                "balance on a clean day and fall over when a disturbance, a "
+                "missed deadline or a modelling error takes a bite out of the "
+                "margin. Real balance controllers are built at 5–10×.")
+        else:
+            self.t4.setText(
+                f"<b>Comfortable.</b> ω<sub>gc</sub>/p = {ratio:.1f}, so the "
+                f"loop answers roughly {ratio:.0f} times faster than the fall "
+                f"develops. Note what happens if you drag the length down: p "
+                "rises as 1/√l, the doubling time collapses, and the same "
+                "controller runs out of room — the machine got harder, not the "
+                "code.")
+
+        c = self.c4
+        c.clear()
+        a1, a2 = c.axes
+        tt = [i * (4.0 * t_double) / 300.0 for i in range(301)]
+        a1.plot(tt, [math.exp(p * t) for t in tt], color=theme.BAD, lw=2.2,
+                label="error, e^{pt}")
+        a1.axhline(2.0, color=theme.TEXT_FAINT, lw=1.0, ls=":")
+        a1.axvline(t_double, color=theme.WARN, lw=1.4, ls="--",
+                   label=f"doubles at {t_double*1000:.0f} ms")
+        a1.axvline(1.0 / wgc, color=theme.ACCENT, lw=1.4,
+                   label=f"loop responds in {1000/wgc:.0f} ms")
+        a1.set_xlabel("time (s)")
+        a1.set_ylabel("error growth (×)")
+        a1.set_ylim(0, 8)
+        a1.set_title("the race", fontsize=9)
+        c.legend(a1, loc="upper left")
+
+        bars = [p, 2.0 * p, wgc]
+        cols = [theme.BAD, theme.WARN,
+                theme.GOOD if comfy else (theme.WARN if ok else theme.BAD)]
+        a2.barh([0, 1, 2], bars, height=0.55, color=cols, alpha=0.7)
+        a2.set_yticks([0, 1, 2])
+        a2.set_yticklabels(["p — instability", "2p — the floor",
+                            "ω_gc — what you have"], fontsize=8)
+        a2.set_xlabel("rad/s")
+        a2.set_title("crossover must clear the floor", fontsize=9)
+        c.refresh()
+
+    # ------------------------------------------------------------------
+    def _redraw_pid(self):
+        """
+        One joint, three gains, three consequences: pole positions, command
+        tracking and load rejection. The disturbance panel is the one that
+        earns the I term -- nothing else on the page shows what it is for.
+        """
+        kp = float(self.s_ikp.value())
+        ki = float(self.s_iki.value())
+        kd = self.s_ikd.value() / 10.0
+        self.l_ikp.setText(f"{kp:.0f}")
+        self.l_iki.setText(f"{ki:.0f}")
+        self.l_ikd.setText(f"{kd:.1f}")
+
+        plant = TF([1.0], [0.25, 0.4, 0.0])          # J s^2 + b s
+        # With K_i = 0 the generic PID form still carries s in its denominator,
+        # which cancels against its own numerator and leaves a spurious pole at
+        # the origin in the closed loop. Build the filtered PD directly instead.
+        if ki > 0:
+            ctrl = pid_tf(kp, ki, kd, tau_d=0.005)
+        else:
+            ctrl = TF([kp * 0.005 + kd, kp], [0.005, 1.0])
+        l = ctrl * plant
+        t_cl = l.feedback()
+        poles = poly_roots(t_cl.den)
+        stable = all(p.real < -1e-9 for p in poles)
+
+        # load rejection: P / (1 + L) = num_P den_C / (den_C den_P + num_C num_P)
+        dist = TF(poly_mul(plant.num, ctrl.den),
+                  poly_add(poly_mul(ctrl.den, plant.den),
+                           poly_mul(ctrl.num, plant.num)))
+
+        dur = 3.0
+        tt, yy = step_response(t_cl, dur, dur / 1500.0)
+        yy = [min(max(v, -3.0), 3.0) for v in yy]
+        td, yd = step_response(dist, dur, dur / 1500.0, amplitude=1.0)
+        yd = [min(max(v, -3.0), 3.0) for v in yd]
+
+        met = step_metrics(tt, yy)
+        droop = abs(yd[-1]) if yd else 0.0        # where the load leaves you
+        dom = max((p for p in poles if abs(p.imag) > 1e-6),
+                  key=lambda p: p.real, default=None)
+        if dom is None:
+            dom = max(poles, key=lambda p: p.real)
+        wn = abs(dom)
+        zeta = (-dom.real / wn) if wn > 1e-9 else 0.0
+        mg = margins(l)
+        # the unwrapped phase can come back a full turn away from the branch
+        # the margin is quoted on; fold it back into (-180, 180]
+        pm = ((mg.phase_margin_deg + 180.0) % 360.0) - 180.0
+
+        self.st_iover.set(f"{met.overshoot*100:.0f} %" if stable else "--")
+        self.st_iover.set_color(theme.WARN if met.overshoot < 0.3 else theme.BAD)
+        self.st_iset.set("never" if not stable or math.isinf(met.settling_time)
+                         else f"{met.settling_time:.2f} s")
+        self.st_isse.set(f"{droop:.4f} rad" if droop > 1e-3 else "0 — rejected")
+        self.st_isse.set_color(theme.GOOD if droop <= 1e-3 else theme.BAD)
+        self.st_izeta.set(f"{zeta:+.2f}")
+        self.st_ipm.set("--" if not stable else f"{pm:.0f}°")
+        self.st_ipm.set_color(theme.GOOD if stable and pm > 40 else theme.BAD)
+
+        if not stable:
+            msg = ("<b>UNSTABLE.</b> A pole has crossed into the right half "
+                   "plane — with K_i large and K_d small, the integrator's "
+                   "−90° of low-frequency phase is more than this plant can "
+                   "absorb. Add D, or take I back.")
+        elif ki <= 0:
+            msg = (f"<b>No integrator.</b> The joint holds its commanded angle "
+                   f"— the plant's own pole at the origin does that — but "
+                   f"under a constant load it settles {droop:.4f} rad away "
+                   f"from the target and stays there. K_p only shrinks that "
+                   f"droop; nothing here removes it.")
+        else:
+            msg = (f"<b>Integrator working.</b> The droop is driven to zero: "
+                   f"the I term keeps accumulating until the load is exactly "
+                   f"cancelled. The price is on the left panel — poles nearer "
+                   f"the imaginary axis, ζ = {zeta:.2f} — and on the phase "
+                   f"margin stat, {pm:.0f}°.")
+        self.t3.setText(msg)
+
+        c = self.c3
+        c.clear()
+        a_pz, a_st, a_ds = c.axes
+        lim = max(6.0, max([abs(p) for p in poles] or [6.0]) * 1.25)
+        _splane(a_pz, poles, t_cl.zeros(), lim=lim, marker_label="closed poles")
+        a_pz.set_title("closed-loop poles", fontsize=9)
+
+        a_st.plot(tt, yy, color=theme.GOOD if stable else theme.BAD, lw=2.0)
+        a_st.axhline(1.0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_st.set_xlabel("time (s)")
+        a_st.set_ylabel("angle (clipped)")
+        a_st.set_title("step command", fontsize=9)
+
+        a_ds.plot(td, yd, color=theme.VIOLET, lw=2.0)
+        a_ds.axhline(0.0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_ds.set_xlabel("time (s)")
+        a_ds.set_ylabel("angle error (rad)")
+        a_ds.set_title("1 N·m load applied at t = 0", fontsize=9)
+        c.refresh()
 
     # ------------------------------------------------------------------
     def _plant(self):
@@ -465,6 +824,131 @@ class LeadLagPage(Page):
             "trade.", dim=True))
         self.add(la)
 
+        # ==================================================================
+        # lead/lag ARE PD/PI -- the one-object view, with the limits shown
+        # ==================================================================
+        self.add(hline())
+        self.add(title("They are one object: (s+z)/(s+p), and PD and PI are "
+                       "its two limits"))
+
+        one = Card("stop treating these as four compensators — there is one, "
+                   "with a dial")
+        one.add(body(
+            "Look at the two formulas above. <b>They are the same formula.</b> "
+            "Both are K(s + z)/(s + p): one zero, one pole, one gain. The only "
+            "difference is <b>which of z and p you meet first as frequency "
+            "rises</b>, and that single ordering decides the name, the shape, "
+            "the phase sign and what the block is for."))
+        one.add(math_label(r"C(s) = K\,\frac{s+z}{s+p}"
+                           r"\qquad\begin{cases}"
+                           r"p > z & \text{zero first} \Rightarrow "
+                           r"\textbf{lead} \\[2pt]"
+                           r"p < z & \text{pole first} \Rightarrow "
+                           r"\textbf{lag}\end{cases}", 17))
+        one.add(body(
+            "&nbsp;&nbsp;• <b>Zero first (lead).</b> Between z and p the gain "
+            "is climbing at +20 dB/decade and the phase is <i>positive</i> — up "
+            "to +90°, in practice φ<sub>max</sub> = arcsin((α−1)/(α+1)). Above "
+            "p the pole flattens the gain at ×α and hands the phase back. You "
+            "used the zero for its phase and paid for it with high-frequency "
+            "gain.<br>"
+            "&nbsp;&nbsp;• <b>Pole first (lag).</b> Between p and z the gain is "
+            "<i>falling</i> from its high DC value and the phase is negative. "
+            "Above z the zero stops the fall and returns the phase. You used "
+            "the pole for its low-frequency gain and paid for it with a "
+            "temporary phase dip you keep away from crossover."))
+        one.add(callout(
+            "<b>Now push each one to its limit and PD and PI fall out — they "
+            "are not analogies, they are the endpoints.</b><br><br>"
+            "&nbsp;&nbsp;• <b>Send the lead's pole to infinity (p → ∞) and you "
+            "have an ideal PD.</b> Nothing is left to stop the gain climbing, "
+            "which is exactly why an ideal D term has infinite high-frequency "
+            "gain and cannot be built. <b>The lead's pole IS the derivative "
+            "filter</b>, with τ<sub>d</sub> = 1/p — the same filter every real "
+            "PID implementation has, named differently.<br><br>"
+            "&nbsp;&nbsp;• <b>Send the lag's pole to the origin (p → 0) and you "
+            "have an exact PI.</b> DC gain goes to infinity, which is what "
+            "drives steady-state error to exactly zero, and the −90° becomes "
+            "permanent. <b>The lag's pole IS the integrator, moved slightly off "
+            "the origin on purpose</b> — trading \"exactly zero error\" for "
+            "\"large finite gain, recoverable phase, and no windup\".", "key"))
+        one.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>Compensator</b></td><td><b>Is</b></td>"
+            "<td><b>Exact mapping</b></td><td><b>What the extra pole buys "
+            "you</b></td></tr>"
+            "<tr><td><b>lead</b>, p &gt; z</td><td>a filtered PD</td>"
+            "<td>K<sub>p</sub> = Kz/p, &nbsp; K<sub>d</sub> = K(p−z)/p², "
+            "&nbsp; τ<sub>d</sub> = 1/p</td>"
+            "<td>finite noise gain (×α instead of ×∞) — the difference between "
+            "a controller and a noise amplifier</td></tr>"
+            "<tr><td><b>lag</b>, p &lt; z</td><td>a leaky PI</td>"
+            "<td>K<sub>p</sub> → K, &nbsp; K<sub>i</sub> → Kz &nbsp;(as p → "
+            "0); DC gain = Kz/p</td>"
+            "<td>no windup, and a phase penalty that expires below "
+            "crossover</td></tr>"
+            "<tr><td><b>lead-lag</b></td><td>a PID</td>"
+            "<td>both of the above cascaded</td>"
+            "<td>both benefits, and two more parameters to place</td></tr>"
+            "</table>"))
+        self.add(one)
+
+        i0 = Card("one compensator, one pole slider — cross z and watch it "
+                  "change species")
+        i0.add(body(
+            "The pole and zero are yours to place. <b>Drag the pole across the "
+            "zero</b> and the block changes from lead to lag in front of you: "
+            "the phase bump flips from positive to negative, the gain slope "
+            "flips from rising to falling, and the readout switches which PID "
+            "form it is equivalent to.<br><br>"
+            "<b>Four things to do:</b><br>"
+            "&nbsp;&nbsp;<b>1.</b> Put the pole far right of the zero "
+            "(p ≫ z). Phase bump is big and positive, high-frequency gain is "
+            "large: an aggressive PD. Read the K<sub>d</sub> equivalent "
+            "climbing.<br>"
+            "&nbsp;&nbsp;<b>2.</b> Slide the pole in toward the zero. "
+            "α → 1, the bump shrinks to nothing, and at p = z the compensator "
+            "is a plain gain — pole and zero cancel. <b>That is what \"a lead "
+            "with α = 1 does nothing\" means, seen rather than asserted.</b><br>"
+            "&nbsp;&nbsp;<b>3.</b> Take the pole below the zero. It is now a "
+            "lag: DC gain rises, phase dips, and the steady-state error in the "
+            "step panel shrinks.<br>"
+            "&nbsp;&nbsp;<b>4.</b> Drive the pole to its minimum. DC gain goes "
+            "enormous, error goes to nearly zero, and the phase penalty at low "
+            "frequency approaches the integrator's permanent −90°. You have "
+            "built a PI by moving one slider.<br><br>"
+            "<b>Why the droop stat is exactly 1/C(0).</b> This plant already "
+            "contains an integrator, so a step <i>command</i> is tracked "
+            "perfectly by any of these — but a constant <i>load</i> leaves an "
+            "error of 1/(loop DC gain), and the only DC gain in the loop is the "
+            "compensator's. That is why the lag shrinks droop by exactly β and "
+            "the lead, which has DC gain Kz/p &lt; K, makes it <b>worse</b>. "
+            "Lead buys phase, not accuracy; lag buys accuracy, not phase. "
+            "Needing both is precisely when you cascade them and call the "
+            "result a PID.", dim=True))
+        self.s_lz = slider(1, 500, 40)          # x0.1 rad/s -- the zero
+        self.s_lp = slider(1, 3000, 800)        # x0.1 rad/s -- the pole
+        self.s_lk = slider(1, 400, 80)          # loop gain
+        self.l_lz, self.l_lp, self.l_lk = QLabel(), QLabel(), QLabel()
+        i0.add_layout(slider_row("zero  −z (×0.1 rad/s)", self.s_lz, self.l_lz))
+        i0.add_layout(slider_row("pole  −p (×0.1 rad/s)", self.s_lp, self.l_lp))
+        i0.add_layout(slider_row("gain K", self.s_lk, self.l_lk))
+        self.st_kind = Stat("species", "--", theme.VIOLET)
+        self.st_ratio3 = Stat("α or β", "--", theme.CYAN)
+        self.st_equiv = Stat("equivalent to", "--", theme.ACCENT)
+        self.st_dcg = Stat("DC gain of C", "--", theme.GOOD)
+        self.st_sse = Stat("droop under load", "--", theme.WARN)
+        i0.add_layout(stat_row(self.st_kind, self.st_ratio3, self.st_equiv,
+                               self.st_dcg, self.st_sse))
+        self.c0 = MplCanvas(width=7.6, height=2.9, ncols=3)
+        i0.add(self.c0)
+        self.t0 = body("", dim=True)
+        i0.add(self.t0)
+        self.add(i0)
+        for s in (self.s_lz, self.s_lp, self.s_lk):
+            s.valueChanged.connect(self._redraw_morph)
+        self._redraw_morph()
+
         # ---- interactive 1 ----------------------------------------------
         i = Card("design a lead for a real joint")
         i.add(body(
@@ -558,6 +1042,112 @@ class LeadLagPage(Page):
         self._redraw_notch()
 
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_morph(self):
+        """
+        K (s+z)/(s+p) with both z and p draggable. p > z is a lead and is a
+        filtered PD; p < z is a lag and is a leaky PI. The species readout is
+        decided by nothing but the ordering, which is the point.
+        """
+        z = self.s_lz.value() / 10.0
+        p = self.s_lp.value() / 10.0
+        k = float(self.s_lk.value())
+        self.l_lz.setText(f"{z:.1f}")
+        self.l_lp.setText(f"{p:.1f}")
+        self.l_lk.setText(f"{k:.0f}")
+
+        c_tf = TF([k, k * z], [1.0, p])
+        plant = TF([1.0], [0.25, 0.4, 0.0])
+        l = c_tf * plant
+        cl = l.feedback()
+        # load rejection, as on the previous page: P / (1 + L)
+        dist = TF(poly_mul(plant.num, c_tf.den),
+                  poly_add(poly_mul(c_tf.den, plant.den),
+                           poly_mul(c_tf.num, plant.num)))
+
+        lead_mode = p > z * 1.001
+        lag_mode = p < z * 0.999
+        ratio = (p / z) if lead_mode else ((z / p) if lag_mode else 1.0)
+        dc = c_tf.dc_gain()
+
+        if lead_mode:
+            kp_eq = k * z / p
+            kd_eq = k * (p - z) / (p * p)
+            self.st_kind.set("LEAD")
+            self.st_kind.set_color(theme.GOOD)
+            self.st_ratio3.set(f"α = {ratio:.1f}")
+            self.st_equiv.set(f"PD: Kp {kp_eq:.0f}, Kd {kd_eq:.2f}")
+            phi = math.degrees(math.asin((ratio - 1) / (ratio + 1)))
+            note = (f"<b>Lead.</b> Peak phase +{phi:.0f}° at ω = "
+                    f"{math.sqrt(z*p):.1f} rad/s, high-frequency gain ×"
+                    f"{ratio:.1f}. As a PID this is K<sub>p</sub> = "
+                    f"{kp_eq:.1f} with K<sub>d</sub> = {kd_eq:.3f} and a "
+                    f"derivative filter τ<sub>d</sub> = {1000/p:.1f} ms. Push "
+                    "the pole further right and it approaches an ideal, "
+                    "unbuildable PD.")
+        elif lag_mode:
+            self.st_kind.set("LAG")
+            self.st_kind.set_color(theme.WARN)
+            self.st_ratio3.set(f"β = {ratio:.1f}")
+            self.st_equiv.set(f"PI: Kp {k:.0f}, Ki ≈ {k*z:.0f}")
+            note = (f"<b>Lag.</b> DC gain {dc:.0f} — that is β = {ratio:.1f} "
+                    f"times the high-frequency gain of {k:.0f}, and it is what "
+                    "shrinks the droop in the right-hand panel. As a PID this "
+                    f"is K<sub>p</sub> ≈ {k:.0f} with K<sub>i</sub> ≈ "
+                    f"{k*z:.0f}, except that the integrator leaks: the pole is "
+                    f"at −{p:.2f} instead of 0, so the error lands on "
+                    "something small rather than exactly zero — and cannot "
+                    "wind up.")
+        else:
+            self.st_kind.set("neither")
+            self.st_kind.set_color(theme.TEXT_DIM)
+            self.st_ratio3.set("1.0")
+            self.st_equiv.set(f"plain gain {k:.0f}")
+            note = ("<b>p = z: the pole and the zero cancel exactly</b> and "
+                    "what is left is a proportional gain. No phase is bought, "
+                    "no DC gain is bought. Both compensators are built out of "
+                    "the gap between these two numbers, and here the gap is "
+                    "zero.")
+        self.st_dcg.set(f"{dc:.0f}")
+
+        dur = 3.0
+        tt, yy = step_response(cl, dur, dur / 1200.0)
+        yy = [min(max(v, -3.0), 3.0) for v in yy]
+        # the droop a load leaves behind is 1/C(0) exactly -- read it off the
+        # transfer function rather than off a simulation that a slow lag has
+        # not finished settling within the plotted window
+        droop = abs(dist.dc_gain())
+        self.st_sse.set(f"{droop:.4f} rad" if droop > 1e-4 else "≈ 0")
+        self.st_sse.set_color(theme.GOOD if droop < 5e-3 else theme.WARN)
+        self.t0.setText(note)
+
+        ws = log_freqs(0.02, 3000.0, 400)
+        _, mag, ph = bode(c_tf, ws)
+
+        c = self.c0
+        c.clear()
+        a_m, a_p, a_s = c.axes
+        col = theme.GOOD if lead_mode else (theme.WARN if lag_mode
+                                            else theme.TEXT_DIM)
+        a_m.semilogx(ws, mag, color=col, lw=2.0)
+        for x, lab, cc in ((z, "z", theme.ACCENT), (p, "p", theme.VIOLET)):
+            a_m.axvline(x, color=cc, lw=1.2, ls="--")
+            a_m.text(x, max(mag), f" {lab}", color=cc, fontsize=8)
+        a_m.set_ylabel("|C| (dB)")
+        a_m.set_xlabel("ω (rad/s)")
+        a_m.set_title("compensator magnitude", fontsize=9)
+        a_p.semilogx(ws, ph, color=col, lw=2.0)
+        a_p.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls=":")
+        a_p.set_ylabel("phase (deg)")
+        a_p.set_xlabel("ω (rad/s)")
+        a_p.set_title("+ve = lead, −ve = lag", fontsize=9)
+        a_s.plot(tt, yy, color=col, lw=2.0)
+        a_s.axhline(1.0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_s.set_xlabel("time (s)")
+        a_s.set_ylabel("closed loop")
+        a_s.set_title("step, with this C on the joint", fontsize=9)
+        c.refresh()
 
     # ------------------------------------------------------------------
     def _redraw_lead(self):

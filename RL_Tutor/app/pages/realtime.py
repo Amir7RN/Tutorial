@@ -196,7 +196,69 @@ class RealTimePage(Page):
             "f<sub>s</sub>/2.", dim=True))
         self.add(a)
 
+        a2 = Card("that disaster, unpacked line by line — because every clause "
+                  "in it is doing work")
+        a2.add(body(
+            "<b>1 · Where 50 Hz comes from.</b> Put the numbers into the "
+            "formula above and there is no mystery left: 950/1000 = 0.95, "
+            "round(0.95) = 1, so f<sub>alias</sub> = |950 − 1×1000| = "
+            "<b>50 Hz</b>. Geometrically: each sample lands 342° further along "
+            "the 950 Hz sine (360°×950/1000), and a step of 342° forward is "
+            "visually a step of <b>18° backwards</b>. The samples therefore "
+            "walk slowly backwards round the circle, one twentieth of a cycle "
+            "at a time, and twenty of them make one apparent slow cycle — "
+            "50 Hz. It is the wagon-wheel effect, in your ADC."))
+        a2.add(body(
+            "<b>2 · Why the samples are indistinguishable from a real 50 Hz "
+            "signal.</b> Sample a genuine 50 Hz sine at 1 kHz and sample the "
+            "950 Hz tooth-mesh at 1 kHz, and you get <i>the same list of "
+            "numbers</i>. Not similar — identical. Every algorithm downstream "
+            "sees one array of numbers, so no algorithm downstream can tell "
+            "them apart. That is what \"the information was destroyed at the "
+            "ADC\" means, and it is why <b>no digital filter can fix this</b>: "
+            "a digital filter is a function of that array, and the two cases "
+            "have the same array."))
+        a2.add(body(
+            "<b>3 · Why the robot then really does shake at 50 Hz.</b> The "
+            "controller does not know the 50 Hz is a ghost. It sees error at "
+            "50 Hz, and it does its job: it commands torque at 50 Hz to cancel "
+            "it. That torque is real, it reaches a real motor, and the joint "
+            "now physically oscillates at 50 Hz — a frequency at which nothing "
+            "was wrong until the controller started fighting an artefact. "
+            "<b>The measurement was fictional; the vibration it causes is "
+            "not.</b> If it lands near a structural mode you get a resonance "
+            "the mechanism never had."))
+        a2.add(callout(
+            "<b>The only cure is analog, and it must sit BEFORE the "
+            "converter.</b> An anti-alias filter is a physical RC or "
+            "active-filter stage between the sensor and the ADC pin, with its "
+            "corner below f<sub>s</sub>/2, so that content which would fold is "
+            "attenuated <i>while it is still a continuous voltage</i> — the one "
+            "and only moment at which it can still be removed. Filtering in "
+            "software afterwards is filtering the wrong array.<br><br>"
+            "Practical audit for a robot: analogue current sense, load cells, "
+            "strain gauges, analogue IMUs and potentiometers all need one. "
+            "<b>Encoders are a different failure mode</b> — a counter cannot "
+            "alias in the same way, but reading a position counter at "
+            "f<sub>s</sub> and differencing it to get velocity aliases the "
+            "vibration content of that velocity estimate just as thoroughly, "
+            "which is why a naive Δθ/Δt on a resonating joint produces noise "
+            "nobody can trace.", "warn"))
+        self.add(a2)
+
         i2 = Card("fold a signal yourself")
+        i2.add(body(
+            "Grey is the truth, red dots are the samples joined by straight "
+            "lines (what a plot or a naive derivative sees), and the violet "
+            "dashed curve is the <b>sinc reconstruction</b> — the ideal "
+            "rebuild Nyquist actually promises, computed from the samples "
+            "alone.<br><br>"
+            "That third curve is the one that settles the argument. Above "
+            "Nyquist it lies on top of the grey truth however ugly the red "
+            "polyline looks — the information is all there and only the drawing "
+            "was crude. Below Nyquist it lies on top of the <i>alias</i> "
+            "instead, because the folded frequency is genuinely all that "
+            "survived.", dim=True))
         self.s_sig = slider(10, 3000, 950)
         self.s_rate = slider(100, 4000, 1000)
         self.l_sig, self.l_rate = QLabel(), QLabel()
@@ -204,7 +266,10 @@ class RealTimePage(Page):
         i2.add_layout(slider_row("sample rate (Hz)", self.s_rate, self.l_rate))
         self.st_alias = Stat("appears as", "--", theme.BAD)
         self.st_safe = Stat("below Nyquist?", "--", theme.GOOD)
-        i2.add_layout(stat_row(self.st_alias, self.st_safe))
+        self.st_recon = Stat("sinc rebuild", "--", theme.VIOLET)
+        self.st_ratio = Stat("samples per cycle", "--", theme.CYAN)
+        i2.add_layout(stat_row(self.st_alias, self.st_safe, self.st_recon,
+                               self.st_ratio))
         self.canvas2 = MplCanvas(width=7.4, height=2.7)
         i2.add(self.canvas2)
         self.add(i2)
@@ -279,6 +344,26 @@ class RealTimePage(Page):
             "ratio sits to 2, the fewer distinct phases you visit and the uglier "
             "it gets, which is why the classic \"picture of aliasing\" in "
             "textbooks is often not aliasing at all.", dim=True))
+        r.add(body(
+            "<b>Now check all four claims against the violet curve in the "
+            "widget, which is that sinc sum computed for real.</b> Set the "
+            "signal to 1000 Hz and walk the rate:<br>"
+            "&nbsp;&nbsp;• <b>1500 Hz</b> — violet locks onto a 500 Hz wave. "
+            "The ideal reconstruction, given everything the samples contain, "
+            "<i>is</i> the wrong signal. Nothing was lost by the maths; it was "
+            "lost by the converter, and the stat says \"wrong — folded\".<br>"
+            "&nbsp;&nbsp;• <b>2000 Hz</b> — exactly 2×, and violet still does "
+            "not come back correct. This is the strictness of f<sub>s</sub> "
+            "&gt; 2f made visible: at the bound itself the amplitude is not "
+            "recoverable, and on the zero crossings there is nothing to "
+            "recover at all.<br>"
+            "&nbsp;&nbsp;• <b>3913 Hz</b> — the red polyline is a wobbling "
+            "mess and violet sits exactly on the grey truth. Two curves built "
+            "from the <i>same</i> samples, one crude and one ideal: proof that "
+            "the ugliness was the drawing, not the data.<br>"
+            "&nbsp;&nbsp;• <b>4000 Hz</b> — red now looks tidy too, and violet "
+            "is unchanged from the previous case, because nothing about the "
+            "information changed. Only the picture did.", dim=True))
         self.add(r)
 
         self.add(callout(
@@ -296,6 +381,41 @@ class RealTimePage(Page):
             "\"2× is not enough\" is true for jobs two and three and false for "
             "job one. Nobody says which job they mean, which is exactly why this "
             "is confusing.", "key"))
+
+        i2b = Card("pick a frequency and a rate, and get all three verdicts at "
+                   "once")
+        i2b.add(body(
+            "The same pair of numbers, judged three times against three "
+            "different thresholds. The bars show where your sample rate sits "
+            "relative to each requirement, and the three verdicts disagree "
+            "with each other constantly — which is the entire point.<br><br>"
+            "Two settings worth doing: <b>f = 100 Hz, f<sub>s</sub> = 300 "
+            "Hz</b> gives \"information: safe, waveform: no, control: no\" — a "
+            "perfectly legal measurement you must not close a 100 Hz loop "
+            "around. <b>f = 50 Hz, f<sub>s</sub> = 1000 Hz</b> passes all "
+            "three, and is what a real 50 Hz joint loop on a 1 kHz "
+            "controller looks like.", dim=True))
+        self.s_job_f = slider(1, 500, 100)          # Hz, the frequency of interest
+        self.s_job_fs = slider(20, 4000, 1000)      # Hz, sample rate
+        self.l_job_f, self.l_job_fs = QLabel(), QLabel()
+        i2b.add_layout(slider_row("frequency of interest (Hz)", self.s_job_f,
+                                  self.l_job_f))
+        i2b.add_layout(slider_row("sample rate (Hz)", self.s_job_fs,
+                                  self.l_job_fs))
+        self.st_job1 = Stat("1 · keep the information", "--", theme.GOOD)
+        self.st_job2 = Stat("2 · waveform looks right", "--", theme.WARN)
+        self.st_job3 = Stat("3 · control at it", "--", theme.BAD)
+        self.st_job_bw = Stat("bandwidth this rate buys", "--", theme.VIOLET)
+        i2b.add_layout(stat_row(self.st_job1, self.st_job2, self.st_job3,
+                                self.st_job_bw))
+        self.c_job = MplCanvas(width=7.4, height=2.4)
+        i2b.add(self.c_job)
+        self.job_text = body("", dim=True)
+        i2b.add(self.job_text)
+        self.add(i2b)
+        for s in (self.s_job_f, self.s_job_fs):
+            s.valueChanged.connect(self._redraw_jobs)
+        self._redraw_jobs()
 
         # ---- scheduling -------------------------------------------------------
         self.add(hline())
@@ -459,6 +579,74 @@ class RealTimePage(Page):
         c.refresh()
 
     # ------------------------------------------------------------------
+    def _redraw_jobs(self):
+        """
+        One (f, f_s) pair judged against the three thresholds that get
+        collapsed into the single sentence "2x is not enough".
+        """
+        f = float(self.s_job_f.value())
+        fs = float(self.s_job_fs.value())
+        self.l_job_f.setText(f"{f:.0f} Hz")
+        self.l_job_fs.setText(f"{fs:.0f} Hz")
+
+        need = [("keep the information", 2.0 * f, "> 2·f, strictly"),
+                ("waveform looks right", 10.0 * f, "≥ 10 samples/cycle"),
+                ("control at this frequency", 15.0 * f, "10–20× f")]
+        ok = [fs > n for _, n, _ in need]
+
+        for stat, good, (_, n, _) in zip(
+                (self.st_job1, self.st_job2, self.st_job3), ok, need):
+            stat.set("yes" if good else f"no — need {n:.0f} Hz")
+            stat.set_color(theme.GOOD if good else theme.BAD)
+        self.st_job_bw.set(f"{practical_bandwidth(fs):.0f} Hz")
+
+        if all(ok):
+            verdict = (f"All three pass. {fs:.0f} Hz samples a {f:.0f} Hz "
+                       "phenomenon well enough to record it, draw it and close "
+                       "a loop on it.")
+        elif ok[0] and not ok[1]:
+            verdict = (f"<b>The interesting middle case.</b> The information "
+                       f"survives — {fs:.0f} Hz is above 2×{f:.0f} — so an FFT "
+                       "or a sinc rebuild recovers the signal exactly. But the "
+                       "polyline will look wrong, a naive Δ/Δt derivative will "
+                       "be badly noisy, and you must not close a loop at this "
+                       "frequency. \"It looks aliased\" here is a statement "
+                       "about your plot, not your data.")
+        elif not ok[0]:
+            verdict = (f"<b>Below Nyquist — the only genuine aliasing case on "
+                       f"this page.</b> The {f:.0f} Hz content folds to "
+                       f"{alias_frequency(f, fs):.0f} Hz and is gone. No "
+                       "downstream cleverness recovers it; the fix is an "
+                       "analog filter in front of the ADC.")
+        else:
+            verdict = (f"Information and picture are fine, but {fs:.0f} Hz "
+                       f"buys roughly {practical_bandwidth(fs):.0f} Hz of "
+                       f"control authority, which is below {f:.0f} Hz. You can "
+                       "measure this phenomenon honestly and still be unable "
+                       "to act on it — ZOH delay, compute delay and phase "
+                       "margin have eaten the difference.")
+        self.job_text.setText(verdict)
+
+        c = self.c_job
+        c.clear()
+        labels = ["1 · information\n(2×)", "2 · waveform\n(10×)",
+                  "3 · control\n(15×)"]
+        needs = [n for _, n, _ in need]
+        ypos = [0, 1, 2]
+        c.ax.barh(ypos, needs, height=0.55,
+                  color=[theme.GOOD if g else theme.BAD for g in ok],
+                  alpha=0.55)
+        c.ax.axvline(fs, color=theme.ACCENT, lw=2.0)
+        c.ax.text(fs, 2.55, f" your f_s = {fs:.0f} Hz", color=theme.ACCENT,
+                  fontsize=8, fontweight="bold")
+        c.ax.set_yticks(ypos)
+        c.ax.set_yticklabels(labels, fontsize=8)
+        c.ax.set_xlabel("sample rate required (Hz) — bar left of the blue line "
+                        "means satisfied")
+        c.ax.set_xlim(0, max(needs + [fs]) * 1.25)
+        c.refresh()
+
+    # ------------------------------------------------------------------
     def _redraw_alias(self):
         f_sig = float(self.s_sig.value())
         f_s = float(self.s_rate.value())
@@ -472,11 +660,40 @@ class RealTimePage(Page):
         self.st_alias.set_color(theme.GOOD if safe else theme.BAD)
         self.st_safe.set("yes" if safe else "NO — folded")
         self.st_safe.set_color(theme.GOOD if safe else theme.BAD)
+        self.st_ratio.set(f"{f_s / max(f_sig, 1e-9):.2f}")
+        self.st_ratio.set_color(theme.GOOD if f_s >= 10 * f_sig else theme.WARN)
+
+        # The ideal reconstruction Nyquist actually promises: every rebuilt
+        # point is a weighted sum over ALL the samples, not the two nearest.
+        # Truncated to the window we have, which is why the very ends droop.
+        # Evaluated on a coarser grid than the truth curve and with the sum
+        # windowed to the nearest 60 samples: the sinc tail is negligible past
+        # that, and the full double loop would be too slow to run behind a
+        # live slider.
+        ts_step = 1.0 / f_s
+        step = max(1, len(td) // 600)
+        t_rec = td[::step]
+        y_true_rec = yd[::step]
+        y_rec = []
+        for t in t_rec:
+            centre = int(round(t / ts_step))
+            acc = 0.0
+            for k in range(max(0, centre - 60), min(len(ts), centre + 61)):
+                x = (t - ts[k]) / ts_step
+                acc += ys[k] * (1.0 if abs(x) < 1e-12
+                                else math.sin(math.pi * x) / (math.pi * x))
+            y_rec.append(acc)
+        mid = slice(len(t_rec) // 5, 4 * len(t_rec) // 5)   # ignore edge droop
+        err = max(abs(a - b) for a, b in zip(y_rec[mid], y_true_rec[mid]))
+        self.st_recon.set("exact" if err < 0.12 else "wrong — folded")
+        self.st_recon.set_color(theme.GOOD if err < 0.12 else theme.BAD)
 
         c = self.canvas2
         c.clear()
         c.ax.plot([t * 1000 for t in td], yd, color=theme.TEXT_FAINT, lw=1.0,
                   label=f"true signal, {f_sig:.0f} Hz")
+        c.ax.plot([t * 1000 for t in t_rec], y_rec, color=theme.VIOLET, lw=1.6,
+                  ls="--", label="sinc reconstruction from the samples")
         c.ax.plot([t * 1000 for t in ts], ys, color=theme.BAD, lw=1.8,
                   marker="o", ms=3.5,
                   label=f"what the controller sees, {f_al:.0f} Hz")
