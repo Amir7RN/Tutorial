@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from ctrlcore.impedance import (
+    Joint,
     VirtualModel,
     equilibrium_angle,
     impedance_magnitude,
@@ -776,6 +777,49 @@ class ImpedanceControlPage(Page):
             "\"push\" proportional to how far away you are from your goal.",
             "key"))
 
+        # ---- one spring, three settings -------------------------------------
+        sp = Card("the same spring, three settings — and what each one throws "
+                  "away")
+        sp.add(body(
+            "Before any equation, the picture that makes the three paradigms "
+            "one object. Every one of them is a spring and a damper between "
+            "the joint and some rest angle. What differs is the stiffness you "
+            "chose and where you bolted the far end."))
+        sp.add(body(
+            "&nbsp;&nbsp;<b>Position control — an infinitely stiff spring, "
+            "bolted at the target.</b> The bolt is at θ<sub>d</sub> and the "
+            "spring will not stretch, so the joint is dragged to "
+            "θ<sub>d</sub> and held there. Any interaction force is a "
+            "<b>disturbance</b>, and the answer to a disturbance is to push "
+            "back as hard as necessary to erase it. <b>The interaction force "
+            "is the variable that got discarded</b> — the controller never "
+            "decided what it should be, it only decided that it should not "
+            "matter.<br><br>"
+            "&nbsp;&nbsp;<b>Torque control — no spring, no damper at all.</b> "
+            "There is nothing but a commanded feedforward torque, and the "
+            "joint applies it. Push the joint, move it, hold it somewhere "
+            "else — the controller does not notice, because it never reads "
+            "position. <b>The position is the variable that got "
+            "discarded.</b><br><br>"
+            "&nbsp;&nbsp;<b>Impedance control — a spring of your chosen "
+            "finite stiffness, and the bolt is not necessarily at the "
+            "target.</b> Both variables survive. The joint yields when pushed "
+            "(unlike position control) and it still ends up somewhere you "
+            "chose (unlike torque control). The price of keeping both is that "
+            "<b>you now have to answer a question the other two never "
+            "asked</b>: what should K, B and the rest angle be?"))
+        sp.add(callout(
+            "<b>And that question is the whole reason this page is long.</b> "
+            "The textbook parameterisation is (K, B, θ<sub>eq</sub>), and "
+            "θ<sub>eq</sub> — the bolt position — is <i>not</i> where you want "
+            "the joint. The rest of this page rewrites the same law so that "
+            "the bolt goes back onto the target, θ<sub>eq</sub> = "
+            "θ<sub>d</sub>, and the offset that used to be hidden in the bolt "
+            "position is written down honestly as a <b>feedforward torque</b> "
+            "instead. Same controller. Parameters you can actually measure.",
+            "key"))
+        self.add(sp)
+
         e = Card("the control law")
         self.d_imp = BlockDiagram(width=7.4, height=2.0)
         e.add(self.d_imp)
@@ -978,6 +1022,171 @@ class ImpedanceControlPage(Page):
             "party paying for it.", dim=True))
         self.add(tug)
 
+        # ---- the preload picture ---------------------------------------------
+        self.add(hline())
+        self.add(title("τ_ff is a preload, not a source of compliance — and "
+                       "the spring's job is to absorb your guess being wrong"))
+
+        pre = Card("compliance comes from K and B. From nothing else.")
+        pre.add(body(
+            "This is the sentence that stops the confusion. <b>τ<sub>ff</sub> "
+            "is blind to motion.</b> It is a number you decided in advance; it "
+            "does not read the encoder, so when the human pushes on the arm it "
+            "cannot react, and it keeps outputting exactly what it was told. "
+            "Therefore <b>every bit of resistance the human feels comes from "
+            "the spring and the damper</b>, and how hard it feels is set "
+            "purely by K and B."))
+        pre.add(callout(
+            "<b>The preloaded spring.</b> A preloaded spring is pressing "
+            "against something before you ever touch it. The preload sets how "
+            "hard it is pressing; it does <i>not</i> change how springy it "
+            "feels when you push on it — that is the spring constant, and the "
+            "preload has no opinion about it.<br><br>"
+            "&nbsp;&nbsp;<b>τ<sub>ff</sub> is the preload.</b> It sets the "
+            "baseline force the arm applies while sitting at the target.<br>"
+            "&nbsp;&nbsp;<b>K and B are the springiness.</b> They set what the "
+            "arm feels like to push.<br><br>"
+            "Two independent knobs. Turning up τ<sub>ff</sub> does not make "
+            "the arm stiffer, and turning down K does not reduce the force it "
+            "is holding.", "key"))
+        pre.add(body(
+            "<b>So why have a feedforward term at all?</b> Because without it, "
+            "\"be compliant\" and \"apply a real force\" are in direct "
+            "conflict. Say the arm is holding a weight. With a pure PD there "
+            "is exactly one way to produce the holding torque: <b>sag below "
+            "the target until the error is big enough that K·e equals the "
+            "load</b>. And the softer you make it, the further it sags. So you "
+            "are forced to crank K up to keep the sag acceptable — and now the "
+            "arm is stiff, and it fights the human.<br><br>"
+            "Add τ<sub>ff</sub> and the arm supplies the holding torque "
+            "directly. It sits exactly at θ<sub>d</sub> with <b>no error at "
+            "all</b>, and K is now free to be as low as you like. <b>That is "
+            "the real function of the feedforward term: it buys you the "
+            "freedom to be soft without giving up the ability to push.</b>"))
+        pre.add(body(
+            "<b>One correction worth making explicitly, because it is the "
+            "usual wrong reason.</b> A soft spring does not fail to reach "
+            "θ<sub>d</sub> <i>because it is soft</i>. With nothing touching "
+            "the arm, even a very soft spring bolted at θ<sub>d</sub> reaches "
+            "θ<sub>d</sub> exactly — it just gets there slowly. It stops short "
+            "only when something is pulling on it: gravity, a load, the "
+            "ground, a person. <b>The outside force is what stops it early; "
+            "the softness only decides how far short it stops</b> — soft "
+            "spring stops far away, stiff spring stops close. That is exactly "
+            "why the old parameterisation had to move the bolt out to "
+            "θ<sub>eq</sub>: further bolt, more stretch, more pull, and the "
+            "arm comes to rest on θ<sub>d</sub> instead of short of it.",
+            dim=True))
+        self.add(pre)
+
+        gs = Card("τ_ff is a guess; the spring absorbs the leftover")
+        gs.add(body(
+            "You choose τ<sub>ff</sub> in advance, for the force you "
+            "<i>expect</i>. The world then does whatever it does. What happens "
+            "next is entirely determined by the difference — call it the "
+            "<b>leftover</b>, τ<sub>ff</sub> + τ<sub>ext</sub>, and note that "
+            "it is zero exactly when your guess was right."))
+        gs.add(math_label(r"\theta_{ss} - \theta_d \;=\; "
+                          r"\frac{\tau_{ff} + \tau_{ext}}{K}"
+                          r"\qquad\text{(the leftover, divided by stiffness)}",
+                          16))
+        gs.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>You guessed</b></td><td><b>The world did</b></td>"
+            "<td><b>Leftover</b></td><td><b>What happens</b></td></tr>"
+            "<tr><td>+20</td><td>−20</td><td>0</td>"
+            "<td>They cancel. The arm sits <b>exactly</b> on θ<sub>d</sub> and "
+            "the spring is at rest, producing <b>nothing</b>.</td></tr>"
+            "<tr><td>+20</td><td>−15</td><td>+5</td>"
+            "<td>5 N·m of surplus drives the arm <i>past</i> θ<sub>d</sub>. It "
+            "stretches the spring until the spring pulls back with 5, and "
+            "stops there — <b>+5/K past target</b>.</td></tr>"
+            "<tr><td>+20</td><td>−25</td><td>−5</td>"
+            "<td>5 N·m short. The arm falls back until the spring pushes "
+            "forward with 5 — <b>5/K short of target</b>.</td></tr>"
+            "</table>"))
+        gs.add(callout(
+            "<b>Read the first row again, because it is the part that is easy "
+            "to get backwards.</b> When the guess is right, the spring and the "
+            "feedforward do <i>not</i> share the work of holding the arm at "
+            "θ<sub>d</sub>. The spring is at its rest angle, so it contributes "
+            "<b>exactly zero</b>, and the feedforward is doing 100% of the "
+            "holding. It is not \"both together bring me there\". It is:<br><br>"
+            "&nbsp;&nbsp;<b>the feedforward holds me there; the spring brings "
+            "me back if I get pushed away.</b><br><br>"
+            "The spring is not part of the steady state at all — it is the "
+            "response to being wrong, and it only wakes up when the arm is off "
+            "θ<sub>d</sub>. Which is precisely the same statement as \"the "
+            "spring absorbs the error in your guess\".", "key"))
+        gs.add(body(
+            "<b>And now the softness trade-off has a sharp edge.</b> A soft "
+            "spring has to move a long way to generate that leftover 5 N·m; a "
+            "stiff one barely moves. So <b>the softer you are, the further off "
+            "target you sit when your guess is wrong</b> — and being soft was "
+            "the whole point. Compliance and accuracy-under-uncertainty are "
+            "traded against each other by K alone, and τ<sub>ff</sub> is how "
+            "you reduce the uncertainty rather than how you cover for it.",
+            dim=True))
+        gs.add(body(
+            "<b>Both notations, finally reconciled.</b> Bolting the spring out "
+            "at θ<sub>eq</sub> was never about a target — it was a way of "
+            "<i>producing a holding force by stretching</i>. The new "
+            "parameterisation does not change one newton-metre of what the "
+            "motor does; it just stops hiding the force inside a bolt position "
+            "and writes it down as τ<sub>ff</sub>, where you can measure it, "
+            "look it up in a gait dataset, or compute it from inverse "
+            "dynamics.", dim=True))
+        self.add(gs)
+
+        # ---- interactive: the guess and the leftover -------------------------
+        ig = Card("set a guess, let the world disagree, and watch the spring "
+                  "pick up the difference")
+        ig.add(body(
+            "θ<sub>d</sub> = 0 and the spring is bolted <b>on</b> the target, "
+            "the new way. B is fixed at 10 — it shapes the transient and has "
+            "nothing to do with where the arm ends up. A constant external "
+            "torque is applied from t = 0.<br><br>"
+            "<b>Left:</b> the joint angle. <b>Middle:</b> the torque budget at "
+            "rest — four bars that must sum to zero. <b>Right:</b> the resting "
+            "offset against stiffness, with your K marked.<br><br>"
+            "<b>Four things to do:</b><br>"
+            "&nbsp;&nbsp;<b>1.</b> Set τ<sub>ff</sub> = +20 and "
+            "τ<sub>ext</sub> = −20. Leftover zero: the arm lands exactly on "
+            "θ<sub>d</sub>, and the <b>spring bar is empty</b>. The "
+            "feedforward is holding the whole load.<br>"
+            "&nbsp;&nbsp;<b>2.</b> Now drag τ<sub>ext</sub> to −15. Five "
+            "newton-metres of surplus; the arm walks <i>past</i> the target "
+            "and the spring bar grows to exactly −5 to stop it.<br>"
+            "&nbsp;&nbsp;<b>3.</b> Drag it to −25 instead. Same magnitude, "
+            "other side. The spring bar is +5 and the arm sits short.<br>"
+            "&nbsp;&nbsp;<b>4.</b> With the leftover non-zero, sweep K. The "
+            "right-hand panel is a 1/K curve: soft is far off, stiff is close. "
+            "Then set the leftover back to zero and sweep K again — <b>the "
+            "curve collapses onto the axis and K stops mattering</b>. That is "
+            "the payoff: get the feedforward right and you can be as soft as "
+            "you like for free.", dim=True))
+        self.s_gff = slider(-40, 40, 20)
+        self.s_gext = slider(-40, 40, -20)
+        self.s_gk = slider(5, 300, 45)
+        self.l_gff, self.l_gext, self.l_gk = QLabel(), QLabel(), QLabel()
+        ig.add_layout(slider_row("your guess τ_ff", self.s_gff, self.l_gff))
+        ig.add_layout(slider_row("the world τ_ext", self.s_gext, self.l_gext))
+        ig.add_layout(slider_row("stiffness K", self.s_gk, self.l_gk))
+        self.st_gleft = Stat("leftover", "--", theme.WARN)
+        self.st_goff = Stat("resting offset", "--", theme.ACCENT)
+        self.st_gspr = Stat("spring torque at rest", "--", theme.GOOD)
+        self.st_gver = Stat("guess", "--", theme.VIOLET)
+        ig.add_layout(stat_row(self.st_gleft, self.st_goff, self.st_gspr,
+                               self.st_gver))
+        self.cG = MplCanvas(width=7.6, height=2.9, ncols=3)
+        ig.add(self.cG)
+        self.tG = body("", dim=True)
+        ig.add(self.tG)
+        self.add(ig)
+        for s in (self.s_gff, self.s_gext, self.s_gk):
+            s.valueChanged.connect(self._redraw_guess)
+        self._redraw_guess()
+
         how = Card("so how do you choose it? Not by trial and error.")
         how.add(body(
             "<b>1 · From biomechanics data (the usual answer for prostheses).</b> "
@@ -1062,6 +1271,104 @@ class ImpedanceControlPage(Page):
         d.note(2.15, 0.40, "FORCE OUT: torque proportional to displacement",
                colour=theme.GOOD)
         d.done()
+
+    def _redraw_guess(self):
+        """
+        tau_ff is a guess made in advance; the spring is what absorbs the guess
+        being wrong. Everything on this panel follows from one number --
+        the leftover, tau_ff + tau_ext -- divided by K.
+        """
+        ff = float(self.s_gff.value())
+        ext = float(self.s_gext.value())
+        k = float(self.s_gk.value())
+        b = 10.0
+        self.l_gff.setText(f"{ff:+.0f} N·m")
+        self.l_gext.setText(f"{ext:+.0f} N·m")
+        self.l_gk.setText(f"{k:.0f}")
+
+        leftover = ff + ext
+        off = leftover / k                       # rad, exactly
+        off_deg = math.degrees(off)
+        spring = -k * off                        # = -leftover, by construction
+
+        self.st_gleft.set(f"{leftover:+.0f} N·m")
+        self.st_gleft.set_color(theme.GOOD if abs(leftover) < 1e-9
+                                else theme.WARN)
+        self.st_goff.set(f"{off_deg:+.1f}°")
+        self.st_gspr.set(f"{spring:+.1f} N·m")
+        self.st_gver.set("exact" if abs(leftover) < 1e-9 else
+                         ("too big" if leftover > 0 else "too small"))
+        self.st_gver.set_color(theme.GOOD if abs(leftover) < 1e-9
+                               else theme.VIOLET)
+
+        if abs(leftover) < 1e-9:
+            self.tG.setText(
+                f"<b>Guess exact.</b> τ<sub>ff</sub> = {ff:+.0f} cancels "
+                f"τ<sub>ext</sub> = {ext:+.0f}, so the arm rests on "
+                "θ<sub>d</sub> and <b>the spring contributes zero</b> — look "
+                "at the empty green bar. The feedforward is doing 100% of the "
+                "holding. Note what this means: at this instant K could be 5 "
+                "or 300 and the resting angle would be identical, which is "
+                "the right-hand panel lying flat on the axis. Compliance is "
+                "free when the guess is right.")
+        else:
+            self.tG.setText(
+                f"<b>Guess off by {leftover:+.0f} N·m, and the spring is now "
+                f"the only thing that can absorb it.</b> It must produce "
+                f"{spring:+.1f} N·m to balance, and the only way a spring "
+                f"produces torque is by being displaced — so the arm settles "
+                f"{off_deg:+.1f}° from the target. Halve K and that doubles; "
+                f"double K and it halves. <b>That is the compliance "
+                f"trade-off in one number:</b> the softness you wanted is "
+                f"exactly what turns a wrong guess into a position error. "
+                f"τ<sub>ff</sub> is how you shrink the leftover; K is only "
+                "how loudly the leftover is reported.")
+
+        # simulate: constant external torque from t = 0, bolt on the target
+        joint = Joint(inertia=0.25, friction=0.4)
+        dt, dur = 0.002, 3.0
+        ts, th = [], []
+        for i in range(int(dur / dt) + 1):
+            tau = -k * joint.theta - b * joint.omega + ff
+            ts.append(i * dt)
+            th.append(math.degrees(joint.theta))
+            joint.step(tau, ext, dt)
+
+        c = self.cG
+        c.clear()
+        a_t, a_bar, a_k = c.axes
+
+        a_t.plot(ts, th, color=theme.GOOD, lw=2.2, label="θ")
+        a_t.axhline(0, color=theme.TEXT_FAINT, lw=1.1, ls="--",
+                    label="θ_d = bolt")
+        a_t.axhline(off_deg, color=theme.ACCENT, lw=1.1, ls=":",
+                    label="leftover / K")
+        a_t.set_xlabel("time (s)")
+        a_t.set_ylabel("θ  (°)")
+        a_t.set_title("where it comes to rest", fontsize=9)
+        c.legend(a_t, loc="best")
+
+        vals = [ff, ext, spring, 0.0]
+        cols = [theme.VIOLET, theme.WARN, theme.GOOD, theme.TEXT_FAINT]
+        a_bar.bar([0, 1, 2, 3], vals, color=cols, alpha=0.85, width=0.6)
+        a_bar.axhline(0, color=theme.TEXT_FAINT, lw=1.1)
+        a_bar.set_xticks([0, 1, 2, 3])
+        a_bar.set_xticklabels(["τ_ff", "τ_ext", "spring", "damper"],
+                              fontsize=8)
+        a_bar.set_ylabel("N·m")
+        a_bar.set_title("at rest these sum to zero", fontsize=9)
+
+        ks = [5.0 + i * (300.0 - 5.0) / 200.0 for i in range(201)]
+        a_k.plot(ks, [math.degrees(leftover / kk) for kk in ks],
+                 color=theme.ACCENT, lw=2.0)
+        a_k.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_k.scatter([k], [off_deg], s=45, color=theme.GOOD, zorder=5,
+                    label="your K")
+        a_k.set_xlabel("stiffness K (N·m/rad)")
+        a_k.set_ylabel("resting offset (°)")
+        a_k.set_title("softer = further off, when wrong", fontsize=9)
+        c.legend(a_k, loc="best")
+        c.refresh()
 
     def _redraw(self):
         k = float(self.s_k.value())
