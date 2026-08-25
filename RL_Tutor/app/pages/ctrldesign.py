@@ -28,6 +28,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel
 
 from ctrlcore.linear import (
     TF,
+    alpha_for_phase,
     bode,
     critical_gain,
     lead,
@@ -288,6 +289,28 @@ class StabilisingPage(Page):
         for s in (self.s_ikp, self.s_iki, self.s_ikd):
             s.valueChanged.connect(self._redraw_pid)
         self._redraw_pid()
+
+        self.add(callout(
+            "<b>Everything you just did was <i>tuning</i>, and it is worth "
+            "naming that out loud.</b> You moved three gains and read three "
+            "consequences off the plots. There is no formula on this page that "
+            "takes \"I want 50° of phase margin at 30 rad/s\" and hands you "
+            "K<sub>p</sub>, K<sub>i</sub> and K<sub>d</sub> — the map runs the "
+            "easy way only. <i>Gains → response</i> is a calculation; "
+            "<i>response → gains</i> is a search, and every named PID recipe "
+            "(Ziegler-Nichols, relay auto-tuning, \"raise K<sub>p</sub> until "
+            "it rings and back off 40%\") is a search procedure with a name. "
+            "The next page rewrites this same controller in coordinates where "
+            "the map <b>does</b> invert, which is the entire reason lead-lag "
+            "exists as a separate language.<br><br>"
+            "<b>And notice what the droop stat is a statement about: ω = 0, "
+            "and nothing else.</b> A constant load is a signal of zero "
+            "frequency, so once the transients have died the only number that "
+            "decides the leftover error is the loop gain at DC. K<sub>p</sub> "
+            "makes that gain large; only K<sub>i</sub> makes it infinite; and "
+            "only infinite gives exactly zero. Page 16 takes that apart "
+            "properly, because it is the whole difference between a lag and a "
+            "PI.", "key"))
 
         # ---- the unstable case ------------------------------------------
         self.add(hline())
@@ -769,6 +792,75 @@ class LeadLagPage(Page):
             "(a filtered derivative, by construction), and a lag cannot wind "
             "up.", "key"))
 
+        # ==================================================================
+        # what "tuned" and "designed" actually mean
+        # ==================================================================
+        td = Card("\"tuned\" versus \"designed\" — the difference is which "
+                  "direction the map runs")
+        td.add(body(
+            "Both words describe picking numbers for a controller, so the "
+            "distinction sounds like snobbery. It is not, and it is not about "
+            "effort or skill either. It is about whether the relationship "
+            "between <b>your parameters</b> and <b>your specification</b> can "
+            "be inverted in closed form."))
+        td.add(body(
+            "<b>Tuned — you search.</b> Hand me K<sub>p</sub>, K<sub>i</sub>, "
+            "K<sub>d</sub> and I can compute your phase margin, your "
+            "crossover, your overshoot, exactly. Hand me a phase margin and "
+            "ask for the gains and there is no formula to give you. Three "
+            "parameters go in; the specification is a property of the whole "
+            "loop, not of any one of them; and the composition is not "
+            "invertible by algebra. So you do what page 15 had you doing: set "
+            "a value, look at the consequence, adjust, repeat. Ziegler-"
+            "Nichols, relay auto-tuning, \"raise K<sub>p</sub> until it rings "
+            "then back off 40%\" — these are all <b>named search procedures</b>"
+            ", and naming a search does not make it a solution. They work. "
+            "They are still search, and they terminate when you decide the "
+            "step response looks acceptable rather than when a number is "
+            "met."))
+        td.add(body(
+            "<b>Designed — you solve.</b> A lead is written in coordinates "
+            "that are <i>already the specification's coordinates</i>: "
+            "φ<sub>max</sub> is literally \"degrees of phase margin\" and "
+            "ω<sub>max</sub> is literally \"where crossover goes\". So the "
+            "four-step recipe below is not a heuristic — it is the "
+            "specification substituted into an inverse that happens to exist:"))
+        td.add(math_label(
+            r"\phi_{req} \;\longrightarrow\; "
+            r"\alpha = \frac{1+\sin\phi_{req}}{1-\sin\phi_{req}} "
+            r"\;\longrightarrow\; z=\frac{\omega_{gc}}{\sqrt\alpha},\;\;"
+            r"p=\omega_{gc}\sqrt\alpha \;\longrightarrow\; "
+            r"K_c=\frac{\sqrt\alpha}{|P(j\omega_{gc})|}", 16))
+        td.add(body(
+            "Read the chain. Every arrow is a substitution, not an iteration. "
+            "You never look at a step response and go back. The specification "
+            "goes in the left end and the compensator falls out the right end, "
+            "and if the plant is what you said it was, the margin you asked "
+            "for is the margin you get."))
+        td.add(callout(
+            "<b>Why the same controller can be tuned in one parameterisation "
+            "and designed in another.</b> A lead <i>is</i> a filtered PD — "
+            "same two coefficients, reparameterised. But (K<sub>p</sub>, "
+            "K<sub>d</sub>) are <b>the controller's own units</b>: newton-"
+            "metres per radian and per radian-per-second. (φ<sub>max</sub>, "
+            "ω<sub>max</sub>) are <b>the specification's units</b>: degrees of "
+            "margin and rad/s of bandwidth. The design procedure is nothing "
+            "more than the change of variables between those two coordinate "
+            "systems, done once, algebraically. That is the whole content of "
+            "the word \"designed\".", "key"))
+        td.add(body(
+            "<b>Two honest limits, so this does not read as magic.</b> "
+            "(1) You are designing against a <i>model</i>: the arithmetic is "
+            "exact, the plant is not, and a lead designed on a model with the "
+            "wrong resonance is precisely as wrong as a badly tuned PID. "
+            "(2) The procedure pins the loop at <b>one frequency</b> — "
+            "ω<sub>gc</sub> — and says nothing about the rest of the curve, "
+            "which is why you still look at the finished Bode plot. What you "
+            "have bought is not certainty; it is a <b>first attempt that is "
+            "already in the right place</b>, and a defensible answer to \"why "
+            "these numbers?\" other than \"it stopped ringing\".", dim=True))
+        self.add(td)
+
         le = Card("lead — buys phase, costs high-frequency gain")
         le.add(math_label(r"C(s) = K_c\,\frac{s + z}{s + p}, \qquad "
                           r"p = \alpha z, \quad \alpha > 1", 17))
@@ -803,6 +895,54 @@ class LeadLagPage(Page):
             "&nbsp;&nbsp;4. z = ω<sub>max</sub>/√α, p = ω<sub>max</sub>√α",
             dim=True))
         self.add(le)
+
+        # ---- interactive: the design direction, run live -------------------
+        ia = Card("state a specification, get a compensator — one pass, no "
+                  "iteration")
+        ia.add(body(
+            "This is \"designed\" in the literal sense, and it is the "
+            "difference from page 15 made operational. Plant: the rigid joint "
+            "1/(0.25s² + 0.4s). <b>You do not touch a single compensator "
+            "parameter.</b> You set the phase margin you want and the "
+            "crossover you want; the four lines of arithmetic above produce α, "
+            "z, p and K<sub>c</sub>, and the stats put what you asked for next "
+            "to what you got.<br><br>"
+            "<b>Three things to do:</b><br>"
+            "&nbsp;&nbsp;<b>1.</b> Move either slider and watch <i>achieved</i> "
+            "track <i>asked for</i>. Nothing is being searched — each redraw "
+            "is one substitution.<br>"
+            "&nbsp;&nbsp;<b>2.</b> Push the target crossover right. The "
+            "plant's own phase there is more negative, so more lead is "
+            "demanded, α climbs, and the ×α you are paying in high-frequency "
+            "gain climbs with it. <b>The cost of a specification becomes "
+            "visible as a number.</b><br>"
+            "&nbsp;&nbsp;<b>3.</b> Ask for more than about 65° of margin at a "
+            "high crossover. One lead section cannot deliver it — "
+            "φ<sub>max</sub> saturates — and the readout says so rather than "
+            "silently missing. A tuner discovers that limit by failing to "
+            "find gains; a designer reads it off the arcsine.", dim=True))
+        self.s_tpm = slider(15, 80, 50)           # target phase margin, deg
+        self.s_twgc = slider(20, 600, 150)        # x0.1 rad/s
+        self.l_tpm, self.l_twgc = QLabel(), QLabel()
+        ia.add_layout(slider_row("want: phase margin", self.s_tpm, self.l_tpm))
+        ia.add_layout(slider_row("want: crossover (×0.1)", self.s_twgc,
+                                 self.l_twgc))
+        self.st_sphi = Stat("lead required", "--", theme.VIOLET)
+        self.st_salpha = Stat("→ α", "--", theme.CYAN)
+        self.st_szp = Stat("→ z, p", "--", theme.ACCENT)
+        self.st_skc = Stat("→ K_c", "--", theme.ACCENT)
+        self.st_spm = Stat("PM achieved", "--", theme.GOOD)
+        self.st_swgc = Stat("ω_gc achieved", "--", theme.GOOD)
+        ia.add_layout(stat_row(self.st_sphi, self.st_salpha, self.st_szp,
+                               self.st_skc, self.st_spm, self.st_swgc))
+        self.cA = MplCanvas(width=7.4, height=4.4, nrows=3)
+        ia.add(self.cA)
+        self.tA = body("", dim=True)
+        ia.add(self.tA)
+        self.add(ia)
+        for s in (self.s_tpm, self.s_twgc):
+            s.valueChanged.connect(self._redraw_spec)
+        self._redraw_spec()
 
         la = Card("lag — buys low-frequency gain, costs a little phase")
         la.add(math_label(r"C(s) = K_c\,\frac{s + z}{s + p}, \qquad "
@@ -948,6 +1088,271 @@ class LeadLagPage(Page):
         for s in (self.s_lz, self.s_lp, self.s_lk):
             s.valueChanged.connect(self._redraw_morph)
         self._redraw_morph()
+
+        # ==================================================================
+        # six objects, two families -- where each pair agrees and where it
+        # stops agreeing
+        # ==================================================================
+        self.add(hline())
+        self.add(title("Six objects, two families — and the exact band in "
+                       "which each pair is the same controller"))
+
+        fam = Card("pure D, PD, lead — and pure I, PI, lag")
+        fam.add(body(
+            "\"PD ≈ lead\" and \"PI ≈ lag\" are true, and they are also "
+            "imprecise in a way that hides the only thing worth knowing: "
+            "<b>over which frequencies</b> the approximation holds, and what "
+            "happens outside that band. There are six objects here, not four, "
+            "because the <i>pure</i> derivative and the <i>pure</i> integrator "
+            "are different animals from PD and PI, and mixing them up is the "
+            "usual source of confusion."))
+        fam.add(body(
+            "<table cellpadding='6'>"
+            "<tr><td><b>Object</b></td><td><b>Form</b></td>"
+            "<td><b>Magnitude</b></td><td><b>Phase</b></td>"
+            "<td><b>Corners</b></td></tr>"
+            "<tr><td><b>pure D</b></td><td>K<sub>d</sub>s</td>"
+            "<td>+20 dB/dec <i>everywhere</i></td>"
+            "<td>+90° <i>everywhere</i></td><td>none</td></tr>"
+            "<tr><td><b>PD</b></td><td>K<sub>p</sub> + K<sub>d</sub>s</td>"
+            "<td>flat, then +20 dB/dec forever</td>"
+            "<td>0° → +90°, and stays</td><td>one zero</td></tr>"
+            "<tr><td><b>lead</b></td><td>K(s+z)/(s+p), p &gt; z</td>"
+            "<td>flat, +20 dB/dec, flat at ×α</td>"
+            "<td>0° → bump → 0°</td><td>zero <i>and</i> pole</td></tr>"
+            "<tr><td><b>pure I</b></td><td>K<sub>i</sub>/s</td>"
+            "<td>−20 dB/dec <i>everywhere</i></td>"
+            "<td>−90° <i>everywhere</i></td><td>none</td></tr>"
+            "<tr><td><b>PI</b></td><td>K<sub>p</sub> + K<sub>i</sub>/s</td>"
+            "<td>−20 dB/dec forever, then flat at K<sub>p</sub></td>"
+            "<td>−90° → 0°</td><td>one zero (pole at origin)</td></tr>"
+            "<tr><td><b>lag</b></td><td>K(s+z)/(s+p), p &lt; z</td>"
+            "<td>flat at ×β, −20 dB/dec, flat</td>"
+            "<td>0° → dip → 0°</td><td>zero <i>and</i> pole</td></tr>"
+            "</table>"))
+        fam.add(callout(
+            "<b>The pattern, in one line: a finite pole is what stops a "
+            "climb, and returns a phase.</b><br><br>"
+            "Pure D and pure I have no corner at all, so they climb without "
+            "bound on their active side and hold ±90° forever. PD and PI have "
+            "<i>one</i> corner, so each is bounded on one side and unbounded "
+            "on the other — PD flattens at low frequency and runs away at "
+            "high, PI does exactly the reverse. Lead and lag have <i>two</i> "
+            "corners, so they are bounded at both ends and their phase always "
+            "comes home to 0°. That is the entire taxonomy; everything else is "
+            "which numbers you put in.", "key"))
+        fam.add(body(
+            "<b>PI is not a pure integrator, and this trips people up.</b> "
+            "K<sub>p</sub> + K<sub>i</sub>/s = K<sub>p</sub>(s + "
+            "K<sub>i</sub>/K<sub>p</sub>)/s — an integrator with a zero. Above "
+            "that zero the K<sub>p</sub> term dominates, so the magnitude "
+            "flattens at K<sub>p</sub> and the phase comes back to 0°, because "
+            "a real gain has no phase. A PI holds −90° only <i>below</i> its "
+            "zero. The object that is −20 dB/dec everywhere and −90° "
+            "everywhere with no flattening anywhere is the pure integrator "
+            "K<sub>i</sub>/s alone, and that is the true mirror of the pure "
+            "derivative K<sub>d</sub>s.", dim=True))
+        self.add(fam)
+
+        ib = Card("overlay each family and find the frequency where they part")
+        ib.add(body(
+            "All three curves in each row are normalised to <b>0 dB at the "
+            "marked crossover</b>, so the only thing you are looking at is "
+            "shape. The lead and the lag are given the same zero as their "
+            "PD/PI counterpart, so the pairs are as directly comparable as "
+            "they can be.<br><br>"
+            "<b>Top row — the derivative family. Read where the curves "
+            "separate:</b> below the lead's pole p, the lead and the PD are "
+            "the same curve. Above p they are not, and never become the same "
+            "again: the lead flattens at ×α while the PD keeps climbing at +20 "
+            "dB/dec forever, chasing the pure D. Everything the lead gives you "
+            "over a PD happens <b>above crossover</b>, and it is one thing: "
+            "the high-frequency gain is bounded.<br><br>"
+            "<b>Bottom row — the integral family, mirrored:</b> above the "
+            "lag's zero, the lag and the PI are the same curve. Below the "
+            "lag's pole p they separate, permanently: the lag flattens at ×β "
+            "while the PI keeps climbing at −20 dB/dec toward infinite DC "
+            "gain. Everything the lag gives you over a PI happens <b>below "
+            "crossover</b>, and the price is that its DC gain is finite.<br><br>"
+            "<b>Watch the phase columns, and watch α and β do the same job "
+            "from opposite ends.</b> Raise α: the lead's pole moves right, the "
+            "agreement band with the PD widens, and the phase bump grows and "
+            "moves out. Raise β: the lag's pole moves left, the agreement band "
+            "with the PI widens downward, and the DC gain grows. Take either "
+            "to its limit and the pair becomes one object — that is exactly "
+            "the p → ∞ and p → 0 statement from the card above, but now you "
+            "can see the band closing.", dim=True))
+        self.s_fwc = slider(20, 800, 200)         # x0.1 rad/s -- crossover
+        self.s_falpha = slider(11, 1000, 100)     # x0.1
+        self.s_fbeta = slider(1, 1000, 100)
+        self.l_fwc, self.l_falpha, self.l_fbeta = QLabel(), QLabel(), QLabel()
+        ib.add_layout(slider_row("crossover ω_c (×0.1)", self.s_fwc,
+                                 self.l_fwc))
+        ib.add_layout(slider_row("lead α (×0.1)", self.s_falpha, self.l_falpha))
+        ib.add_layout(slider_row("lag β", self.s_fbeta, self.l_fbeta))
+        self.st_fd = Stat("pure D @ ω_c", "--", theme.TEXT_DIM)
+        self.st_fpd = Stat("PD @ ω_c", "--", theme.CYAN)
+        self.st_flead = Stat("lead @ ω_c", "--", theme.GOOD)
+        self.st_fhf = Stat("lead HF gain", "--", theme.WARN)
+        self.st_fpi = Stat("PI @ ω_c", "--", theme.CYAN)
+        self.st_flag = Stat("lag @ ω_c", "--", theme.WARN)
+        ib.add_layout(stat_row(self.st_fd, self.st_fpd, self.st_flead,
+                               self.st_fhf, self.st_fpi, self.st_flag))
+        self.cB = MplCanvas(width=7.6, height=4.6, nrows=2, ncols=2)
+        ib.add(self.cB)
+        self.tB = body("", dim=True)
+        ib.add(self.tB)
+        self.add(ib)
+        for s in (self.s_fwc, self.s_falpha, self.s_fbeta):
+            s.valueChanged.connect(self._redraw_family)
+        self._redraw_family()
+
+        sm = Card("the two summaries, sharpened — because both are nearly "
+                  "right and the correction is the useful part")
+        sm.add(body(
+            "<b>\"PD and lead differ only at crossover and above, and both do "
+            "the same thing for phase margin.\"</b> The frequency claim is "
+            "right: they agree below p and part above it. The phase-margin "
+            "claim needs one qualification you can read off the stats. At the "
+            "<i>same zero</i>, the PD gives <b>more</b> phase at crossover "
+            "than the lead does — the lead's pole has already begun handing "
+            "phase back by the time you get there. To match a PD's phase boost "
+            "the lead needs a larger α or a lower zero, and that is the real, "
+            "small price of realisability. Once matched, the benefit to phase "
+            "margin is identical, because phase margin is evaluated at exactly "
+            "one frequency and they agree there."))
+        sm.add(body(
+            "<b>\"The lead's advantage is a more bounded gain margin.\"</b> "
+            "Nearly. State it as: the lead <b>bounds the high-frequency gain "
+            "at ×α</b>. That single fact has three consequences, and gain "
+            "margin is the least important of them. First, sensor noise: an "
+            "ideal PD multiplies encoder quantisation by frequency without "
+            "limit and sends it to the motor — the u/n path, not the y/r path "
+            "— so the practical cap on K<sub>d</sub> is encoder resolution and "
+            "current-loop headroom, not stability. Second, realisability: an "
+            "improper transfer function cannot be built or honestly simulated. "
+            "Third, and only then, gain margin — a magnitude that climbs "
+            "forever will eventually re-cross 0 dB somewhere out in the "
+            "high-frequency region where the plant's phase is long past −180°, "
+            "and that crossing is a gain margin you did not know you had spent."
+            " The headline is noise and realisability; GM improves as a "
+            "consequence."))
+        sm.add(body(
+            "<b>\"Lag and PI are identical at high frequency and at crossover, "
+            "and differ only at low frequency — PI starts very high at DC, lag "
+            "is bounded; PI is −90° everywhere low, lag starts at zero, "
+            "reaches −90° and recovers by crossover.\"</b> Right, except the "
+            "last clause. The lag's phase does not <i>start</i> anywhere near "
+            "−90° and climb: below its pole it is back at <b>0°</b>, it dips "
+            "negative through the pole-zero band, and it returns to 0° above "
+            "the zero. It is a <b>localised dip</b>, and the dip's depth is at "
+            "most arcsin((β−1)/(β+1)) — the lead's formula with the sign "
+            "flipped. That is precisely why you place the zero a decade below "
+            "crossover: not so the phase can \"recover in time\", but so the "
+            "whole dip lives somewhere the loop does not care about. The PI, "
+            "by contrast, has no second corner to come back from, so its −90° "
+            "below the zero is permanent."))
+        self.add(sm)
+
+        # ==================================================================
+        # steady-state error lives at omega = 0
+        # ==================================================================
+        self.add(hline())
+        self.add(title("Why steady-state error lives at ω = 0, and what "
+                       "separates finite DC gain from infinite"))
+
+        ss = Card("a constant is a signal of zero frequency")
+        ss.add(body(
+            "\"Steady state\" means: hold a constant command, or apply a "
+            "constant load, wait for every transient to die, and look at what "
+            "is left. Take that definition apart and it is a frequency-domain "
+            "statement in disguise. <b>A constant is a sinusoid of zero "
+            "frequency.</b> Its entire spectrum sits at ω = 0. The transients "
+            "are the closed-loop poles' contributions and they decay to "
+            "nothing by construction — that is what \"stable\" means — so the "
+            "only surviving term is the loop's response at DC. Everything else "
+            "on the Bode plot is describing what happened on the way there."))
+        ss.add(body(
+            "The final value theorem is the same sentence written as algebra: "
+            "lim<sub>t→∞</sub> y(t) = lim<sub>s→0</sub> s·Y(s), and s → 0 is "
+            "s = jω with ω = 0. For a unity-feedback loop with a step command:"))
+        ss.add(math_label(
+            r"E(s)=\frac{R(s)}{1+L(s)} \quad\Longrightarrow\quad "
+            r"e_{ss}=\lim_{s\to 0}\frac{s\,(r/s)}{1+L(s)}"
+            r"=\frac{r}{1+L(0)}", 17))
+        ss.add(callout(
+            "<b>Finite versus infinite, and why the difference is categorical "
+            "rather than large.</b><br><br>"
+            "<b>Finite DC gain</b> — a lag with L(0) = 100 (40 dB) leaves "
+            "r/101. Every extra decade of DC gain divides the error by ten and "
+            "it never reaches zero, because a finite-gain controller has to "
+            "<i>see</i> an error in order to produce an output at all: its "
+            "output is gain × error, so the standing output that holds the "
+            "load up requires a standing error to generate it. Remove the "
+            "error and you remove the output that was holding the position. "
+            "The residual error is the price of the controller's own "
+            "existence.<br><br>"
+            "<b>Infinite DC gain</b> — a PI puts a pole at ω = 0, so L(0) = ∞ "
+            "and e<sub>ss</sub> = r/(1+∞) = 0 <i>exactly</i>. The reason is "
+            "not that the gain is very large; it is that an integrator's "
+            "output <b>persists with zero input</b>. Its state is the "
+            "accumulated past, so it can hold any output you like while its "
+            "input reads exactly zero. Zero error becomes a valid equilibrium "
+            "rather than an unreachable limit. \"Infinite DC gain\" and \"keeps "
+            "accumulating until nothing is left\" are the same statement in "
+            "two languages — frequency and time.", "key"))
+        self.add(ss)
+
+        ic = Card("watch the error march down one decade per decade, and "
+                  "never arrive")
+        ic.add(body(
+            "Same joint, same lag C(s) = K(s+z)/(s+p) with z = 0.5 and "
+            "p = z/β, against a PI with the same K and z — that is, the same "
+            "compensator with its pole moved to the origin. A 1 N·m load is "
+            "applied at t = 0.<br><br>"
+            "<b>Left:</b> |P/(1+L)|, the load-to-error response, over "
+            "frequency. <b>The value this curve takes at its left-hand edge IS "
+            "the steady-state error</b> — that is the whole point of the "
+            "section, made into a picture. The lag's curve flattens onto a "
+            "finite shelf; the PI's keeps falling toward zero as ω → 0, which "
+            "is what a pole at the origin does to it.<br><br>"
+            "<b>Middle:</b> droop against β on log axes — a straight line of "
+            "slope −1. Ten times the DC gain, one tenth the error, forever, "
+            "asymptotically approaching an axis it never touches. <b>Right:</b> "
+            "the same fact in the time domain — <i>zoomed onto the endgame</i>"
+            ", because the opening transient is an order of magnitude taller "
+            "than the shelf and is not what this panel is about. The PI's "
+            "error returns to exactly zero; the lag's levels off on its "
+            "shelf.<br><br>"
+            "<b>And notice the cost that the middle panel does not show.</b> "
+            "The lag's error decays with time constant 1/p = β/z, so every "
+            "decade of DC gain you buy is a decade of extra settling time on "
+            "that slow tail. The plotted window stretches with β to keep it in "
+            "frame — look at the time axis, not just the curve. The PI has "
+            "exactly the same slow tail; the only difference is where it "
+            "stops. β is capped at 30 here because a real lag is designed at "
+            "β ≈ 10–20 and the middle panel already carries the trend out to "
+            "3000.", dim=True))
+        self.s_dbeta = slider(1, 30, 10)
+        self.s_dk = slider(10, 200, 60)
+        self.l_dbeta, self.l_dk = QLabel(), QLabel()
+        ic.add_layout(slider_row("lag β", self.s_dbeta, self.l_dbeta))
+        ic.add_layout(slider_row("gain K", self.s_dk, self.l_dk))
+        self.st_cdc = Stat("lag C(0)", "--", theme.CYAN)
+        self.st_cdb = Stat("in dB", "--", theme.CYAN)
+        self.st_cdroop = Stat("lag droop", "--", theme.WARN)
+        self.st_cpi = Stat("PI droop", "--", theme.GOOD)
+        self.st_ctau = Stat("lag tail 1/p", "--", theme.VIOLET)
+        ic.add_layout(stat_row(self.st_cdc, self.st_cdb, self.st_cdroop,
+                               self.st_cpi, self.st_ctau))
+        self.cC = MplCanvas(width=7.6, height=2.9, ncols=3)
+        ic.add(self.cC)
+        self.tC = body("", dim=True)
+        ic.add(self.tC)
+        self.add(ic)
+        for s in (self.s_dbeta, self.s_dk):
+            s.valueChanged.connect(self._redraw_dc)
+        self._redraw_dc()
 
         # ---- interactive 1 ----------------------------------------------
         i = Card("design a lead for a real joint")
@@ -1147,6 +1552,329 @@ class LeadLagPage(Page):
         a_s.set_xlabel("time (s)")
         a_s.set_ylabel("closed loop")
         a_s.set_title("step, with this C on the joint", fontsize=9)
+        c.refresh()
+
+    # ------------------------------------------------------------------
+    def _redraw_spec(self):
+        """
+        The design direction, run live: specification in, compensator out.
+        Nothing in here iterates -- every number is one substitution into the
+        inverse of the lead formulas, which is the entire content of the word
+        "designed".
+        """
+        pm_want = float(self.s_tpm.value())
+        w_want = self.s_twgc.value() / 10.0
+        self.l_tpm.setText(f"{pm_want:.0f}°")
+        self.l_twgc.setText(f"{w_want:.1f} rad/s")
+
+        plant = TF([1.0], [0.25, 0.4, 0.0])
+        g = plant.response(w_want)
+        ph_plant = math.degrees(math.atan2(g.imag, g.real))
+        pm_bare = 180.0 + ph_plant            # what a plain gain would leave
+        # +5 deg because raising the gain to move crossover here also moves the
+        # frequency the phase is read at; this is the standard fudge
+        phi_req = pm_want - pm_bare + 5.0
+        capped = phi_req > 65.0
+        phi_use = max(0.0, min(phi_req, 65.0))
+
+        if phi_use < 0.5:
+            alpha = 1.0
+            z = p = 0.0
+            shape = TF([1.0], [1.0])
+        else:
+            alpha = alpha_for_phase(phi_use)
+            z = w_want / math.sqrt(alpha)
+            p = w_want * math.sqrt(alpha)
+            shape = TF([1.0, z], [1.0, p])
+        # K_c is fixed by the demand that |L| = 1 exactly at the wanted
+        # crossover -- one division, not a search
+        kc = 1.0 / abs((shape * plant).response(w_want))
+        comp = shape * kc
+        loop = plant * comp
+
+        kp_only = 1.0 / abs(g)                # same crossover, no lead
+        base = plant * kp_only
+
+        mg = margins(loop)
+        pm_got = ((mg.phase_margin_deg + 180.0) % 360.0) - 180.0
+        self.st_sphi.set(f"{phi_req:.0f}°" + (" !" if capped else ""))
+        self.st_sphi.set_color(theme.BAD if capped else theme.VIOLET)
+        self.st_salpha.set(f"{alpha:.1f}")
+        self.st_szp.set("—" if alpha <= 1 else f"{z:.1f} , {p:.1f}")
+        self.st_skc.set(f"{kc:.1f}")
+        self.st_spm.set(f"{pm_got:.0f}°  (want {pm_want:.0f}°)")
+        self.st_spm.set_color(theme.GOOD if abs(pm_got - pm_want) < 6
+                              else theme.WARN)
+        self.st_swgc.set(f"{mg.wgc:.1f}  (want {w_want:.1f})" if mg.wgc
+                         else "—")
+        self.st_swgc.set_color(theme.GOOD if mg.wgc and
+                               abs(mg.wgc - w_want) < 0.1 * w_want
+                               else theme.WARN)
+
+        if capped:
+            self.tA.setText(
+                f"<b>Out of reach for one lead section.</b> The joint's own "
+                f"phase at {w_want:.1f} rad/s leaves {pm_bare:.0f}° of margin, "
+                f"so {phi_req:.0f}° of lead is demanded — past the ~65° a "
+                f"single section delivers before φ<sub>max</sub> = "
+                f"arcsin((α−1)/(α+1)) flattens out. α has been held at "
+                f"{alpha:.0f} and you are short. The fix is not a bigger α "
+                f"(the noise cost keeps growing linearly while the phase does "
+                f"not): it is <b>two cascaded leads</b> of about "
+                f"{phi_req/2:.0f}° each, or accepting a lower crossover. Note "
+                "that you learned this from an arcsine, not from a step "
+                "response that would not settle.")
+        elif phi_use < 0.5:
+            self.tA.setText(
+                f"<b>No lead needed.</b> At {w_want:.1f} rad/s the plant "
+                f"already leaves {pm_bare:.0f}° of phase margin, which meets "
+                f"the specification. The compensator has collapsed to a plain "
+                f"gain of {kc:.1f} — chosen, still by division rather than by "
+                "search, to put crossover exactly where you asked for it.")
+        else:
+            self.tA.setText(
+                f"<b>Solved in one pass.</b> The plant alone leaves "
+                f"{pm_bare:.0f}° at {w_want:.1f} rad/s; you asked for "
+                f"{pm_want:.0f}°; the shortfall plus 5° is {phi_req:.0f}° of "
+                f"lead, which fixes α = {alpha:.1f}, which fixes z = {z:.1f} "
+                f"and p = {p:.1f}, which leaves K<sub>c</sub> = {kc:.1f} as "
+                f"the only free number and one division to find it. Achieved: "
+                f"{pm_got:.0f}° at {mg.wgc:.1f} rad/s. The price is printed on "
+                f"the top panel — the loop now carries ×{alpha:.1f} more gain "
+                "above p than the proportional version, and that lands on your "
+                "sensor noise.")
+
+        ws = log_freqs(max(0.05, w_want / 200.0), w_want * 200.0, 220)
+        w0, m0, p0 = bode(base, ws)
+        w1, m1, p1 = bode(loop, ws)
+
+        c = self.cA
+        c.clear()
+        a1, a2, a3 = c.axes
+        a1.semilogx(w0, m0, color=theme.TEXT_FAINT, lw=1.3, ls="--",
+                    label="gain only, same crossover")
+        a1.semilogx(w1, m1, color=theme.ACCENT, lw=2.0, label="designed lead")
+        a1.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls=":")
+        a1.axvline(w_want, color=theme.GOOD, lw=1.2, label="ω_gc asked for")
+        a1.set_ylabel("|L| (dB)")
+        c.legend(a1, loc="upper right")
+
+        a2.semilogx(w0, p0, color=theme.TEXT_FAINT, lw=1.3, ls="--")
+        a2.semilogx(w1, p1, color=theme.ACCENT, lw=2.0)
+        a2.axhline(-180, color=theme.BAD, lw=1.1, ls=":")
+        a2.axhline(-180.0 + pm_want, color=theme.GOOD, lw=1.1, ls="--",
+                   label=f"−180 + {pm_want:.0f}°")
+        a2.axvline(w_want, color=theme.GOOD, lw=1.2)
+        a2.set_ylabel("∠L (deg)")
+        a2.set_ylim(-280, 10)
+        c.legend(a2, loc="lower left")
+
+        dur = max(0.4, 25.0 / max(w_want, 1e-6))
+        t, y = step_response(loop.feedback(), dur, dur / 1200.0)
+        t0, y0 = step_response(base.feedback(), dur, dur / 1200.0)
+        a3.plot(t0, y0, color=theme.TEXT_FAINT, lw=1.3, ls="--",
+                label="gain only")
+        a3.plot(t, y, color=theme.GOOD, lw=2.0, label="designed")
+        a3.axhline(1.0, color=theme.TEXT_FAINT, lw=1.0, ls=":")
+        a3.set_ylim(-0.2, 2.2)
+        a3.set_xlabel("time (s)   /   ω (rad/s) above")
+        a3.set_ylabel("closed loop")
+        c.legend(a3, loc="lower right")
+        c.refresh()
+
+    # ------------------------------------------------------------------
+    def _redraw_family(self):
+        """
+        Six compensators, two families, every curve normalised to 0 dB at the
+        marked crossover so that only SHAPE is being compared. The question
+        the picture answers is not "are PD and lead similar" but "over exactly
+        which band are they the same curve, and what happens outside it".
+        """
+        wc = self.s_fwc.value() / 10.0
+        alpha = self.s_falpha.value() / 10.0
+        beta = float(self.s_fbeta.value())
+        self.l_fwc.setText(f"{wc:.1f} rad/s")
+        self.l_falpha.setText(f"{alpha:.1f}")
+        self.l_fbeta.setText(f"{beta:.0f}")
+
+        # -- derivative family: same zero, so the pair is directly comparable
+        ra = math.sqrt(alpha)
+        z_l, p_l = wc / ra, wc * ra
+        c_lead = TF([ra, ra * z_l], [1.0, p_l])          # |C| = 1 at wc
+        a_pd = 1.0 / math.hypot(wc, z_l)
+        c_pd = TF([a_pd, a_pd * z_l], [1.0])
+        c_d = TF([1.0 / wc, 0.0], [1.0])
+
+        # -- integral family: zero a decade below crossover, as one places it
+        z_i = wc / 10.0
+        p_i = z_i / beta
+        k_lag = math.hypot(wc, p_i) / math.hypot(wc, z_i)
+        c_lag = TF([k_lag, k_lag * z_i], [1.0, p_i])
+        k_pi = wc / math.hypot(wc, z_i)
+        c_pi = TF([k_pi, k_pi * z_i], [1.0, 0.0])
+        c_i = TF([wc], [1.0, 0.0])
+
+        def ph_at(tf, w):
+            g = tf.response(w)
+            return math.degrees(math.atan2(g.imag, g.real))
+
+        self.st_fd.set(f"{ph_at(c_d, wc):+.0f}°")
+        self.st_fpd.set(f"{ph_at(c_pd, wc):+.0f}°")
+        self.st_flead.set(f"{ph_at(c_lead, wc):+.0f}°")
+        self.st_fhf.set(f"×{alpha:.1f}")
+        self.st_fpi.set(f"{ph_at(c_pi, wc):+.0f}°")
+        self.st_flag.set(f"{ph_at(c_lag, wc):+.0f}°")
+
+        gap = ph_at(c_pd, wc) - ph_at(c_lead, wc)
+        self.tB.setText(
+            f"<b>At ω<sub>c</sub> the PD is giving {ph_at(c_pd, wc):+.0f}° and "
+            f"the lead {ph_at(c_lead, wc):+.0f}° — a gap of {gap:.0f}°, which "
+            f"is the phase the lead's pole has already handed back.</b> That "
+            f"gap is the honest cost of realisability, and you close it by "
+            f"raising α or lowering the zero. In exchange the lead's gain stops "
+            f"at ×{alpha:.1f} instead of climbing forever. On the integral "
+            f"side there is no such gap: PI {ph_at(c_pi, wc):+.0f}° and lag "
+            f"{ph_at(c_lag, wc):+.0f}° at crossover, indistinguishable — which "
+            f"is exactly why the zero is placed a decade down. The lag's "
+            f"entire difference is the finite shelf at ×{beta:.0f} on the left "
+            f"of the bottom-left panel, where the PI is still climbing.")
+
+        ws = log_freqs(wc * 1e-5, wc * 1e4, 500)
+        c = self.cB
+        c.clear()
+        a_dm, a_dp, a_im, a_ip = c.axes
+
+        for tf, lab, col, ls in (
+                (c_d, "pure D:  K_d·s", theme.TEXT_FAINT, ":"),
+                (c_pd, "PD:  K_p + K_d·s", theme.CYAN, "--"),
+                (c_lead, "lead:  K(s+z)/(s+p)", theme.GOOD, "-")):
+            _, m, ph = bode(tf, ws)
+            a_dm.semilogx(ws, m, color=col, lw=1.9, ls=ls, label=lab)
+            a_dp.semilogx(ws, ph, color=col, lw=1.9, ls=ls)
+        for tf, lab, col, ls in (
+                (c_i, "pure I:  K_i/s", theme.TEXT_FAINT, ":"),
+                (c_pi, "PI:  K_p + K_i/s", theme.CYAN, "--"),
+                (c_lag, "lag:  K(s+z)/(s+p)", theme.WARN, "-")):
+            _, m, ph = bode(tf, ws)
+            a_im.semilogx(ws, m, color=col, lw=1.9, ls=ls, label=lab)
+            a_ip.semilogx(ws, ph, color=col, lw=1.9, ls=ls)
+
+        for a in (a_dm, a_dp, a_im, a_ip):
+            a.axvline(wc, color=theme.ACCENT, lw=1.2, ls="-.")
+            a.set_xlabel("ω (rad/s)")
+        for a in (a_dm, a_im):
+            a.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls=":")
+            a.set_ylabel("|C| (dB)")
+        for a, x in ((a_dm, p_l), (a_im, p_i)):
+            a.axvline(x, color=theme.VIOLET, lw=1.1, ls="--")
+            # place the label against the top of the axes rather than at 0 dB,
+            # where it would sit on top of the curves and the 0 dB rule
+            a.text(x, 0.94, " p — they part here", color=theme.VIOLET,
+                   fontsize=7.2, transform=a.get_xaxis_transform(),
+                   va="top")
+        a_dp.set_ylabel("phase (deg)")
+        a_ip.set_ylabel("phase (deg)")
+        a_dp.set_ylim(-10, 100)
+        a_ip.set_ylim(-100, 10)
+        a_dm.set_title("derivative family — bounded above p, or not",
+                       fontsize=9)
+        a_dp.set_title("+90° forever, or a bump that comes home", fontsize=9)
+        a_im.set_title("integral family — bounded below p, or not", fontsize=9)
+        a_ip.set_title("−90° forever, or a dip that comes home", fontsize=9)
+        c.legend(a_dm, loc="upper left")
+        c.legend(a_im, loc="lower left")
+        c.refresh()
+
+    # ------------------------------------------------------------------
+    def _redraw_dc(self):
+        """
+        Steady state is a statement about omega = 0 and nothing else. The
+        left panel makes that literal: the DC end of the load-to-error curve
+        IS the droop. Finite DC gain lands on a shelf; a pole at the origin
+        does not.
+        """
+        beta = float(self.s_dbeta.value())
+        k = float(self.s_dk.value())
+        self.l_dbeta.setText(f"{beta:.0f}")
+        self.l_dk.setText(f"{k:.0f}")
+
+        z = 0.5
+        p = z / beta
+        plant = TF([1.0], [0.25, 0.4, 0.0])
+        c_lag = TF([k, k * z], [1.0, p])
+        c_pi = TF([k, k * z], [1.0, 0.0])
+
+        def load_path(ctrl):
+            """P/(1+CP) -- a constant torque in, position error out."""
+            return TF(poly_mul(plant.num, ctrl.den),
+                      poly_add(poly_mul(ctrl.den, plant.den),
+                               poly_mul(ctrl.num, plant.num)))
+
+        d_lag, d_pi = load_path(c_lag), load_path(c_pi)
+        dc_c = c_lag.dc_gain()                    # = k*beta
+        droop = abs(d_lag.dc_gain())              # = 1/C(0), exactly
+
+        self.st_cdc.set(f"{dc_c:.0f}")
+        self.st_cdb.set(f"{20*math.log10(max(dc_c, 1e-12)):.0f} dB")
+        self.st_cdroop.set(f"{droop:.5f} rad")
+        self.st_cpi.set("0 — exactly")
+        self.st_ctau.set(f"{1.0/p:.0f} s")
+        self.tC.setText(
+            f"<b>C(0) = Kβ = {dc_c:.0f}, and the droop is 1/C(0) = "
+            f"{droop:.5f} rad.</b> Not approximately — the plant already "
+            f"contains an integrator, so the only finite DC gain in the loop "
+            f"is the compensator's, and the error is its reciprocal. Multiply "
+            f"β by ten and that number divides by ten: {droop/10:.6f} rad. "
+            f"Do it forever and you approach zero without arriving, which is "
+            f"what a limit is. Move the same pole from −{p:.4f} to exactly 0 "
+            f"and the error is not small, it is <b>zero</b> — the integrator's "
+            f"output survives its input going to zero, so \"no error\" becomes "
+            f"a state the loop can actually sit in. The bill is on the right "
+            f"panel: the lag's tail decays with 1/p = {1.0/p:.0f} s, so the "
+            "accuracy you bought is accuracy you wait for.")
+
+        c = self.cC
+        c.clear()
+        a_f, a_b, a_t = c.axes
+
+        ws = log_freqs(1e-5, 1e3, 400)
+        for tf, lab, col, ls in ((d_lag, "lag", theme.WARN, "-"),
+                                 (d_pi, "PI", theme.GOOD, "--")):
+            _, m, _ph = bode(tf, ws)
+            a_f.semilogx(ws, m, color=col, lw=1.9, ls=ls, label=lab)
+        a_f.axhline(20 * math.log10(droop), color=theme.WARN, lw=1.0, ls=":")
+        a_f.set_xlabel("ω (rad/s)")
+        a_f.set_ylabel("|P/(1+L)| (dB)")
+        a_f.set_title("the left-hand edge IS the droop", fontsize=9)
+        c.legend(a_f, loc="lower right")
+
+        bs = [10 ** (i / 40.0) for i in range(0, 141)]     # 1 .. 3000
+        a_b.loglog(bs, [1.0 / (k * b) for b in bs], color=theme.WARN, lw=2.0)
+        a_b.scatter([beta], [droop], s=40, color=theme.ACCENT, zorder=5,
+                    label="you are here")
+        a_b.set_xlabel("β")
+        a_b.set_ylabel("droop (rad)")
+        a_b.set_title("one decade of gain, one decade of error", fontsize=9)
+        c.legend(a_b, loc="upper right")
+
+        # the window follows the lag's own tail, 1/p; dt is capped separately
+        # because a fixed-step RK4 on a plant with a 15 rad/s resonance blows
+        # up long before duration/N gets it a small enough step
+        dur = min(150.0, max(8.0, 5.0 / p))
+        dt = min(0.02, dur / 1500.0)
+        tl, yl = step_response(d_lag, dur, dt)
+        tp, yp = step_response(d_pi, dur, dt)
+        a_t.plot(tl, yl, color=theme.WARN, lw=2.0, label="lag → shelf")
+        a_t.plot(tp, yp, color=theme.GOOD, lw=1.6, ls="--", label="PI → zero")
+        a_t.axhline(droop, color=theme.WARN, lw=1.0, ls=":")
+        a_t.axhline(0.0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        # zoomed onto the endgame -- the opening transient is an order of
+        # magnitude taller and is not what this panel is about
+        a_t.set_ylim(-1.5 * droop, 5.0 * droop)
+        a_t.set_xlabel("time (s)")
+        a_t.set_ylabel("angle error (rad)")
+        a_t.set_title("1 N·m load — the endgame", fontsize=9)
+        c.legend(a_t, loc="upper right")
         c.refresh()
 
     # ------------------------------------------------------------------
