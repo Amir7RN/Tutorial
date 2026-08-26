@@ -20,6 +20,10 @@ Quick tour:
 
     bandit.py        the one-state MDP: epsilon-greedy vs UCB
 
+    deeprl.py        continuous actions: an MLP with a hand-written backward
+                     pass, a replay buffer, and DDPG. The one module that
+                     needs numpy -- see its docstring for why.
+
 Try it:
 
     >>> from rlcore import build_model, value_iteration, ACTION_ARROWS
@@ -97,6 +101,21 @@ from .bandit import (  # noqa: F401
     compare,
     epsilon_greedy_run,
     ucb_run,
+)
+
+from .deeprl import (  # noqa: F401
+    ALGO_TABLE,
+    ContextualReach,
+    DDPG,
+    DDPGConfig,
+    Dense,
+    GaitTuneEnv,
+    MLP,
+    ReplayBuffer,
+    TrainLog,
+    rollout_gait,
+    train_gait,
+    train_reach,
 )
 
 __all__ = [n for n in dir() if not n.startswith("_")]

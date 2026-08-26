@@ -33,6 +33,21 @@ REINFORCEMENT LEARNING
     64-66  learn it WITHOUT knowing the ice -- what a real robot must do
     67-72  the surrounding ideas
 
+DEEP RL & CONTINUOUS CONTROL
+    73     tables run out: continuous states kill the table, continuous
+           actions kill the argmax
+    74     actor-critic, and deterministic mu(s) versus stochastic pi(a|s)
+    75     DDPG: four networks, three equations
+    76     it is still an MDP; and what separates DDPG from TD3, SAC, PPO
+    77     case study -- learning the impedance of a knee prosthesis, where
+           one gait cycle is one timestep
+    78     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
+
+The last block closes the loop the tutor opened. Pages 1-43 built a compliant
+joint and said what its impedance parameters mean; 44-72 built the machinery
+for learning from experience; 73-78 use the second to choose the first, and
+then put the result in two real-time tasks without missing a deadline.
+
 Real-time comes first on purpose. Every later page makes a claim about how
 fast something can respond, and every one of those claims is bounded by the
 sampling, delay and scheduling facts established on page 1.
@@ -86,6 +101,14 @@ from .dp_pages import (
     PolicyImprovePage,
     PolicyIterationPage,
     ValueIterationPage,
+)
+from .deeprl import (
+    ActorCriticPage,
+    DDPGPage,
+    DeployRLPage,
+    FunctionApproxPage,
+    KneeRLPage,
+    MDPandFamilyPage,
 )
 from .extras import BanditPage, ConvergencePage, HyperPage, ModelPage
 from .forcefb import PFFIntroPage, PFFMathPage
@@ -210,6 +233,14 @@ PAGE_CLASSES = [
     ConvergencePage,       # 70
     CodeLabPage,           # 71
     AdamPage,              # 72
+    # ---- Deep RL: continuous actions, and one deployed system -------------
+    FunctionApproxPage,    # 73  tables die twice: continuous states, then
+                           #     continuous actions
+    ActorCriticPage,       # 74  critic evaluates, actor acts; mu(s) vs pi(a|s)
+    DDPGPage,              # 75  four networks, three equations
+    MDPandFamilyPage,      # 76  still an MDP; DDPG vs TD3 vs SAC vs PPO
+    KneeRLPage,            # 77  case study: one gait cycle is one timestep
+    DeployRLPage,          # 78  1 kHz controller, 20 Hz learner, shared memory
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

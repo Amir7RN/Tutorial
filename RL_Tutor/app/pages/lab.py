@@ -65,7 +65,7 @@ class CodeLabPage(Page):
 
         # ---- browser --------------------------------------------------------
         br = Card("browse rlcore")
-        from rlcore import bandit, dp, frozen_lake, mc
+        from rlcore import bandit, deeprl, dp, frozen_lake, mc
 
         self._registry = {}
 
@@ -96,6 +96,20 @@ class CodeLabPage(Page):
         reg("bandit", "epsilon_greedy_run", bandit.epsilon_greedy_run)
         reg("bandit", "ucb_run", bandit.ucb_run)
         reg("bandit", "compare", bandit.compare)
+
+        reg("deeprl", "Dense.backward  (where dQ/da comes from)",
+            deeprl.Dense.backward)
+        reg("deeprl", "Dense.adam", deeprl.Dense.adam)
+        reg("deeprl", "ReplayBuffer  (why it is off-policy)",
+            deeprl.ReplayBuffer)
+        reg("deeprl", "DDPG  (the four networks)", deeprl.DDPG)
+        reg("deeprl", "DDPG.train_step  (the three equations)",
+            deeprl.DDPG.train_step)
+        reg("deeprl", "DDPG.act  (deterministic, plus noise)", deeprl.DDPG.act)
+        reg("deeprl", "ContextualReach  (true Q known)", deeprl.ContextualReach)
+        reg("deeprl", "GaitTuneEnv  (one step = one gait cycle)",
+            deeprl.GaitTuneEnv)
+        reg("deeprl", "train_gait", deeprl.train_gait)
 
         self.picker = QListWidget()
         for k in self._registry:
