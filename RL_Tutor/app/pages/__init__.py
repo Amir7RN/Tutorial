@@ -16,36 +16,48 @@ CONTROL & DYNAMICS
            frequency, the s-plane
     10-13  second order, stability, Bode margins, Nyquist
     14     zeros -- the other dot on the map, and the destination poles head for
-    15-18  controller design: stabilising, lead/lag, state feedback, observers
-    19-20  nonlinear systems, and the six things people do about them
-    21-25  actuator mechanics -- effective inertia, SEA, PEA, gearing
-    26-33  the four control paradigms, ending in the one spectrum they share
-    34-36  choosing a drivetrain for a real robot, and one case study
-    37-39  proprioception: transparency, internal force sensing, active compliance
-    40-41  positive force feedback, and the honesty test for claiming it
-    42-43  translating human biomechanics into robot design
+    15-19  controller design: stabilising, lead/lag, state feedback, LQR,
+           observers
+    20-21  CAPSTONE -- the biped and the arm, in the language of poles,
+           margins and gains
+    22-23  nonlinear systems, and the six things people do about them
+    24-28  actuator mechanics -- effective inertia, SEA, PEA, gearing
+    29-30  CAPSTONE -- an actuator for every joint of both machines
+    31-38  the four control paradigms, ending in the one spectrum they share
+    39-40  CAPSTONE -- which controller, which joint, which phase
+    41-43  choosing a drivetrain for a real robot, and one case study
+    44-46  proprioception: transparency, internal force sensing, active compliance
+    47-48  positive force feedback, and the honesty test for claiming it
+    49-50  translating human biomechanics into robot design
+
+The three CAPSTONE pairs are the point of the whole structure. A block of
+theory that is never spent on a specific machine does not stick, so each
+block ends by spending itself twice -- once on a trunkless biped with six
+actuators, once on a three-joint manipulator. The two robots are fixed
+throughout so that the answers can be compared, and they disagree often
+enough to be worth the space.
 
 REINFORCEMENT LEARNING
-    44-50  the environment felt by hand, then the vocabulary and the MDP
-    51-54  how to measure how good a square is
-    55-58  the four Bellman equations, one page each, in full arithmetic
-    59-63  compute the perfect policy, given that we know the ice
-    64-66  learn it WITHOUT knowing the ice -- what a real robot must do
-    67-72  the surrounding ideas
+    51-57  the environment felt by hand, then the vocabulary and the MDP
+    58-61  how to measure how good a square is
+    62-65  the four Bellman equations, one page each, in full arithmetic
+    66-70  compute the perfect policy, given that we know the ice
+    71-73  learn it WITHOUT knowing the ice -- what a real robot must do
+    74-79  the surrounding ideas
 
 DEEP RL & CONTINUOUS CONTROL
-    73     tables run out: continuous states kill the table, continuous
+    80     tables run out: continuous states kill the table, continuous
            actions kill the argmax
-    74     actor-critic, and deterministic mu(s) versus stochastic pi(a|s)
-    75     DDPG: four networks, three equations
-    76     it is still an MDP; and what separates DDPG from TD3, SAC, PPO
-    77     case study -- learning the impedance of a knee prosthesis, where
+    81     actor-critic, and deterministic mu(s) versus stochastic pi(a|s)
+    82     DDPG: four networks, three equations
+    83     it is still an MDP; and what separates DDPG from TD3, SAC, PPO
+    84     case study -- learning the impedance of a knee prosthesis, where
            one gait cycle is one timestep
-    78     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
+    85     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
 
-The last block closes the loop the tutor opened. Pages 1-43 built a compliant
-joint and said what its impedance parameters mean; 44-72 built the machinery
-for learning from experience; 73-78 use the second to choose the first, and
+The last block closes the loop the tutor opened. Pages 1-50 built a compliant
+joint and said what its impedance parameters mean; 51-79 built the machinery
+for learning from experience; 80-85 use the second to choose the first, and
 then put the result in two real-time tasks without missing a deadline.
 
 Real-time comes first on purpose. Every later page makes a claim about how
@@ -64,12 +76,20 @@ a pole move. The nonlinear pages then say out loud what those two blocks were
 assuming -- which is exactly the assumption a real robot breaks.
 """
 
+from .capstone import (
+    ArmActuatorsPage,
+    ArmControlPage,
+    ArmSystemsPage,
+    BipedActuatorsPage,
+    BipedControlPage,
+    BipedSystemsPage,
+)
 from .ctrldesign import (
     LeadLagPage,
     ObserverPage,
     StabilisingPage,
-    StateFeedbackPage,
 )
+from .statefb import LQRPage, StateFeedbackPage
 from .orient import ControlProblemPage
 from .plant import MeasuringPage, SoftwarePhysicsPage
 from .firstorder import (
@@ -161,8 +181,12 @@ PAGE_CLASSES = [
     # ---- Controller design: moving the poles on purpose -------------------
     StabilisingPage,       # 15  root locus, and why D is the term that saves you
     LeadLagPage,           # 16  lead, lag, notch -- and why notches betray you
-    StateFeedbackPage,     # 17  place every pole at once; LQR
-    ObserverPage,          # 18  estimate what you cannot measure; disturbance obs
+    StateFeedbackPage,     # 17  what a state is; u = -Kx; place all n poles
+    LQRPage,               # 18  name a price instead; Q, R, and P = V(s)
+    ObserverPage,          # 19  estimate what you cannot measure; disturbance obs
+    # ---- Capstone: everything above, spent on two real machines -----------
+    BipedSystemsPage,      # 20  six joints, three unstable eigenvalues
+    ArmSystemsPage,        # 21  coupling, configuration, gravity's sign
     # ---- Nonlinear: what all of the above was assuming --------------------
     NonlinearSystemsPage,  # 19  superposition dies; limit cycles, basins
     NonlinearControlPage,  # 20  computed torque, sliding mode, passivity
@@ -172,6 +196,9 @@ PAGE_CLASSES = [
     PEAPage,               # 23  spring alongside; what negative J_eff means
     ActuatorCompare,       # 24  torque, speed, inertia, bandwidth head to head
     GearingPage,           # 25  the N^2 square law kills transparency
+    # ---- Capstone: an actuator for every joint of both machines -----------
+    BipedActuatorsPage,    # 29  ankle vs knee vs hip; impact decides
+    ArmActuatorsPage,      # 30  the inertia ordering is upside down
     # ---- Control paradigms: four answers to one question ------------------
     GoalOfControlPage,     # 26  what is a controller even for?
     PositionControlPage,   # 27  command where
@@ -181,6 +208,9 @@ PAGE_CLASSES = [
     AdmittanceControlPage, # 31  command the relationship the other way round
     ImpVsAdmPage,          # 32  the decision, and the hardware that forces it
     SpectrumPage,          # 33  they were all one controller all along
+    # ---- Capstone: which controller, which joint, which phase -------------
+    BipedControlPage,      # 39  scheduled stiffness across a gait cycle
+    ArmControlPage,        # 40  contact is the bit that decides
     # ---- Robot design ------------------------------------------------------
     ActuatorChoicePage,    # 34  humanoid vs biped vs quadruped
     ScalingPage,           # 35  the square-cube law and hybrid actuation

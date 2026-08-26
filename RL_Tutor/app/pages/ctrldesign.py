@@ -5,9 +5,13 @@ place, now what?"
   1  Stabilising          what feedback actually DOES to poles, and why the
                           derivative term is the one that buys stability
   2  Lead, Lag & Notch    shaping the frequency response on purpose
-  3  State Feedback       place every pole at once -- if you are allowed to
-  4  Observers            estimate the states you cannot measure, including
+  3  Observers            estimate the states you cannot measure, including
                           the external torque nobody sensed
+
+State feedback and LQR used to live here too. They outgrew the file and now
+have one page each in statefb.py -- which is the honest signal that "place
+every pole at once" is not a footnote to loop shaping, it is the other half
+of the subject.
 
 The previous section was diagnosis: where are the poles, how close to the edge
 am I. This one is treatment. The through-line is a single sentence:
@@ -34,19 +38,15 @@ from ctrlcore.linear import (
     lead,
     lead_phase_deg,
     log_freqs,
-    lqr,
     margins,
     notch,
     overshoot_fraction,
     pid_tf,
-    place_poles,
     poly_add,
     poly_mul,
     poly_roots,
     root_locus,
     run_velocity_observer,
-    settling_time,
-    StateSpace,
     step_metrics,
     step_response,
 )
@@ -1990,293 +1990,6 @@ class LeadLagPage(Page):
         a2.set_ylabel("∠L (deg)")
         a2.set_xlabel("ω (rad/s)")
         a2.set_ylim(max(-560, min(p) - 20), 10)
-        c.refresh()
-
-
-# ==========================================================================
-# PAGE -- state feedback
-# ==========================================================================
-
-class StateFeedbackPage(Page):
-    TITLE = "State Feedback & Pole Placement"
-    SUBTITLE = ("Stop shaping one transfer function and start placing every "
-                "pole at once — if the actuator can reach them.")
-    SECTION = SECTION
-    NOTES = "design"
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-        w = Card("why leave transfer functions at all")
-        w.add(math_label(r"\dot x = A x + B u, \qquad y = C x + D u", 17))
-        w.add(body(
-            "Same systems, different bookkeeping — the poles are now the "
-            "<b>eigenvalues of A</b>, which is why control engineers use "
-            "\"pole\" and \"eigenvalue\" interchangeably. Three reasons this "
-            "form takes over once a robot has more than one joint:<br><br>"
-            "&nbsp;&nbsp;• <b>MIMO without pain.</b> Six inputs and six outputs "
-            "is a 6×6 matrix, not thirty-six transfer functions with cross "
-            "terms.<br>"
-            "&nbsp;&nbsp;• <b>It is what nonlinear methods linearise into.</b> "
-            "Every Jacobian linearisation, every gain schedule, every MPC model "
-            "arrives in this form.<br>"
-            "&nbsp;&nbsp;• <b>It exposes the internal states</b> — which is what "
-            "an observer estimates and what an RL policy consumes."))
-        self.add(w)
-
-        f = Card("the control law, and what it does")
-        f.add(math_label(r"u = -Kx \qquad\Longrightarrow\qquad "
-                         r"\dot x = (A - BK)x", 18))
-        f.add(body(
-            "The closed-loop dynamics are the eigenvalues of <b>A − BK</b>. And "
-            "here is the theorem that makes the method worth learning:"))
-        f.add(title("If (A, B) is controllable, K can place those eigenvalues "
-                    "<i>anywhere</i> you choose.", 15))
-        f.add(body(
-            "Not \"nudge\" — <b>place</b>. Complete authority over the "
-            "dynamics, computed in closed form by Ackermann's formula rather "
-            "than found by tuning.<br><br>"
-            "Compare with PID: three gains shaping one loop, with the poles "
-            "landing wherever the algebra puts them. State feedback uses n "
-            "gains to place n poles exactly. The catch is that it needs "
-            "<b>all n states</b>, which is what the next page is about.",
-            dim=True))
-        self.add(f)
-
-        ct = Card("controllability — a mechanical property, not a tuning one")
-        ct.add(math_label(r"\mathcal{C} = [\,B \;\; AB \;\; A^2B \;\cdots\; "
-                          r"A^{n-1}B\,]", 17))
-        ct.add(body(
-            "Full rank ⇒ every direction in state space can be reached by the "
-            "input. Rank deficient ⇒ some combination of states is <b>invisible "
-            "to your actuator</b>, and no controller can move it. Ever."))
-        ct.add(callout(
-            "<b>This is a design verdict, not a control problem.</b> If a mode "
-            "is uncontrollable the answer is a different mechanism, a different "
-            "actuator placement, or an extra actuator — never a better "
-            "algorithm. Two real cases:<br><br>"
-            "&nbsp;&nbsp;• A tendon that can only <i>pull</i> gives you "
-            "one-sided control authority; the return direction is uncontrolled "
-            "and has to come from a spring or an antagonist. That is why "
-            "tendon-driven hands are built in antagonistic pairs.<br>"
-            "&nbsp;&nbsp;• A perfectly symmetric two-link arm driven at the base "
-            "cannot excite its antisymmetric mode. Real designs break the "
-            "symmetry on purpose.", "key"))
-        self.add(ct)
-
-        # ---- interactive 1 ----------------------------------------------
-        i = Card("place the poles of a real joint")
-        i.add(body(
-            "The plant is J θ̈ + b θ̇ = τ in state form, x = [θ, θ̇]. Choose the "
-            "closed-loop ω<sub>n</sub> and ζ you want and read off the gains "
-            "that produce them. Notice that K<sub>1</sub> and K<sub>2</sub> are "
-            "exactly the K<sub>p</sub> and K<sub>d</sub> of a PD controller — "
-            "<b>state feedback on a second-order plant IS PD control</b>, "
-            "derived instead of tuned.", dim=True))
-        self.s_wn = slider(10, 600, 200)         # x0.1 rad/s
-        self.s_z = slider(10, 200, 80)           # x0.01
-        self.l_wn, self.l_z = QLabel(), QLabel()
-        i.add_layout(slider_row("desired ω_n (×0.1)", self.s_wn, self.l_wn))
-        i.add_layout(slider_row("desired ζ (×0.01)", self.s_z, self.l_z))
-        self.st_k1 = Stat("K₁  (= K_p)", "--", theme.ACCENT)
-        self.st_k2 = Stat("K₂  (= K_d)", "--", theme.VIOLET)
-        self.st_ts = Stat("settling", "--", theme.GOOD)
-        self.st_peak = Stat("peak torque", "--", theme.BAD)
-        i.add_layout(stat_row(self.st_k1, self.st_k2, self.st_ts, self.st_peak))
-        self.c1 = MplCanvas(width=7.4, height=3.0, ncols=3)
-        i.add(self.c1)
-        self.add(i)
-        for s in (self.s_wn, self.s_z):
-            s.valueChanged.connect(self._redraw_place)
-        self._redraw_place()
-
-        self.add(callout(
-            "<b>What pole placement does not tell you.</b> Push "
-            "ω<sub>n</sub> to the top of that slider and read the peak torque. "
-            "The mathematics is perfectly happy; the motor is not. Poles placed "
-            "far into the left half plane demand gains that demand torque you "
-            "may not have — and the instant the actuator saturates, the "
-            "placement is fiction and you are running an unknown nonlinear "
-            "controller.<br><br>"
-            "Pole placement answers <i>where</i>. It has nothing to say about "
-            "<i>how much that costs</i>. Which is the entire motivation for "
-            "what follows.", "warn"))
-
-        # ---- LQR ---------------------------------------------------------
-        self.add(hline())
-        self.add(title("LQR — choosing the poles by choosing what you care "
-                       "about"))
-
-        q = Card("the reformulation")
-        q.add(math_label(r"J = \int_0^\infty \left( x^T Q x + u^T R u \right) dt",
-                         17))
-        q.add(body(
-            "Instead of naming pole locations — which nobody has real intuition "
-            "for beyond second order — you name a <b>price</b>. Q is how much "
-            "you dislike state error. R is how much you dislike effort. Minimise "
-            "the total and the optimal gain is"))
-        q.add(math_label(r"K = R^{-1}B^T P, \qquad "
-                         r"A^TP + PA - PBR^{-1}B^TP + Q = 0", 16))
-        q.add(body(
-            "<b>Why this is the version that gets used.</b> \"How much torque "
-            "is a radian of error worth?\" is a question an engineer can "
-            "actually answer, and the answer generalises to twelve states "
-            "without any new intuition. The resulting closed loop is also "
-            "guaranteed stable and comes with famous robustness margins "
-            "(≥60° phase margin for the full-state case).<br><br>"
-            "It is also, not coincidentally, the exact classical counterpart of "
-            "what reinforcement learning does later in this tutor: define a "
-            "cost, optimise the policy against it. LQR is the case where the "
-            "optimisation can be solved in closed form because the dynamics are "
-            "linear and the cost is quadratic. RL is what you reach for when "
-            "neither is true.", dim=True))
-        self.add(q)
-
-        # ---- interactive 2 ----------------------------------------------
-        i2 = Card("move the price of torque")
-        i2.add(body(
-            "Same joint. Q is fixed; only R — the cost of effort — moves. Cheap "
-            "torque buys a fast, high-gain response; expensive torque buys a "
-            "gentle one. You are not choosing poles, and yet the poles move.",
-            dim=True))
-        self.s_r = slider(-30, 30, 0)            # log10 x0.1
-        self.s_q = slider(-20, 30, 0)            # log10 x0.1, position weight
-        self.l_r, self.l_q = QLabel(), QLabel()
-        i2.add_layout(slider_row("log₁₀ R (×0.1)", self.s_r, self.l_r))
-        i2.add_layout(slider_row("log₁₀ Q₁₁ (×0.1)", self.s_q, self.l_q))
-        self.st_lk1 = Stat("K₁", "--", theme.ACCENT)
-        self.st_lk2 = Stat("K₂", "--", theme.VIOLET)
-        self.st_lpk = Stat("peak torque", "--", theme.BAD)
-        self.st_lts = Stat("settling", "--", theme.GOOD)
-        i2.add_layout(stat_row(self.st_lk1, self.st_lk2, self.st_lpk,
-                               self.st_lts))
-        self.c2 = MplCanvas(width=7.4, height=3.2, ncols=2)
-        i2.add(self.c2)
-        self.add(i2)
-        for s in (self.s_r, self.s_q):
-            s.valueChanged.connect(self._redraw_lqr)
-        self._redraw_lqr()
-
-        n = Card("one honest gap: state feedback alone does not track")
-        n.add(body(
-            "u = −Kx drives the state to <b>zero</b>. To follow a non-zero "
-            "reference you need one of:<br><br>"
-            "&nbsp;&nbsp;• <b>a feedforward gain</b> u = −Kx + N·r, with N "
-            "computed from the DC gain. Exact if the model is exact, and "
-            "wrong by exactly the model error otherwise.<br>"
-            "&nbsp;&nbsp;• <b>an integral state</b>: augment x with ∫(r − y) and "
-            "place its pole too. This is state feedback rediscovering the I "
-            "term, with anti-windup still your problem.<br>"
-            "&nbsp;&nbsp;• <b>a disturbance observer</b> that estimates the "
-            "steady load and cancels it — the next page."))
-        self.add(n)
-
-        self.finish()
-
-    # ------------------------------------------------------------------
-    def _joint_ss(self):
-        J, b = 0.25, 0.4
-        A = np.array([[0.0, 1.0], [0.0, -b / J]])
-        B = np.array([[0.0], [1.0 / J]])
-        C = np.array([[1.0, 0.0]])
-        D = np.array([[0.0]])
-        return StateSpace(A, B, C, D)
-
-    def _sim_regulate(self, K, x0=(0.35, 0.0), dur=2.0, dt=1e-3):
-        """Regulate x to zero under u = -Kx. Plain floats: 2 states, and this
-        runs on every slider move."""
-        ss = self._joint_ss()
-        A_cl = np.asarray(ss.A - ss.B @ K)
-        a11, a12 = float(A_cl[0, 0]), float(A_cl[0, 1])
-        a21, a22 = float(A_cl[1, 0]), float(A_cl[1, 1])
-        k1, k2 = float(K[0, 0]), float(K[0, 1])
-        x1, x2 = float(x0[0]), float(x0[1])
-        ts, th, tau = [], [], []
-        for i in range(int(dur / dt)):
-            ts.append(i * dt)
-            th.append(x1)
-            tau.append(-k1 * x1 - k2 * x2)
-            d1 = a11 * x1 + a12 * x2
-            d2 = a21 * x1 + a22 * x2
-            x1 += d1 * dt
-            x2 += d2 * dt
-        return ts, th, tau
-
-    def _redraw_place(self):
-        wn = self.s_wn.value() / 10.0
-        z = self.s_z.value() / 100.0
-        self.l_wn.setText(f"{wn:.1f} rad/s")
-        self.l_z.setText(f"{z:.2f}")
-
-        ss = self._joint_ss()
-        if z < 1.0:
-            wd = wn * math.sqrt(1 - z * z)
-            desired = [complex(-z * wn, wd), complex(-z * wn, -wd)]
-        else:
-            desired = [complex(-z * wn, 0), complex(-z * wn * 1.001, 0)]
-        K = place_poles(ss.A, ss.B, desired)
-        self.st_k1.set(f"{K[0,0]:.1f}")
-        self.st_k2.set(f"{K[0,1]:.2f}")
-        self.st_ts.set(f"{settling_time(z, wn):.3f} s")
-
-        ts, th, tau = self._sim_regulate(K)
-        self.st_peak.set(f"{max(abs(v) for v in tau):.0f} N·m")
-        self.st_peak.set_color(theme.BAD if max(abs(v) for v in tau) > 60
-                               else theme.GOOD)
-
-        c = self.c1
-        c.clear()
-        a1, a2, a3 = c.axes
-        a1.plot(ts, [math.degrees(v) for v in th], color=theme.ACCENT, lw=2.0)
-        a1.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
-        a1.set_xlabel("time (s)")
-        a1.set_ylabel("θ (°)")
-        a1.set_title("regulation from 20°", fontsize=9)
-        a2.plot(ts, tau, color=theme.BAD, lw=1.8)
-        a2.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
-        a2.set_xlabel("time (s)")
-        a2.set_ylabel("τ (N·m)")
-        a2.set_title("what it costs", fontsize=9)
-        _splane(a3, [complex(v) for v in np.linalg.eigvals(ss.A - ss.B @ K)],
-                lim=max(6.0, wn * 1.5))
-        a3.scatter([p.real for p in ss.poles()], [p.imag for p in ss.poles()],
-                   marker="x", s=60, linewidths=1.6, color=theme.TEXT_FAINT,
-                   zorder=4, label="open loop")
-        a3.set_title("placed vs open loop", fontsize=8.5)
-        c.refresh()
-
-    def _redraw_lqr(self):
-        r = 10 ** (self.s_r.value() / 10.0)
-        q11 = 10 ** (self.s_q.value() / 10.0)
-        self.l_r.setText(f"{r:.3g}")
-        self.l_q.setText(f"{q11:.3g}")
-
-        ss = self._joint_ss()
-        Q = np.diag([q11, 0.1])
-        K = lqr(ss.A, ss.B, Q, np.array([[r]]))
-        self.st_lk1.set(f"{K[0,0]:.1f}")
-        self.st_lk2.set(f"{K[0,1]:.2f}")
-
-        ts, th, tau = self._sim_regulate(K, dur=3.0)
-        pk = max(abs(v) for v in tau)
-        self.st_lpk.set(f"{pk:.0f} N·m")
-        eig = np.linalg.eigvals(ss.A - ss.B @ K)
-        sig = -max(v.real for v in eig)
-        self.st_lts.set(f"{4.0/sig:.3f} s" if sig > 1e-6 else "∞")
-
-        c = self.c2
-        c.clear()
-        a1, a2 = c.axes
-        a1.plot(ts, [math.degrees(v) for v in th], color=theme.GOOD, lw=2.0)
-        a1.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
-        a1.set_xlabel("time (s)")
-        a1.set_ylabel("θ (°)")
-        a1.set_title("cheap R = aggressive, expensive R = gentle", fontsize=8.5)
-        a2.plot(ts, tau, color=theme.BAD, lw=1.8)
-        a2.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
-        a2.set_xlabel("time (s)")
-        a2.set_ylabel("τ (N·m)")
-        a2.set_title("what it cost", fontsize=9)
         c.refresh()
 
 
