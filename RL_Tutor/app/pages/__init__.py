@@ -45,15 +45,27 @@ REINFORCEMENT LEARNING
     71-73  learn it WITHOUT knowing the ice -- what a real robot must do
     74-79  the surrounding ideas
 
+NEURAL NETWORKS
+    80-85  a neuron, the activations and their slopes, forward propagation,
+           backpropagation (multiply along a path, SUM across paths), what a
+           loss is actually for, and the housekeeping -- L2, dropout, batch
+           versus layer norm, initialisation, clipping
+
 DEEP RL & CONTINUOUS CONTROL
-    80     tables run out: continuous states kill the table, continuous
+    86     tables run out: continuous states kill the table, continuous
            actions kill the argmax
-    81     actor-critic, and deterministic mu(s) versus stochastic pi(a|s)
-    82     DDPG: four networks, three equations
-    83     it is still an MDP; and what separates DDPG from TD3, SAC, PPO
-    84     case study -- learning the impedance of a knee prosthesis, where
+    87     actor-critic, and deterministic mu(s) versus stochastic pi(a|s)
+    88     DDPG: four networks, three equations
+    89     the gradient handoff: dQ/da is the SEED of the actor's backward
+           pass, not a target for its output
+    90     inside the critic: two inputs of different kinds, and what the
+           merge point does to dQ/da
+    91     it is still an MDP; and what separates DDPG from TD3, SAC, PPO
+    92     one rulebook -- Experience, StepResult, Env, ReplayBuffer, act():
+           what every agent shares, and the two places PPO refuses to fit
+    93     case study -- learning the impedance of a knee prosthesis, where
            one gait cycle is one timestep
-    85     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
+    94     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
 
 The last block closes the loop the tutor opened. Pages 1-50 built a compliant
 joint and said what its impedance parameters mean; 51-79 built the machinery
@@ -136,6 +148,15 @@ from .foundations import MDPPage, PolicyPage
 from .frozenlake import FrozenLakePage, TransitionsPage
 from .intro import ReturnPage, RewardPage, WhatIsRLPage
 from .lab import AdamPage, CodeLabPage
+from .nn import (
+    ActivationPage,
+    BackpropPage,
+    ForwardPropPage,
+    LossPage,
+    NeuronPage,
+    RegularisationPage,
+)
+from .ddpgnn import AgentSkeletonPage, CriticArchPage, GradientHandoffPage
 from .mc_pages import MCControlPage, MCIntroPage, MCPredictionPage
 from .motors import (
     ActuatorCompare,
@@ -263,14 +284,24 @@ PAGE_CLASSES = [
     ConvergencePage,       # 70
     CodeLabPage,           # 71
     AdamPage,              # 72
+    # ---- Neural networks: the machinery the whole deep half is made of ----
+    NeuronPage,            # 80  weight = gain, bias = offset, squash between
+    ActivationPage,        # 81  every activation, and its DERIVATIVE
+    ForwardPropPage,       # 82  the signal crossing the weights, animated
+    BackpropPage,          # 83  multiply along a path, sum across paths
+    LossPage,              # 84  the loss is a seed; softmax vs argmax
+    RegularisationPage,    # 85  L2, dropout, batch vs layer norm, init
     # ---- Deep RL: continuous actions, and one deployed system -------------
-    FunctionApproxPage,    # 73  tables die twice: continuous states, then
+    FunctionApproxPage,    # 86  tables die twice: continuous states, then
                            #     continuous actions
-    ActorCriticPage,       # 74  critic evaluates, actor acts; mu(s) vs pi(a|s)
-    DDPGPage,              # 75  four networks, three equations
-    MDPandFamilyPage,      # 76  still an MDP; DDPG vs TD3 vs SAC vs PPO
-    KneeRLPage,            # 77  case study: one gait cycle is one timestep
-    DeployRLPage,          # 78  1 kHz controller, 20 Hz learner, shared memory
+    ActorCriticPage,       # 87  critic evaluates, actor acts; mu(s) vs pi(a|s)
+    DDPGPage,              # 88  four networks, three equations
+    GradientHandoffPage,   # 89  dQ/da is a seed, not a target
+    CriticArchPage,        # 90  two inputs, one number, and where they merge
+    MDPandFamilyPage,      # 91  still an MDP; DDPG vs TD3 vs SAC vs PPO
+    AgentSkeletonPage,     # 92  the shared rulebook, and where PPO breaks it
+    KneeRLPage,            # 93  case study: one gait cycle is one timestep
+    DeployRLPage,          # 94  1 kHz controller, 20 Hz learner, shared memory
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

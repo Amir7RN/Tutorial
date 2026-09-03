@@ -127,6 +127,18 @@ RL_Tutor/
       biodesign.py             pages 42-43: bio -> robot translation
       intro.py                 pages 44-48: the RL opening sequence
       bellman.py               pages 55-58: one page per Bellman equation
+      nn.py                    pages 80-85: neural network fundamentals --
+                                            neuron, activations and their
+                                            derivatives, forward propagation,
+                                            backpropagation, losses,
+                                            regularisation and normalisation
+      deeprl.py                pages 86-88, 91, 93-94: function approximation,
+                                            actor-critic, DDPG, the algorithm
+                                            family, the knee case study,
+                                            deployment
+      ddpgnn.py                pages 89-90, 92: the dQ/da handoff, the
+                                            critic's two input paths, and the
+                                            scaffolding every agent shares
   tests/
     test_ctrl.py             correctness checks for ctrlcore
     test_linear.py           correctness checks for linear.py / nonlinear.py

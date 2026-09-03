@@ -1,16 +1,18 @@
 """
-Pages 73-78: deep RL for continuous control, ending at a real deployment.
+Pages 86-94: deep RL for continuous control, ending at a real deployment.
+(Pages 89, 90 and 92 live in ddpgnn.py; the neural-network fundamentals they
+lean on are pages 80-85, in nn.py.)
 
-  73  Tables Run Out       why a Q-table cannot survive continuous states, and
+  86  Tables Run Out       why a Q-table cannot survive continuous states, and
                            why DQN cannot survive continuous ACTIONS
-  74  Actor-Critic         the critic evaluates, the actor moves; deterministic
+  87  Actor-Critic         the critic evaluates, the actor moves; deterministic
                            mu(s) versus stochastic pi(a|s)
-  75  DDPG                 four networks and three equations, one at a time
-  76  Still an MDP?        the Markov property does not care how you chose the
+  88  DDPG                 four networks and three equations, one at a time
+  91  Still an MDP?        the Markov property does not care how you chose the
                            action -- and what separates DDPG from TD3/SAC/PPO
-  77  Case Study           tuning a robotic knee prosthesis: one gait cycle is
+  93  Case Study           tuning a robotic knee prosthesis: one gait cycle is
                            one timestep
-  78  Shipping It          the 1 kHz controller and the 20 Hz learner, and the
+  94  Shipping It          the 1 kHz controller and the 20 Hz learner, and the
                            shared memory between them
 
 The through-line of this block is a single sentence, and it is the same
@@ -750,6 +752,51 @@ class DDPGPage(Page):
             s.valueChanged.connect(self._labels)
         self._labels()
         self._redraw_scope()
+
+        # ---- the handoff, stated once, before the page ends -------------
+        self.add(hline())
+        self.add(title("The third equation, read once more — because it is the "
+                       "one people get wrong"))
+
+        hn = Card("what ∂Q/∂a is, and what it is not")
+        hn.add(body(
+            "The actor update is worth restating in the language of the "
+            "backprop page, because two readings of it are common and one of "
+            "them is wrong.<br><br>"
+            "<b>It is not a target.</b> Nothing is trying to make the actor's "
+            "output equal ∂Q/∂a — they are not even in the "
+            "same units, one being a torque and the other a value-per-torque. "
+            "The actor's output is not being fitted to anything, because "
+            "<b>there is no correct action anywhere in this problem</b>. If "
+            "there were, you would deploy it and skip the learning.<br><br>"
+            "<b>It is a seed.</b> ∂Q/∂a lands in exactly the slot "
+            "that a prediction error occupies in supervised training: the "
+            "blame handed to the last layer, before any propagating happens. "
+            "From there it is the ordinary backward pass — multiply by "
+            "tanh's slope, spread through each weight matrix, sum at every "
+            "node — ending in one number per actor weight. Sign says "
+            "which way to move the output; magnitude says how steep the "
+            "critic thinks things are here."))
+        hn.add(body(
+            "And it is not one number at the end of a single chain. Each "
+            "entry of ∂Q/∂a is the sum over <i>every route</i> "
+            "from the action input to the critic's output — 64 × "
+            "64 = 4 096 of them here — each route contributing the "
+            "product of the weights it crosses and the activation slopes it "
+            "lands on. Multiply along a path, add across paths. The shape of "
+            "the whole array is N × d_a: one number per action "
+            "dimension, per sample in the batch.", dim=True))
+        hn.add(callout(
+            "<b>Three pages of this tutor exist to unpack that paragraph.</b> "
+            "Page 83 derives the multiply-along-a-path, sum-across-paths rule "
+            "and checks it against a brute-force numerical derivative. Page "
+            "89 takes this exact handoff apart line by line — including "
+            "what Adam does to the magnitude, which is not what most people "
+            "expect. Page 90 opens the critic and asks where the action "
+            "should enter it, which turns out to be a question about how many "
+            "weight-and-slope factors sit between the action and the "
+            "value.", "good"))
+        self.add(hn)
 
         self.add(callout(
             "<b>What the middle panel is really showing.</b> The critic was "

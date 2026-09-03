@@ -62,6 +62,8 @@ SECTION_COLORS = {
     "Dynamic Prog.":   GOOD,
     "Monte Carlo":     WARN,
     "Beyond":          PINK,
+    "Neural Networks": INDIGO,
+    "Deep RL & Continuous Control": TEAL,
 }
 
 
