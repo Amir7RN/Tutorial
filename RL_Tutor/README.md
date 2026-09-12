@@ -32,6 +32,43 @@ effective inertia, bandwidth and safety envelope. The first half is that plant.
 
 ## Run it
 
+### New: gait-to-torque visual walkthroughs
+
+The **Forward Propagation**, **Backpropagation**, **Activations and Their Slopes**,
+and **Regularisation, Normalisation, Initialisation** lessons now begin with an interactive
+network microscope. Use **Next**, **Back**, or **Play steps** to follow a
+six-feature synthetic gait sample through a 6 → 4 → 3 → 2 network. Move the
+stride slider, select a hidden neuron, switch activations, and compare batch
+normalization during training with stored statistics during inference.
+
+The microscope displays weighted contributions, running sums, local activation
+slopes, gradients adding across ankle/knee branches, per-weight updates, and
+torques before and after one SGD update. Every displayed number is calculated
+by `rlcore/visual_nn.py`; finite-difference tests check the derivatives,
+including batch normalization's coupling between samples.
+
+The **Actor-Critic**, **DDPG, One Piece at a Time**, **The Gradient Handoff**,
+and **Inside the Critic: Two Inputs, One Number**
+pages also begin with an 11-step DDPG walkthrough: replay → target networks →
+critic loss/backward/update → actor forward → frozen-critic action gradient →
+actor backward/update → soft target updates. It includes a two-joint Q landscape,
+per-layer gradient magnitudes, a termination switch, and actual before/after
+losses. Each control change replays one deterministic update from the initial
+weights; it does not accumulate training steps.
+
+These are synthetic teaching examples, not measured gait data or deployable
+controllers. Direct torque prediction happens within a stride; selecting control
+parameters from a completed stride is a separate timing choice. The new
+microscope uses SGD to expose parameter arithmetic; the existing DDPG trainer
+continues to use Adam. The optional BN example uses batch statistics in training
+and fixed illustrative calibration statistics in inference.
+
+Algorithm references: [DDPG equations and update sequence](https://spinningup.openai.com/en/latest/algorithms/ddpg.html),
+[batch normalization](https://arxiv.org/abs/1502.03167).
+
+Run the new numerical checks with
+`python -m unittest discover -s tests -p test_visual_nn.py`.
+
 Starting from a fresh machine:
 
 ```bash

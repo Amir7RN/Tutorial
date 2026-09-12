@@ -44,6 +44,7 @@ from ..widgets import (
     stat_row,
     title,
 )
+from ..widgets.network_lab import NetworkLab
 from .base import Page
 from .deeprl import _table as _deeprl_table
 from .motors import slider, slider_row
@@ -93,6 +94,9 @@ class GradientHandoffPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("ddpg")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>One sentence, and everything on this page is an unpacking of "
@@ -476,6 +480,9 @@ class CriticArchPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("ddpg")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>The critic is the only network in DDPG with two inputs of "

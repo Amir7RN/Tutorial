@@ -60,6 +60,7 @@ from ..widgets import (
     stat_row,
     title,
 )
+from ..widgets.network_lab import NetworkLab
 from .base import Page
 from .motors import slider, slider_row
 
@@ -320,6 +321,9 @@ class ActorCriticPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("ddpg")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>This is generalised policy iteration again, with both halves "
@@ -550,6 +554,9 @@ class DDPGPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("ddpg")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>Deep Deterministic Policy Gradient</b> is Q-learning with the "

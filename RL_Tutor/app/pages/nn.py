@@ -55,6 +55,7 @@ from ..widgets import (
     stat_row,
     title,
 )
+from ..widgets.network_lab import NetworkLab
 from .base import Page
 from .deeprl import _table as _deeprl_table
 from .motors import slider, slider_row
@@ -565,6 +566,9 @@ class ActivationPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("activation")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>Pick an activation by its derivative, not by its shape.</b> "
@@ -876,6 +880,9 @@ class ForwardPropPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("forward")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>A forward pass is a fixed number of multiply-adds in a fixed "
@@ -1108,6 +1115,9 @@ class BackpropPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("backward")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>Backprop answers one question, for every weight at once: if "
@@ -1729,6 +1739,9 @@ class RegularisationPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.network_lab = NetworkLab("normalization")
+        self.add(self.network_lab)
+
 
         self.add(callout(
             "<b>These are not decorations, and two of them are actively "
