@@ -1,0 +1,122 @@
+"""Reviewed lesson vocabulary and prerequisite links, keyed by stable class names."""
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Connection:
+    text: str
+    previous: tuple[str, ...]
+
+
+# Original lesson IDs stay fixed when section summaries are inserted.
+# These IDs are resolved to classes once the original registry has been built.
+REVIEW = {
+1: ((), 'Separate update rate, signal frequency and response bandwidth. A 1 kHz controller updates every 1 ms; that does not make its mechanical response a 1 kHz response.'),
+2: ((1,), 'Name the input, output and operating point before naming model order. The same motor can have a first-order torque-to-speed model and a second-order torque-to-position model.'),
+3: ((2,), 'J is rotational inertia, b is viscous damping and k is stiffness. These measured parameters belong to a stated model and configuration; they are not controller gains.'),
+4: ((3,1), 'Physical J, b and k stay in the plant. Substituting feedback changes the closed-loop equation; virtual stiffness or damping is achieved only within actuator and timing limits.'),
+5: ((3,4), 'For Jω̇ + bω = τ_motor, more J at fixed b means a larger time constant J/b. At the same torque step, acceleration is initially smaller but final speed τ_motor/b is unchanged.'),
+6: ((5,), 'τ_c is a duration, p = −1/τ_c is a pole, and f_bw = 1/(2πτ_c) is a bandwidth in Hz. Doubling J at fixed b doubles rise and settling times in this first-order speed model.'),
+7: ((5,6), 'With no drain, Jω̇ = τ_motor has no finite J/b time constant. Constant torque ramps speed; integrating speed adds a position state. A double integrator is not marginally stable.'),
+8: ((6,1), 'For this first-order low-pass, angular bandwidth is 1/τ_c in rad/s; bandwidth in Hz is 1/(2πτ_c). Neither is the sample rate. The input/output pair stays the same as in the step response.'),
+9: ((6,7), 'A pole’s real part sets growth or decay. Its imaginary part sets oscillation. A bounded zero-input response on the imaginary axis need not stay bounded under a continuing input.'),
+10: ((9,4), 'Free vibration means no continuing input. Initial position and velocity set amplitude and phase; damping determines decay. This becomes the transient part of later forced responses.'),
+11: ((10,6), 'For Jθ̈ + B_total θ̇ + K_total θ = input, ω_n = √(K_total/J) and ζ = B_total/(2√(JK_total)). More inertia at fixed gains changes both; the first-order J/b settling rule does not transfer unchanged.'),
+12: ((9,7), 'Asymptotic stability, marginal zero-input stability and bounded-input bounded-output stability are different claims. Specify which response and which poles you are discussing.'),
+13: ((8,11,12), 'Read gain crossover and margins from loop gain L. Read tracking bandwidth from closed-loop response T. A mapping from phase margin to damping ratio needs a specified loop model.'),
+14: ((13,1), 'The curve is the same L(jω) as in Bode. Encirclements of −1 test feedback stability; this Nyquist plot is different from the Nyquist sampling limit on the first page.'),
+15: ((11,13), 'Changing a zero can change overshoot while poles stay fixed. Overshoot therefore is not always a measurement of damping ratio, and a zero of one input/output path need not be a zero of another.'),
+16: ((4,12,15), 'Feedback places closed-loop poles. It does not change the poles of the unchanged open-loop plant model. Check actuator limits and delay after solving the ideal characteristic equation.'),
+17: ((13,15,16), 'Lead adds phase near crossover; lag increases low-frequency gain with a slower tail. A notch targets a mode. Cancellation and stability margins depend on the actual model and delays.'),
+18: ((2,4), 'Angle and velocity are separate state components. The matrix K maps the state vector to an input; it is not simply a stiffness. With u = −Kx, closed-loop modes belong to A−BK.'),
+19: ((18,), 'LQR minimises state and effort cost. Q and R are weight matrices; xᵀPx is cost-to-go, not P alone. Later RL maximises return, so reward equal to negative cost reverses the value sign.'),
+20: ((18,3), 'An observer estimates state from measurements and a model. Estimation-error poles differ from control poles. Faster estimation can also transmit more measurement noise.'),
+21: ((12,19,1), 'Apply local poles and margins to the coupled biped. Balance instability belongs to the stated equilibrium; sampling and execution deadlines remain separate constraints.'),
+22: ((21,18), 'A fixed base removes whole-body tipping from this model, not every unstable joint equilibrium. Configuration changes inertia and gravity terms; local linearisation and deadlines still matter.'),
+23: ((22,12), 'Superposition and fixed coefficients were assumptions of the earlier linear models. Saturation and contact can break them; a local pole test does not establish a global region of attraction.'),
+24: ((23,4), 'Predict known dynamics with feedforward and correct residuals with feedback. Cancelling a model term does not remove physical inertia. Each nonlinear method needs its own assumptions.'),
+25: ((5,6,11), 'This is the same J as in the flywheel lesson. At fixed net torque, more J means less acceleration. At fixed b, it gives a longer J/b time constant. At fixed desired acceleration, it instead requires more net torque.'),
+26: ((25,11,15), 'Name the input and measured output first. Motor torque to motor angle, load torque to load angle, and imposed motor angle to load angle have different zeros. A natural frequency is not automatically a closed-loop bandwidth.'),
+27: ((26,11), 'A parallel spring adds stiffness without splitting the rigid inertia. Negative apparent inertia at a frequency describes the spring’s contribution to torque/acceleration, not negative physical mass.'),
+28: ((25,26,27), 'Compare the same port, output and controller constraints. A minimum-of-limits budget is a design estimate; a −3 dB bandwidth comes from a specified response. No topology has a universal Hz rating.'),
+29: ((25,5), 'Use J_total = J_L + N²J_m, with N = motor speed / joint speed. This inertia affects acceleration and the speed-model time constant. High inertia, friction and stiffness are different properties.'),
+30: ((21,28,29), 'Separate static support torque, acceleration torque and impact energy. They impose different requirements on the same biped actuator. A spring stores energy; damping dissipates it.'),
+31: ((22,29,30), 'Moving a motor toward the base can reduce distal link inertia while its rotor still contributes reflected inertia through the transmission. Holding and accelerating are different torque requirements.'),
+32: ((2,28), 'The plant describes what the machine can do; the objective says what it should do. Tracking and compliant interaction are different objectives. A state-to-input control rule connects to the later policy vocabulary.'),
+33: ((4,32), 'A PD law uses virtual stiffness and damping. Finite gain allows error under load; feedforward or integral action can provide holding torque. Feedforward may appear in both position and impedance control.'),
+34: ((33,7,1), 'I accumulates error over elapsed time; D estimates its rate. Both depend on timing. Saturation, delay and noise can invalidate an ideal linear response even when the algebra is correct.'),
+35: ((33,29), 'The reference is desired torque or current. Current feedback can remain closed while position is open loop. Account for gearing, acceleration and losses before equating motor current with external joint torque.'),
+36: ((33,35,11), 'Reuse the PD equation to specify interaction behavior. At rest, 0 = −K(θ_ss−θ_d) + τ_ff + τ_ext, using signed external torque. Holding on target requires τ_ff = −τ_ext.'),
+37: ((36,5,7), 'With K_v = 0 and B_v > 0, force-to-velocity is first order with τ_c = M_v/B_v, just like J/b. Position still integrates velocity; with K_v > 0 the full position response is second order.'),
+38: ((36,37,13), 'Impedance maps motion deviation to a force/torque command; admittance maps force/torque to a motion reference. A force sensor alone does not decide which controller you built.'),
+39: ((33,35,36), 'K, B and feedforward are separate choices in a common torque law. A learned torque command depending on measured state contains feedback. Its derivatives describe local behavior, not necessarily a passive spring.'),
+40: ((30,39,1), 'Schedule the same stiffness, damping and feedforward over gait phase. Gait phase means progress through a step; it is not frequency-response phase lag. Update rates are not joint bandwidths.'),
+41: ((31,38,39), 'K times displacement bounds one spring-torque contribution, not every impact force. Damping, feedforward, inertia and delay still matter when the arm contacts its environment.'),
+42: ((28,38), 'Mechanical compliance, low reflected inertia and a compliant control law are separate choices. State the required input/output bandwidth and loading when choosing an actuator.'),
+43: ((25,42), 'At fixed density, mass scales as length³ and inertia as length⁵. Fixed-stress force capacity scales with area; torque also includes a moment arm. Compare capability and demand under the same scaling assumptions.'),
+44: ((29,42), 'Use the same ratio, inertia and sensing definitions for a tendon drive. Tendon routing alone does not establish N = 1 or make motor torque equal joint torque.'),
+45: ((20,26), 'Biological proprioception combines length, velocity and force-related signals. Tendon elasticity, passive tissue response and delayed neural reflexes are distinct; one measurement need not reveal the whole state.'),
+46: ((45,29,20), 'Current estimates motor torque. External torque estimation also accounts for drivetrain and motion. Sensors provide information; the signal-to-command law determines the control paradigm.'),
+47: ((46,36,1), 'Detection, interpretation and modulation of K/B are separate steps. Active compliance acts through feedback and delay; passive compliance already exists in the mechanics during a fast impact.'),
+48: ((45,12), 'The feedback variable is force and its sign is positive. Gait-phase gating limits when that path acts, but a gate alone does not guarantee stability.'),
+49: ((48,35), 'Activation changes force and force changes activation: that closes the loop. Convert current or joint torque into the units required by the force-feedback gain. A local gain test is not a complete biological stability model.'),
+50: ((45,49,28), 'Muscle activation is a command, tendon force is a mechanical signal and joint motion is an outcome. Fast reflex and slow intent describe timescales, not interchangeable bandwidth numbers.'),
+51: ((50,25), 'Compliance distributes deformation, damping dissipates energy and geometry changes load paths. These physical properties become part of the dynamics a later learning policy must operate within.'),
+52: ((32,1), 'The agent chooses an action; the environment returns observation and reward. In this fully observed lake, observation equals state. One RL decision need not coincide with one physical control tick.'),
+53: ((52,), 'A square is the state; a commanded direction is the action; slipping is a stochastic transition. Arrival at a goal or hole may pay a reward, while continuation after termination is zero.'),
+54: ((53,), 'P(s′|s,a) describes the environment’s outcomes conditional on an action. π(a|s) describes the agent’s choices. A sampled outcome and an average over outcomes are different uses of the same dynamics.'),
+55: ((54,52), 'R_(t+1) is one transition’s reward, not episode return or expected value. Changing rewards changes the objective even if the board and transition probabilities remain identical.'),
+56: ((55,1), 'G_t starts with the next reward at weight 1, then discounts later rewards. It is a sampled future sum; V and Q will be expectations. Discounting counts RL steps, not necessarily milliseconds.'),
+57: ((52,54,56), 'Policy randomness differs from environment randomness. A greedy action is best according to current estimates; an optimal action is best under the actual objective and dynamics.'),
+58: ((54,55,57), 'The MDP collects state, action, transitions, reward and discount. The chosen state must contain enough information for the next outcome distribution. A policy acts within an MDP; it is not the MDP.'),
+59: ((56,57,58), 'V^π(s) is expected future return conditional on state and policy. Past collected rewards are excluded. The same state under another policy may have a different value.'),
+60: ((59,57), 'Q^π(s,a) fixes the first action, then follows π. It includes immediate reward and future continuation. Q is an action score, not an action or a physical torque.'),
+61: ((59,60), 'Average Q^π over π to recover V^π. Constructing action scores from V by lookahead needs a model; policy gradients can instead use sampled returns and a V baseline without one.'),
+62: ((56,61,54), 'Split return into next reward plus discounted continuation. Expectation equations evaluate π; optimality equations choose actions. Both still average over the environment’s outcomes.'),
+63: ((62,59), 'Average over the policy action, then the successor state. Each branch contributes probability times (reward plus discounted continuation), not probability times reward times continuation.'),
+64: ((63,60), 'The first action is fixed in Q^π, so the policy average occurs at the successor state. SARSA samples the next action from that policy rather than replacing it with a greedy max.'),
+65: ((63,57), 'Replace the current action average with a max; keep the successor-state average. max gives a score and argmax gives an action. The agent still cannot choose how the ice slips.'),
+66: ((64,65), 'Fix the first action and optimise the successor action. Q-learning uses a greedy continuation target that can differ from the behavior policy collecting experience.'),
+67: ((63,), 'A sweep updates values computationally while π stays fixed. It is not an episode in the environment. A small update residual is a stopping test, not a reward.'),
+68: ((67,65), 'Compare action scores using V^π and the model. Changing the rule is improvement; scoring the changed rule is evaluation. Resolve equal-valued choices consistently to avoid pointless switching.'),
+69: ((67,68), 'Alternate evaluation and improvement. The stable flag means no strict policy improvement was found, not physical closed-loop stability. Finite-MDP guarantees need the stated discount and evaluation assumptions.'),
+70: ((65,69), 'An optimality backup combines value updating with an implicit greedy choice. Extract a policy with argmax. The stopping tolerance and discount factor play different roles.'),
+71: ((69,70), 'A backup differs by policy action versus max, but the algorithms also differ in scheduling evaluation and improvement. Both use the known model and target the same objective.'),
+72: ((56,67), 'Estimate expected return by averaging completed sampled returns. Monte Carlo does not bootstrap from successor values, although the target value still satisfies its Bellman equation.'),
+73: ((72,67), 'Keep π fixed; first-visit and every-visit choose which episode occurrences enter the average. An externally truncated rollout is not automatically a complete task return.'),
+74: ((73,68), 'Combine sampled-return evaluation with improvement. ε-greedy behavior explores. Fixed ε generally leaves exploratory actions in the executed policy; optimal-limit guarantees need additional coverage and schedule assumptions.'),
+75: ((58,74), 'A one-step bandit has no continuation: return equals immediate reward, and action value equals expected reward. Exploration still matters because that expectation is unknown.'),
+76: ((71,72), 'Model-based means using dynamics/reward predictions for planning or learning; the model can be known or learned. A policy/value network alone is not a dynamics model.'),
+77: ((56,74,70), 'γ changes time weighting, α changes update size, ε changes exploration and θ sets stopping tolerance. Different action arrows can still have equal value at ties.'),
+78: ((70,77,12), 'A fixed-point theorem, an empirical plateau and acceptable task performance are different claims. A policy that stops changing may still be poor; convergence is not physical stability.'),
+79: ((54,71,74), 'Trace edits to transitions, evaluation, improvement or exploration. The quoted C++ programs can encode directions differently from this app; use each program’s declared action encoding.'),
+80: ((78,77), 'Backpropagation computes derivatives; Adam uses their first and second raw moments to change weights. Adam’s v is not joint velocity or gradient variance.'),
+81: ((18,80), 'A neuron extends a weighted sum with bias and activation. Without nonlinear activations, stacked affine layers stay affine. Bias b is not mechanical damping b.'),
+82: ((81,57), 'Gradient flow multiplies weights as well as activation slopes. softmax gives probabilities; argmax gives an index. The latter is not a differentiable action distribution.'),
+83: ((81,82,1), 'A forward pass computes predictions, not learning updates. Fixed network size helps bound computation, but actual execution must still meet the control deadline.'),
+84: ((83,80), 'Multiply sensitivities along a path and add them where paths merge. Backpropagation yields a derivative; the optimiser and learning rate turn it into a parameter update.'),
+85: ((84,60,78), 'A critic fits value targets; a DDPG actor minimises negative predicted Q. Lower training loss does not necessarily mean higher evaluated return.'),
+86: ((81,80,85), 'Scaling conditions units, normalisation conditions statistics, regularisation changes the objective and clipping limits a gradient. None is the same operation as limiting actuator torque.'),
+87: ((60,81,78), 'A parameterised V or Q keeps the expected-return definition. Approximate sampled backups do not automatically inherit the exact tabular contraction guarantee.'),
+88: ((71,87,57), 'Critic and actor perform approximate evaluation and improvement. Deterministic/stochastic choice is separate from on/off-policy learning: SAC is stochastic and off-policy.'),
+89: ((88,66,84), 'A target actor supplies the successor action; it is not an exact max. Here τ is a target-network mixing fraction, γ discounts reward and learning rates scale parameter updates.'),
+90: ((89,84), 'The critic’s action derivative is the actor’s backward seed: local sensitivity, not a target action or confidence. Include physical-unit scaling in the chain rule when the critic uses physical actions.'),
+91: ((60,90,83), 'Q requires state and action. Their merge point changes the derivative path to action; a shorter path is a design choice, not a guarantee of better value accuracy.'),
+92: ((58,76,88), 'Dynamics-model use, policy randomness and data reuse are three independent distinctions. DDPG does not require a unique best action at each state.'),
+93: ((92,66), 'Replay and rollout storage preserve different information for their updates. Termination removes continuation value; external truncation need not. Resetting and zeroing a bootstrap are separate decisions.'),
+94: ((36,89,58), 'The action here changes stiffness-profile weights once per gait cycle; it is not torque or a 1 ms tick. Landmark errors are observations, while the controller and person have a richer underlying state.'),
+95: ((1,94,93), 'Control ticks, gait-cycle decisions and learner updates use different clocks. A 20 Hz trainer is not a 20 Hz joint bandwidth. The fast task must not wait for the trainer.'),
+}
+
+VOCABULARY = {
+    'Control': 'τ in mechanics is torque (N·m); τ_c is a time constant (s). Bare τ in first-order formulas means τ_c. Excitation ω = 2πf is angular frequency, while θ̇ is joint angular velocity. Both use rad/s but are different quantities. k/b are physical stiffness/damping; K/B or K_p/K_d are controller stiffness/damping. ζ is dimensionless damping ratio. Standard first-order rise time is 10–90%; settling uses a 2% band around the final value, which need not equal the reference.',
+    'Interaction': 'Mechanical impedance normally means force/velocity or torque/angular velocity. Force/displacement is dynamic stiffness; admittance is the inverse for the same convention. J_eff inferred from torque/acceleration can include elastic effects; negative apparent inertia does not mean negative mass. Motor torque, joint torque and external torque differ. N is motor speed / joint speed.',
+    'Learning': 'Reward r = R_(t+1) is one payout; return G_t is the discounted future sum; V and Q are expected returns. max gives a value, argmax an action. x in control and s in RL denote state; observation is measured information and need not be a complete state. α is an RL learning rate but angular acceleration in mechanics. LQR Q is a cost matrix, not an action-value function. Deterministic/stochastic describes action selection; on/off-policy describes the data and learning policy relationship.',
+    'Networks': 'A gradient is local sensitivity, not confidence. Backpropagation computes gradients; the optimiser changes weights. Adam v is the second raw moment, not velocity or variance. τ in DDPG is a dimensionless target-update fraction, not torque or time constant. Normalisation, regularisation, gradient clipping and action limiting are different operations.',
+}
+
+
+def resolve_connections(classes):
+    by_num = {cls.NUM: cls.__name__ for cls in classes}
+    return {by_num[n]: Connection(text, tuple(by_num[p] for p in previous))
+            for n, (previous, text) in REVIEW.items()}

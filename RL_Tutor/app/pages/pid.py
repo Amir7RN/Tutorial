@@ -55,19 +55,17 @@ class PIDPracticePage(Page):
         e.add(math_label(r"u(t) = K_p\,e(t) + K_i\!\int_0^t\! e(\tau)\,d\tau "
                          r"+ K_d\,\frac{de(t)}{dt}", 17))
         e.add(body(
-            "<b>P — the present.</b> Proportional to the error right now. Does "
-            "the work. Raise it for stiffness and speed; raise it too far and "
-            "the loop oscillates because the phase lag around the loop reaches "
-            "−180° while the gain is still above 1.<br><br>"
-            "<b>I — the past.</b> Accumulates. Exists to kill <b>steady-state "
-            "error</b>: with a constant load, a pure P controller must hold a "
-            "standing error to generate the holding torque, and I is what "
-            "removes it. Costs phase (it is a lag), so it always makes stability "
-            "worse.<br><br>"
-            "<b>D — the future.</b> Predicts where the error is heading and acts "
-            "early. Adds damping and phase <i>lead</i>, which is the only term "
-            "that helps stability. Also the only term that amplifies noise, and "
-            "the only one that cares what time it is."))
+            (
+                "<b>P — the present.</b> Proportional to the error right now. Does the work. Raise it for "
+                "stiffness and speed; raise it too far and the loop oscillates because the phase lag around the "
+                "loop reaches −180° while the gain is still above 1.<br><br><b>I — the past.</b> Accumulates. "
+                "Exists to kill <b>steady-state error</b>: with a constant load, a pure P controller must hold a"
+                " standing error to generate the holding torque, and I is what removes it. Costs phase (it is a "
+                "lag), so its effect on stability must be assessed in the full loop.<br><br><b>D — the "
+                "future.</b> Predicts where the error is heading and acts early. Adds damping and phase "
+                "<i>lead</i>, which can improve damping. D amplifies high-frequency noise especially strongly; P"
+                " can amplify noise too, and both I and D depend on elapsed time."
+            )))
         self.add(e)
 
         self.add(callout(
@@ -109,15 +107,15 @@ class PIDPracticePage(Page):
             "the integrator:"))
         f.add(math_label(r"\dot I = K_i e + K_t\,(u_{sat} - u_{unsat})", 16))
         f.add(body(
-            "The integrator is continuously bled toward whatever value would "
-            "have produced the achievable output. Smoother recovery than "
-            "clamping, at the cost of one more gain (K<sub>t</sub>, typically "
-            "≈ 1/T<sub>i</sub>).<br><br>"
-            "<b>3 · Incremental (velocity) form.</b> Compute Δu each tick and "
-            "accumulate on the <i>output</i> instead of on the error. The "
-            "saturation then lives on the same variable you are integrating, so "
-            "windup cannot occur structurally. Also makes bumpless "
-            "auto/manual transfer nearly free.", dim=True))
+            (
+                "The integrator is continuously bled toward whatever value would have produced the achievable "
+                "output. Smoother recovery than clamping, at the cost of one more gain (K<sub>t</sub>, typically"
+                " ≈ 1/T<sub>i</sub>).<br><br><b>3 · Incremental (velocity) form.</b> Compute Δu each tick and "
+                "accumulate on the <i>output</i> instead of on the error. The saturation then lives on the same "
+                "variable you are integrating, but the accumulated output must be limited and reconciled with "
+                "the actual actuator command to prevent windup. Also makes bumpless auto/manual transfer nearly "
+                "free."
+            ), dim=True))
         self.add(f)
 
         i = Card("watch it wind up, then watch the fix")
@@ -196,19 +194,18 @@ class PIDPracticePage(Page):
         fix.add(math_label(r"\frac{N s}{s + N}\qquad\text{i.e. a first-order "
                            r"low-pass on }D", 16))
         fix.add(body(
-            "Pure differentiation has gain rising forever with frequency, so it "
-            "turns encoder quantisation into audible motor buzz and heat. N is "
-            "typically 8–20 times the loop bandwidth. Never ship an unfiltered "
-            "derivative.<br><br>"
-            "<b>3 · Differentiate the measurement, not the error.</b> "
-            "d(−y)/dt instead of de/dt. A step change in the setpoint then "
-            "produces <b>no impulse</b> in the output — the notorious "
-            "\"derivative kick\" that slams the motor every time an operator "
-            "types a new target. The plant did not move; only your wish did.<br><br>"
-            "<b>4 · Do not differentiate at all if you can avoid it.</b> Use a "
-            "velocity sensor, or a state observer / Kalman filter that estimates "
-            "velocity from the model plus the position measurement. This is what "
-            "high-end drives actually do.", dim=True))
+            (
+                "Pure differentiation has gain rising forever with frequency, so it turns encoder quantisation "
+                "into audible motor buzz and heat. Here N is the derivative filter pole in rad/s; a starting "
+                "estimate is 8–20 times the angular crossover, followed by noise and margin checks. Never ship "
+                "an unfiltered derivative.<br><br><b>3 · Differentiate the measurement, not the error.</b> "
+                "d(−y)/dt instead of de/dt. A step change in the setpoint then produces <b>no impulse</b> in the"
+                " output — the notorious \"derivative kick\" that slams the motor every time an operator types a "
+                "new target. The plant did not move; only your wish did.<br><br><b>4 · Do not differentiate at "
+                "all if you can avoid it.</b> Use a velocity sensor, or a state observer / Kalman filter that "
+                "estimates velocity from the model plus the position measurement. This is what high-end drives "
+                "actually do."
+            ), dim=True))
         self.add(fix)
 
         i2 = Card("inject jitter and watch D fall apart")
@@ -252,19 +249,20 @@ class PIDPracticePage(Page):
 
         s = Card("choosing f_s for a PID")
         s.add(body(
-            "<b>Rule:</b> sample 10–20× your desired closed-loop bandwidth. Not "
-            "2×. Nyquist's 2× is the bound for <i>reconstructing a signal</i>; a "
-            "control loop additionally has to pay zero-order-hold delay, "
-            "computation delay, and phase margin — see page 1.<br><br>"
-            "<b>Anti-alias in analog, always.</b> Corner below f<sub>s</sub>/2, "
-            "before the ADC. A geared joint is full of tooth-mesh energy at "
-            "hundreds of Hz that will otherwise fold down into your control "
-            "band and be indistinguishable from a real disturbance.<br><br>"
-            "<b>Quantisation sets your derivative floor.</b> A 12-bit encoder on "
-            "a 360° joint resolves 0.088°. Differentiating that at 1 kHz gives "
-            "velocity steps of 88°/s. That number, not your gain choice, is what "
-            "decides how much you can filter — and it is why 19–23 bit encoders "
-            "exist on torque-controlled robots."))
+            (
+                "<b>Starting rule of thumb:</b> sample 10–20× your desired closed-loop bandwidth, then check "
+                "delay and margins. Not 2×. Nyquist's 2× is the bound for <i>reconstructing a signal</i>; a "
+                "control loop additionally has to pay zero-order-hold delay, computation delay, and phase margin"
+                " — see page 1.<br><br><b>Prevent aliasing before sampling.</b> An analog filter must "
+                "sufficiently attenuate unwanted content by f<sub>s</sub>/2 before the ADC; a corner below "
+                "Nyquist alone is insufficient. Digital filtering before later downsampling serves the same role"
+                " for that downsampling step. A geared joint is full of tooth-mesh energy at hundreds of Hz that"
+                " will otherwise fold down into your control band and be indistinguishable from a real "
+                "disturbance.<br><br><b>Quantisation sets your derivative floor.</b> A 12-bit encoder on a 360° "
+                "joint resolves 0.088°. Differentiating that at 1 kHz gives velocity steps of 88°/s. That "
+                "number, not your gain choice, is what decides how much you can filter — and it is why 19–23 bit"
+                " encoders exist on torque-controlled robots."
+            )))
         self.add(s)
 
         # ==================================================================
@@ -302,11 +300,13 @@ class PIDPracticePage(Page):
         self.add(t)
 
         self.add(callout(
-            "<b>Carry forward.</b> Jitter hits <b>D</b>. Saturation creates "
-            "<b>windup</b> in I. Noise is amplified by <b>D</b>. Steady-state "
-            "load requires <b>I</b> — or, far better, a feedforward term. Every "
-            "controller in the rest of this section is built out of these parts, "
-            "so every one of them inherits these failure modes.", "good"))
+            (
+                "<b>Carry forward.</b> Jitter affects sampled feedback and both I and D; it is particularly "
+                "visible in <b>D</b>. Saturation creates <b>windup</b> in I. Noise is amplified by <b>D</b>. "
+                "Steady-state load requires <b>I</b> — or, far better, a feedforward term. Every controller in "
+                "the rest of this section is built out of these parts, so every one of them inherits these "
+                "failure modes."
+            ), "good"))
 
         self.finish()
 

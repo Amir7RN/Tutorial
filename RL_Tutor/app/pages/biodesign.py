@@ -72,11 +72,12 @@ class BioActuationPage(Page):
 
         w = Card("what matters biomechanically")
         w.add(body(
-            "&nbsp;&nbsp;• Compliance for shock absorption<br>"
-            "&nbsp;&nbsp;• Energy storage and return<br>"
-            "&nbsp;&nbsp;• <b>Bandwidth separation</b> (fast reflex, slow "
-            "intent)<br>"
-            "&nbsp;&nbsp;• Stability through <b>interaction, not dominance</b>"))
+            (
+                "&nbsp;&nbsp;• Compliance for shock absorption<br>&nbsp;&nbsp;• Energy storage and "
+                "return<br>&nbsp;&nbsp;• <b>Timescale separation</b> (fast reflex, slow intent; response "
+                "bandwidth and update rate are distinct)<br>&nbsp;&nbsp;• Stability through <b>interaction, not "
+                "dominance</b>"
+            )))
         w.add(body(
             "That last line is the thesis of this entire tutorial, stated "
             "biologically. A stiff position controller achieves stability by "

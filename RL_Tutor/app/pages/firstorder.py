@@ -670,9 +670,10 @@ class FirstOrderPage(Page):
 
 class TimeConstantPage(Page):
     TITLE = "The Time Constant & the Pole"
-    SUBTITLE = ("One number, three names. Where 0.63 comes from, what "
-                "the decay rate actually is, and why the "
-                "current loop runs at 20 kHz and the joint loop does not.")
+    SUBTITLE = ((
+                    "One first-order model, three related quantities. Where 0.63 comes from, what the decay rate "
+                    "actually is, and why the current loop runs at 20 kHz and the joint loop does not."
+                ))
     SECTION = SECTION
     NOTES = "foundation"
 
@@ -680,10 +681,11 @@ class TimeConstantPage(Page):
         super().__init__(parent)
 
         self.add(callout(
-            "<b>τ, the pole, and the bandwidth are the same number wearing "
-            "three hats.</b> τ = 50 ms, pole at −20 1/s, bandwidth 3.2 Hz are "
-            "three ways of saying one fact about one piece of hardware. This "
-            "page earns that sentence, then makes it a calculator.", "key"))
+            (
+                "<b>Time constant, pole and bandwidth describe the same first-order dynamics in different "
+                "units.</b> τ = 50 ms, pole at −20 1/s, bandwidth 3.2 Hz are three ways of saying one fact about"
+                " one piece of hardware. This page earns that sentence, then makes it a calculator."
+            ), "key"))
 
         # ---- the bucket ---------------------------------------------------
         b = Card("the cup with a hole in it — hold this picture")
@@ -1301,18 +1303,16 @@ class TimeConstantPage(Page):
 
         self.lr_text.setText(
             f"The winding's transient decays at <b>{1/te:.0f}</b> e-folds per second; "
-            f"the joint's at <b>{1/tm:.1f}</b>. The winding is therefore able to obey a "
-            f"new current command every <b>{te*1e3:.2f} ms</b>, and running its "
-            f"loop near <b>{rate_e/1000:.1f} kHz</b> means almost every cycle "
-            f"does useful work.<br>"
-            f"The joint cannot respond to anything faster than about "
-            f"<b>{fm:.1f} Hz</b> no matter what you send it, so a loop faster "
-            f"than roughly <b>{rate_m:.0f} Hz</b> spends its cycles re-deciding "
-            f"a command the mechanics have not begun to act on — and amplifying "
-            f"encoder noise while it does. <b>That gap of "
-            f"{tm/te:.0f}× is the whole reason for a cascade:</b> a fast inner "
-            f"loop that makes torque exact, wrapped in a slow outer loop that "
-            f"decides what the torque should be.")
+            f"the joint's at <b>{1/tm:.1f}</b>. After one winding time constant "
+            f"(<b>{te*1e3:.2f} ms</b>), its first-order step is 63.2% complete; "
+            f"this is not an interval during which new commands are forbidden.<br>"
+            f"The joint model's corner is <b>{fm:.1f} Hz</b>. It still responds "
+            f"above that frequency, with reduced amplitude and more lag. The displayed "
+            f"<b>{rate_e/1000:.1f} kHz</b> inner and <b>{rate_m:.0f} Hz</b> outer "
+            f"update rates are design estimates, not mechanical motion rates. "
+            f"The <b>{tm/te:.0f}× time-constant separation</b> motivates a cascade: "
+            f"a faster current loop inside a slower motion loop, each verified for "
+            f"delay, noise and stability.")
 
         c = self.c_lr
         c.clear()
@@ -1440,17 +1440,17 @@ class IntegratorPage(Page):
 
         m = Card("marginally stable — the third category, and why it needs one")
         m.add(body(
-            "A pole strictly in the left half plane is <b>stable</b>: transients "
-            "decay. A pole in the right half plane is <b>unstable</b>: they grow "
-            "without bound. A pole exactly <i>on</i> the boundary is neither, and "
-            "it gets its own name — <b>marginally stable</b>.<br><br>"
-            "It is not a technicality. A marginally stable system does not blow "
-            "up, so it is not dangerous the way an unstable one is. But it never "
-            "settles either, and every disturbance it ever receives is still in "
-            "there, added up. Two hours of a tiny sensor bias integrates into a "
-            "large, confident, completely wrong number — which is exactly what "
-            "<b>drift</b> is, and why dead reckoning from an accelerometer fails "
-            "and gyro bias has to be estimated rather than ignored."))
+            (
+                "A pole strictly in the left half plane is <b>stable</b>: transients decay. A pole in the right "
+                "half plane is <b>unstable</b>: they grow without bound. A pole exactly <i>on</i> the boundary "
+                "is neither, and it gets its own name — <b>marginally stable</b>.<br><br>It is not a "
+                "technicality. A single integrator has bounded zero-input motion, but a constant input produces "
+                "an unbounded ramp. Marginal zero-input stability is not bounded-input bounded-output stability."
+                " But it never settles either, and every disturbance it ever receives is still in there, added "
+                "up. Two hours of a tiny sensor bias integrates into a large, confident, completely wrong number"
+                " — which is exactly what <b>drift</b> is, and why dead reckoning from an accelerometer fails "
+                "and gyro bias has to be estimated rather than ignored."
+            )))
         m.add(callout(
             "<b>An integrator is the only linear system whose behaviour depends "
             "on your entire history rather than your recent history.</b> That is "
@@ -1837,9 +1837,11 @@ class IntegratorPage(Page):
 
 class FirstOrderFreqPage(Page):
     TITLE = "First Order in Frequency"
-    SUBTITLE = ("Stop stepping it and start shaking it. Where the corner, the "
-                "−3 dB point and the 90° ceiling come from — and why that "
-                "ceiling is a stability guarantee.")
+    SUBTITLE = ((
+                    "Stop stepping it and start shaking it. Where the corner, the −3 dB point and the 90° ceiling "
+                    "come from — and the stability result for a delay-free first-order low-pass under positive "
+                    "proportional negative feedback."
+                ))
     SECTION = SECTION
     NOTES = "foundation"
 
@@ -1955,15 +1957,16 @@ class FirstOrderFreqPage(Page):
             "line drawn on a smooth curve, but it is a sensible one, and "
             "everyone draws it in the same place.", "key"))
         d.add(body(
-            "<b>Does −3 dB define bandwidth for every system, or just first "
-            "order?</b> The <i>definition</i> — \"the frequency where the "
-            "magnitude has fallen 3 dB below its low-frequency value\" — is "
-            "completely general and is what a datasheet means by bandwidth for "
-            "any plant, filter or closed loop. What is <i>not</i> general is the "
-            "formula: <b>ω<sub>bw</sub> = 1/τ holds only for a single pole.</b> "
-            "A second-order system's −3 dB point depends on both ω<sub>n</sub> "
-            "and ζ, and a resonant one can be <i>above</i> 0 dB before it falls "
-            "— which is the next page's problem.", dim=True))
+            (
+                "<b>Does −3 dB define bandwidth for every system, or just first order?</b> The <i>definition</i>"
+                " — \"the frequency where the magnitude has fallen 3 dB below its low-frequency value\" — is the "
+                "convention used here for a stable low-pass response with finite, nonzero DC gain. Band-pass "
+                "systems, integrators and other responses need a different stated reference; a datasheet must "
+                "specify its convention. What is <i>not</i> general is the formula: <b>ω<sub>bw</sub> = 1/τ "
+                "holds only for a single pole.</b> A second-order system's −3 dB point depends on both "
+                "ω<sub>n</sub> and ζ, and a resonant one can be <i>above</i> 0 dB before it falls — which is the"
+                " next page's problem."
+            ), dim=True))
         self.add(d)
 
         # ---- roll-off and phase, physically -------------------------------
@@ -2061,12 +2064,14 @@ class FirstOrderFreqPage(Page):
         self._redraw_loop()
 
         self.add(callout(
-            "<b>Carry forward.</b> Bandwidth = 1/τ = |pole|, the third hat on "
-            "the same number. Beyond it, −20 dB/decade and a phase heading for "
-            "−90° and stopping. That stop is a stability guarantee, and it is "
-            "bought by having exactly one place to put energy. Next page: what "
-            "the imaginary axis is, and what a second place to put energy does "
-            "to all of this.", "good"))
+            (
+                "<b>Carry forward.</b> For H(s) = K/(1+sτ<sub>c</sub>), angular bandwidth ω<sub>bw</sub> = "
+                "1/τ<sub>c</sub> = |p| in rad/s; bandwidth f<sub>bw</sub> = 1/(2πτ<sub>c</sub>) in Hz. Time "
+                "constant τ<sub>c</sub> is in seconds. Beyond it, −20 dB/decade and a phase heading for −90° and"
+                " stopping. That stop is a stability guarantee, and it is bought by having exactly one place to "
+                "put energy. Next page: what the imaginary axis is, and what a second place to put energy does "
+                "to all of this."
+            ), "good"))
 
         self.finish()
 
@@ -2155,10 +2160,12 @@ class FirstOrderFreqPage(Page):
 
         at_corner = abs(self.s_f.value()) <= 1
         self.shake_text.setText(
-            ("<b>You are at the corner.</b> ω = 1/τ, magnitude K/√2 = 0.707 "
-             "(−3.01 dB), phase exactly −45°. Half the power through, half a "
-             "quarter-cycle of lag. This one frequency is the pole, the time "
-             "constant and the bandwidth, all at once."
+            ((
+                 "<b>You are at the corner.</b> ω = 1/τ, magnitude K/√2 = 0.707 (−3.01 dB), phase exactly −45°. "
+                 "Half the power through, half a quarter-cycle of lag. The pole is p = −1/τ<sub>c</sub>; its "
+                 "magnitude equals this model’s angular bandwidth. The time constant is its reciprocal, not a "
+                 "frequency."
+             )
              if at_corner else
              ("<b>Below the corner.</b> The store has plenty of time to keep "
               "up, so the output tracks the input nearly full-size and nearly "

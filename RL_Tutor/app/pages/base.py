@@ -21,6 +21,7 @@ from ..widgets import Card, body
 
 
 class Page(QWidget):
+    navigate_requested = Signal(str)
     """
     Base class. Subclasses fill `self.content` (a vertical layout inside a
     scroll area) and optionally override `on_show()` / `on_hide()`.
@@ -52,6 +53,14 @@ class Page(QWidget):
         outer.addWidget(scroll)
 
         self._build_header()
+
+        from . import LESSON_CLASSES, CONNECTIONS
+        connection = CONNECTIONS.get(type(self).__name__)
+        if connection:
+            from ..widgets.lesson_connection import LessonConnection
+            self.lesson_connection = LessonConnection(connection, LESSON_CLASSES, self.NUM)
+            self.lesson_connection.navigate.connect(self.navigate_requested.emit)
+            self.content.addWidget(self.lesson_connection)
 
         # Additive, fixed-example movies: existing lesson content and labs follow
         # unchanged. Stable class keys survive future sidebar reordering.

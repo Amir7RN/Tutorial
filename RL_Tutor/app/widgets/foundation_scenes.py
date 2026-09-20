@@ -172,7 +172,7 @@ class FoundationScenes:
     def draw_tank(self):
         mode = self.d.get("mode", "fill")
         tau = self.d.get("tau", 1)
-        t = self.progress*4
+        t = self.progress*self.d.get("duration", 4)
         level = math.exp(-t/tau) if mode == "drain" else min(.95, .22*t) if mode == "integrate" else 1-math.exp(-t/tau)
         self.line(270, 35, 270, 183, theme.TEXT_DIM, 4)
         self.line(270, 183, 465, 183, theme.TEXT_DIM, 4)
@@ -200,9 +200,9 @@ class FoundationScenes:
 
     def draw_mass(self):
         mode = self.d.get("mode", "free")
-        t = self.progress*4
+        t = self.progress*self.d.get("duration", 4)
         zeta = self.d.get("zeta", .3)
-        wn = 3
+        wn = self.d.get("wn", 3)
         if mode == "step":
             displacement = step_response(t, zeta, wn)
             x = 350+115*displacement
@@ -215,9 +215,9 @@ class FoundationScenes:
             x = 400+115*displacement
         self.line(145, 61, 145, 165, theme.TEXT_DIM, 6)
         self.spring(147, 112, x-30)
-        self.box(x-30, 82, 60, 60, "m", True)
+        self.box(x-30, 82, 60, 60, self.d.get("body_label", "m"), True)
         self.line(150, 159, 590, 159, theme.TEXT_DIM)
-        self.text(610, 38, 260, 145, f"t = {t:.2f} s\nx = {displacement:.2f}\nζ = {zeta:g}\nωn = 3 rad/s", theme.CYAN, 14)
+        self.text(610, 38, 260, 145, f"t = {t:.2f} s\nnormalized response = {displacement:.2f}\nζ = {zeta:.3g}\nωn = {wn:.3g} rad/s", theme.CYAN, 14)
         self.note(self.d.get("equation", "Spring stores energy; mass carries momentum; damping dissipates energy."))
 
     def draw_cancellation(self):

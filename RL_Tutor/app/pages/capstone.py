@@ -614,15 +614,14 @@ class ArmSystemsPage(Page):
         self.add(_spec_card("arm"))
 
         self.add(callout(
-            "<b>The arm is the easy robot and the hard plant.</b> It cannot "
-            "fall over — bolt the base down and every eigenvalue is either "
-            "stable or marginal — so none of the deadline arithmetic from the "
-            "biped page applies. What replaces it is worse in a different "
-            "way: <b>the plant is not one plant</b>. Fold the elbow and the "
-            "shoulder's inertia drops by a factor of three; swing to "
-            "horizontal and gravity turns from a restoring spring into a "
-            "destabilising one. A controller tuned in one configuration is "
-            "tuned for a machine the arm is not currently being.", "key"))
+            (
+                "<b>The arm is the easy robot and the hard plant.</b> A fixed base removes whole-body tipping "
+                "from this model. Individual joint equilibria can still be unstable, especially against gravity,"
+                " and the control task still has deadlines. What replaces it is worse in a different way: <b>the"
+                " plant is not one plant</b>. Fold the elbow and the shoulder's inertia drops by a factor of "
+                "three; swing to horizontal and gravity turns from a restoring spring into a destabilising one. "
+                "A controller tuned in one configuration is tuned for a machine the arm is not currently being."
+            ), "key"))
 
         # ---- coupling ---------------------------------------------------
         cp = Card("the inertia matrix is not diagonal, and that is the whole "

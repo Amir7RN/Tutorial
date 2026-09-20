@@ -98,11 +98,12 @@ class FrozenLakePage(Page):
             "necessarily the action that executes. That single fact is what makes "
             "this an interesting MDP rather than a maze."))
         rules.add(callout(
-            "Why this environment and not a maze? Because the stochasticity is "
-            "<b>not noise you can average away</b> — it changes the optimal policy "
-            "itself. On slippery ice the best move is often to hug a wall, "
-            "deliberately bumping into it, because a wall cannot slip you into a "
-            "hole. You will see π* do exactly that on page 19.",
+            (
+                "Why this environment and not a maze? Because the stochasticity is <b>not noise you can average "
+                "away</b> — it changes the optimal policy itself. On slippery ice the best move is often to hug "
+                "a wall, deliberately bumping into it, because a wall cannot slip you into a hole. You will see "
+                "π* do exactly that on page 70."
+            ),
             "key"))
 
         self.row(board, rules, stretches=[0, 1])
@@ -145,12 +146,12 @@ class FrozenLakePage(Page):
         self.add(geo)
 
         self.add(callout(
-            "Try the four corners. On square 0, <b>two</b> of the four actions do "
-            "nothing at all — LEFT and UP both walk into a wall. On square 3 it is "
-            "RIGHT and UP.<br><br>"
-            "That is the honest explanation for the \"agent won't move\" behaviour "
-            "on page 1. There is no <i>stay</i> action; there is a <i>failed move</i>, "
-            "and it costs you a turn exactly like any other.", "warn"))
+            (
+                "Try the four corners. On square 0, <b>two</b> of the four actions do nothing at all — LEFT and "
+                "UP both walk into a wall. On square 3 it is RIGHT and UP.<br><br>That is the honest explanation"
+                " for the \"agent won't move\" behaviour on page 52. There is no <i>stay</i> action; there is a "
+                "<i>failed move</i>, and it costs you a turn exactly like any other."
+            ), "warn"))
 
         # ---- the two interfaces --------------------------------------------
         api = Card("one environment, two interfaces — this is the whole book")
@@ -161,11 +162,12 @@ class FrozenLakePage(Page):
 
         c1 = Card("build_model()  →  P[s][a]")
         c1.add(body(
-            "The full transition table. Gives you every outcome <i>and its "
-            "probability</i>, without moving.<br><br>"
-            "<b>Used by:</b> policy evaluation, policy iteration, value iteration.<br>"
-            "<b>Called:</b> model-based / planning.<br>"
-            "<b>Reality check:</b> a real robot never has this."))
+            (
+                "The full transition table. Gives you every outcome <i>and its probability</i>, without "
+                "moving.<br><br><b>Used by:</b> policy evaluation, policy iteration, value "
+                "iteration.<br><b>Called:</b> model-based / planning.<br><b>Reality check:</b> a robot may have "
+                "an approximate or learned model, but rarely an exact small transition table."
+            )))
         two.addWidget(c1)
 
         c2 = Card("FrozenLake()  →  .reset() / .step()")

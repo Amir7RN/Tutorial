@@ -77,9 +77,10 @@ SECTION = "Controller Design"
 
 class StabilisingPage(Page):
     TITLE = "Making It Stable"
-    SUBTITLE = ("Feedback does not change the plant — it moves the plant's "
-                "poles. Which term moves them where, and why D is the one that "
-                "buys stability.")
+    SUBTITLE = ((
+                    "Feedback leaves the open-loop plant model unchanged and places the closed-loop poles. Which "
+                    "term moves them where, and why D is the one that buys stability."
+                ))
     SECTION = SECTION
     NOTES = "design"
 
@@ -291,26 +292,21 @@ class StabilisingPage(Page):
         self._redraw_pid()
 
         self.add(callout(
-            "<b>Everything you just did was <i>tuning</i>, and it is worth "
-            "naming that out loud.</b> You moved three gains and read three "
-            "consequences off the plots. There is no formula on this page that "
-            "takes \"I want 50° of phase margin at 30 rad/s\" and hands you "
-            "K<sub>p</sub>, K<sub>i</sub> and K<sub>d</sub> — the map runs the "
-            "easy way only. <i>Gains → response</i> is a calculation; "
-            "<i>response → gains</i> is a search, and every named PID recipe "
-            "(Ziegler-Nichols, relay auto-tuning, \"raise K<sub>p</sub> until "
-            "it rings and back off 40%\") is a search procedure with a name. "
-            "The next page rewrites this same controller in coordinates where "
-            "the map <b>does</b> invert, which is the entire reason lead-lag "
-            "exists as a separate language.<br><br>"
-            "<b>And notice what the droop stat is a statement about: ω = 0, "
-            "and nothing else.</b> A constant load is a signal of zero "
-            "frequency, so once the transients have died the only number that "
-            "decides the leftover error is the loop gain at DC. K<sub>p</sub> "
-            "makes that gain large; only K<sub>i</sub> makes it infinite; and "
-            "only infinite gives exactly zero. Page 16 takes that apart "
-            "properly, because it is the whole difference between a lag and a "
-            "PI.", "key"))
+            (
+                "<b>Everything you just did was <i>tuning</i>, and it is worth naming that out loud.</b> You "
+                "moved three gains and read three consequences off the plots. There is no formula on this page "
+                "that takes \"I want 50° of phase margin at 30 rad/s\" and hands you K<sub>p</sub>, K<sub>i</sub> "
+                "and K<sub>d</sub> — the map runs the easy way only. <i>Gains → response</i> is a calculation; "
+                "<i>response → gains</i> is a search, and every named PID recipe (Ziegler-Nichols, relay "
+                "auto-tuning, \"raise K<sub>p</sub> until it rings and back off 40%\") is a search procedure with "
+                "a name. The next page rewrites this same controller in coordinates where the map <b>does</b> "
+                "invert, which is the entire reason lead-lag exists as a separate language.<br><br><b>And notice"
+                " what the droop stat is a statement about: ω = 0, and nothing else.</b> A constant load is a "
+                "signal of zero frequency, so once the transients have died the only number that decides the "
+                "leftover error is the loop gain at DC. K<sub>p</sub> makes that gain large; only K<sub>i</sub> "
+                "makes it infinite; and only infinite gives exactly zero. Page 17 takes that apart properly, "
+                "because it is the whole difference between a lag and a PI."
+            ), "key"))
 
         # ---- the unstable case ------------------------------------------
         self.add(hline())
@@ -804,20 +800,17 @@ class LeadLagPage(Page):
             "between <b>your parameters</b> and <b>your specification</b> can "
             "be inverted in closed form."))
         td.add(body(
-            "<b>Tuned — you search.</b> Hand me K<sub>p</sub>, K<sub>i</sub>, "
-            "K<sub>d</sub> and I can compute your phase margin, your "
-            "crossover, your overshoot, exactly. Hand me a phase margin and "
-            "ask for the gains and there is no formula to give you. Three "
-            "parameters go in; the specification is a property of the whole "
-            "loop, not of any one of them; and the composition is not "
-            "invertible by algebra. So you do what page 15 had you doing: set "
-            "a value, look at the consequence, adjust, repeat. Ziegler-"
-            "Nichols, relay auto-tuning, \"raise K<sub>p</sub> until it rings "
-            "then back off 40%\" — these are all <b>named search procedures</b>"
-            ", and naming a search does not make it a solution. They work. "
-            "They are still search, and they terminate when you decide the "
-            "step response looks acceptable rather than when a number is "
-            "met."))
+            (
+                "<b>Tuned — you search.</b> Hand me K<sub>p</sub>, K<sub>i</sub>, K<sub>d</sub> and I can "
+                "compute your phase margin, your crossover, your overshoot, exactly. Hand me a phase margin and "
+                "ask for the gains and there is no formula to give you. Three parameters go in; the "
+                "specification is a property of the whole loop, not of any one of them; and the composition is "
+                "not invertible by algebra. So you do what page 16 had you doing: set a value, look at the "
+                "consequence, adjust, repeat. Ziegler-Nichols, relay auto-tuning, \"raise K<sub>p</sub> until it "
+                "rings then back off 40%\" — these are all <b>named search procedures</b>, and naming a search "
+                "does not make it a solution. They work. They are still search, and they terminate when you "
+                "decide the step response looks acceptable rather than when a number is met."
+            )))
         td.add(body(
             "<b>Designed — you solve.</b> A lead is written in coordinates "
             "that are <i>already the specification's coordinates</i>: "
@@ -900,27 +893,21 @@ class LeadLagPage(Page):
         ia = Card("state a specification, get a compensator — one pass, no "
                   "iteration")
         ia.add(body(
-            "This is \"designed\" in the literal sense, and it is the "
-            "difference from page 15 made operational. Plant: the rigid joint "
-            "1/(0.25s² + 0.4s). <b>You do not touch a single compensator "
-            "parameter.</b> You set the phase margin you want and the "
-            "crossover you want; the four lines of arithmetic above produce α, "
-            "z, p and K<sub>c</sub>, and the stats put what you asked for next "
-            "to what you got.<br><br>"
-            "<b>Three things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Move either slider and watch <i>achieved</i> "
-            "track <i>asked for</i>. Nothing is being searched — each redraw "
-            "is one substitution.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Push the target crossover right. The "
-            "plant's own phase there is more negative, so more lead is "
-            "demanded, α climbs, and the ×α you are paying in high-frequency "
-            "gain climbs with it. <b>The cost of a specification becomes "
-            "visible as a number.</b><br>"
-            "&nbsp;&nbsp;<b>3.</b> Ask for more than about 65° of margin at a "
-            "high crossover. One lead section cannot deliver it — "
-            "φ<sub>max</sub> saturates — and the readout says so rather than "
-            "silently missing. A tuner discovers that limit by failing to "
-            "find gains; a designer reads it off the arcsine.", dim=True))
+            (
+                "This is \"designed\" in the literal sense, and it is the difference from page 16 made "
+                "operational. Plant: the rigid joint 1/(0.25s² + 0.4s). <b>You do not touch a single compensator"
+                " parameter.</b> You set the phase margin you want and the crossover you want; the four lines of"
+                " arithmetic above produce α, z, p and K<sub>c</sub>, and the stats put what you asked for next "
+                "to what you got.<br><br><b>Three things to do:</b><br>&nbsp;&nbsp;<b>1.</b> Move either slider "
+                "and watch <i>achieved</i> track <i>asked for</i>. Nothing is being searched — each redraw is "
+                "one substitution.<br>&nbsp;&nbsp;<b>2.</b> Push the target crossover right. The plant's own "
+                "phase there is more negative, so more lead is demanded, α climbs, and the ×α you are paying in "
+                "high-frequency gain climbs with it. <b>The cost of a specification becomes visible as a "
+                "number.</b><br>&nbsp;&nbsp;<b>3.</b> Ask for more than about 65° of margin at a high crossover."
+                " One lead section cannot deliver it — φ<sub>max</sub> saturates — and the readout says so "
+                "rather than silently missing. A tuner discovers that limit by failing to find gains; a designer"
+                " reads it off the arcsine."
+            ), dim=True))
         self.s_tpm = slider(15, 80, 50)           # target phase margin, deg
         self.s_twgc = slider(20, 600, 150)        # x0.1 rad/s
         self.l_tpm, self.l_twgc = QLabel(), QLabel()

@@ -318,9 +318,11 @@ class MCPredictionPage(Page):
         cp.sizeHintLine(46)
         cc.add(cp)
         cc.add(body(
-            "Compare the signature with <code>policy_evaluation(P, pi, ...)</code> "
-            "on page 16. There it was <b>P</b>, the model. Here it is <b>env</b>, a "
-            "simulator. That swap <i>is</i> the model-free / model-based divide.",
+            (
+                "Compare the signature with <code>policy_evaluation(P, pi, ...)</code> on page 67. There it was "
+                "<b>P</b>, the model. Here it is <b>env</b>, a simulator. That swap <i>is</i> the model-free / "
+                "model-based divide."
+            ),
             dim=True))
         self.add(cc)
 

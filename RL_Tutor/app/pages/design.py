@@ -112,7 +112,7 @@ class ActuatorChoicePage(Page):
 
 class ScalingPage(Page):
     TITLE = "Scaling Up: The Square-Cube Law"
-    SUBTITLE = ("Mass goes as L³, torque as L², inertia as L⁵. Physics works "
+    SUBTITLE = ("Similar geometry: mass ∝ L³, torque capacity ∝ L³, gravity torque ∝ L⁴, inertia ∝ L⁵. Physics works "
                 "against you as robots get bigger.")
     SECTION = SECTION
     NOTES = "material p.4"
@@ -131,13 +131,15 @@ class ScalingPage(Page):
         s.add(body(
             "Move from a small robot to a \"horse\"-sized humanoid and physics "
             "works against you:"))
-        s.add(math_label(r"m \propto L^3 \qquad \tau \propto L^2 "
+        s.add(math_label(r"m \propto L^3 \quad F_{cap} \propto L^2 \quad \tau_{cap} \propto L^3 "
                          r"\qquad J \propto L^5", 18))
         s.add(body(
             "&nbsp;&nbsp;<b>Mass</b> increases by the <b>cube</b> of the "
             "scale.<br>"
-            "&nbsp;&nbsp;<b>Strength / torque</b> increases by only the "
-            "<b>square</b> (cross-sectional area of motor and gear teeth).<br>"
+            "&nbsp;&nbsp;<b>Force capacity</b> at fixed allowable stress increases with area, "
+            "L². <b>Torque capacity</b> includes a moment arm, giving L³; "
+            "<b>gravity torque demand</b> grows as L⁴. These are geometric estimates, "
+            "not universal motor thermal ratings.<br>"
             "&nbsp;&nbsp;<b>Inertia</b> increases by the <b>fifth power</b> — "
             "mass × length², i.e. L³ × L²."))
         s.add(body(
@@ -152,27 +154,27 @@ class ScalingPage(Page):
         self.st_m = Stat("mass ×", "--", theme.WARN)
         self.st_t = Stat("torque ×", "--", theme.GOOD)
         self.st_j = Stat("inertia ×", "--", theme.BAD)
-        self.st_r = Stat("torque per kg", "--", theme.VIOLET)
+        self.st_r = Stat("capacity / gravity demand", "--", theme.VIOLET)
         i.add_layout(stat_row(self.st_m, self.st_t, self.st_j, self.st_r))
         self.canvas = MplCanvas(width=7.4, height=3.0)
         i.add(self.canvas)
         i.add(body(
-            "The gap between the torque line and the mass line is the problem. "
-            "The inertia line is the reason a big robot cannot be caught by "
-            "software when it falls.", dim=True))
+            "Gravity torque demand outgrows torque capacity under these assumptions. "
+            "Inertia grows still faster, reducing acceleration at the same available torque. "
+            "Actual limits also depend on geometry, actuation and cooling.", dim=True))
         self.add(i)
         self.s_L.valueChanged.connect(self._redraw)
         self._redraw()
 
         c = Card("what that forces you to do")
         c.add(body(
-            "<b>Small robot (agile):</b> you can use <b>QDD</b>. Because the mass "
-            "is low, you don't need high gear ratios. This gives incredible "
-            "agility and transparency.<br><br>"
-            "<b>Large robot (heavy work):</b> you are <b>forced</b> into high gear "
-            "ratios (100:1 or more) just to lift your own limbs. That introduces "
-            "high reflected inertia, making the robot stiff and prone to breaking "
-            "its gears on impact — and, as page 5 showed, blind to human touch."))
+            (
+                "<b>Small robot (agile):</b> you can use <b>QDD</b>. Because the mass is low, you don't need "
+                "high gear ratios. This gives incredible agility and transparency.<br><br><b>Large robot (heavy "
+                "work):</b> you are <b>forced</b> into high gear ratios (100:1 or more) just to lift your own "
+                "limbs. That introduces high reflected inertia, making the robot stiff and prone to breaking its"
+                " gears on impact — and, as page 29 showed, blind to human touch."
+            )))
         self.add(c)
 
         self.add(hline())
@@ -246,13 +248,15 @@ class ScalingPage(Page):
         self.st_m.set(f"{f['mass']:.2f}")
         self.st_t.set(f"{f['torque']:.2f}")
         self.st_j.set(f"{f['inertia']:.2f}")
-        self.st_r.set(f"{f['torque_per_mass']:.2f}")
+        self.st_r.set(f"{f['capacity_to_gravity']:.2f}")
 
         c = self.canvas
         c.clear()
         xs = [x / 100.0 for x in range(50, 401)]
-        c.ax.plot(xs, [x ** 2 for x in xs], color=theme.GOOD, lw=2.2,
-                  label="torque  ∝ L²")
+        c.ax.plot(xs, [x ** 3 for x in xs], color=theme.GOOD, lw=2.2,
+                  label="torque capacity  ∝ L³")
+        c.ax.plot(xs, [x ** 4 for x in xs], color=theme.VIOLET, lw=2.0,
+                  label="gravity torque demand  ∝ L⁴")
         c.ax.plot(xs, [x ** 3 for x in xs], color=theme.WARN, lw=2.2,
                   label="mass  ∝ L³")
         c.ax.plot(xs, [x ** 5 for x in xs], color=theme.BAD, lw=2.4,
@@ -290,26 +294,25 @@ class NeoPage(Page):
 
         m = Card("1 · the motor: Revo1, high-torque direct drive")
         m.add(body(
-            "At the heart of every Neo joint is the <b>Revo1</b> motor. Most "
-            "humanoid motors are off-the-shelf; 1X built their own to get the "
-            "world's highest torque-to-weight ratio.<br><br>"
-            "<b>Relationship to DD:</b> the motor itself is a <b>direct drive</b> "
-            "motor, designed to produce massive torque at low speed so it does "
-            "<i>not</i> need a heavy 100:1 harmonic drive that would ruin "
-            "backdriveability."))
+            (
+                "At the heart of every Neo joint is the <b>Revo1</b> motor. Most humanoid motors are "
+                "off-the-shelf; 1X built their own to get the world's highest torque-to-weight "
+                "ratio.<br><br><b>Relationship to DD:</b> the motor itself is a <b>direct drive</b> motor, "
+                "designed to produce massive torque at low speed so it does <i>not</i> need a heavy 100:1 "
+                "harmonic drive that would ruin backdrivability."
+            )))
         self.add(m)
 
         t = Card("2 · the transmission: a tendon drive")
         t.add(body(
-            "Instead of gears or belts, 1X uses a patented <b>tendon drive</b>: "
-            "high-strength ropes wrap around the motor and the joint.<br><br>"
-            "<b>Like an SEA:</b> the ropes have a tiny bit of inherent \"give.\" "
-            "They aren't bouncy springs, but they act as a <b>high-frequency "
-            "shock absorber</b>, protecting the motor magnets from impact.<br>"
-            "<b>Like a QDD:</b> the effective gear ratio is very low, making the "
-            "system <b>95% backdriveable</b>. Push Neo's arm and you aren't "
-            "fighting a gearbox — you are spinning the motor rotor directly "
-            "through the ropes."))
+            (
+                "Instead of gears or belts, 1X uses a patented <b>tendon drive</b>: high-strength ropes wrap "
+                "around the motor and the joint.<br><br><b>Like an SEA:</b> the ropes have a tiny bit of "
+                "inherent \"give.\" They aren't bouncy springs, but they act as a <b>high-frequency shock "
+                "absorber</b>, protecting the motor magnets from impact.<br><b>Like a QDD:</b> the effective "
+                "gear ratio is very low, making the system <b>95% backdrivable</b>. Push Neo's arm and you "
+                "aren't fighting a gearbox — you are spinning the motor rotor directly through the ropes."
+            )))
         t.add(body(
             "<b>Proximal actuator placement.</b> The motor doesn't have to sit at "
             "the joint centre; the rope routes force to the joint pulley. Heavy "
@@ -340,15 +343,15 @@ class NeoPage(Page):
             "Neo does <b>not rely on hardware springs</b> to be compliant. It "
             "relies on <b>motor transparency + sensing + control</b>."))
         a.add(body(
-            "<b>Step 1 — high backdriveability (the mechanical prerequisite).</b> "
-            "Low gear ratio, no harmonic drive, rope transmission. External forces "
-            "at the joint propagate back to the motor and cause measurable motor "
-            "torque. <i>Without backdriveability, nothing below works.</i><br><br>"
-            "<b>Step 2 — torque sensing via motor current.</b> τ ∝ I, and because "
-            "the transmission is transparent, joint torque ≈ motor torque. The "
-            "motor current becomes a <b>virtual force sensor</b>.<br><br>"
-            "<b>Step 3 — software impedance.</b> Stiffness, damping and torque "
-            "limits are modulated in real time, in milliseconds."))
+            (
+                "<b>Step 1 — high backdrivability (the mechanical prerequisite).</b> Low gear ratio, no harmonic"
+                " drive, rope transmission. External forces at the joint propagate back to the motor and cause "
+                "measurable motor torque. <i>Without backdrivability, nothing below works.</i><br><br><b>Step 2 "
+                "— torque sensing via motor current.</b> τ ∝ I, and because the transmission is transparent, "
+                "joint torque ≈ motor torque. The motor current becomes a <b>virtual force "
+                "sensor</b>.<br><br><b>Step 3 — software impedance.</b> Stiffness, damping and torque limits are"
+                " modulated in real time, in milliseconds."
+            )))
         a.add(body(
             "<b>Passive safety on top:</b> Neo's \"muscles\" are encased in a 3D "
             "lattice polymer soft body. If it hits you, the outer shell deforms. "
@@ -384,17 +387,14 @@ class NeoPage(Page):
         self.add(cmp)
 
         self.add(callout(
-            "<b>One clean sentence.</b> \"Neo achieves compliance through "
-            "mechanical transparency and high-bandwidth proprioceptive torque "
-            "control rather than physical springs, allowing it to be soft when "
-            "needed and stiff when required, similar to biological reflex "
-            "modulation.\"<br><br>"
-            "<b>Ultra-short summary:</b><br>"
-            "&nbsp;&nbsp;<b>Proximal</b> → closer to the torso, reducing distal "
-            "inertia<br>"
-            "&nbsp;&nbsp;<b>Micro-compliance</b> → tiny rope elasticity filters "
-            "high-frequency shocks<br>"
-            "&nbsp;&nbsp;<b>Active compliance</b> → backdriveable motor + current "
-            "sensing + software impedance", "good"))
+            (
+                "<b>One clean sentence.</b> \"Neo achieves compliance through mechanical transparency and "
+                "high-bandwidth proprioceptive torque control rather than physical springs, allowing it to be "
+                "soft when needed and stiff when required, similar to biological reflex "
+                "modulation.\"<br><br><b>Ultra-short summary:</b><br>&nbsp;&nbsp;<b>Proximal</b> → closer to the "
+                "torso, reducing distal inertia<br>&nbsp;&nbsp;<b>Micro-compliance</b> → tiny rope elasticity "
+                "filters high-frequency shocks<br>&nbsp;&nbsp;<b>Active compliance</b> → backdrivable motor + "
+                "current sensing + software impedance"
+            ), "good"))
 
         self.finish()

@@ -106,13 +106,13 @@ check("antiresonance at sqrt(k/Jm) is infinite",
 check("J_eff grows without bound approaching antiresonance from below",
       j_eff_sea(JM, JL, K, anti * 0.999) > 10 * (JM + JL))
 
-check("bandwidth f_n = (1/2pi)sqrt(k/JL)",
+check("natural frequency f_n = (1/2pi)sqrt(k/JL)",
       approx(sea_bandwidth_hz(K, JL), math.sqrt(K / JL) / (2 * math.pi)))
-check("stiffer spring raises the bandwidth",
+check("stiffer spring raises the natural frequency",
       sea_bandwidth_hz(2 * K, JL) > sea_bandwidth_hz(K, JL))
-check("heavier limb lowers the bandwidth",
+check("heavier limb lowers the natural frequency",
       sea_bandwidth_hz(K, 2 * JL) < sea_bandwidth_hz(K, JL))
-check("SEA bandwidth lands in the 10-20 Hz band for plausible humanoid numbers",
+check("SEA natural frequency lands in the 10-20 Hz band for plausible humanoid numbers",
       8.0 < sea_bandwidth_hz(180.0, 0.06) < 30.0,
       f"{sea_bandwidth_hz(180.0, 0.06):.1f} Hz")
 
@@ -164,10 +164,12 @@ check("gearing divides speed by N", approx(sp, 6.0))
 
 f = scale_factors(2.0)
 check("mass scales as L^3", approx(f["mass"], 8.0))
-check("torque scales as L^2", approx(f["torque"], 4.0))
+check("fixed-stress force capacity scales as L^2", approx(f["force"], 4.0))
+check("torque capacity includes moment arm, L^3", approx(f["torque"], 8.0))
+check("gravity torque demand includes weight and arm, L^4", approx(f["gravity_torque"], 16.0))
 check("inertia scales as L^5", approx(f["inertia"], 32.0))
-check("torque per unit mass FALLS as the robot grows",
-      scale_factors(2.0)["torque_per_mass"] < scale_factors(1.0)["torque_per_mass"])
+check("capacity relative to gravity demand FALLS as the robot grows",
+      scale_factors(2.0)["capacity_to_gravity"] < scale_factors(1.0)["capacity_to_gravity"])
 
 
 # ==========================================================================

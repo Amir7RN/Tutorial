@@ -155,13 +155,14 @@ class GoalOfControlPage(Page):
         loop.add(self.d_loop)
         loop.add(_rl_mapping_table())
         loop.add(body(
-            "<b>The one real difference:</b> RL <i>learns</i> the policy from "
-            "experience; classical control <i>derives</i> it from a model. The "
-            "loop, the causality, and the fact that the environment gets the "
-            "last word are all identical.<br><br>"
-            "And note what the environment is in a robot: <b>gravity, the floor, "
-            "the object being carried, and the person leaning on the arm</b>. It "
-            "is not noise to be rejected. It is the other half of the system.",
+            (
+                "<b>A useful connection:</b> RL learns a policy using a reward objective and experience or a "
+                "model; classical control often derives or tunes a feedback law from a plant model. Hybrid and "
+                "adaptive methods can combine these approaches. The loop, the causality, and the fact that the "
+                "environment gets the last word are all identical.<br><br>And note what the environment is in a "
+                "robot: <b>gravity, the floor, the object being carried, and the person leaning on the arm</b>. "
+                "It is not noise to be rejected. It is the other half of the system."
+            ),
             dim=True))
         self.add(loop)
         self._draw_loop()
@@ -363,18 +364,17 @@ class PositionControlPage(Page):
                           r"J_\ell \ddot\theta_\ell = k_s(\theta_m - \theta_\ell) "
                           r"+ \tau_{ext}", 15))
         jb.add(body(
-            "The load no longer feels N²J<sub>m</sub> directly; the spring filters "
-            "it. <b>That is the entire point of an SEA</b> — hide the big "
-            "reflected motor inertia from the load at high frequency, giving low "
-            "output impedance and clean force control. So the lumped single-J "
-            "equation is a valid approximation only <b>below the spring-load "
-            "resonance</b>, where the two masses move as one body. Above it the "
-            "two-mass dynamics take over and the lumped model is simply wrong — "
-            "and that resonance is the same 10–20 Hz ceiling that caps the whole "
-            "loop.<br><br>"
-            "<b>PEA</b> is different again: a parallel spring does <i>not</i> split "
-            "the inertia, so reflection works exactly as in the geared case, plus "
-            "an extra passive k<sub>par</sub>(θ − θ<sub>0</sub>) torque term.",
+            (
+                "The load no longer feels N²J<sub>m</sub> directly; the spring filters it. <b>That is the entire"
+                " point of an SEA</b> — hide the big reflected motor inertia from the load at high frequency, "
+                "giving low output impedance and clean force control. So the lumped single-J equation is a valid"
+                " approximation only <b>below the spring-load resonance</b>, where the two masses move as one "
+                "body. Above it the two-mass dynamics take over and the lumped model is simply wrong — and that "
+                "resonance is a mechanical frequency scale that constrains the achievable loop design, not a "
+                "universal 10–20 Hz ceiling.<br><br><b>PEA</b> is different again: a parallel spring does "
+                "<i>not</i> split the inertia, so reflection works exactly as in the geared case, plus an extra "
+                "passive k<sub>par</sub>(θ − θ<sub>0</sub>) torque term."
+            ),
             dim=True))
         jb.add(body(
             "<b>One line:</b> always effective, never bare load — and if there is a "
@@ -384,18 +384,18 @@ class PositionControlPage(Page):
 
         w = Card("when to use it — and why")
         w.add(body(
-            "<b>Use it when the environment is known and rigid.</b><br>"
-            "• Pick-and-place, welding, machining, 3D printing — the geometry is "
-            "the task and nothing unexpected is in the workspace.<br>"
-            "• As the <b>inner loop</b> of something smarter. Every admittance "
-            "controller in existence has a high-gain position loop at the bottom "
-            "of it (page 10).<br>"
-            "• When your hardware leaves you no choice. Behind a 100:1 gearbox "
-            "with high stiction you cannot do faithful torque control anyway; "
-            "position is what the mechanics will actually deliver.<br><br>"
-            "<b>Why it wins there:</b> it is the most accurate and most robust "
-            "thing you can do. High gains reject disturbances hard. Nothing beats "
-            "it for repeatability."))
+            (
+                (
+                    "<b>Use it when the environment is known and rigid.</b><br>• Pick-and-place, welding, machining,"
+                    " 3D printing — the geometry is the task and nothing unexpected is in the workspace.<br>• As the"
+                    " <b>inner loop</b> of something smarter. A common admittance implementation uses a stiff "
+                    "position or velocity loop underneath (page 37).<br>• When your hardware leaves you no choice. "
+                    "Behind a 100:1 gearbox with high stiction you cannot do faithful torque control anyway; "
+                    "position is what the mechanics will actually deliver.<br><br><b>Why it wins there:</b> it is "
+                    "the most accurate and most robust thing you can do. High gains reject disturbances hard. "
+                    "Nothing beats it for repeatability."
+                )
+            )))
         w.add(body(
             "<b>Do not use it when a human is in the loop.</b> A stiff position "
             "controller treats a person as a disturbance to be rejected. That is "
@@ -465,19 +465,21 @@ class PositionControlPage(Page):
         self.add(gq)
 
         self.add(callout(
-            "<b>Position control is a special case of impedance control</b> — the "
-            "one where the feedforward torque is zero. Hold that thought; the "
-            "Impedance Spectrum page makes it exact.", "key"))
+            (
+                "<b>PD position control can use the same spring–damper equation as impedance control</b>. "
+                "Feedforward can appear in either; the distinction is the intended tracking or interaction "
+                "behavior. Hold that thought; the Impedance Spectrum page makes it exact."
+            ), "key"))
 
         pid = Card("in practice this is a PID, and PIDs have failure modes")
         pid.add(body(
-            "Everything above is the <b>PD</b> part. Add an integrator and you "
-            "can finally hold a load with zero steady-state error — at the cost "
-            "of phase margin, and of <b>windup</b> whenever the actuator "
-            "saturates.<br><br>"
-            "Timing matters too: if the loop jitters, it is the <b>D</b> term "
-            "that breaks, because it is the only one that divides by Δt.<br><br>"
-            "The next page is entirely about those failures and their fixes."))
+            (
+                "Everything above is the <b>PD</b> part. Add an integrator and you can finally hold a load with "
+                "zero steady-state error — at the cost of phase margin, and of <b>windup</b> whenever the "
+                "actuator saturates.<br><br>Timing matters too: if the loop jitters, it is the <b>D</b> term "
+                "that breaks, because its difference quotient divides by Δt; the I term also depends on "
+                "Δt.<br><br>The next page is entirely about those failures and their fixes."
+            )))
         self.add(pid)
 
         self._draw_diagram()
@@ -575,22 +577,20 @@ class TorqueControlPage(Page):
         self.add(casc)
 
         self.add(callout(
-            "<b>\"So in torque control, what IS the reference?\"</b><br><br>"
-            "There isn't one, in the feedback sense — and that is the defining "
-            "property, not an omission. Torque control is <b>open loop in "
-            "position</b>. The torque command comes from outside the loop "
-            "entirely:<br><br>"
-            "&nbsp;&nbsp;• <b>Inverse dynamics</b> — τ = M(q)q̈<sub>d</sub> + "
-            "C(q,q̇)q̇ + g(q). You computed what torque the motion requires.<br>"
-            "&nbsp;&nbsp;• <b>An impedance law</b> — τ from position error, which "
-            "makes it an impedance controller.<br>"
-            "&nbsp;&nbsp;• <b>A trajectory optimiser</b>, offline.<br>"
-            "&nbsp;&nbsp;• <b>An RL policy</b> emitting joint torques directly — "
-            "this is what most locomotion policies do.<br>"
-            "&nbsp;&nbsp;• <b>A human</b>, through a haptic device.<br><br>"
-            "The <i>only</i> feedback loop that remains closed is the current "
-            "loop making sure the commanded torque is actually delivered. Where "
-            "the joint ends up is the world's business.", "key"))
+            (
+                "<b>\"So in torque control, what IS the reference?\"</b><br><br><b>The reference is desired "
+                "torque</b> (or the corresponding desired current). A torque-only command has no position "
+                "reference; whether it is open loop in position depends on how that command is generated. The "
+                "torque command comes from outside the loop entirely:<br><br>&nbsp;&nbsp;• <b>Inverse "
+                "dynamics</b> — τ = M(q)q̈<sub>d</sub> + C(q,q̇)q̇ + g(q). You computed what torque the motion "
+                "requires.<br>&nbsp;&nbsp;• <b>An impedance law</b> — τ from position error, which makes it an "
+                "impedance controller.<br>&nbsp;&nbsp;• <b>A trajectory optimiser</b>, offline.<br>&nbsp;&nbsp;•"
+                " <b>An RL policy</b> emitting joint torques directly — this is what most locomotion policies "
+                "do.<br>&nbsp;&nbsp;• <b>A human</b>, through a haptic device.<br><br>The current loop remains "
+                "closed; an output-torque sensor may also close a torque loop. Position feedback is absent only "
+                "if the source of the torque command does not use measured motion. Where the joint ends up is "
+                "the world's business."
+            ), "key"))
 
         c = Card("what it is — and why it is really CURRENT control")
         c.add(body(
@@ -599,38 +599,38 @@ class TorqueControlPage(Page):
             "all is one linear relationship:"))
         c.add(math_label(r"\tau = K_t \cdot I", 18))
         c.add(body(
-            "τ is motor torque, K<sub>t</sub> the torque constant, I the current. "
-            "Command a current and you have commanded a torque — <b>with no "
-            "sensor at all</b>. This is the cheapest force actuation in "
-            "robotics, and, run backwards, the cheapest force <i>sensor</i>: "
-            "read the current and you have read the torque."))
+            (
+                "τ is motor torque, K<sub>t</sub> the torque constant, I the current. Command a current and you "
+                "have commanded a torque — <b>without a separate torque sensor (the current loop still measures "
+                "current)</b>. This is the cheapest force actuation in robotics, and, run backwards, the "
+                "cheapest force <i>sensor</i>: read the current and you have read the torque."
+            )))
         self.add(c)
 
         self.add(callout(
-            "<b>The catch, and it is the whole ballgame.</b> τ = K<sub>t</sub>·I "
-            "tells you the torque <i>at the rotor</i>. What you actually care "
-            "about is the torque <i>at the joint</i>:<br><br>"
-            "&nbsp;&nbsp;&nbsp;&nbsp;τ<sub>joint</sub> ≈ τ<sub>motor</sub> · r"
-            "<br><br>"
-            "…which is only true if r is known and the losses are small and "
-            "predictable: <b>low friction, low backlash, transparency</b>. Behind "
-            "a harmonic drive with 20 N of stiction, motor current tells you "
-            "about the gearbox, not about the world.", "warn"))
+            (
+                "<b>The catch, and it is the whole ballgame.</b> τ = K<sub>t</sub>·I tells you the torque <i>at "
+                "the rotor</i>. What you actually care about is the torque <i>at the "
+                "joint</i>:<br><br>&nbsp;&nbsp;&nbsp;&nbsp;τ<sub>joint</sub> ≈ ηNτ<sub>motor</sub><br><br>…where"
+                " N = motor speed / joint speed and η is transmission efficiency. This estimate is useful only "
+                "if the ratio is known and the losses are small and predictable: <b>low friction, low backlash, "
+                "transparency</b>. Behind a harmonic drive with 20 N of stiction, motor current tells you about "
+                "the gearbox, not about the world."
+            ), "warn"))
 
         w = Card("when to use it — and why")
         w.add(body(
-            "<b>Use it when the interaction is the task.</b><br>"
-            "• Legged locomotion: you want a specified ground reaction force, not "
-            "a specified foot position. The floor decides the position.<br>"
-            "• Anything with an accurate dynamic model, where you can compute the "
-            "torque required and just <i>apply</i> it — feedforward. This is "
-            "faster than any feedback loop because there is no error to wait "
-            "for.<br>"
-            "• As the output stage of impedance control. Impedance controllers "
-            "command torque; they are torque controllers with an opinion.<br><br>"
-            "<b>Why it wins there:</b> maximum transparency and zero phase lag "
-            "from feedback, because there is no feedback. On a backdriveable "
-            "drive it is the closest thing to \"the robot is not there.\""))
+            (
+                "<b>Use it when the interaction is the task.</b><br>• Legged locomotion: you want a specified "
+                "ground reaction force, not a specified foot position. The floor decides the position.<br>• "
+                "Anything with an accurate dynamic model, where you can compute the torque required and just "
+                "<i>apply</i> it — feedforward. This is faster than any feedback loop because there is no error "
+                "to wait for.<br>• As the output stage of impedance control. Impedance controllers command "
+                "torque; they are torque controllers with an opinion.<br><br><b>Why it wins there:</b> maximum "
+                "transparency and no added outer position-loop lag in this torque-only case; current-loop, "
+                "actuator and sampling delays remain. On a backdrivable drive it is the closest thing to \"the "
+                "robot is not there.\""
+            )))
         w.add(body(
             "<b>The cost.</b> Open loop in position. Feedforward control cannot "
             "modify its behaviour when conditions differ from expected — it will "
@@ -786,28 +786,22 @@ class ImpedanceControlPage(Page):
             "the joint and some rest angle. What differs is the stiffness you "
             "chose and where you bolted the far end."))
         sp.add(body(
-            "&nbsp;&nbsp;<b>Position control — an infinitely stiff spring, "
-            "bolted at the target.</b> The bolt is at θ<sub>d</sub> and the "
-            "spring will not stretch, so the joint is dragged to "
-            "θ<sub>d</sub> and held there. Any interaction force is a "
-            "<b>disturbance</b>, and the answer to a disturbance is to push "
-            "back as hard as necessary to erase it. <b>The interaction force "
-            "is the variable that got discarded</b> — the controller never "
-            "decided what it should be, it only decided that it should not "
-            "matter.<br><br>"
-            "&nbsp;&nbsp;<b>Torque control — no spring, no damper at all.</b> "
-            "There is nothing but a commanded feedforward torque, and the "
-            "joint applies it. Push the joint, move it, hold it somewhere "
-            "else — the controller does not notice, because it never reads "
-            "position. <b>The position is the variable that got "
-            "discarded.</b><br><br>"
-            "&nbsp;&nbsp;<b>Impedance control — a spring of your chosen "
-            "finite stiffness, and the bolt is not necessarily at the "
-            "target.</b> Both variables survive. The joint yields when pushed "
-            "(unlike position control) and it still ends up somewhere you "
-            "chose (unlike torque control). The price of keeping both is that "
-            "<b>you now have to answer a question the other two never "
-            "asked</b>: what should K, B and the rest angle be?"))
+            (
+                "&nbsp;&nbsp;<b>High-gain PD position control — a stiff virtual spring, referenced to the "
+                "target.</b> The bolt is at θ<sub>d</sub> and the spring resists error strongly, so the joint is"
+                " driven to θ<sub>d</sub> and held there. Any interaction force is a <b>disturbance</b>, and the"
+                " answer to a disturbance is to push back as hard as necessary to erase it. <b>The interaction "
+                "force is the variable that got discarded</b> — the controller never decided what it should be, "
+                "it only decided that it should not matter.<br><br>&nbsp;&nbsp;<b>Torque control — no spring, no"
+                " damper at all.</b> There is nothing but a commanded feedforward torque, and the joint applies "
+                "it. Push the joint, move it, hold it somewhere else — the controller does not notice, because "
+                "it never reads position. <b>The position is the variable that got "
+                "discarded.</b><br><br>&nbsp;&nbsp;<b>Impedance control — a spring of your chosen finite "
+                "stiffness, and the bolt is not necessarily at the target.</b> Both variables survive. The joint"
+                " yields when pushed (unlike position control) and it still ends up somewhere you chose (unlike "
+                "torque control). The price of keeping both is that <b>you now have to answer a question the "
+                "other two never asked</b>: what should K, B and the rest angle be?"
+            )))
         sp.add(callout(
             "<b>And that question is the whole reason this page is long.</b> "
             "The textbook parameterisation is (K, B, θ<sub>eq</sub>), and "
@@ -834,27 +828,28 @@ class ImpedanceControlPage(Page):
         e.add(math_label(r"\tau = -K(\theta - \theta_d) "
                          r"- B(\dot\theta - \dot\theta_d) + \tau_{ff}", 17))
         e.add(body(
-            "The τ<sub>ff</sub> term is a feedforward torque — the torque the "
-            "controller applies <i>even when tracking perfectly</i>. Set it to "
-            "zero and this is literally the PD position controller from page 7. "
-            "Page 12 makes that equivalence a theorem.", dim=True))
+            (
+                "The τ<sub>ff</sub> term is a feedforward torque — the torque the controller applies <i>even "
+                "when tracking perfectly</i>. Set it to zero and this is literally the PD position controller "
+                "from page 33. Page 39 makes that equivalence a theorem."
+            ), dim=True))
         self.add(e)
 
         w = Card("when to use it — and why")
         w.add(body(
-            "<b>Use it when the robot is backdriveable.</b> Direct drive, "
-            "quasi-direct drive, low-ratio transmissions, tendon drives, SEAs. "
-            "Impedance control needs the motor to <i>feel</i> the human through "
-            "the encoder; if the mechanics hide the motion, the controller is "
-            "blind.<br><br>"
-            "<b>Why it wins:</b> no force sensor needed. No extra hardware, no "
-            "extra failure point, no bandwidth ceiling from a load cell. The "
-            "encoder you already have is the sensor, and the whole loop runs at "
-            "whatever rate your current loop runs at.<br><br>"
-            "<b>Why it is safe:</b> the maximum force the robot can exert is "
-            "bounded by K times the displacement. Bound the displacement — a soft "
-            "limit — and you have bounded the force. Safety by construction "
-            "rather than by watchdog."))
+            (
+                (
+                    "<b>Use it when the robot is backdrivable.</b> Direct drive, quasi-direct drive, low-ratio "
+                    "transmissions, tendon drives, SEAs. Impedance control needs the motor to <i>feel</i> the human "
+                    "through the encoder; if the mechanics hide the motion, the controller is blind.<br><br><b>Why "
+                    "it wins:</b> no force sensor needed. No extra hardware, no extra failure point, no bandwidth "
+                    "ceiling from a load cell. The encoder you already have is the sensor, and the outer impedance "
+                    "update rate is chosen separately from the usually faster current loop.<br><br><b>What the "
+                    "spring term bounds:</b> K times a displacement limit bounds that virtual spring’s torque "
+                    "contribution. Total torque also includes damping and feedforward, and contact force depends on "
+                    "inertia and geometry. Verify the full interaction and explicit actuator limits."
+                )
+            )))
         w.add(body(
             "<b>Do not use it behind a big gearbox.</b> Impedance control is an "
             "<b>open-loop force</b> strategy: you command a torque and "
@@ -979,7 +974,9 @@ class ImpedanceControlPage(Page):
         tug.add(body(
             "But the push does not disappear. Under a sustained interaction, at "
             "the moment the joint sits at θ<sub>d</sub>:"))
-        tug.add(math_label(r"K(\theta_{eq} - \theta_d) \;=\; \tau_{ext}", 17))
+        tug.add(math_label((
+                               "K(\\theta_{eq} - \\theta_d) \\;=\\; -\\tau_{ext}"
+                           ), 17))
         tug.add(body(
             "&nbsp;&nbsp;left side: the <b>spring pull</b>, toward "
             "θ<sub>eq</sub><br>"
@@ -1010,16 +1007,15 @@ class ImpedanceControlPage(Page):
             "(a). And θ<sub>eq</sub> was chosen precisely so that the balance in "
             "(b) lands on θ<sub>d</sub>.", "key"))
         tug.add(body(
-            "<b>Where τ<sub>ff</sub> fits.</b> Someone has to continuously oppose "
-            "τ<sub>ext</sub> to park the joint at θ<sub>d</sub> — that is not "
-            "optional, it is force balance. The only design choice is <b>who does "
-            "the pushing</b>. Either a stretched spring (which requires displacing "
-            "θ<sub>eq</sub> off-target), or a feedforward torque. Supply "
-            "τ<sub>ff</sub> = τ<sub>ext</sub> directly and the feedforward does "
-            "the balancing, the spring no longer needs to be stretched, and "
-            "θ<sub>eq</sub> can sit right on θ<sub>d</sub> — leaving K and B free "
-            "to fight only the <i>unexpected</i> extra. Same balance, different "
-            "party paying for it.", dim=True))
+            (
+                "<b>Where τ<sub>ff</sub> fits.</b> Someone has to continuously oppose τ<sub>ext</sub> to park "
+                "the joint at θ<sub>d</sub> — that is not optional, it is force balance. The only design choice "
+                "is <b>who does the pushing</b>. Either a stretched spring (which requires displacing "
+                "θ<sub>eq</sub> off-target), or a feedforward torque. Supply τ<sub>ff</sub> = −τ<sub>ext</sub> "
+                "directly and the feedforward does the balancing, the spring no longer needs to be stretched, "
+                "and θ<sub>eq</sub> can sit right on θ<sub>d</sub> — leaving K and B free to fight only the "
+                "<i>unexpected</i> extra. Same balance, different party paying for it."
+            ), dim=True))
         self.add(tug)
 
         # ---- the preload picture ---------------------------------------------
@@ -1500,41 +1496,38 @@ class AdmittanceControlPage(Page):
             "up wherever the force balance says it should. What differs is "
             "<b>where that arithmetic happens</b>:"))
         dual.add(body(
-            "&nbsp;&nbsp;• <b>Impedance</b> — the balance K(θ<sub>eq</sub> − θ) = "
-            "τ<sub>ext</sub> is solved <b>by physics</b>, at the joint, "
-            "continuously, for free. The controller never computes where the joint "
-            "will land. It only supplies the spring and lets the world do the "
-            "algebra.<br>"
-            "&nbsp;&nbsp;• <b>Admittance</b> — the identical balance is solved "
-            "<b>in software</b>, by numerically integrating the ghost model each "
-            "tick. Then a stiff position loop <b>forces reality to match the "
-            "computed answer</b>."))
+            (
+                "&nbsp;&nbsp;• <b>Impedance</b> — the balance K(θ<sub>eq</sub> − θ) = −τ<sub>ext</sub> is solved"
+                " <b>by physics</b>, at the joint, continuously, for free. The controller never computes where "
+                "the joint will land. It only supplies the spring and lets the world do the "
+                "algebra.<br>&nbsp;&nbsp;• <b>Admittance</b> — the identical balance is solved <b>in "
+                "software</b>, by numerically integrating the ghost model each tick. Then a stiff position loop "
+                "<b>forces reality to match the computed answer</b>."
+            )))
         dual.add(callout(
-            "<b>One line:</b> impedance control lets the world solve the equation; "
-            "admittance control solves it in an integrator and then makes the "
-            "world obey.<br><br>"
-            "Which is also why each fails where it does. Physics never diverges, "
-            "so impedance stays stable against a wall. An integrator plus a "
-            "delayed force measurement <i>can</i> diverge — which is exactly the "
-            "stiff-contact instability below.", "key"))
+            (
+                "<b>One line:</b> impedance control lets the world solve the equation; admittance control solves"
+                " it in an integrator and then makes the world obey.<br><br>Which is also why each fails where "
+                "it does. A passive spring–damper can interact stably with a passive wall; a delayed active "
+                "implementation still needs a stability check. An integrator plus a delayed force measurement "
+                "<i>can</i> diverge — which is exactly the stiff-contact instability below."
+            ), "key"))
         self.add(dual)
 
         w = Card("when to use it — and why")
         w.add(body(
-            "<b>Use it when the robot is NOT backdriveable.</b> High gear ratios, "
-            "harmonic drives, ball screws with load, anything with serious "
-            "stiction. The F/T sensor sits <b>outside</b> the transmission, so it "
-            "notices you before the gears do.<br><br>"
-            "<b>Why it wins there:</b> it allows the robot to use its own power to "
-            "overcome its own friction. The robot feels your 1 N push and says: "
-            "<i>\"I will start the motor for you so you don't have to fight my "
-            "10,000× inertia.\"</i><br><br>"
-            "<b>The costs:</b> you need an F/T sensor (money, fragility, noise, "
-            "bandwidth ceiling). And it can go <b>unstable on contact with stiff "
-            "environments</b> — pressing a rigid wall means a tiny motion causes a "
-            "huge force change, which the loop turns into a bigger motion. "
-            "Impedance control has the opposite failure mode: it is stable "
-            "against walls and useless in free space at high gearing."))
+            (
+                "<b>Use it when the robot is NOT backdrivable.</b> High gear ratios, harmonic drives, ball "
+                "screws with load, anything with serious stiction. The F/T sensor sits <b>outside</b> the "
+                "transmission, so it notices you before the gears do.<br><br><b>Why it wins there:</b> it allows"
+                " the robot to use its own power to overcome its own friction. The robot feels your 1 N push and"
+                " says: <i>\"I will start the motor for you so you don't have to fight my 10,000× "
+                "inertia.\"</i><br><br><b>The costs:</b> you need an F/T sensor (money, fragility, noise, "
+                "bandwidth ceiling). And it can go <b>unstable on contact with stiff environments</b> — pressing"
+                " a rigid wall means a tiny motion causes a huge force change, which the loop turns into a "
+                "bigger motion. Impedance control has the opposite failure mode: it is stable against walls and "
+                "useless in free space at high gearing."
+            )))
         self.add(w)
 
         # ---- interactive -----------------------------------------------------
@@ -1565,20 +1558,17 @@ class AdmittanceControlPage(Page):
         self._redraw()
 
         self.add(callout(
-            "<b>Your beam-balance project is classic admittance control.</b> You "
-            "measure the excessive torque and use it to decide where the beam "
-            "should go.<br><br>"
-            "• <b>Your logic:</b> a desired state (zero momentum / torque "
-            "balance); measure actual torque T<sub>measured</sub>; find the error "
-            "T<sub>excess</sub> = 6 N·m.<br>"
-            "• <b>The virtual world:</b> feed that 6 N·m into a virtual "
-            "mass-spring-damper model in your code.<br>"
-            "• <b>The command:</b> the code computes <i>\"if a 6 N·m force hit a "
-            "virtual object with this much inertia and damping, it would move at "
-            "this velocity.\"</i><br>"
-            "• <b>The result:</b> you send a position or velocity command to your "
-            "stiff motor. The motor moves to \"admit\" the force, which makes the "
-            "beam feel compliant to the person touching it.", "good"))
+            (
+                "<b>Your beam-balance project is classic admittance control.</b> You measure the excessive "
+                "torque and use it to decide where the beam should go.<br><br>• <b>Your logic:</b> a desired "
+                "state (torque balance; zero net torque means constant angular momentum, not necessarily zero "
+                "momentum); measure actual torque T<sub>measured</sub>; find the error T<sub>excess</sub> = 6 "
+                "N·m.<br>• <b>The virtual world:</b> feed that 6 N·m into a virtual mass-spring-damper model in "
+                "your code.<br>• <b>The command:</b> the code computes <i>\"if a 6 N·m torque acted on a virtual "
+                "joint with this much inertia and damping, it would move at this velocity.\"</i><br>• <b>The "
+                "result:</b> you send a position or velocity command to your stiff motor. The motor moves to "
+                "\"admit\" the force, which makes the beam feel compliant to the person touching it."
+            ), "good"))
 
         # ---- the shape of the response ---------------------------------------
         self.add(hline())
@@ -1588,28 +1578,26 @@ class AdmittanceControlPage(Page):
         sh = Card("read it off the virtual model — all three parameters have "
                   "a job")
         sh.add(body(
-            "Apply a constant force F to M<sub>v</sub>ẍ + B<sub>v</sub>ẋ + "
-            "K<sub>v</sub>x = F and the answer is a first-order velocity "
-            "response with a very concrete shape:"))
+            (
+                "Set K<sub>v</sub> = 0 and B<sub>v</sub> > 0. A constant force F in M<sub>v</sub>ẍ + "
+                "B<sub>v</sub>ẋ = F then gives a first-order velocity response with a very concrete shape:"
+            )))
         sh.add(math_label(r"\dot x(t) = \frac{F}{B_v}\left(1 - "
                           r"e^{-t/(M_v/B_v)}\right)", 17))
         sh.add(body(
-            "<b>Terminal velocity = F / B<sub>v</sub>.</b> This is the "
-            "\"gearing\" of the interaction: push with 10 N against "
-            "B<sub>v</sub> = 5 and the robot ends up moving at 2 units/s. "
-            "<b>B<sub>v</sub> sets how far you get per newton.</b><br><br>"
-            "<b>Time constant = M<sub>v</sub> / B<sub>v</sub>.</b> How long it "
-            "takes to reach that speed. <b>M<sub>v</sub> sets the smoothness and "
-            "the lag.</b> Big M<sub>v</sub> feels like pushing a heavy trolley: "
-            "gradual, forgiving, hard to jerk. Small M<sub>v</sub> feels darty "
-            "and immediate — and amplifies every bit of sensor noise into "
-            "motion.<br><br>"
-            "<b>Initial acceleration = F / M<sub>v</sub>.</b> The instant "
-            "response to your push.<br><br>"
-            "<b>K<sub>v</sub> decides whether it comes back.</b> At 0 (the usual "
-            "choice) the robot stays wherever you left it — a frictionless cart. "
-            "Non-zero, and it drifts back to a home pose, which you sometimes "
-            "want for a tool holder and almost never want for hand-guiding."))
+            (
+                "<b>Terminal velocity = F / B<sub>v</sub>.</b> This is the \"gearing\" of the interaction: push "
+                "with 10 N against B<sub>v</sub> = 5 and the robot ends up moving at 2 units/s. <b>B<sub>v</sub>"
+                " sets steady velocity per newton, not distance.</b><br><br><b>Time constant = M<sub>v</sub> / "
+                "B<sub>v</sub>.</b> How long it takes to reach that speed. <b>M<sub>v</sub> sets the smoothness "
+                "and the lag.</b> Big M<sub>v</sub> feels like pushing a heavy trolley: gradual, forgiving, hard"
+                " to jerk. Small M<sub>v</sub> feels darty and immediate — and amplifies every bit of sensor "
+                "noise into motion.<br><br><b>Initial acceleration = F / M<sub>v</sub>.</b> The instant response"
+                " to your push.<br><br><b>K<sub>v</sub> decides whether it comes back.</b> At 0 (the usual "
+                "choice) the robot stays wherever you left it — a damped cart with no restoring spring. "
+                "Non-zero, and it drifts back to a home pose, which you sometimes want for a tool holder and "
+                "almost never want for hand-guiding."
+            )))
         sh.add(body(
             "<b>And deceleration is symmetric:</b> let go, and the velocity "
             "decays with the same M<sub>v</sub>/B<sub>v</sub>. That is why "
@@ -1632,19 +1620,18 @@ class AdmittanceControlPage(Page):
             "taste. Five things decide it, in roughly this order of importance."))
         pv.add(title("1 · Does K_v exist? — the dominant question", 14))
         pv.add(body(
-            "&nbsp;&nbsp;• <b>K<sub>v</sub> = 0</b> (the usual hand-guiding "
-            "setting) → <b>there is no equilibrium position at all</b>. x is a "
-            "pure double integral of the force; its absolute value carries no "
-            "meaning and nothing anchors it. The honest output is "
-            "<b>velocity</b> — ẋ = (F/B<sub>v</sub>)(1 − e<sup>−t/(M<sub>v</sub>"
-            "/B<sub>v</sub>)</sup>), a bounded first-order response with no "
-            "accumulated state. <i>Free-space lead-through, hand guiding, "
-            "teaching by demonstration → velocity.</i><br><br>"
-            "&nbsp;&nbsp;• <b>K<sub>v</sub> ≠ 0</b> → there is a genuine anchored "
-            "equilibrium, x = F/K<sub>v</sub>. Now a <b>position</b> command means "
-            "something: the ghost is a spring bolted to a home pose. <i>Tool "
-            "holders, virtual fixtures, constrained or guided tasks → "
-            "position.</i>"))
+            (
+                "&nbsp;&nbsp;• <b>K<sub>v</sub> = 0</b> (the usual hand-guiding setting) → <b>there is no "
+                "equilibrium position at all</b>. x integrates velocity, while velocity follows the first-order "
+                "force response when B<sub>v</sub> > 0; its absolute value carries no meaning and nothing "
+                "anchors it. The honest output is <b>velocity</b> — ẋ = (F/B<sub>v</sub>)(1 − "
+                "e<sup>−t/(M<sub>v</sub>/B<sub>v</sub>)</sup>), a bounded first-order velocity response; "
+                "position still accumulates. <i>Free-space lead-through, hand guiding, teaching by demonstration"
+                " → velocity.</i><br><br>&nbsp;&nbsp;• <b>K<sub>v</sub> ≠ 0</b> → there is a genuine anchored "
+                "equilibrium, x = F/K<sub>v</sub>. Now a <b>position</b> command means something: the ghost is a"
+                " spring bolted to a home pose. <i>Tool holders, virtual fixtures, constrained or guided tasks →"
+                " position.</i>"
+            )))
         pv.add(title("2 · Sensor bias, which integrates", 14))
         pv.add(body(
             "An F/T offset of 0.2 N does not average out — it is a constant. A "
@@ -1833,7 +1820,9 @@ class ImpVsAdmPage(Page):
                 ("Loop causality", "measure motion → command force",
                  "measure force → command motion"),
                 ("Needs a plant that is",
-                 "a natural motion-source: low intrinsic Z, backdriveable",
+                 (
+                     "a natural motion-source: low intrinsic Z, backdrivable"
+                 ),
                  "a natural position-source: high intrinsic Z, geared, stiff"),
                 ("Who solves the force balance",
                  "physics, at the joint, continuously",
@@ -1844,19 +1833,16 @@ class ImpVsAdmPage(Page):
         self.add(ax)
 
         self.add(callout(
-            "<b>The pairing rule: the controller must be the DUAL of the "
-            "plant.</b><br><br>"
-            "A backdriveable joint is already a motion-source — push it and it "
-            "moves — so you wrap force control around it: <b>impedance</b>. A "
-            "geared joint is already a position-source — it holds its angle "
-            "whatever you do to it — so you wrap motion control around it: "
-            "<b>admittance</b>. Pair them the wrong way round and you get the two "
-            "failure modes in the table above, both of which are really the same "
-            "mistake.<br><br>"
-            "<b>And the environment is the mirror of that choice.</b> Stiff "
-            "environment → impedance is stable, admittance oscillates. Free space "
-            "behind a gearbox → admittance is excellent, impedance is blind. Pick "
-            "the realisation whose hard case you do not have.", "key"))
+            (
+                "<b>The pairing rule: the controller must be the DUAL of the plant.</b><br><br>A backdrivable "
+                "joint is already a motion-source — push it and it moves — so you wrap force control around it: "
+                "<b>impedance</b>. A geared joint is already a position-source — it holds its angle whatever you"
+                " do to it — so you wrap motion control around it: <b>admittance</b>. Pair them the wrong way "
+                "round and you get the two failure modes in the table above, both of which are really the same "
+                "mistake.<br><br><b>And the environment is the mirror of that choice.</b> Stiff environment → "
+                "impedance is stable, admittance oscillates. Free space behind a gearbox → admittance is "
+                "excellent, impedance is blind. Pick the realisation whose hard case you do not have."
+            ), "key"))
 
         sp = Card("admittance has its own spectrum — which is why it is not a "
                   "point on the first one")
@@ -1870,14 +1856,14 @@ class ImpVsAdmPage(Page):
             "&nbsp;&nbsp;• <b>K<sub>v</sub> = 0 vs K<sub>v</sub> ≠ 0</b> — no home "
             "pose vs a home pose to drift back to."))
         sp.add(body(
-            "So both realisations span most of axis 1. <b>Neither reaches the "
-            "other's extreme cleanly</b>, and this asymmetry is worth knowing:<br><br>"
-            "&nbsp;&nbsp;• Impedance cannot reach the <b>high-Z</b> end — bounded "
-            "by actuator saturation and by stability, exactly the ceiling on "
-            "K<sub>p</sub> from the Position Control page.<br>"
-            "&nbsp;&nbsp;• Admittance cannot reach <b>Z = 0</b> — bounded below by "
-            "inner-loop gain and F/T sensor noise. It never gets as transparent as "
-            "a backdriveable drive running open-loop torque.", dim=True))
+            (
+                "So both realisations span most of axis 1. <b>Neither reaches the other's extreme cleanly</b>, "
+                "and this asymmetry is worth knowing:<br><br>&nbsp;&nbsp;• Impedance cannot reach the "
+                "<b>high-Z</b> end — bounded by actuator saturation and by stability, exactly the ceiling on "
+                "K<sub>p</sub> from the Position Control page.<br>&nbsp;&nbsp;• Admittance cannot reach <b>Z = "
+                "0</b> — bounded below by inner-loop gain and F/T sensor noise. It never gets as transparent as "
+                "a backdrivable drive running open-loop torque."
+            ), dim=True))
         self.add(sp)
 
         self.add(callout(
@@ -1893,20 +1879,17 @@ class ImpVsAdmPage(Page):
 
         d = Card("the decision, as a flowchart in words")
         d.add(body(
-            "<b>1. Is the joint backdriveable?</b> Push the powered-off robot by "
-            "hand. Does it move easily?<br>"
-            "&nbsp;&nbsp;&nbsp;<b>Yes</b> → impedance control. You get force "
-            "control for free from the encoder and current sensor.<br>"
-            "&nbsp;&nbsp;&nbsp;<b>No</b> → you cannot do impedance control "
-            "honestly, whatever the software claims. Go to 2.<br><br>"
-            "<b>2. Can you put an F/T sensor at the contact point?</b><br>"
-            "&nbsp;&nbsp;&nbsp;<b>Yes</b> → admittance control. The sensor "
-            "bypasses the transmission.<br>"
-            "&nbsp;&nbsp;&nbsp;<b>No</b> → you have a position-controlled robot. "
-            "Be honest about it and keep people out of the workspace.<br><br>"
-            "<b>3. Will it touch stiff things?</b> If yes, prefer impedance; "
-            "admittance destabilises against rigid contact. If it mostly moves in "
-            "free space with a human leading it, admittance feels better."))
+            (
+                "<b>1. Is the joint backdrivable?</b> Push the powered-off robot by hand. Does it move "
+                "easily?<br>&nbsp;&nbsp;&nbsp;<b>Yes</b> → impedance control. You get force control for free "
+                "from the encoder and current sensor.<br>&nbsp;&nbsp;&nbsp;<b>No</b> → you cannot do impedance "
+                "control honestly, whatever the software claims. Go to 2.<br><br><b>2. Can you put an F/T sensor"
+                " at the contact point?</b><br>&nbsp;&nbsp;&nbsp;<b>Yes</b> → admittance control. The sensor "
+                "bypasses the transmission.<br>&nbsp;&nbsp;&nbsp;<b>No</b> → you have a position-controlled "
+                "robot. Be honest about it and keep people out of the workspace.<br><br><b>3. Will it touch "
+                "stiff things?</b> If yes, prefer impedance; admittance destabilises against rigid contact. If "
+                "it mostly moves in free space with a human leading it, admittance feels better."
+            )))
         self.add(d)
 
         self.add(callout(

@@ -337,11 +337,12 @@ class NeuronPage(Page):
             "1 and a batch of 256."))
         ly.add(_code(get_source(Dense.forward)))
         ly.add(body(
-            "That is the real forward pass out of <code>rlcore/deeprl.py</code> "
-            "— the one the DDPG pages run. <code>self._x</code> and "
-            "<code>self._z</code> are cached on the way through because the "
-            "backward pass cannot be computed without them; page 76 spends a "
-            "card on exactly why those two and nothing else.", dim=True))
+            (
+                "That is the real forward pass out of <code>rlcore/deeprl.py</code> — the one the DDPG pages "
+                "run. <code>self._x</code> and <code>self._z</code> are cached on the way through because the "
+                "backward pass cannot be computed without them; page 84 spends a card on exactly why those two "
+                "and nothing else."
+            ), dim=True))
         self.add(ly)
 
         # ---- why a nonlinearity ----------------------------------------
@@ -471,7 +472,7 @@ class NeuronPage(Page):
                 "sigmoid this is <i>saturation</i> (|z| too large); for ReLU "
                 "it is a <i>dead unit</i> (z below zero). Either way the fix "
                 "is the same: keep z near the middle, which is what "
-                "initialisation and normalisation on page 85 are for.")
+                "initialisation and normalisation on page 86 are for.")
         else:
             self.tN.setText(
                 f"<b>z = {z:+.3f} → y = {y:+.3f}, local slope {sl:.3f}.</b> "
@@ -635,11 +636,12 @@ class ActivationPage(Page):
 
         v = Card("multiply the slopes together and watch what survives")
         v.add(body(
-            "Page 83 derives this properly, but the headline is short enough "
-            "to state now: the blame signal reaching layer 1 of an L-layer "
-            "network has been multiplied by <b>one activation slope per "
-            "layer</b> on the way down. Slopes below 1 compound into nothing; "
-            "slopes above 1 compound into an overflow."))
+            (
+                "Page 84 derives this properly, but the headline is short enough to state now: the blame signal "
+                "reaching layer 1 of an L-layer network has been multiplied by <b>one activation slope per "
+                "layer</b> on the way down. Slopes below 1 compound into nothing; slopes above 1 compound into "
+                "an overflow."
+            )))
         v.add(math_label(r"\frac{\partial L}{\partial z^{(1)}} \;\propto\; "
                          r"\prod_{k=1}^{L}\; \sigma'\!\left(z^{(k)}\right)"
                          r"\cdot W^{(k)}", 17))
@@ -719,23 +721,19 @@ class ActivationPage(Page):
 
         sm2 = Card("and this is exactly where the RL half of the tutor sits")
         sm2.add(body(
-            "Read the three algorithms you know against those two "
-            "operations:<br><br>"
-            "&nbsp;&nbsp;• <b>Tabular Q-learning</b> uses argmax and does not "
-            "care that it has no gradient — nothing is being "
-            "differentiated.<br>"
-            "&nbsp;&nbsp;• <b>DQN</b> uses argmax over a fixed list of "
-            "outputs. Still no gradient needed through it: the max only picks "
-            "which output the regression loss applies to.<br>"
-            "&nbsp;&nbsp;• <b>A stochastic policy over discrete actions</b> "
-            "(PPO on a discrete task) uses <b>softmax</b>, precisely because "
-            "the policy must be differentiable with respect to its own "
-            "parameters.<br>"
-            "&nbsp;&nbsp;• <b>DDPG</b> uses <b>neither</b>. There is no list "
-            "to softmax over and no list to argmax over — the action is a "
-            "real number. The actor's output activation is <b>tanh</b>, and "
-            "the argmax is replaced by a network trained to already be at it. "
-            "That substitution is the subject of the whole deep-RL block."))
+            (
+                "Read the three algorithms you know against those two operations:<br><br>&nbsp;&nbsp;• "
+                "<b>Tabular Q-learning</b> uses argmax and does not care that it has no gradient — nothing is "
+                "being differentiated.<br>&nbsp;&nbsp;• <b>DQN</b> uses argmax over a fixed list of outputs. "
+                "Still no gradient needed through it: the max constructs a detached next-state target; the loss "
+                "fits the Q output for the action actually taken.<br>&nbsp;&nbsp;• <b>A stochastic policy over "
+                "discrete actions</b> (PPO on a discrete task) uses <b>softmax</b>, precisely because the policy"
+                " must be differentiable with respect to its own parameters.<br>&nbsp;&nbsp;• <b>DDPG</b> uses "
+                "<b>neither</b>. There is no list to softmax over and no list to argmax over — the action is a "
+                "real number. The actor's output activation is <b>tanh</b>, and the argmax search is replaced by"
+                " an actor trained toward high-value actions. That substitution is the subject of the whole "
+                "deep-RL block."
+            )))
         self.add(sm2)
 
         self.add(callout(
@@ -823,7 +821,7 @@ class ActivationPage(Page):
                 f"{slopes['relu']**L:.1e}. Push |z| up and watch tanh join "
                 "sigmoid in the basement — saturation is a function of where "
                 "the pre-activations sit, which is a function of "
-                "initialisation and input scaling, which is why page 78 "
+                "initialisation and input scaling, which is why page 86 "
                 "treats those as load-bearing rather than cosmetic.")
 
     def _redraw_softmax(self):
@@ -978,14 +976,13 @@ class ForwardPropPage(Page):
               "bound")],
             col0=170, colw=200, height=290))
         ar.add(body(
-            "<b>Batching changes exactly one thing.</b> Make x a 64×3 array "
-            "and every line above is unchanged — the same W, the same b "
-            "broadcast across rows, and 64 independent forward passes come "
-            "out of one matrix multiply. Nothing about sample i affects "
-            "sample j. (That statement is true for every layer in this tutor "
-            "and false for exactly one layer type in existence, batch norm, "
-            "which is why page 85 treats it as a special case rather than as "
-            "one more layer.)", dim=True))
+            (
+                "<b>Batching changes exactly one thing.</b> Make x a 64×3 array and every line above is "
+                "unchanged — the same W, the same b broadcast across rows, and 64 independent forward passes "
+                "come out of one matrix multiply. Nothing about sample i affects sample j. (That statement is "
+                "true for every layer in this tutor and false for exactly one layer type in existence, batch "
+                "norm, which is why page 86 treats it as a special case rather than as one more layer.)"
+            ), dim=True))
         self.add(ar)
 
         # ---- what gets cached ------------------------------------------
@@ -1849,44 +1846,34 @@ class RegularisationPage(Page):
                           r"{\sqrt{\left(\sigma_j^{\mathrm{batch}}\right)^2 "
                           r"+ \epsilon}} + \beta_j", 16))
         nm.add(body(
-            "It keeps every layer's inputs centred no matter how the layers "
-            "beneath it drift, which allows much larger learning rates and "
-            "much deeper networks. Two properties are usually glossed over "
-            "and both bite in RL:<br><br>"
-            "&nbsp;&nbsp;• <b>The output for sample i depends on the other "
-            "samples in the batch.</b> This is the one place the "
-            "\"samples don't interact\" rule from the forward-prop page is "
-            "false.<br>"
-            "&nbsp;&nbsp;• <b>It behaves differently at training time and at "
-            "run time.</b> At run time there is no batch, so it uses a running "
-            "average collected during training."))
+            (
+                "It keeps every layer's inputs centred no matter how the layers beneath it drift, which allows "
+                "much larger learning rates and much deeper networks. Two properties are usually glossed over "
+                "and both bite in RL:<br><br>&nbsp;&nbsp;• <b>The output for sample i depends on the other "
+                "samples in the batch.</b> This is the one place the \"samples don't interact\" rule from the "
+                "forward-prop page is false.<br>&nbsp;&nbsp;• <b>It behaves differently at training time and at "
+                "run time.</b> At inference, standard batch norm uses stored running statistics, even for a "
+                "batch of one."
+            )))
         nm.add(callout(
-            "<b>Why batch norm and DDPG fight.</b> Four separate reasons, and "
-            "they compound:<br><br>"
-            "&nbsp;&nbsp;<b>1.</b> The controller calls the actor with a "
-            "<b>batch of one</b>, at 1 kHz, while the learner trains it with "
-            "batches of 64. The statistics are different, so the deployed "
-            "policy is not the policy that was trained.<br>"
-            "&nbsp;&nbsp;<b>2.</b> The <b>target networks</b> are copies. A "
-            "copy has to include the running statistics too, and those crawl "
-            "at a different rate than the weights do — a subtle, silent "
-            "mismatch in the very quantity the algorithm needs to hold "
-            "still.<br>"
-            "&nbsp;&nbsp;<b>3.</b> The replay buffer is <b>off-policy</b>: a "
-            "batch drawn from it mixes transitions from policies months "
-            "apart, so the batch statistics do not describe any single "
-            "distribution.<br>"
-            "&nbsp;&nbsp;<b>4.</b> The actor's gradient is ∂Q/∂a. With batch "
-            "norm in the critic, Q for one sample depends on the other 63 "
-            "actions in the batch, so that derivative is no longer a clean "
-            "statement about this state.<br><br>"
-            "<b>The fix the field settled on is layer normalisation</b> — "
-            "same idea, but the mean and variance are taken across the "
-            "features of a <i>single sample</i>. No batch dependence, no "
-            "train/run difference, no running statistics to copy. TD3 and SAC "
-            "implementations use it routinely; the original DDPG paper used "
-            "batch norm and it is one of the things later work quietly "
-            "dropped.", "warn"))
+            (
+                "<b>Why batch norm and DDPG fight.</b> Four separate reasons, and they "
+                "compound:<br><br>&nbsp;&nbsp;<b>1.</b> The controller calls the actor with a <b>batch of "
+                "one</b>, at 1 kHz, while the learner trains it with batches of 64. The statistics are "
+                "different, so the deployed policy is not the policy that was trained.<br>&nbsp;&nbsp;<b>2.</b> "
+                "The <b>target networks</b> are copies. A copy has to include the running statistics too, and "
+                "those crawl at a different rate than the weights do — a subtle, silent mismatch in the very "
+                "quantity the algorithm needs to hold still.<br>&nbsp;&nbsp;<b>3.</b> The replay buffer is "
+                "<b>off-policy</b>: a batch drawn from it mixes transitions from policies months apart, so the "
+                "batch statistics do not describe any single distribution.<br>&nbsp;&nbsp;<b>4.</b> The actor's "
+                "gradient is ∂Q/∂a. With batch norm in the critic, Q for one sample depends on the other 63 "
+                "actions in the batch, so that derivative is no longer a clean statement about this "
+                "state.<br><br><b>One alternative is layer normalisation</b> — same idea, but the mean and "
+                "variance are taken across the features of a <i>single sample</i>. No batch dependence, no "
+                "train/run difference, no running statistics to copy. TD3 and SAC implementations use it "
+                "routinely; the original DDPG paper used batch norm and it is one of the things later work "
+                "quietly dropped."
+            ), "warn"))
         nm.add(body(
             "<b>3 · Layer normalisation</b>, for completeness: normalise "
             "z over the units of one layer for one sample, then the same "

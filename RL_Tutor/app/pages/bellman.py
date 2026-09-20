@@ -1038,14 +1038,14 @@ class BellmanExpQPage(Page):
         self.add(pc)
 
         self.add(callout(
-            "<b>This equation is the one SARSA samples.</b> Replace "
-            "<code>Σ<sub>s'</sub>P(s'|s,a)</code> with a single observed "
-            "transition, and <code>Σ<sub>a'</sub>π(a'|s')Q(s',a')</code> with the "
-            "single action your policy actually chose next, and Form A becomes<br>"
-            "&nbsp;&nbsp;<code>Q(s,a) ← Q(s,a) + α[ r + γQ(s',a') − Q(s,a) ]</code>"
-            "<br>which is SARSA, exactly. The <b>a'</b> being drawn from π — not "
-            "maximised — is what makes SARSA <i>on-policy</i>. One page from now the "
-            "same slot holds a max, and that is Q-learning.", "key"))
+            (
+                "<b>This equation is the one SARSA samples.</b> Replace <code>Σ<sub>s'</sub>P(s'|s,a)</code> "
+                "with a single observed transition, and <code>Σ<sub>a'</sub>π(a'|s')Q(s',a')</code> with the "
+                "single action your policy actually chose next, and Form A becomes<br>&nbsp;&nbsp;<code>Q(s,a) ←"
+                " Q(s,a) + α[ r + γQ(s',a') − Q(s,a) ]</code><br>which is SARSA, exactly. The <b>a'</b> being "
+                "drawn from π — not maximised — is what makes SARSA <i>on-policy</i>. In the Bellman Q* lesson "
+                "the same slot holds a max, and that is Q-learning."
+            ), "key"))
 
         cc = Card("the code that computes form B")
         cp = CodePane(get_source(q_from_V))
@@ -1273,14 +1273,14 @@ class BellmanOptVPage(Page):
             f"ice still rolls, so this half stays an average. Same bracket in both "
             f"lines: one returns the number, the other returns the button."))
         f.add(body(
-            "Compare it with page 12 and only <b>one</b> thing moved:<br>"
-            "&nbsp;&nbsp;<code>Σ<sub>a</sub> π(a|s) · (…)</code> &nbsp;→&nbsp; "
-            "<code>max<sub>a</sub> (…)</code><br><br>"
-            "That is the entire difference between \"how good is the policy I have\" "
-            "and \"how good is the best policy that exists\". The inner "
-            "<code>Σ<sub>s'</sub></code> is untouched, and it must be: you cannot "
-            "<code>max</code> over where the ice throws you. If you could, the "
-            "equation would be describing a game where you also control the weather."))
+            (
+                "Compare it with page 63 and only <b>one</b> thing moved:<br>&nbsp;&nbsp;<code>Σ<sub>a</sub> "
+                "π(a|s) · (…)</code> &nbsp;→&nbsp; <code>max<sub>a</sub> (…)</code><br><br>That is the entire "
+                "difference between \"how good is the policy I have\" and \"how good is the best policy that "
+                "exists\". The inner <code>Σ<sub>s'</sub></code> is untouched, and it must be: you cannot "
+                "<code>max</code> over where the ice throws you. If you could, the equation would be describing "
+                "a game where you also control the weather."
+            )))
         f.add(body(
             "<b>And note what V*(s') is doing inside the bracket.</b> It is not "
             "\"the value if I follow some policy from s'\" — it is already the "
@@ -1383,23 +1383,21 @@ class BellmanOptVPage(Page):
         krow.addWidget(self.canvas2, 1)
         sc.add_layout(krow)
         sc.add(body(
-            "Sweep 0 is all zeros — the agent knows nothing. On sweep 1 only the "
-            "squares that can <i>touch</i> a rewarding transition change. On sweep 2 "
-            "their neighbours hear about it. The gold outlines mark the squares that "
-            "moved this sweep. The plot on the right is the same story as a number: "
-            "the worst-state distance to V*, dying geometrically — that is the "
-            "<b>γ-contraction</b>, and it is why starting from V=0 does not "
-            "matter.<br><br>"
-            "<b>Read the two lines carefully, because the theorem is a bound, not a "
-            "prediction.</b> γ<sup>k</sup> is the <i>guaranteed ceiling</i> on the "
-            "error: it says the error can never shrink <i>slower</i> than that. On "
-            "this lake it shrinks a great deal faster — around 0.6 per sweep at "
-            "γ=0.99 — because holes and the goal are absorbing, so most chains of "
-            "states run out after a few hops and there is simply nothing left to "
-            "propagate. The legend prints the rate actually observed next to the "
-            "bound. Where γ<sup>k</sup> becomes the honest answer is a long loop with "
-            "no terminal state in it, which is exactly the case that made the "
-            "iterative solver on page 12 fall behind the matrix solve.", dim=True))
+            (
+                "Sweep 0 is all zeros — the agent knows nothing. On sweep 1 only the squares that can "
+                "<i>touch</i> a rewarding transition change. On sweep 2 their neighbours hear about it. The gold"
+                " outlines mark the squares that moved this sweep. The plot on the right is the same story as a "
+                "number: the worst-state distance to V*, dying geometrically — that is the <b>γ-contraction</b>,"
+                " and it is why starting from V=0 does not matter.<br><br><b>Read the two lines carefully, "
+                "because the theorem is a bound, not a prediction.</b> γ<sup>k</sup> is the <i>guaranteed "
+                "ceiling</i> on the error: it says the error can never shrink <i>slower</i> than that. On this "
+                "lake it shrinks a great deal faster — around 0.6 per sweep at γ=0.99 — because holes and the "
+                "goal are absorbing, so most chains of states run out after a few hops and there is simply "
+                "nothing left to propagate. The legend prints the rate actually observed next to the bound. "
+                "Where γ<sup>k</sup> becomes the honest answer is a long loop with no terminal state in it, "
+                "which is exactly the case that made the iterative solver on page 63 fall behind the matrix "
+                "solve."
+            ), dim=True))
         self.add(sc)
 
         pc = Card("max is a choice, not an average")
@@ -1617,9 +1615,10 @@ class BellmanOptVPage(Page):
 
 class BellmanOptQPage(Page):
     TITLE = "Bellman ④ — Q* (optimality)"
-    SUBTITLE = ("The one you found hardest. It is page 14's equation with the max "
-                "pushed one square downstream — and that shove is why Q-learning "
-                "exists.")
+    SUBTITLE = ((
+                    "The one you found hardest. It is page 65's equation with the max pushed one square downstream —"
+                    " and that shove is why Q-learning exists."
+                ))
     SECTION = "Value Functions"
     NOTES = "notes p.1 · p.5"
 
@@ -1627,21 +1626,18 @@ class BellmanOptQPage(Page):
         super().__init__(parent)
 
         self.add(callout(
-            "<b>Say it out loud, no symbols.</b><br><br>"
-            "You are on <b>s</b> and the first button <b>a</b> has been forced on "
-            "you. So there is nothing to maximise <i>right now</i> — the choice has "
-            "already been made for you, possibly stupidly.<br><br>"
-            "The ice rolls: with probability P(s'|s,a) you land on s' and get paid "
-            "r. Average over that, because you never control it.<br><br>"
-            "Now the interesting bit. You are standing on s' and <b>nobody is "
-            "forcing you any more</b>. You are free, and Q* is the promise that from "
-            "here on you play perfectly. Perfect play at s' means taking the best "
-            "button there: <b>max<sub>a'</sub> Q*(s',a')</b>.<br><br>"
-            "So the max <b>is</b> still there — it just could not fire on this "
-            "square, because this square's action was spoken for. It fires one step "
-            "later. <b>Exactly the same relocation you saw on page 13</b>, where the "
-            "π-average slid one step later for the same reason. Same trick, "
-            "different operator.", "key", "READ IT IN PLAIN ENGLISH"))
+            (
+                "<b>Say it out loud, no symbols.</b><br><br>You are on <b>s</b> and the first button <b>a</b> "
+                "has been forced on you. So there is nothing to maximise <i>right now</i> — the choice has "
+                "already been made for you, possibly stupidly.<br><br>The ice rolls: with probability P(s'|s,a) "
+                "you land on s' and get paid r. Average over that, because you never control it.<br><br>Now the "
+                "interesting bit. You are standing on s' and <b>nobody is forcing you any more</b>. You are "
+                "free, and Q* is the promise that from here on you play perfectly. Perfect play at s' means "
+                "taking the best button there: <b>max<sub>a'</sub> Q*(s',a')</b>.<br><br>So the max <b>is</b> "
+                "still there — it just could not fire on this square, because this square's action was spoken "
+                "for. It fires one step later. <b>Exactly the same relocation you saw on page 64</b>, where the "
+                "π-average slid one step later for the same reason. Same trick, different operator."
+            ), "key", "READ IT IN PLAIN ENGLISH"))
 
         self.add(bellman_map("opt_q"))
 
@@ -1779,27 +1775,28 @@ class BellmanOptQPage(Page):
         cp.sizeHintLine(30)
         cc.add(cp)
         cc.add(callout(
-            "<b>Why the max's position is the whole point.</b> Look at what the "
-            "inner max needs: <code>max(Q_prev[t.next_state])</code> — one row of "
-            "the Q-table, for the state you landed in. It does <b>not</b> need "
-            "P.<br><br>"
-            "So delete the <code>for t in P[s][a]</code> loop, and instead let the "
-            "environment hand you one sampled <code>(s', r)</code>. What is left "
-            "is<br>"
-            "&nbsp;&nbsp;<code>Q(s,a) ← Q(s,a) + α[ r + γ·max<sub>a'</sub>Q(s',a') "
-            "− Q(s,a) ]</code><br>"
-            "which is Q-learning, and it never once mentions a transition "
-            "probability. Compare with page 13's version, where that slot holds "
-            "<code>Q(s',a')</code> for the a' your policy actually took — SARSA. "
-            "<b>max vs sampled-a' is the entire off-policy / on-policy divide.</b>",
+            (
+                (
+                    "<b>Why the max's position is the whole point.</b> Look at what the inner max needs: "
+                    "<code>max(Q_prev[t.next_state])</code> — one row of the Q-table, for the state you landed in. "
+                    "It does <b>not</b> need P.<br><br>So delete the <code>for t in P[s][a]</code> loop, and instead"
+                    " let the environment hand you one sampled <code>(s', r)</code>. What is left "
+                    "is<br>&nbsp;&nbsp;<code>Q(s,a) ← Q(s,a) + α[ r + γ·max<sub>a'</sub>Q(s',a') − Q(s,a) "
+                    "]</code><br>which is Q-learning, and it never once mentions a transition probability. Compare "
+                    "with page 64's version, where that slot holds <code>Q(s',a')</code> for the a' your policy "
+                    "actually took — SARSA. <b>max versus sampled next action is the Q-learning/SARSA distinction "
+                    "here; in general off-policy means learning about a policy different from the behavior "
+                    "policy.</b>"
+                )
+            ),
             "good"))
         cc.add(callout(
-            "And the bridge back to page 14, which the table above checks on every "
-            "row: <code>max<sub>a'</sub>Q*(s',a') = V*(s')</code>. Substitute that "
-            "into Q* and you get the plain one-step lookahead "
-            "<code>Q*(s,a) = Σ<sub>s'</sub>P·[r + γV*(s')]</code>. The two "
-            "optimality equations are not two facts. They are one fact, written from "
-            "two anchor points.", "key"))
+            (
+                "And the bridge back to page 65, which the table above checks on every row: "
+                "<code>max<sub>a'</sub>Q*(s',a') = V*(s')</code>. Substitute that into Q* and you get the plain "
+                "one-step lookahead <code>Q*(s,a) = Σ<sub>s'</sub>P·[r + γV*(s')]</code>. The two optimality "
+                "equations are not two facts. They are one fact, written from two anchor points."
+            ), "key"))
         self.add(cc)
 
         self.finish()

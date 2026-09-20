@@ -86,10 +86,10 @@ class PFFIntroPage(Page):
 
         c = Card("(C) Central command — activation")
         c.add(body(
-            "<b>Source:</b> CNS / EMG<br>"
-            "<b>Measures:</b> intended muscle activation<br><br>"
-            "Note this is a <b>command</b>, not feedback. Confusing the two is "
-            "the mistake page 20 is built to catch."))
+            (
+                "<b>Source:</b> CNS / EMG<br><b>Measures:</b> intended muscle activation<br><br>Note this is a "
+                "<b>command</b>, not feedback. Confusing the two is the mistake page 49 is built to catch."
+            )))
         self.add(c)
 
         self.add(hline())
@@ -102,8 +102,10 @@ class PFFIntroPage(Page):
         p.add(title("When muscle force increases, activation is increased "
                     "further — temporarily.", 15))
         p.add(body(
-            "That sounds unstable. It is not, because it is "
-            "<b>phase-dependent</b>."))
+            (
+                "Positive feedback can amplify a disturbance. Gait-phase gating limits when it acts, but gating "
+                "alone is not a stability guarantee."
+            )))
         self.add(p)
 
         w = Card("why PFF exists biologically")
@@ -116,10 +118,11 @@ class PFFIntroPage(Page):
             "transfer, and push-off power generation<br><br>"
             "This is <b>functional amplification</b>, not instability."))
         w.add(body(
-            "It stays bounded because it is <b>phase-gated</b>, "
-            "<b>time-limited</b>, and <b>embedded in a compliant musculoskeletal "
-            "system</b>. The loop exists <b>only when load-bearing is "
-            "desired</b>.", dim=True))
+            (
+                "Its response can be limited by being <b>phase-gated</b>, <b>time-limited</b>, and <b>embedded "
+                "in a compliant musculoskeletal system</b>. The loop exists <b>only when load-bearing is "
+                "desired</b>."
+            ), dim=True))
         self.add(w)
 
         self.add(callout(
@@ -266,13 +269,12 @@ class PFFMathPage(Page):
         self._redraw()
 
         self.add(callout(
-            "<b>What you just saw.</b> Loop gain G = k<sub>f</sub>·F<sub>max</sub>"
-            "·f<sub>l</sub>·f<sub>v</sub>. Below 1 the loop decays and merely "
-            "boosts. Above 1 it grows — and the <i>only</i> thing keeping "
-            "biology safe at that point is that the gate closes before the "
-            "exponential has time to matter. Phase-gated, time-limited, and "
-            "damped by compliant tissue. Take any one of those away and it is "
-            "exactly as unstable as your instincts said.", "warn"))
+            (
+                "<b>What the toy model shows.</b> Its local positive loop gain is G = k_f F_max f_l f_v. Below 1"
+                " the linear feedback response decays; above 1 it grows while enabled. Phase gating limits the "
+                "duration, but a short growth window is not by itself a proof of stability or safety. Actual "
+                "activation limits, delays and coupled mechanics must also be considered."
+            ), "warn"))
 
         code = Card("the loop, in full")
         pane = CodePane(get_source(PffLoop.step))

@@ -88,6 +88,9 @@ class MainWindow(QWidget):
         root.addWidget(self.stack, 1)
 
         self.pages = build_pages()
+        self._class_indices = {type(page).__name__: i for i, page in enumerate(self.pages)}
+        for page in self.pages:
+            page.navigate_requested.connect(self._navigate_lesson)
         self._page_items = {}        # stack index  -> QTreeWidgetItem
         self._section_items = {}     # section name -> QTreeWidgetItem
 
@@ -108,7 +111,8 @@ class MainWindow(QWidget):
                     theme.SECTION_COLORS.get(sec, theme.TEXT_FAINT)))
                 top.setData(0, Qt.UserRole, None)
                 self._section_items[sec] = top
-            item = QTreeWidgetItem(top, [f"{page.NUM} · {page.TITLE}"])
+            label = f"{page.NUM} · {page.TITLE}" if page.NUM else page.TITLE
+            item = QTreeWidgetItem(top, [label])
             item.setData(0, Qt.UserRole, i)
             self._page_items[i] = item
 
@@ -128,6 +132,11 @@ class MainWindow(QWidget):
         QShortcut(QKeySequence("Ctrl+F"), self, self.filter.setFocus)
 
     # ------------------------------------------------------------------
+    def _navigate_lesson(self, key):
+        idx = self._class_indices.get(key)
+        if idx is not None:
+            self.select_page(idx)
+
     def select_page(self, idx: int):
         """Navigate to a page by stack index, expanding its section."""
         item = self._page_items.get(idx)

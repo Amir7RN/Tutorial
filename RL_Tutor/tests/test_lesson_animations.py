@@ -16,9 +16,11 @@ from PySide6.QtWidgets import QApplication, QScrollArea, QVBoxLayout, QWidget
 from PySide6.QtTest import QTest
 
 from app import theme
-from app.pages import PAGE_CLASSES
+from app.pages import PAGE_CLASSES, LESSON_CLASSES
 from app.widgets.lesson_animation import LessonAnimation
 from app.widgets.lesson_stories import STORIES, PAGE_ONE_EXTRAS, deterministic_sweeps
+from app.widgets.sea_walkthroughs import SEA_MOVIES
+from app.pages.section_summaries import RECAP_MOVIES
 from app.widgets.foundation_scenes import sampled_value, signed_alias, response_gain_phase, step_response
 
 
@@ -34,7 +36,7 @@ class LessonAnimationTests(unittest.TestCase):
         cls.app.setStyleSheet(theme.QSS)
 
     def test_exact_requested_page_coverage(self):
-        self.assertEqual(set(STORIES), {p.__name__ for p in PAGE_CLASSES})
+        self.assertEqual(set(STORIES), {p.__name__ for p in LESSON_CLASSES})
         for story in STORIES.values():
             self.assertGreaterEqual(len(story.steps), 3)
             self.assertTrue(all(s.title and s.caption for s in story.steps))
@@ -66,7 +68,7 @@ class LessonAnimationTests(unittest.TestCase):
         messages = []
         previous = qInstallMessageHandler(lambda kind, context, msg: messages.append(msg))
         try:
-            for name, story in (STORIES | PAGE_ONE_EXTRAS).items():
+            for name, story in (STORIES | PAGE_ONE_EXTRAS | SEA_MOVIES | RECAP_MOVIES).items():
                 widget = LessonAnimation(story)
                 widget.resize(1100, 500)
                 widget.show()

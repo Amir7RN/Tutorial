@@ -126,16 +126,15 @@ class BioProprioPage(Page):
         self._redraw()
 
         self.add(callout(
-            "<b>Passive tissue stiffness acts at 0 ms.</b> Reflexes act in 30–50 "
-            "ms. And crucially: muscles are <b>directly coupled</b> to joints — "
-            "there is <b>no compliant spring isolating the nervous system</b> "
-            "from the joint, so force propagates <i>immediately</i> into muscle "
-            "tension.<br><br>"
-            "That last sentence is why a real SEA is not simply \"a robot muscle.\" "
-            "In an SEA the chain is joint → spring → motor, so fast disturbances "
-            "are absorbed by the spring and the motor only learns about them "
-            "afterwards. Biology gets the compliance <i>and</i> the immediate "
-            "signal. That is the design target.", "warn"))
+            (
+                "<b>Passive tissue responds without waiting for neural feedback.</b> Reflex delays depend on the"
+                " pathway and task (tens of milliseconds here). Tendons are compliant series elements between "
+                "muscle and skeleton; biological proprioception senses several parts of that system.<br><br>That"
+                " last sentence is why a real SEA is not simply \"a robot muscle.\" In an SEA the chain is joint →"
+                " spring → motor, so fast disturbances are absorbed by the spring and the motor only learns "
+                "about them afterwards. Biology gets the compliance <i>and</i> the immediate signal. That is the"
+                " design target."
+            ), "warn"))
 
         self.finish()
 
@@ -245,12 +244,15 @@ class RobotProprioPage(Page):
 
         b = Card("what breaks proprioception")
         b.add(body(
-            "<b>High gear ratios (e.g. harmonic drives)</b><br>"
-            "&nbsp;&nbsp;• External forces do <b>not</b> reach the motor<br>"
-            "&nbsp;&nbsp;• Backdriveability is poor<br>"
-            "&nbsp;&nbsp;• The motor \"doesn't feel\" the world<br><br>"
-            "<b>Result:</b> you cannot infer joint torque from motor current, and "
-            "you lose force awareness entirely."))
+            (
+                (
+                    "<b>High gear ratios (e.g. harmonic drives)</b><br>&nbsp;&nbsp;• External forces do <b>not</b> "
+                    "reach the motor<br>&nbsp;&nbsp;• Backdriveability is poor<br>&nbsp;&nbsp;• The motor \"doesn't "
+                    "feel\" the world<br><br><b>Result:</b> motor current alone can become an inaccurate "
+                    "external-torque estimate, and current alone may no longer give an accurate external-torque "
+                    "estimate; output sensing or a dynamics observer can restore information."
+                )
+            )))
         b.add(body(
             "<b>Why gears specifically:</b> gears reflect inertia (N²), filter "
             "force, and create backlash. A <b>tendon</b> gives a continuous force "
@@ -261,12 +263,13 @@ class RobotProprioPage(Page):
 
         w = Card("why internal force sensing matters at all")
         w.add(body(
-            "<b>1 · Scalability.</b> You cannot put force sensors in every joint, "
-            "every finger, every tendon. Humanoids need <b>dozens</b> of force "
-            "channels.<br><br>"
-            "<b>2 · Bandwidth.</b> Motor-current sensing is kHz-level and low "
-            "latency. Force sensors are noisier, lower bandwidth, and often "
-            "fragile."))
+            (
+                "<b>1 · Scalability.</b> You cannot put force sensors in every joint, every finger, every "
+                "tendon. Humanoids need <b>dozens</b> of force channels.<br><br><b>2 · Bandwidth.</b> "
+                "Motor-current sensing is kHz-level and low latency. Dedicated force sensors have their own "
+                "noise, bandwidth and mechanical limits; compare specifications rather than assuming they are "
+                "always slower."
+            )))
         self.add(w)
 
         s = Card("what a transparent robot can sense with no external sensors")
@@ -284,12 +287,13 @@ class RobotProprioPage(Page):
         self.add(s)
 
         self.add(callout(
-            "<b>Joint torque or motor torque — which one matters?</b><br><br>"
-            "<b>Joint torque matters. Motor torque is how we estimate it.</b><br><br>"
-            "The estimate is only valid through a transparent transmission. Where "
-            "it is valid you get proprioception for free; where it isn't, no "
-            "amount of filtering recovers it, and you must go buy a force sensor "
-            "(and then you are doing admittance control — see page 10).", "warn"))
+            (
+                "<b>Joint torque or motor torque — which one matters?</b><br><br><b>Joint torque matters. Motor "
+                "torque is how we estimate it.</b><br><br>The estimate is only valid through a transparent "
+                "transmission. Where it is valid you get proprioception for free; where it isn't, no amount of "
+                "filtering recovers it, and you must go buy a force sensor (which can support torque feedback, "
+                "impedance control or admittance control; the signal-to-command law decides which)."
+            ), "warn"))
 
         self.finish()
 

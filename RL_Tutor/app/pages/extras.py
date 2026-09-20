@@ -362,11 +362,12 @@ class ModelPage(Page):
         self.add(h2h)
 
         self.add(callout(
-            "Value iteration wins on speed and accuracy by a mile — and is "
-            "<b>useless on a real robot</b>, because you cannot write down P for a "
-            "human leg. Monte Carlo is slow, noisy, and needs thousands of falls — "
-            "and it is the one that transfers. That trade is why the field spends "
-            "its time on model-free methods.", "good"))
+            (
+                "Value iteration wins on speed and accuracy by a mile — because this lake supplies an exact "
+                "small model. A robot may instead use approximate dynamics, a learned model or direct "
+                "experience. Model-based and model-free methods both transfer; their tradeoffs include model "
+                "error, computation and sample cost."
+            ), "good"))
 
         self.finish()
 
@@ -595,13 +596,13 @@ class ConvergencePage(Page):
         c1.add(math_label(
             r"\|T V_1 - T V_2\|_\infty \;\le\; \gamma\, \|V_1 - V_2\|_\infty", 14))
         c1.add(body(
-            "By Banach's fixed-point theorem this guarantees:<br>"
-            "&nbsp;&nbsp;• a <b>unique</b> fixed point V*,<br>"
-            "&nbsp;&nbsp;• convergence to it from <b>any</b> starting V,<br>"
-            "&nbsp;&nbsp;• error shrinking by a factor γ every single sweep.<br><br>"
-            "So <code>Δ &lt; θ</code> is not a heuristic — it bounds the true error "
-            "by θγ/(1−γ). Policy iteration is even stronger: it terminates in a "
-            "<b>finite</b> number of rounds."))
+            (
+                "By Banach's fixed-point theorem this guarantees:<br>&nbsp;&nbsp;• a <b>unique</b> fixed point "
+                "V*,<br>&nbsp;&nbsp;• convergence to it from <b>any</b> starting V,<br>&nbsp;&nbsp;• worst-case "
+                "error contracting by at most a factor γ per synchronous sweep (γ < 1).<br><br>So <code>Δ &lt; "
+                "θ</code> is not a heuristic — it bounds the true error by θγ/(1−γ). Policy iteration is even "
+                "stronger: it terminates in a <b>finite</b> number of rounds."
+            )))
         two.addWidget(c1)
 
         c2 = Card("deep / continuous RL — practical convergence only")
@@ -620,15 +621,15 @@ class ConvergencePage(Page):
         self.add_layout(two)
 
         self.add(callout(
-            "<b>Actor converged + critic converged ≠ system converged.</b><br>"
-            "&nbsp;&nbsp;1. Actor stable, critic poor → policy stuck somewhere "
-            "suboptimal.<br>"
-            "&nbsp;&nbsp;2. Critic stable, actor oscillating → learning-rate or "
-            "exploration problem.<br>"
-            "&nbsp;&nbsp;3. Both stable, task performance bad → your <b>reward "
-            "function</b> is wrong.<br><br>"
-            "True convergence = <b>stable policy + satisfactory task "
-            "performance</b>.", "key"))
+            (
+                "<b>Actor converged + critic converged ≠ system converged.</b><br>&nbsp;&nbsp;1. Actor stable, "
+                "critic poor → policy stuck somewhere suboptimal.<br>&nbsp;&nbsp;2. Critic stable, actor "
+                "oscillating → learning-rate or exploration problem.<br>&nbsp;&nbsp;3. Both change little, task "
+                "performance bad → inspect reward design, coverage, model capacity and optimisation; any of them"
+                " may be responsible.<br><br><b>Practical acceptance</b> requires a policy that changes little "
+                "and satisfactory task performance. That is not a proof of mathematical convergence or "
+                "closed-loop stability."
+            ), "key"))
 
         self.add(callout(
             "For control work, convergence is <b>task-defined</b>, not "

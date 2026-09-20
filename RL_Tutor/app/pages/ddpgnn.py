@@ -116,20 +116,17 @@ class GradientHandoffPage(Page):
         wi.add(math_label(r"\left.\nabla_a Q(s,a)\right|_{a=\mu(s)} "
                           r"\;\in\; \mathbb{R}^{N \times d_a}", 17))
         wi.add(body(
-            "&nbsp;&nbsp;• <b>One number per action dimension.</b> A knee "
-            "with two impedance weights gets two numbers: \"raise the "
-            "stiffness weight → Q goes up 0.4 per unit; raise the damping "
-            "weight → Q goes down 1.2 per unit\". They are independent "
-            "answers to independent questions.<br>"
-            "&nbsp;&nbsp;• <b>One row per sample in the batch.</b> The "
-            "question is asked separately at each of the 64 states in the "
-            "minibatch, because the best direction in one state has nothing "
-            "to do with the best direction in another.<br>"
-            "&nbsp;&nbsp;• <b>Evaluated at a = μ(s), not anywhere else.</b> "
-            "It is the slope of the critic's surface <i>at the point the "
-            "actor currently stands</i>. Move the actor and the number "
-            "changes; that is why the update is one small step and then a "
-            "re-measurement, forever."))
+            (
+                "&nbsp;&nbsp;• <b>One number per action dimension.</b> A knee with two impedance weights gets "
+                "two numbers: \"raise the stiffness weight → Q goes up 0.4 per unit; raise the damping weight → Q"
+                " goes down 1.2 per unit\". They are partial derivatives holding the other action components "
+                "fixed; the components can still be coupled.<br>&nbsp;&nbsp;• <b>One row per sample in the "
+                "batch.</b> The question is asked separately at each of the 64 states in the minibatch, because "
+                "the best direction in one state has nothing to do with the best direction in "
+                "another.<br>&nbsp;&nbsp;• <b>Evaluated at a = μ(s), not anywhere else.</b> It is the slope of "
+                "the critic's surface <i>at the point the actor currently stands</i>. Move the actor and the "
+                "number changes; that is why the update is one small step and then a re-measurement, forever."
+            )))
         wi.add(body(
             "And each of those numbers is itself the multiply-along-a-path, "
             "sum-across-paths quantity from the backprop page: every route "
@@ -168,15 +165,13 @@ class GradientHandoffPage(Page):
               "and nothing contradicts it")],
             col0=190, colw=250, height=290))
         no.add(callout(
-            "<b>Why there cannot be a target action, ever.</b> A target would "
-            "have to come from somebody who knows the right torque for this "
-            "state. Nobody does — if such a table existed you would deploy it "
-            "and skip the learning entirely. The only thing available in the "
-            "whole system is an <i>opinion about actions that were tried</i>, "
-            "which is the critic. An opinion supports a comparison, and a "
-            "comparison in the limit of a small change is a derivative. So "
-            "the derivative is not a convenient choice of signal; it is the "
-            "<b>only</b> signal the problem admits.", "key"))
+            (
+                "<b>Why this DDPG actor update does not use a target action.</b> The critic provides a local "
+                "action sensitivity, not a known correct torque. Backpropagate that sensitivity through the "
+                "actor to seek higher predicted value. Other learning setups can use demonstrations, a teacher "
+                "or a planner to supply action targets; that is a different update from the DDPG rule shown "
+                "here."
+            ), "key"))
         self.add(no)
 
         # ---- the mechanics ------------------------------------------------
@@ -206,10 +201,11 @@ class GradientHandoffPage(Page):
               "use to anybody: the actor cannot change the state it was "
               "given."),
              ("5", "actor.backward(-dq_da * a_max)", "→ every actor weight",
-              "hand that array to the actor as the blame at its OUTPUT layer. "
-              "From here it is the ordinary backward pass of page 83: "
-              "multiply by tanh's slope, spread back through each weight, "
-              "sum at every node.")],
+              (
+                  "hand that array to the actor as the blame at its OUTPUT layer. From here it is the ordinary "
+                  "backward pass of page 84: multiply by tanh's slope, spread back through each weight, sum at "
+                  "every node."
+              ))],
             col0=45, colw=250, height=390))
         me.add(body("The real source, from <code>rlcore/deeprl.py</code>:"))
         pane = CodePane(
@@ -239,17 +235,15 @@ class GradientHandoffPage(Page):
         sm = Card("what the sign does, what the magnitude does, and what Adam "
                   "does to the magnitude")
         sm.add(body(
-            "<b>Sign is direction.</b> ∂Q/∂a > 0 means \"a larger action "
-            "scores better here\", so the actor's weights are nudged so that "
-            "next time μ(s) comes out a little larger for this state. "
-            "Negative, and they are nudged the other way. That is the whole "
-            "of the directional content, and it is enough — hill climbing has "
-            "never needed more.<br><br>"
-            "<b>Magnitude is confidence, or steepness.</b> ∂Q/∂a = +100 says "
-            "the critic believes value is changing violently with the action "
-            "right here; +0.1 says the surface is nearly flat and it barely "
-            "matters. A raw gradient step scales with that, so big slopes "
-            "would produce big weight changes."))
+            (
+                "<b>Sign is direction.</b> ∂Q/∂a > 0 means \"a larger action scores better here\", so the actor's "
+                "weights are nudged so that next time μ(s) comes out a little larger for this state. Negative, "
+                "and they are nudged the other way. That is the whole of the directional content, and it is "
+                "enough — hill climbing has never needed more.<br><br><b>Magnitude is local sensitivity "
+                "(steepness), not confidence.</b> ∂Q/∂a = +100 says the critic believes value is changing "
+                "violently with the action right here; +0.1 says the surface is nearly flat and it barely "
+                "matters. A raw gradient step scales with that, so big slopes would produce big weight changes."
+            )))
         sm.add(callout(
             "<b>Except that DDPG does not take raw gradient steps, and this "
             "changes the answer.</b> Adam divides every parameter's gradient "
@@ -605,30 +599,27 @@ class CriticArchPage(Page):
 
         gp2 = Card("three rules for the critic that all come from ∂Q/∂a")
         gp2.add(body(
-            "The critic is not just a regressor. It is a regressor whose "
-            "<b>input derivative is a product</b>, and that changes three "
-            "choices you would otherwise make freely:<br><br>"
-            "&nbsp;&nbsp;<b>1 · Keep the action's units sane.</b> The actor "
-            "outputs tanh ∈ [−1,1] and the code multiplies by a_max. Feed "
-            "the critic the <i>scaled</i> action and its first-layer weights "
-            "on those columns must be ~1/a_max to compete with the state "
-            "columns; feed it the normalised action and they need not be. "
-            "Either works — but the a_max factor must then appear in the "
-            "gradient handed back, which is exactly the "
-            "<code>* c.a_max</code> on the actor's backward call.<br>"
-            "&nbsp;&nbsp;<b>2 · No dropout, and no batch norm, on the action "
-            "path.</b> Both make Q(s,a) depend on something other than (s,a) "
-            "— a random mask, or the other 63 samples — so ∂Q/∂a stops being "
-            "a statement about this state's action. Page 78 has the four "
-            "reasons; this is the sharpest of them.<br>"
-            "&nbsp;&nbsp;<b>3 · Prefer smooth activations near the action "
-            "input if the actor is struggling.</b> ReLU's derivative is a "
-            "step function, so ∂Q/∂a is <b>piecewise constant</b> in a: the "
-            "actor is being handed a slope that does not change as it moves, "
-            "until suddenly it does. tanh gives a slope that varies "
-            "continuously, which is a gentler thing to hill-climb on. This is "
-            "one honest reason the tutor's small networks are tanh "
-            "throughout, beyond their size."))
+            (
+                (
+                    "The critic is not just a regressor. It is a regressor whose <b>input derivative is a "
+                    "product</b>, and that changes three choices you would otherwise make "
+                    "freely:<br><br>&nbsp;&nbsp;<b>1 · Keep the action's units sane.</b> The actor outputs tanh ∈ "
+                    "[−1,1] and the code multiplies by a_max. Feed the critic the <i>scaled</i> action and its "
+                    "first-layer weights on those columns must be ~1/a_max to compete with the state columns; feed "
+                    "it the normalised action and they need not be. Either works: the a_max factor is needed when "
+                    "the critic takes physical actions, and cancels if the critic instead takes the actor’s "
+                    "normalised output, which is exactly the <code>* c.a_max</code> on the actor's backward "
+                    "call.<br>&nbsp;&nbsp;<b>2 · No dropout, and no batch norm, on the action path.</b> Both make "
+                    "Q(s,a) depend on something other than (s,a) — a random mask, or the other 63 samples — so ∂Q/∂a"
+                    " stops being a statement about this state's action. Page 86 has the four reasons; this is the "
+                    "sharpest of them.<br>&nbsp;&nbsp;<b>3 · Prefer smooth activations near the action input if the "
+                    "actor is struggling.</b> ReLU's derivative is a step function, so ∂Q/∂a is <b>piecewise "
+                    "constant</b> in a: the actor is being handed a slope that does not change as it moves, until "
+                    "suddenly it does. tanh gives a slope that varies continuously, which is a gentler thing to "
+                    "hill-climb on. This is one honest reason the tutor's small networks are tanh throughout, beyond"
+                    " their size."
+                )
+            )))
         self.add(gp2)
 
         # ---- what the code builds ----------------------------------------
@@ -641,14 +632,14 @@ class CriticArchPage(Page):
             "self.actor_t.copy_from(self.actor, tau=1.0)    # start identical\n"
             "self.critic_t.copy_from(self.critic, tau=1.0)"))
         cd.add(body(
-            "Four lines, and every asymmetry between the actor and the critic "
-            "is visible in them: the critic's input is wider by "
-            "d<sub>a</sub> (early fusion), its output is <b>1</b> and "
-            "<b>linear</b> (a value has no bound), the actor's output is "
-            "d<sub>a</sub> and <b>tanh</b> (an action does), and the targets "
-            "are constructed identically and then immediately copied so that "
-            "training starts from agreement rather than from two random "
-            "opinions.", dim=True))
+            (
+                "Four lines, and every asymmetry between the actor and the critic is visible in them: the "
+                "critic's input is wider by d<sub>a</sub> (early fusion), its output is <b>1</b> and "
+                "<b>linear</b> (value need not lie in [−1,1]; bounded rewards and γ < 1 still bound the true "
+                "value), the actor's output is d<sub>a</sub> and <b>tanh</b> (an action does), and the targets "
+                "are constructed identically and then immediately copied so that training starts from agreement "
+                "rather than from two random opinions."
+            ), dim=True))
         self.add(cd)
 
         self.add(callout(
@@ -905,28 +896,18 @@ class AgentSkeletonPage(Page):
 
         ac = Card("four bodies, side by side")
         ac.add(_code(
-            "# tabular Q-learning -- a lookup and a comparison\n"
-            "def act(self, s):\n"
-            "    if rng.random() < self.eps:\n"
-            "        return rng.integers(self.n_actions)\n"
-            "    return int(np.argmax(self.Q[s]))          # argmax over a ROW\n"
-            "\n"
-            "# DQN -- the row became a forward pass, nothing else changed\n"
-            "def act(self, s):\n"
-            "    if rng.random() < self.eps:\n"
-            "        return rng.integers(self.n_actions)\n"
-            "    return int(np.argmax(self.net.forward(s)))  # argmax over OUTPUTS\n"
-            "\n"
-            "# DDPG -- no argmax exists; the network IS the argmax\n"
-            "def act(self, s, noise):\n"
-            "    a = self.actor.forward(s) * self.a_max\n"
-            "    return np.clip(a + rng.normal(0, noise), -a_max, a_max)\n"
-            "\n"
-            "# PPO -- sample, and REMEMBER how likely the sample was\n"
-            "def act(self, s):\n"
-            "    mu, sigma = self.policy.forward(s)\n"
-            "    a = mu + sigma * rng.normal(size=mu.shape)\n"
-            "    return a, log_prob(a, mu, sigma), self.value.forward(s)"))
+            (
+                "# tabular Q-learning -- a lookup and a comparison\ndef act(self, s):\n    if rng.random() < "
+                "self.eps:\n        return rng.integers(self.n_actions)\n    return int(np.argmax(self.Q[s]))"
+                "          # argmax over a ROW\n\n# DQN -- the row became a forward pass, nothing else changed\ndef"
+                " act(self, s):\n    if rng.random() < self.eps:\n        return rng.integers(self.n_actions)\n    "
+                "return int(np.argmax(self.net.forward(s)))  # argmax over OUTPUTS\n\n# DDPG -- no argmax exists; "
+                "the actor approximates a high-value action through training\ndef act(self, s, noise):\n    a = "
+                "self.actor.forward(s) * self.a_max\n    return np.clip(a + rng.normal(0, noise), -a_max, a_max)"
+                "\n\n# PPO -- sample, and REMEMBER how likely the sample was\ndef act(self, s):\n    mu, sigma = "
+                "self.policy.forward(s)\n    a = mu + sigma * rng.normal(size=mu.shape)\n    return a, log_prob(a,"
+                " mu, sigma), self.value.forward(s)"
+            )))
         ac.add(body(
             "<b>Four things to notice, in order of how much they matter.</b>"
             "<br><br>"

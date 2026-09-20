@@ -134,9 +134,10 @@ class StateValuePage(Page):
         # ---- code ----------------------------------------------------------
         cc = Card("how it is actually computed")
         cc.add(body(
-            "Iterative policy evaluation — solve the Bellman expectation equation "
-            "by repeated application until the numbers stop moving. Full detail on "
-            "page 16.", dim=True))
+            (
+                "Iterative policy evaluation — solve the Bellman expectation equation by repeated application "
+                "until the numbers stop moving. Full detail on page 67."
+            ), dim=True))
         cp = CodePane(get_source(policy_evaluation))
         cp.sizeHintLine(24)
         cc.add(cp)
@@ -387,9 +388,11 @@ class VvsQPage(Page):
         idc.add(math_label(
             r"V^\pi(s) = \sum_a \pi(a\mid s)\, Q^\pi(s,a)", 14))
         idc.add(body(
-            "The asymmetry is the whole story. Going <b>Q → V</b> is free. Going "
-            "<b>V → Q</b> costs you a model. That is why model-free algorithms all "
-            "learn Q.", dim=True))
+            (
+                "The asymmetry is the whole story. Going <b>Q → V</b> is free. Going <b>V → Q</b> costs you a "
+                "model. That is why Q is useful for model-free action selection. Policy-gradient methods can "
+                "instead learn a policy using sampled returns and a V baseline."
+            ), dim=True))
         idc.add(callout(
             "Special case worth memorising: for a <b>deterministic</b> policy, "
             "π(a|s) is one-hot, so V<sup>π</sup>(s) = Q<sup>π</sup>(s, π(s)) exactly. "
@@ -452,11 +455,12 @@ class VvsQPage(Page):
         self.add(sbs)
 
         self.add(callout(
-            "<b>Why actor-critic needs both.</b> The <b>critic</b> computes V(s): "
-            "\"this gait state is good / bad.\" But V alone cannot tell the "
-            "<b>actor</b> which way to move — it only scores where you already are. "
-            "Q(s,a) provides the map: \"moving LEFT is worth 0.2, moving RIGHT is "
-            "worth 0.9.\" One says <i>how good</i>, the other says <i>what to do</i>.",
+            (
+                "<b>How actor-critic uses these scores.</b> A critic may estimate V(s) or Q(s,a), depending on "
+                "the algorithm; it need not learn both. PPO commonly uses V to form advantage estimates for a "
+                "stochastic actor. DDPG uses Q and its action derivative to train a deterministic actor. Both "
+                "values predict future return, not reward already collected."
+            ),
             "good"))
 
         self.finish()
@@ -672,30 +676,28 @@ class BellmanPage(Page):
         self.add(live)
 
         self.add(callout(
-            "<b>This page is the summary. The next four are the lesson.</b><br><br>"
-            "All four equations at once is the right <i>map</i> and the wrong place "
-            "to learn from — the four look interchangeable here, and they are not. "
-            "Pages 12–15 take one equation each and grind it down to arithmetic you "
-            "can watch happen, with the numbers off this lake:<br><br>"
-            "&nbsp;&nbsp;<b>12 · V<sup>π</sup></b> — two dice, both averaged. Drag "
-            "π(a|s) and watch V move.<br>"
-            "&nbsp;&nbsp;<b>13 · Q<sup>π</sup></b> — the first button is forced, so "
-            "the π-average slides one step later.<br>"
-            "&nbsp;&nbsp;<b>14 · V*</b> — the average over π becomes a choice. Swap "
-            "the max for min and watch the lake turn hostile.<br>"
-            "&nbsp;&nbsp;<b>15 · Q*</b> — same shove as page 13, with max instead of "
-            "average. This is the one that turns into Q-learning.<br><br>"
-            "The single sentence they are all built on: <b>the Q equations are the V "
-            "equations with the action-choice delayed by one step</b>, because Q's "
-            "first action is handed to you and the choosing cannot happen until the "
-            "next square.", "key", "GO DEEPER — ONE PAGE PER EQUATION"))
+            (
+                "<b>This page is the summary. The next four are the lesson.</b><br><br>All four equations at "
+                "once is the right <i>map</i> and the wrong place to learn from — the four look interchangeable "
+                "here, and they are not. Pages 63–66 take one equation each and grind it down to arithmetic you "
+                "can watch happen, with the numbers off this lake:<br><br>&nbsp;&nbsp;<b>63 · V<sup>π</sup></b> "
+                "— two dice, both averaged. Drag π(a|s) and watch V move.<br>&nbsp;&nbsp;<b>64 · "
+                "Q<sup>π</sup></b> — the first button is forced, so the π-average slides one step "
+                "later.<br>&nbsp;&nbsp;<b>65 · V*</b> — the average over π becomes a choice. Swap the max for "
+                "min and watch the lake turn hostile.<br>&nbsp;&nbsp;<b>66 · Q*</b> — same shove as page 64, "
+                "with max instead of average. This is the one that turns into Q-learning.<br><br>The single "
+                "sentence they are all built on: <b>the Q equations are the V equations with the action-choice "
+                "delayed by one step</b>, because Q's first action is handed to you and the choosing cannot "
+                "happen until the next square."
+            ), "key", "GO DEEPER — ONE PAGE PER EQUATION"))
 
         self.add(callout(
-            "The Bellman operator is a <b>γ-contraction</b>. Applying it repeatedly "
-            "from <i>any</i> starting V shrinks the error by a factor of γ each "
-            "sweep, so it converges to a unique fixed point. That is the theorem "
-            "underneath both algorithms on the next pages — and the reason the "
-            "initial V = 0 does not matter.", "key"))
+            (
+                "The Bellman operator is a <b>γ-contraction</b>. Applying it repeatedly from <i>any</i> starting"
+                " V bounds the worst-case error contraction by a factor γ per synchronous sweep when γ < 1, so "
+                "it converges to a unique fixed point. That is the theorem underneath both algorithms on the "
+                "next pages — and the reason the initial V = 0 does not matter."
+            ), "key"))
 
         self.finish()
         self.recompute()

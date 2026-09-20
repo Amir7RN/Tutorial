@@ -819,9 +819,10 @@ class FreeVibrationPage(Page):
 
 class SecondOrderPage(Page):
     TITLE = "Second-Order Systems"
-    SUBTITLE = ("Two poles, two energy stores, and the first system that can "
-                "overshoot. Every robot joint you will ever tune is one of "
-                "these.")
+    SUBTITLE = ((
+                    "Two poles, two energy stores, and the first system that can overshoot. A rigid joint is often "
+                    "approximated this way; elastic modes and drive dynamics can add order."
+                ))
     SECTION = SECTION
     NOTES = "foundation"
 
@@ -2333,39 +2334,34 @@ class StabilityPage(Page):
             "different failure behaviour, and it is extremely common in "
             "robotics."))
         d.add(body(
-            "<table cellpadding='6'>"
-            "<tr><td><b>Pole</b></td><td><b>Time response</b></td>"
-            "<td><b>Verdict</b></td><td><b>Where you meet it</b></td></tr>"
-            "<tr><td>s = −a (a&gt;0)</td><td>e<sup>−at</sup>, decays</td>"
-            "<td style='color:#3fb950'>stable</td><td>any damped mode</td></tr>"
-            "<tr><td>−σ ± jω</td><td>e<sup>−σt</sup>cos ωt, rings down</td>"
-            "<td style='color:#3fb950'>stable</td><td>a joint under PD</td></tr>"
-            "<tr><td>s = 0</td><td>constant — never returns</td>"
-            "<td style='color:#d29922'>marginal</td>"
-            "<td>a free joint: torque in, position drifts</td></tr>"
-            "<tr><td>±jω</td><td>cos ωt, rings forever</td>"
-            "<td style='color:#d29922'>marginal</td>"
-            "<td>an undamped SEA spring, a frictionless pendulum</td></tr>"
-            "<tr><td>s = +a</td><td>e<sup>+at</sup>, grows</td>"
-            "<td style='color:#f85149'>unstable</td>"
-            "<td>an inverted pendulum — every biped</td></tr>"
-            "<tr><td>repeated s = 0</td><td>t, ramps away</td>"
-            "<td style='color:#f85149'>unstable</td>"
-            "<td>a double integrator: J θ̈ = τ with no friction</td></tr>"
-            "</table>"))
+            (
+                "<table cellpadding='6'><tr><td><b>Pole</b></td><td><b>Time "
+                "response</b></td><td><b>Verdict</b></td><td><b>Where you meet it</b></td></tr><tr><td>s = −a "
+                "(a&gt;0)</td><td>e<sup>−at</sup>, decays</td><td style='color:#3fb950'>stable</td><td>any "
+                "damped mode</td></tr><tr><td>−σ ± jω</td><td>e<sup>−σt</sup>cos ωt, rings down</td><td "
+                "style='color:#3fb950'>stable</td><td>a joint under PD</td></tr><tr><td>s = 0</td><td>constant —"
+                " never returns</td><td style='color:#d29922'>marginal</td><td>a single integrator: constant "
+                "zero-input state; constant input gives a ramp</td></tr><tr><td>±jω</td><td>cos ωt, rings "
+                "forever</td><td style='color:#d29922'>marginal</td><td>an undamped SEA spring, a frictionless "
+                "pendulum</td></tr><tr><td>s = +a</td><td>e<sup>+at</sup>, grows</td><td "
+                "style='color:#f85149'>unstable</td><td>an inverted pendulum — every "
+                "biped</td></tr><tr><td>repeated s = 0</td><td>t, ramps away</td><td "
+                "style='color:#f85149'>unstable</td><td>a double integrator: J θ̈ = τ with no "
+                "friction</td></tr></table>"
+            )))
         self.add(d)
 
         self.add(callout(
-            "<b>Marginal is not \"almost stable\", it is \"nothing decides\".</b> "
-            "A marginal system neither recovers from a disturbance nor "
-            "diverges from it — it keeps whatever you gave it, forever. In "
-            "practice that means the tiniest unmodelled term picks the outcome, "
-            "and you have handed the decision to noise.<br><br>"
-            "It is also the normal state of robot hardware. A joint with "
-            "negligible friction <i>is</i> a double integrator; a good SEA "
-            "spring <i>is</i> nearly undamped. Feedback is not there to improve "
-            "an already-stable machine — it is there to <b>move those poles off "
-            "the axis</b>, which is the entire job.", "warn"))
+            (
+                "<b>Marginal is not \"almost stable\", it is \"nothing decides\".</b> A marginal zero-input response"
+                " stays bounded without decaying. A sustained input can still cause growth; a double integrator "
+                "is not marginally stable because its zero-input position can drift. In practice that means the "
+                "tiniest unmodelled term picks the outcome, and you have handed the decision to noise.<br><br>It"
+                " is also the normal state of robot hardware. A joint with negligible friction <i>is</i> a "
+                "double integrator; a good SEA spring <i>is</i> nearly undamped. Feedback is not there to "
+                "improve an already-stable machine — it is there to <b>move those poles off the axis</b>, which "
+                "is the entire job."
+            ), "warn"))
 
         # ---- interactive 1 ---------------------------------------------
         i = Card("place the poles yourself and watch the taxonomy")
@@ -2865,28 +2861,25 @@ class BodePage(Page):
             "<td>4.3%</td><td>0%</td></tr>"
             "</table>"))
         pm.add(body(
-            "Hence the rule of thumb <b>PM ≈ 100·ζ</b> (good to a few degrees "
-            "up to ζ ≈ 0.7). And hence the practical translation: <b>\"my loop "
-            "has 45° of phase margin\" and \"my robot overshoots about 20%\" "
-            "are the same sentence.</b>", dim=True))
+            (
+                "Hence the rule of thumb <b>PM ≈ 100·ζ</b> (good to a few degrees up to ζ ≈ 0.7). And hence the "
+                "practical translation: <b>45° phase margin suggests roughly 20% overshoot for this standard "
+                "second-order loop. Added zeros, delay or modes can break that estimate.</b>"
+            ), dim=True))
         pm.add(callout(
-            "<b>\"Phase margin is damping\" is not an analogy — it is a "
-            "prediction, and this is what makes the frequency domain worth "
-            "learning.</b><br><br>"
-            "Follow the chain: you measure <b>45° of phase margin</b> on a "
-            "swept sine. The table says that is <b>ζ ≈ 0.43</b>. The "
-            "second-order page says overshoot is e<sup>−πζ/√(1−ζ²)</sup>, which "
-            "at that ζ is <b>≈ 22%</b>. So you now know the robot will "
-            "overshoot its step by about a fifth and ring a couple of visible "
-            "cycles before settling.<br><br>"
-            "<b>You have not run a step.</b> You never commanded a trajectory, "
-            "never watched a transient, and you got the <i>shape</i> of the "
-            "time response — how bouncy, how many wiggles, how far past — out "
-            "of a single number read off a frequency plot.<br><br>"
-            "Backwards works too, and is what you will actually do on hardware: "
-            "the robot overshoots ~20%, so ζ ≈ 0.45, so the loop has roughly "
-            "45° of phase margin, so there is not much room left — stop raising "
-            "the gain.", "key"))
+            (
+                "<b>Phase margin predicts damping only through a specified loop model.</b> The following mapping"
+                " is for this standard second-order example, not every robot.<br><br>Follow the chain: you "
+                "measure <b>45° of phase margin</b> on a swept sine. The table says that is <b>ζ ≈ 0.43</b>. The"
+                " second-order page says overshoot is e<sup>−πζ/√(1−ζ²)</sup>, which at that ζ is <b>≈ 22%</b>. "
+                "So you now know the robot will overshoot its step by about a fifth and ring a couple of visible"
+                " cycles before settling.<br><br><b>You have not run a step.</b> You never commanded a "
+                "trajectory, never watched a transient, and you got the <i>shape</i> of the time response — how "
+                "bouncy, how many wiggles, how far past — out of a single number read off a frequency "
+                "plot.<br><br>Backwards works too, and is what you will actually do on hardware: the robot "
+                "overshoots ~20%, so ζ ≈ 0.45, so the loop has roughly 45° of phase margin, so there is not much"
+                " room left — stop raising the gain."
+            ), "key"))
         self.add(pm)
 
         # ==================================================================
@@ -2977,14 +2970,14 @@ class BodePage(Page):
                           r"\boxed{\;\omega_{BW} = \frac{1}{\tau}, \qquad "
                           r"f_{BW} = \frac{1}{2\pi\tau}\;}", 17))
         tb.add(body(
-            "<b>So the pole, the corner and the bandwidth are the same "
-            "number.</b> For a first-order system there is nothing else to "
-            "know. A 10 ms current loop is a 100 rad/s pole is a "
-            "<b>15.9 Hz</b> bandwidth — three names for one fact.<br><br>"
-            "<b>And why −3 dB and not some other level:</b> 1/√2 in amplitude "
-            "is exactly <b>half</b> in power, since power goes as amplitude "
-            "squared. The \"half-power point\" is the honest name; −3 dB is "
-            "the same thing in the units people plot in."))
+            (
+                "<b>For this first-order low-pass, the pole magnitude and angular corner bandwidth coincide.</b>"
+                " For a first-order system there is nothing else to know. A 10 ms current loop is a 100 rad/s "
+                "pole is a <b>15.9 Hz</b> bandwidth — three names for one fact.<br><br><b>And why −3 dB and not "
+                "some other level:</b> 1/√2 in amplitude is exactly <b>half</b> in power, since power goes as "
+                "amplitude squared. The \"half-power point\" is the honest name; −3 dB is the same thing in the "
+                "units people plot in."
+            )))
         tb.add(body(
             "<table cellpadding='7'>"
             "<tr><td><b>τ</b></td><td><b>ω<sub>BW</sub> = 1/τ</b></td>"
@@ -2999,17 +2992,16 @@ class BodePage(Page):
             "<td>800 ms</td><td>440 ms</td></tr>"
             "</table>"))
         tb.add(callout(
-            "<b>Multiply the last two columns of any row and you get the same "
-            "number: t<sub>r</sub> × f<sub>BW</sub> ≈ 0.35.</b><br><br>"
-            "That is the rise-time–bandwidth product, and it is exact for a "
-            "first-order system by construction: 2.2τ × 1/(2πτ) = 2.2/6.283 = "
-            "0.350, with the τ cancelling. It is the most useful sanity check "
-            "in this whole area — a datasheet claiming a 1 kHz bandwidth is "
-            "claiming a <b>0.35 ms</b> rise time, and if the scope shows 3 ms "
-            "then one of you is wrong.<br><br>"
-            "It generalises approximately to second order as well (0.35–0.45 "
-            "over the usual damping range), which is why the rule survives "
-            "contact with real hardware.", "key"))
+            (
+                "<b>Multiply the last two columns of any row and you get the same number: t<sub>r</sub> × "
+                "f<sub>BW</sub> ≈ 0.35.</b><br><br>That is the rise-time–bandwidth product, and it is exact for "
+                "a first-order system by construction: 2.2τ × 1/(2πτ) = 2.2/6.283 = 0.350, with the τ "
+                "cancelling. It is the most useful sanity check in this whole area — a first-order low-pass "
+                "response with 1 kHz bandwidth has about <b>0.35 ms</b> 10–90% rise time, and if the scope shows"
+                " 3 ms then one of you is wrong.<br><br>It generalises approximately to second order as well "
+                "(0.35–0.45 over the usual damping range), which is why the rule survives contact with real "
+                "hardware."
+            ), "key"))
         tb.add(body(
             "<b>The second-order version is not 1/τ, because there is no "
             "τ.</b> Solve the same |T| = 1/√2 condition on the canonical form "
@@ -3027,21 +3019,22 @@ class BodePage(Page):
             "ω<sub>n</sub>\" and get away with it.", dim=True))
         self.add(tb)
 
-        ol = Card("open-loop \"bandwidth\" is the crossover; closed-loop "
-                  "bandwidth is the −3 dB point")
+        ol = Card((
+                      "gain crossover belongs to L; closed-loop −3 dB bandwidth belongs to T"
+                  ))
         ol.add(body(
             "This is the question the vocabulary above was built to answer, "
             "and the two halves have genuinely different definitions — but "
             "they land within a factor of two of each other, which is why the "
             "sloppiness usually survives."))
         ol.add(body(
-            "<b>Open loop: the bandwidth is ω<sub>gc</sub>, the crossover.</b> "
-            "And that is a <i>derived</i> choice, not a naming convention. "
-            "Below crossover |L| > 1, so the error-rejection factor 1/(1+L) is "
-            "small and the loop is genuinely in charge — disturbances get "
-            "squashed and commands get followed. Above crossover |L| < 1, "
-            "1/(1+L) ≈ 1, and the loop is a spectator: whatever the world does "
-            "to the plant simply happens."))
+            (
+                "<b>Loop gain: use the term gain crossover, ω<sub>gc</sub>.</b> And that is a <i>derived</i> "
+                "choice, not a naming convention. Below crossover |L| > 1, so the error-rejection factor 1/(1+L)"
+                " is small and the loop is genuinely in charge — disturbances get squashed and commands get "
+                "followed. Above crossover |L| < 1, 1/(1+L) ≈ 1, and the loop is a spectator: whatever the world"
+                " does to the plant simply happens."
+            )))
         ol.add(math_label(r"\frac{E}{R} = \frac{1}{1+L(j\omega)} \approx "
                           r"\begin{cases} 1/L & |L| \gg 1 "
                           r"\;\;(\omega \ll \omega_{gc}) \\ "
@@ -3058,22 +3051,18 @@ class BodePage(Page):
             "not \"below 0 dB\": a loop with steady-state droop starts under "
             "0 dB and you measure the 3 dB from wherever it started."))
         ol.add(callout(
-            "<b>And the bridge between them, which is the number to "
-            "remember.</b> For the standard loop the closed-loop bandwidth "
-            "lands consistently just above the crossover:<br><br>"
-            "&nbsp;&nbsp;ζ = 0.2 → ω<sub>BW</sub> = 1.57 ω<sub>gc</sub><br>"
-            "&nbsp;&nbsp;ζ = 0.4 → 1.61 ω<sub>gc</sub><br>"
-            "&nbsp;&nbsp;ζ = 0.707 → 1.55 ω<sub>gc</sub><br>"
-            "&nbsp;&nbsp;ζ = 1.0 → 1.32 ω<sub>gc</sub><br><br>"
-            "<b>So ω<sub>gc</sub> ≤ ω<sub>BW</sub> ≤ 2 ω<sub>gc</sub>, and "
-            "≈ 1.5× is the working estimate.</b> That is why the two usages "
-            "of \"bandwidth\" rarely cause an argument — and also why you "
-            "should say which one you mean when a factor of 1.5 matters, "
-            "which on a spec sheet it does.<br><br>"
-            "The physical reason they track each other: raising the loop gain "
-            "pushes ω<sub>gc</sub> right, which drags the closed-loop poles "
-            "outward, which moves ω<sub>BW</sub> right by the same rough "
-            "factor. One knob, both numbers.", "good"))
+            (
+                "<b>And the bridge between them, which is the number to remember.</b> For the standard loop the "
+                "closed-loop bandwidth lands consistently just above the crossover:<br><br>&nbsp;&nbsp;ζ = 0.2 →"
+                " ω<sub>BW</sub> = 1.57 ω<sub>gc</sub><br>&nbsp;&nbsp;ζ = 0.4 → 1.61 "
+                "ω<sub>gc</sub><br>&nbsp;&nbsp;ζ = 0.707 → 1.55 ω<sub>gc</sub><br>&nbsp;&nbsp;ζ = 1.0 → 1.32 "
+                "ω<sub>gc</sub><br><br><b>So ω<sub>gc</sub> ≤ ω<sub>BW</sub> ≤ 2 ω<sub>gc</sub>, and ≈ 1.5× is "
+                "the working estimate.</b> That is why crossover and bandwidth can serve as rough proxies in "
+                "this model — and also why you should say which one you mean when a factor of 1.5 matters, which"
+                " on a spec sheet it does.<br><br>The physical reason they track each other: raising the loop "
+                "gain pushes ω<sub>gc</sub> right, which drags the closed-loop poles outward, which moves "
+                "ω<sub>BW</sub> right by the same rough factor. One knob, both numbers."
+            ), "good"))
         self.add(ol)
 
         # ---- interactive ------------------------------------------------
@@ -3206,37 +3195,31 @@ class BodePage(Page):
                           r"\frac{\omega_{res}}{g\,Q} "
                           r"\;=\; \frac{2\zeta_r}{g}\,\omega_{res}\;}", 17))
         ce.add(callout(
-            "<b>Read that inequality, because it is the SEA design rule and "
-            "it is brutal.</b><br><br>"
-            "The achievable bandwidth is <b>not</b> the resonant frequency. "
-            "It is the resonant frequency multiplied by <b>2ζ<sub>r</sub></b> "
-            "— the damping of a spring nobody designed to be damped — and "
-            "then divided by your margin requirement.<br><br>"
-            "A 15 Hz SEA spring at ζ<sub>r</sub> = 0.05 with a 6 dB gain "
-            "margin gives ω<sub>gc</sub> ≤ 15 × 0.10 / 2 = <b>0.75 Hz</b>. "
-            "Not 15 Hz. Not 5 Hz. <b>Under one hertz</b>, from a mechanism "
-            "whose resonance is at fifteen.", "warn"))
+            (
+                "<b>Read that inequality, because it is the SEA design rule and it is brutal.</b><br><br>This "
+                "model’s estimated achievable crossover is <b>not</b> its resonant frequency. It is the resonant"
+                " frequency multiplied by <b>2ζ<sub>r</sub></b> — the damping of a spring nobody designed to be "
+                "damped — and then divided by your margin requirement.<br><br>A 15 Hz SEA spring at "
+                "ζ<sub>r</sub> = 0.05 with a 6 dB gain margin gives f<sub>gc</sub> ≤ 15 × 0.10 / 2 = <b>0.75 "
+                "Hz</b>. Not 15 Hz. Not 5 Hz. <b>Under one hertz</b>, from a mechanism whose resonance is at "
+                "fifteen."
+            ), "warn"))
         ce.add(body(
-            "<b>Which is why real SEAs do not live with that number, and "
-            "what they do instead.</b> Every term in the inequality is a "
-            "lever, and the fix is always one of exactly three things:<br><br>"
-            "&nbsp;&nbsp;<b>• Raise ζ<sub>r</sub>.</b> The bound is "
-            "<i>linear</i> in it, so this is the highest-value fix available: "
-            "damping the spring from 0.05 to 0.25 buys a 5× bandwidth. Do it "
-            "physically if you can, or with an inner torque loop, which is "
-            "the whole reason an SEA has a torque sensor and a cascade "
-            "structure in the first place.<br>"
-            "&nbsp;&nbsp;<b>• Raise ω<sub>res</sub>.</b> A stiffer spring — "
-            "but stiffness was the thing you fitted a spring to give up, so "
-            "this trades away force fidelity, shock tolerance and "
-            "backdriveability. <b>This is the SEA trade, stated as one "
-            "inequality</b>, and it is the same sentence the SEA page makes "
-            "with hardware.<br>"
-            "&nbsp;&nbsp;<b>• Notch it.</b> Put a filter zero on the "
-            "resonance so the loop never sees the Q. It works, and it is "
-            "fragile: a notch is tuned to a frequency that moves with "
-            "payload, temperature and wear, and a mistuned notch is worse "
-            "than none. The Lead/Lag page spends a full card on why.",
+            (
+                "<b>Which is why real SEAs do not live with that number, and what they do instead.</b> Every "
+                "term in the inequality is a lever, and the fix is always one of exactly three "
+                "things:<br><br>&nbsp;&nbsp;<b>• Raise ζ<sub>r</sub>.</b> The bound is <i>linear</i> in it, so "
+                "this is the highest-value fix available: damping the spring from 0.05 to 0.25 buys a 5× "
+                "bandwidth. Do it physically if you can, or with an inner torque loop, which is the whole reason"
+                " an SEA has a torque sensor and a cascade structure in the first place.<br>&nbsp;&nbsp;<b>• "
+                "Raise ω<sub>res</sub>.</b> A stiffer spring — but stiffness was the thing you fitted a spring "
+                "to give up, so this trades away force fidelity, shock tolerance and backdrivability. <b>This is"
+                " the SEA trade, stated as one inequality</b>, and it is the same sentence the SEA page makes "
+                "with hardware.<br>&nbsp;&nbsp;<b>• Notch it.</b> Put a filter zero on the resonance so the loop"
+                " never sees the Q. It works, and it is fragile: a notch is tuned to a frequency that moves with"
+                " payload, temperature and wear, and a mistuned notch is worse than none. The Lead/Lag page "
+                "spends a full card on why."
+            ),
             dim=True))
         self.add(ce)
 
@@ -3283,20 +3266,18 @@ class BodePage(Page):
             "deflection, and safety on impact</td></tr>"
             "</table>"))
         cmp_.add(callout(
-            "<b>The honest summary: an SEA trades bandwidth for force "
-            "fidelity, and the exchange rate is 2ζ<sub>r</sub>.</b><br><br>"
-            "That is not a criticism of series elasticity — it is the reason "
-            "to choose it. A leg that must survive heel strike wants the "
-            "spring, and does not need 100 Hz of position bandwidth to walk. "
-            "An arm doing precise insertion wants the bandwidth and can avoid "
-            "the impacts.<br><br>"
-            "What is <i>not</i> acceptable is choosing series elasticity and "
-            "then being surprised by the ceiling. The inequality is "
-            "evaluable at the CAD stage: you know ω<sub>res</sub> from the "
-            "spring rate and the load inertia, you can measure ζ<sub>r</sub> "
-            "with one ring-down test, and the bandwidth you are allowed "
-            "follows. The actuator pages later on spend this result on "
-            "specific joints of both robots.", "key"))
+            (
+                "<b>For this uncompensated resonance model, the crossover bound scales with 2ζ<sub>r</sub>.</b> "
+                "The SEA pages use other transfer functions and controllers, so their numerical ratios need not "
+                "match this one.<br><br>That is not a criticism of series elasticity — it is the reason to "
+                "choose it. A leg that must survive heel strike wants the spring, and does not need 100 Hz of "
+                "position bandwidth to walk. An arm doing precise insertion wants the bandwidth and can avoid "
+                "the impacts.<br><br>What is <i>not</i> acceptable is choosing series elasticity and then being "
+                "surprised by the ceiling. The inequality is evaluable at the CAD stage: you know "
+                "ω<sub>res</sub> from the spring rate and the load inertia, you can measure ζ<sub>r</sub> with "
+                "one ring-down test, and the bandwidth you are allowed follows. The actuator pages later on "
+                "spend this result on specific joints of both robots."
+            ), "key"))
         cmp_.add(body(
             "<b>To watch all of this happen in the widget above:</b> set the "
             "resonance to 0 (rigid) and K<sub>d</sub> = 4, then raise "

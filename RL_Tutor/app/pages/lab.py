@@ -170,8 +170,10 @@ class CodeLabPage(Page):
              "You now solve for the WORST policy. The arrows point at holes. "
              "Proof that the max is the only thing making it 'optimal'."),
             ("In policy_evaluation, read `V` instead of `V_prev`",
-             "Gauss-Seidel instead of Jacobi. Same answer, fewer sweeps. "
-             "Watch the sweep count on page 16 drop."),
+             (
+                 "Gauss-Seidel instead of Jacobi. Same answer, fewer sweeps. Watch the sweep count on page 67 "
+                 "drop."
+             )),
             ("In frozen_lake.py, add a 4th slip preset with intended=0.5",
              "It appears in every dropdown on every page automatically — the "
              "pages read SLIP_MODELS, they do not hard-code it."),
@@ -294,13 +296,13 @@ class AdamPage(Page):
         super().__init__(parent)
 
         self.add(callout(
-            "Everything else in this tutor is <b>tabular</b>: 16 states fit in an "
-            "array, so there is nothing to optimise — you just assign the right "
-            "number to the right slot.<br><br>"
-            "Adam only becomes relevant when the state space is too big to "
-            "enumerate and V or Q becomes a neural network. Then the Bellman "
-            "equation stops being an assignment and becomes a <b>loss to "
-            "minimise</b>.", "key"))
+            (
+                "The preceding lake algorithms are <b>tabular</b>: 16 states fit in an array, so there is "
+                "nothing to optimise — you just assign the right number to the right slot.<br><br>Adam only "
+                "becomes relevant when the state space is too big to enumerate and V or Q becomes a neural "
+                "network. Then the Bellman equation stops being an assignment and becomes a <b>loss to "
+                "minimise</b>."
+            ), "key"))
 
         # ---- adam ------------------------------------------------------------
         a = Card("Adam — adaptive moment estimation")
@@ -315,10 +317,11 @@ class AdamPage(Page):
                    "direction, add 10% of the new one\". If the gradient zig-zags "
                    "left-right-left-right, m averages to roughly straight.", dim=True))
         a.add(math_label(r"v_t = \beta_2 v_{t-1} + (1-\beta_2)\, g_t^2", 14))
-        a.add(body("<b>v — velocity / variance.</b> A moving average of the "
-                   "<i>squared</i> gradient, so it measures magnitude regardless of "
-                   "sign — how steep and volatile the terrain has been. β₂ = 0.999 "
-                   "keeps a very long history.", dim=True))
+        a.add(body((
+                       "<b>v — second raw moment.</b> A moving average of the <i>squared</i> gradient, so it measures "
+                       "magnitude regardless of sign — how steep and volatile the terrain has been. β₂ = 0.999 keeps a "
+                       "very long history."
+                   ), dim=True))
         a.add(math_label(r"\hat{m}_t = \frac{m_t}{1-\beta_1^t}, \qquad "
                          r"\hat{v}_t = \frac{v_t}{1-\beta_2^t}", 14))
         a.add(body("<b>Bias correction.</b> m and v start at 0, so the first few "
@@ -374,10 +377,11 @@ class AdamPage(Page):
         row.addWidget(b)
         fb.add_layout(row)
         fb.add(body(
-            "<b>C · optimisation step (Adam).</b> Takes grad_W from B and actually "
-            "changes the weights: check momentum (\"which way were we heading?\"), "
-            "check velocity (\"is the terrain rocky?\"), then "
-            "W_new = W_old − smart_gradient.", dim=True))
+            (
+                "<b>C · optimisation step (Adam).</b> Takes grad_W from B and actually changes the weights: "
+                "check momentum (\"which way were we heading?\"), check the second moment (the recent "
+                "squared-gradient scale), then W_new = W_old − smart_gradient."
+            ), dim=True))
         self.add(fb)
 
         # ---- batchnorm ----------------------------------------------------------
@@ -409,15 +413,14 @@ class AdamPage(Page):
         self.add(bn)
 
         self.add(callout(
-            "<b>Where this reconnects to RL.</b> On page 20 the DP target was an "
-            "assignment: <code>V(s) ← max_a Q(s,a)</code>. With a network you cannot "
-            "assign — you can only nudge weights. So the same equation becomes a "
-            "regression:<br>"
-            "&nbsp;&nbsp;target y = r + γ·max<sub>a'</sub> Q(s', a')<br>"
-            "&nbsp;&nbsp;loss = MSE(y, Q(s,a))<br>"
-            "&nbsp;&nbsp;Adam minimises that loss.<br><br>"
-            "The Bellman equation did not change. Only the way we <i>enforce</i> it "
-            "did — and that is the entire step from value iteration to DQN and DDPG.",
+            (
+                "<b>Where this reconnects to RL.</b> On page 70 the DP target was an assignment: <code>V(s) ← "
+                "max_a Q(s,a)</code>. With a network you cannot assign — you can only nudge weights. So the same"
+                " equation becomes a regression:<br>&nbsp;&nbsp;target y = r + γ·max<sub>a'</sub> Q(s', "
+                "a')<br>&nbsp;&nbsp;loss = MSE(y, Q(s,a))<br>&nbsp;&nbsp;Adam minimises that loss.<br><br>The "
+                "Bellman equation did not change. Only the way we <i>enforce</i> it did — and that is the entire"
+                " step from value iteration to DQN and DDPG."
+            ),
             "key"))
 
         self.finish()

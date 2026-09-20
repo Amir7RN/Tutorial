@@ -173,9 +173,10 @@ class WhatIsRLPage(Page):
         self.diagram = LoopDiagram()
         d.add(self.diagram)
         d.add(body(
-            "Read it clockwise, starting top-left. Right now <b>you</b> are the "
-            "agent. By page 19 an algorithm will be, and it will play better than "
-            "you.", dim=True))
+            (
+                "Read it clockwise, starting top-left. Right now <b>you</b> are the agent. By page 70 an "
+                "algorithm will be, and it will play better than you."
+            ), dim=True))
         self.add(d)
 
         # ---- manual play ----------------------------------------------------
@@ -258,35 +259,31 @@ class WhatIsRLPage(Page):
             "warn"))
 
         self.add(callout(
-            "<b>Surprise 2: once the ice is on, the action you press is not the "
-            "action that happens.</b><br>"
-            "Tick the checkbox above and keep playing. The <b>ice did</b> column "
-            "will start disagreeing with <b>you pressed</b>. Press RIGHT and the "
-            "lake may slide you UP or DOWN instead — never backwards, but sideways "
-            "often.<br><br>"
-            "So a single move can fail in <i>two different ways at once</i>: the ice "
-            "sends you sideways, and then that sideways move bumps a wall. From "
-            "state 0 pressing UP, you stay put <b>2 times out of 3</b> — once "
-            "because UP hits the top wall, once because slipping LEFT hits the side "
-            "wall. Only the 1-in-3 slip to the RIGHT actually moves you.<br><br>"
-            "Page 3 pins this down with exact probabilities. For now, just feel it.",
+            (
+                "<b>Surprise 2: once the ice is on, the action you press is not the action that "
+                "happens.</b><br>Tick the checkbox above and keep playing. The <b>ice did</b> column will start "
+                "disagreeing with <b>you pressed</b>. Press RIGHT and the lake may slide you UP or DOWN instead "
+                "— never backwards, but sideways often.<br><br>So a single move can fail in <i>two different "
+                "ways at once</i>: the ice sends you sideways, and then that sideways move bumps a wall. From "
+                "state 0 pressing UP, you stay put <b>2 times out of 3</b> — once because UP hits the top wall, "
+                "once because slipping LEFT hits the side wall. Only the 1-in-3 slip to the RIGHT actually moves"
+                " you.<br><br>Page 54 pins this down with exact probabilities. For now, just feel it."
+            ),
             "bad"))
 
         # ---- why this is hard --------------------------------------------------
         hard = Card("why you cannot just plan a route")
         hard.add(body(
-            "With the ice off, this is an ordinary maze — A* or Dijkstra solves it "
-            "and you are done. You wrote both in C++ already.<br><br>"
-            "With the ice on, everything changes:<br>"
-            "&nbsp;&nbsp;<b>1.</b> A fixed sequence of moves is worthless. By move "
-            "three you are not where the plan assumed.<br>"
-            "&nbsp;&nbsp;<b>2.</b> You need a rule for <i>every square</i>, not a "
-            "route — because you cannot predict which square you will end up on. "
-            "That rule is called a <b>policy</b> (page 6).<br>"
-            "&nbsp;&nbsp;<b>3.</b> The best move stops being the obvious one. "
-            "Hugging a wall can be <i>better</i> than the direct path, because a "
-            "wall cannot slide you into a hole. You will watch the algorithm "
-            "discover that on page 19."))
+            (
+                "With the ice off, this is an ordinary maze — A* or Dijkstra solves it and you are done. You "
+                "wrote both in C++ already.<br><br>With the ice on, everything changes:<br>&nbsp;&nbsp;<b>1.</b>"
+                " A fixed sequence of moves is worthless. By move three you are not where the plan "
+                "assumed.<br>&nbsp;&nbsp;<b>2.</b> You need a rule for <i>every square</i>, not a route — "
+                "because you cannot predict which square you will end up on. That rule is called a <b>policy</b>"
+                " (page 57).<br>&nbsp;&nbsp;<b>3.</b> The best move stops being the obvious one. Hugging a wall "
+                "can be <i>better</i> than the direct path, because a wall cannot slide you into a hole. You "
+                "will watch the algorithm discover that on page 70."
+            )))
         self.add(hard)
 
         vocab = Card("the five words, grounded in what you just did")
@@ -323,17 +320,14 @@ class WhatIsRLPage(Page):
 
         nxt = Card("where this is going")
         nxt.add(body(
-            "<b>Pages 2–4</b> take the environment apart: the board, the ice, the "
-            "rewards.<br>"
-            "<b>Page 5</b> turns a whole episode's worth of rewards into a single "
-            "score.<br>"
-            "<b>Pages 6–7</b> name the thing we are searching for (a policy) and "
-            "write the rules down formally (an MDP).<br>"
-            "<b>Pages 8–11</b> build the tool that measures how good a square is.<br>"
-            "<b>Pages 12–16</b> compute the perfect policy — assuming we know the "
-            "ice.<br>"
-            "<b>Pages 17–19</b> throw that assumption away and <i>learn</i> it "
-            "instead, which is what a real robot has to do."))
+            (
+                "<b>Pages 53–55</b> take the environment apart: the board, the ice, the rewards.<br><b>Page "
+                "56</b> turns a whole episode's worth of rewards into a single score.<br><b>Pages 57–58</b> name"
+                " the thing we are searching for (a policy) and write the rules down formally (an "
+                "MDP).<br><b>Pages 59–62</b> build the tool that measures how good a square is.<br><b>Pages "
+                "67–71</b> compute the perfect policy — assuming we know the ice.<br><b>Pages 72–74</b> throw "
+                "that assumption away and <i>learn</i> it instead, which is what a real robot has to do."
+            )))
         self.add(nxt)
 
         self.finish()
@@ -584,26 +578,27 @@ class RewardPage(Page):
         self.add(sp)
 
         self.add(callout(
-            "Under the sparse scheme, the overwhelming majority of random episodes "
-            "score <b>exactly 0.00</b>. Every one of those is a lesson containing "
-            "<b>no information whatsoever</b> — the agent cannot tell a near-miss "
-            "from a disaster, because both paid the same. Learning cannot begin "
-            "until a random walk blunders into the goal by luck.<br><br>"
-            "The shaped scheme spreads the scores out. Now \"fell in a hole "
-            "quickly\" (−1.1) and \"wandered a long time\" (−0.6) and \"reached the "
-            "goal efficiently\" (+0.8) are all <i>different numbers</i>, so there is "
-            "something to climb.<br><br>"
-            "This is <b>reward shaping</b>, and it is where most real RL projects "
-            "actually succeed or fail. Nothing about the lake changed.", "bad"))
+            (
+                "Under the sparse scheme, the overwhelming majority of random episodes score <b>exactly "
+                "0.00</b>. Those episodes provide transition and failure information, but <b>no positive-reward "
+                "example</b> — the agent cannot tell a near-miss from a disaster, because both paid the same. "
+                "For zero-initialised reward-only value learning, values may remain zero until a goal reward is "
+                "observed.<br><br>The shaped scheme spreads the scores out. Now \"fell in a hole quickly\" (−1.1) "
+                "and \"wandered a long time\" (−0.6) and \"reached the goal efficiently\" (+0.8) are all "
+                "<i>different numbers</i>, so there is something to climb.<br><br>This is <b>reward shaping</b>,"
+                " and it is where most real RL projects actually succeed or fail. The transition dynamics did "
+                "not change. The reward objective did change, and this arbitrary shaping can change which policy"
+                " is optimal."
+            ), "bad"))
 
         self.add(callout(
-            "<b>Reward is not what the agent maximises.</b> Your notes are emphatic "
-            "about this and it is worth stating flatly: the agent maximises the "
-            "<b>return</b> — the total discounted reward over a whole episode — not "
-            "the reward of the next step.<br><br>"
-            "A greedy step-by-step reward chaser would never accept −0.04 now to "
-            "earn +1 later. Turning this list of rewards into one number worth "
-            "maximising is exactly what the next page does.", "key"))
+            (
+                "<b>Reward is not what the agent maximises.</b> Your notes are emphatic about this and it is "
+                "worth stating flatly: the agent maximises <b>expected return</b> — the total discounted reward "
+                "over a whole episode — not the reward of the next step.<br><br>A greedy step-by-step reward "
+                "chaser would never accept −0.04 now to earn +1 later. Turning this list of rewards into one "
+                "number worth maximising is exactly what the next page does."
+            ), "key"))
 
         self.finish()
         self.reset_ep()
@@ -734,12 +729,12 @@ class ReturnPage(Page):
         super().__init__(parent)
 
         self.add(callout(
-            "<b>The problem.</b> Page 4 left you with a <i>list</i> of rewards: "
-            "−0.04, −0.04, −0.04, +1. You cannot maximise a list. You need a single "
-            "score for the whole episode, so that two different ways of playing can "
-            "be compared.<br><br>"
-            "The obvious answer — add them up — nearly works. The fix it needs is "
-            "the discount factor.", "key"))
+            (
+                "<b>The problem.</b> Page 55 left you with a <i>list</i> of rewards: −0.04, −0.04, −0.04, +1. "
+                "You cannot maximise a list. You need a single score for the whole episode, so that two "
+                "different ways of playing can be compared.<br><br>The obvious answer — add them up — nearly "
+                "works. The fix it needs is the discount factor."
+            ), "key"))
 
         # ---- step 1: the naive sum ---------------------------------------------
         s1 = Card("step 1 — just add the rewards up")
@@ -771,9 +766,12 @@ class ReturnPage(Page):
             "r<sub>max</sub>/(1−γ)), and sooner is genuinely worth more than later.",
             dim=True))
         s2.add(body(
-            "<b>Sanity check on the indices:</b> the first reward R<sub>t+1</sub> "
-            "is multiplied by γ<sup>0</sup> = 1, i.e. not discounted at all. It "
-            "already happened. Only the <i>future</i> gets shrunk.", dim=True))
+            (
+                "<b>Sanity check on the indices:</b> the first reward R<sub>t+1</sub> is multiplied by "
+                "γ<sup>0</sup> = 1, i.e. not discounted at all. It is the next reward relative to state "
+                "S<sub>t</sub>, one transition away. The convention gives that first reward weight 1 and later "
+                "rewards powers of γ."
+            ), dim=True))
         self.add(s2)
 
         # ---- step 3: worked example ----------------------------------------------
@@ -849,12 +847,12 @@ class ReturnPage(Page):
             "    G = gamma * G + reward      # G is now exactly G_t\n"
             "    ..."))
         s4.add(callout(
-            "Memorise those three lines. They appear <b>unchanged</b> in every "
-            "Monte Carlo function on pages 17–19 — it is how the algorithm turns a "
-            "played episode into something learnable. And the equation "
-            "G<sub>t</sub> = R<sub>t+1</sub> + γG<sub>t+1</sub> is the seed of the "
-            "Bellman equation on page 11, which is the same idea applied to "
-            "<i>averages</i> instead of a single episode.", "key"))
+            (
+                "Memorise those three lines. They appear <b>unchanged</b> in every Monte Carlo function on pages"
+                " 72–74 — it is how the algorithm turns a played episode into something learnable. And the "
+                "equation G<sub>t</sub> = R<sub>t+1</sub> + γG<sub>t+1</sub> is the seed of the Bellman equation"
+                " on page 62, which is the same idea applied to <i>averages</i> instead of a single episode."
+            ), "key"))
         self.add(s4)
 
         # ---- step 5: what gamma does ---------------------------------------------

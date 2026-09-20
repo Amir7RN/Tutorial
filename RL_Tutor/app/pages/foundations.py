@@ -68,13 +68,13 @@ class PolicyPage(Page):
         super().__init__(parent)
 
         self.add(callout(
-            "<b>Why not just a list of moves?</b> On page 1 you saw that the ice "
-            "breaks any fixed plan — after three moves you are not where the plan "
-            "assumed. So a solution cannot be a <i>route</i>. It has to be a rule "
-            "that answers \"what do I do <b>here</b>?\" for <b>every</b> square, "
-            "because you might end up on any of them.<br><br>"
-            "That rule is a <b>policy</b>, written π. It is the agent's brain, and "
-            "it is the only thing we are ever trying to find.", "key"))
+            (
+                "<b>Why not just a list of moves?</b> On page 52 you saw that the ice breaks any fixed plan — "
+                "after three moves you are not where the plan assumed. So a solution cannot be a <i>route</i>. "
+                "It has to be a rule that answers \"what do I do <b>here</b>?\" for <b>every</b> square, because "
+                "you might end up on any of them.<br><br>That rule is a <b>policy</b>, written π. It is the "
+                "agent's brain, and it is the only thing we are ever trying to find."
+            ), "key"))
 
         d = Card("two kinds of policy")
         g = QGridLayout(); g.setSpacing(12)
@@ -123,7 +123,9 @@ class PolicyPage(Page):
             "π = always DOWN  (a very simple rule)",
             "π = always RIGHT",
             "π = DOWN until the bottom row, then RIGHT  (hand-written)",
-            "π = the optimal policy  (computed on page 19 — a preview)",
+            (
+                "π = the optimal policy  (computed on page 70 — a preview)"
+            ),
         ])
         self.polbox.currentIndexChanged.connect(self.show_policy)
         rd.add_layout(labelled("Policy π", self.polbox, 70))
@@ -173,24 +175,26 @@ class PolicyPage(Page):
         self.add(eg)
 
         self.add(callout(
-            "ε is the exploration knob, and it must <b>decay</b>. Early on the agent "
-            "knows nothing, so ε ≈ 1 is right. Later it should cash in, so ε → 0.05. "
-            "A fixed ε means the agent keeps hurling itself into holes forever — you "
-            "will watch exactly that happen on page 23.", "warn"))
+            (
+                "ε is the exploration knob, and it must <b>decay</b>. Early on the agent knows nothing, so ε ≈ 1"
+                " is right. Later it should cash in, so ε → 0.05. A fixed ε means the agent keeps hurling itself"
+                " into holes forever — you will watch exactly that happen on page 74."
+            ), "warn"))
 
         gp = Card("greedy · ε-greedy · optimal — three words people mix up")
         gp.add(body(
-            "<b>Greedy</b> — always take the action your <i>current</i> numbers say "
-            "is best. If those numbers are wrong, greedy is confidently wrong.<br><br>"
-            "<b>ε-greedy</b> — greedy, plus a fixed chance of exploring. Cannot be "
-            "optimal by construction, since it deliberately wastes ε of its "
-            "moves.<br><br>"
-            "<b>Optimal (π*)</b> — the policy with the highest expected return from "
-            "every state. It <i>is</i> greedy, but with respect to the <b>correct</b> "
-            "numbers. Your notes put it exactly: <i>a greedy policy may or may not "
-            "be optimal, but an optimal policy must be greedy with respect to the "
-            "optimal value function.</i><br><br>"
-            "Pages 8–11 build those correct numbers. Pages 12–16 compute them."))
+            (
+                (
+                    "<b>Greedy</b> — always take the action your <i>current</i> numbers say is best. If those "
+                    "numbers are wrong, greedy is confidently wrong.<br><br><b>ε-greedy</b> — greedy, plus a fixed "
+                    "chance of exploring. It is generally suboptimal when exploration selects lower-value actions; "
+                    "ties between optimal actions are an exception.<br><br><b>Optimal (π*)</b> — the policy with the"
+                    " highest expected return from every state. It <i>is</i> greedy, but with respect to the "
+                    "<b>correct</b> numbers. Your notes put it exactly: <i>a greedy policy may or may not be "
+                    "optimal, but an optimal policy must be greedy with respect to the optimal value "
+                    "function.</i><br><br>Pages 59–62 build those correct numbers. Pages 67–71 compute them."
+                )
+            )))
         self.add(gp)
 
         self.finish()
@@ -219,10 +223,11 @@ class PolicyPage(Page):
             from rlcore.dp import value_iteration
             P = build_model("classic", "shaped")
             pi, V, _ = value_iteration(P, gamma=0.99, theta=1e-12)
-            note = ("The best possible rule book for this ice. Look at square 0: it "
-                    "points UP, into a wall. That is not a mistake — bumping the top "
-                    "wall is <i>safer</i> than risking a slip toward hole 5. You "
-                    "will compute this yourself on page 19.")
+            note = ((
+                        "The best possible rule book for this ice. Look at square 0: it points UP, into a wall. That is "
+                        "not a mistake — bumping the top wall is <i>safer</i> than risking a slip toward hole 5. You "
+                        "will compute this yourself on page 70."
+                    ))
         self.grid.policy = pi
         self.grid.update()
         self.pol_note.setText(note)
@@ -269,29 +274,37 @@ class MDPPage(Page):
         super().__init__(parent)
 
         self.add(callout(
-            "You have now met every ingredient separately: squares (page 2), the "
-            "slippery transitions (page 3), the payouts (page 4), the discount "
-            "(page 5) and the rule book (page 6).<br><br>"
-            "Bundle those five together and the result has a name: a <b>Markov "
-            "Decision Process</b>. From here on, papers will hand you the 5-tuple "
-            "and expect you to know what each letter means.", "key"))
+            (
+                "You have now met every ingredient separately: squares (page 53), the slippery transitions (page"
+                " 54), the payouts (page 55), the discount (page 56) and the rule book (page 57).<br><br>Bundle "
+                "those five together and the result has a name: a <b>Markov Decision Process</b>. From here on, "
+                "papers will hand you the 5-tuple and expect you to know what each letter means."
+            ), "key"))
 
         tup = Card("the 5-tuple  (S, A, P, R, γ)")
         g = QGridLayout(); g.setSpacing(11); g.setColumnStretch(1, 1)
         items = [
             (r"s \in S",
-             "<b>State space.</b> The 16 squares. <i>Page 2.</i>"),
+             (
+                 "<b>State space.</b> The 16 squares. <i>Page 53.</i>"
+             )),
             (r"a \in A",
-             "<b>Action space.</b> {LEFT, DOWN, RIGHT, UP}. <i>Page 2.</i>"),
+             (
+                 "<b>Action space.</b> {LEFT, DOWN, RIGHT, UP}. <i>Page 53.</i>"
+             )),
             (r"P(s' \mid s,a) = \Pr\{S_{t+1}=s' \mid S_t=s,\, A_t=a\}",
-             "<b>Transition function.</b> The ice. Must satisfy "
-             "Σ<sub>s'</sub> P(s'|s,a) = 1 for every (s,a). <i>Page 3 — this is "
-             "the table you were clicking through.</i>"),
+             (
+                 "<b>Transition function.</b> The ice. Must satisfy Σ<sub>s'</sub> P(s'|s,a) = 1 for every (s,a)."
+                 " <i>Page 54 — this is the table you were clicking through.</i>"
+             )),
             (r"r(s,a,s') = \mathbb{E}[R_{t+1} \mid S_t=s, A_t=a, S_{t+1}=s']",
-             "<b>Reward function.</b> The payout for that transition. "
-             "<i>Page 4.</i>"),
+             (
+                 "<b>Reward function.</b> The payout for that transition. <i>Page 55.</i>"
+             )),
             (r"\gamma \in [0,1]",
-             "<b>Discount factor.</b> How much the future counts. <i>Page 5.</i>"),
+             (
+                 "<b>Discount factor.</b> How much the future counts. <i>Page 56.</i>"
+             )),
         ]
         for i, (latex, desc) in enumerate(items):
             g.addWidget(math_label(latex, 13), i, 0, Qt.AlignLeft | Qt.AlignVCenter)
@@ -345,10 +358,11 @@ class MDPPage(Page):
         # --- the full 5-tuple on the real lake ------------------------------
         tt = Card("the same 5-tuple, on the real 4×4 lake")
         tt.add(body(
-            "Click a square, pick an action. This is <code>P</code> and "
-            "<code>r</code> for that pair — the exact numbers value iteration will "
-            "consume on page 19. You saw this table on page 3; here it is labelled "
-            "with its formal names.", dim=True))
+            (
+                "Click a square, pick an action. This is <code>P</code> and <code>r</code> for that pair — the "
+                "exact numbers value iteration will consume on page 70. You saw this table on page 54; here it "
+                "is labelled with its formal names."
+            ), dim=True))
 
         self.env_ctl = EnvControls(show_gamma=False, slip="gym", reward="gym")
         self.env_ctl.changed.connect(self.refresh_table)

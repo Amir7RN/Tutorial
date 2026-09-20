@@ -745,9 +745,10 @@ class StateFeedbackPage(Page):
 
 class LQRPage(Page):
     TITLE = "LQR & Optimal Control"
-    SUBTITLE = ("Stop naming pole locations you have no intuition for and "
-                "name a price instead. What Q, R and P actually are — and why "
-                "P is the same object the RL half calls a value function.")
+    SUBTITLE = ((
+                    "Stop naming pole locations you have no intuition for and name a price instead. What Q, R and P "
+                    "actually are — and why xᵀPx is cost-to-go, related by a reward-sign convention to RL value."
+                ))
     SECTION = SECTION
     NOTES = "design"
 
@@ -875,24 +876,21 @@ class LQRPage(Page):
             "<code>ctrlcore</code> solves it through the Hamiltonian matrix's "
             "stable eigenvectors, which is how it is actually done."))
         ans.add(callout(
-            "<b>P is not scaffolding. P is the value function.</b><br><br>"
+            "<b>P parameterises the optimal cost-to-go.</b><br><br>"
             "Start the system at x₀, run the optimal controller forever, and "
             "add up the entire bill. The answer is"
             "<br><br>&nbsp;&nbsp;&nbsp;&nbsp;<b>J*(x₀) = x₀ᵀ P x₀</b><br><br>"
             "P converts \"where you are\" into \"what the rest of your life "
             "will cost, assuming you play optimally from here\". Read that "
-            "sentence again with the RL pages in mind: <b>that is the "
-            "definition of V(s)</b>, verbatim. Optimal cost-to-go from a "
-            "state, under the optimal policy.<br><br>"
-            "So LQR is not merely <i>similar</i> to reinforcement learning. "
-            "It is the one case where the value function can be written down "
-            "in closed form — because the dynamics are linear and the cost is "
-            "quadratic, V is exactly a quadratic form and the whole thing "
-            "collapses to a matrix equation. The Riccati equation <b>is</b> "
-            "the Bellman optimality equation for this special case, and "
-            "solving it iteratively is <b>value iteration</b>. Everything the "
-            "RL half does with networks is what you do when V is not "
-            "quadratic and you cannot write A and B down.", "key"))
+            "sentence with the later RL vocabulary in mind: LQR minimises "
+            "<b>cost-to-go</b>; RL maximises <b>expected return</b>. If reward is "
+            "the negative running cost under matching horizon and dynamics "
+            "conventions, the optimal return is <b>−x₀ᵀPx₀</b>, not P alone.<br><br>"
+            "For this linear–quadratic problem, the value/cost function has a "
+            "quadratic form. Substituting it into continuous-time optimality "
+            "gives the Riccati equation. This is a concrete connection to "
+            "Bellman reasoning; it does not make every Riccati numerical solver "
+            "a value-iteration algorithm.", "key"))
         ans.add(body(
             "<b>And the guarantees, which are why LQR is trusted.</b> If "
             "(A,B) is stabilisable and Q does not hide an unstable mode, the "

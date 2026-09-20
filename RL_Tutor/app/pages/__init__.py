@@ -318,3 +318,9 @@ PAGE_CLASSES = [
 # this, so the numbers can never drift out of sync with the order above.
 for _i, _cls in enumerate(PAGE_CLASSES, start=1):
     _cls.NUM = _i
+
+LESSON_CLASSES = tuple(PAGE_CLASSES)
+from ..lesson_connections import resolve_connections
+CONNECTIONS = resolve_connections(LESSON_CLASSES)
+from .section_summaries import with_summaries
+PAGE_CLASSES = with_summaries(LESSON_CLASSES)

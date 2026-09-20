@@ -189,10 +189,11 @@ class PolicyEvalPage(Page):
         self.cp = cp
         cc.add(cp)
         cc.add(body(
-            "Line to stare at: <code>v_new = q_from_V(P, V_prev, s, <b>pi[s]</b>, "
-            "gamma)</code>. The action is <b>dictated</b> by π. On page 19 that one "
-            "token becomes <code>max over a</code> and the algorithm turns into "
-            "value iteration.", dim=True))
+            (
+                "Line to stare at: <code>v_new = q_from_V(P, V_prev, s, <b>pi[s]</b>, gamma)</code>. The action "
+                "is <b>dictated</b> by π. On page 70 that one token becomes <code>max over a</code> and the "
+                "algorithm turns into value iteration."
+            ), dim=True))
         self.add(cc)
 
         self.add(callout(
@@ -462,11 +463,12 @@ class PolicyIterationPage(Page):
         cp.sizeHintLine(20)
         cc.add(cp)
         cc.add(body(
-            "Only ~8 real lines, because all the work is delegated to the two "
-            "functions from pages 12 and 13. Termination is <code>stable</code>, "
-            "not a sweep count: policy iteration is guaranteed to finish in a "
-            "<b>finite</b> number of rounds, because there are finitely many "
-            "policies and each round strictly improves until it can't.", dim=True))
+            (
+                "Only ~8 real lines, because all the work is delegated to the two functions from pages 67 and "
+                "68. Termination is <code>stable</code>, not a sweep count: policy iteration is guaranteed to "
+                "finish in a <b>finite</b> number of rounds, because there are finitely many policies and each "
+                "round strictly improves until it can't."
+            ), dim=True))
         self.add(cc)
 
         self.finish()
@@ -786,22 +788,18 @@ class CompareDPPage(Page):
 
         gpi = Card("both are special cases of one idea: GPI")
         gpi.add(body(
-            "<b>Generalised Policy Iteration</b> is the umbrella. Any algorithm that "
-            "alternates<br>"
-            "&nbsp;&nbsp;• making V more consistent with π (evaluation), and<br>"
-            "&nbsp;&nbsp;• making π more greedy w.r.t. V (improvement)<br>"
-            "is doing GPI, regardless of how completely it does either step.<br><br>"
-            "<b>Policy iteration</b> = run evaluation all the way to convergence "
-            "before improving.<br>"
-            "<b>Value iteration</b> = do exactly one sweep of evaluation, then "
-            "improve. (The max <i>is</i> the improvement, folded in.)<br>"
-            "<b>Monte Carlo control</b> = evaluate with sampled returns, improve "
-            "ε-greedily — same skeleton, page 23.<br>"
-            "<b>Actor-critic / DDPG</b> = the critic evaluates, the actor improves, "
-            "both a little bit at every single time step.<br><br>"
-            "Your notes call it \"a balance between critics and performers\". The "
-            "two processes fight each other — each invalidating the other's work — "
-            "and that fight is what converges."))
+            (
+                "<b>Generalised Policy Iteration</b> is the umbrella. Any algorithm that "
+                "alternates<br>&nbsp;&nbsp;• making V more consistent with π (evaluation), and<br>&nbsp;&nbsp;• "
+                "making π more greedy w.r.t. V (improvement)<br>is doing GPI, regardless of how completely it "
+                "does either step.<br><br><b>Policy iteration</b> = run evaluation all the way to convergence "
+                "before improving.<br><b>Value iteration</b> = do exactly one sweep of evaluation, then improve."
+                " (The max <i>is</i> the improvement, folded in.)<br><b>Monte Carlo control</b> = evaluate with "
+                "sampled returns, improve ε-greedily — same skeleton, page 74.<br><b>Actor-critic / DDPG</b> = "
+                "the critic evaluates, the actor improves, both a little bit at every single time "
+                "step.<br><br>Your notes call it \"a balance between critics and performers\". The two processes "
+                "fight each other — each invalidating the other's work — and that fight is what converges."
+            )))
         self.add(gpi)
 
         self.finish()

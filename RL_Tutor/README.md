@@ -5,26 +5,26 @@ actuator dynamics and reinforcement learning** — built from `Impedance_Materia
 (pages 1–6, 9, 10), the Best/Rouse/Gregg impedance-control paper
 (`ImpedanceControl.pdf`), and `RL.pdf` (pages 1, 3, 4, 5, 6, 7, 8, 11).
 
-72 pages, every algorithm live and steppable, every formula rendered, every code
+95 numbered lessons plus 20 animated section summaries (115 pages), with live algorithms, rendered formulas and code
 panel pulled from the real source with `inspect.getsource` so nothing on screen
 can drift out of sync with what actually ran.
 
 The tutor is in two halves and is written to be read **in order**:
 
-1. **Control & dynamics (pages 1–43)** — what the world physically feels when it
+1. **Control & dynamics (pages 1–51)** — what the world physically feels when it
    touches the robot, and how a controller can shape that. Starts from real-time
    constraints and `J_eff = J_m + J_L`, and ends at the biomechanics that
    motivate the whole design.
-2. **Reinforcement learning (pages 44–72)** — how a policy is found for a machine
-   whose dynamics you now understand. Page 43 is a game you play with the arrow
+2. **Reinforcement learning, networks and deployment (pages 52–95)** — how a policy is found for a machine
+   whose dynamics you now understand. Page 52 is a game you play with the arrow
    keys, and every symbol introduced later refers back to something you have
    already felt.
 
 **Page 1 is real-time control**, on purpose. Every later page makes a claim about
 how fast something can respond, and every one of those claims is bounded by
 sampling, delay and scheduling. The single most useful thing on it: your loop
-rate is *not* your bandwidth — a 1 kHz loop buys you roughly 50–100 Hz of
-control authority, and the mechanics may cap you lower still.
+rate is *not* your bandwidth. A 1 kHz loop updates every 1 ms; achievable
+response depends on mechanics, controller, sensing, delay and the chosen input/output.
 
 The join between the two halves is not decorative. An RL agent never learns a
 control law in the abstract; it learns one for a specific plant with a specific
@@ -32,10 +32,53 @@ effective inertia, bandwidth and safety envelope. The first half is that plant.
 
 ## Run it
 
+### Consistent terminology, detailed SEA experiments and section recaps
+
+Every numbered lesson now has a concise **Connect this lesson to what you know**
+note, clickable links to earlier lessons and an optional terminology reminder.
+The review distinguishes time constant from torque, frequency from angular
+velocity, bandwidth from crossover/natural frequency, physical from apparent
+inertia, reference from loaded equilibrium, and state from observation. It also
+repairs old page references and distinctions such as reward/return/value,
+on-policy/off-policy versus stochastic/deterministic, and gradient versus update.
+
+Page **26 — Series Elastic Actuators** has **27 movie panels**. Every existing
+explanatory card and callout has an associated animation; the original numerical
+labs remain. A new port table and motor-side experiment show why:
+
+- motor torque → motor angle has an anti-resonance at `sqrt(k/J_L)`;
+- load torque → load angle has an anti-resonance at `sqrt(k/J_m)`;
+- the free relative mode is at `sqrt(k/J_m + k/J_L)`;
+- prescribed motor angle → load angle changes the boundary condition and has a
+  resonance at the first frequency, rather than a motor-angle zero.
+
+Motion uses the two-inertia harmonic equations with explicit input conditions,
+relative amplitudes and phases. Playback is slowed and motion magnified. Exact
+undamped resonances are identified as singular forced responses; the finite
+resonance animation shows the free mode. A damped example rounds the ideal zero.
+This model and its checks live in `ctrlcore/sea_teaching.py`.
+
+All **20 sidebar sections end with a Summary page**, each containing three
+worked checkpoints and movies. Original page numbers remain 1–95; summaries
+are labeled by section rather than renumbering the course. Recaps cover actual
+equations, numerical examples, assumptions and common misreadings.
+
+Technical references used for the review:
+[Michigan system response definitions](https://ctms.engin.umich.edu/CTMS/?example=Introduction&section=SystemAnalysis),
+[elastic-joint input/output transfer functions](https://pmc.ncbi.nlm.nih.gov/articles/PMC6022151/),
+[Pratt and Williamson's SEA paper](https://fab.cba.mit.edu/classes/865.15/people/rebecca.kleinberger/assets/papers/SEA_Pratt.pdf),
+[DDPG](https://spinningup.openai.com/en/latest/algorithms/ddpg.html),
+[SAC](https://spinningup.openai.com/en/latest/algorithms/sac.html), and
+[termination versus truncation](https://gymnasium.farama.org/v0.27.0/tutorials/handling_time_limits/).
+
+Checks: `python -m unittest discover -s tests -p "test_lesson_*.py"` and
+`python tests/test_ctrl.py`. The GUI review below includes all 115 pages.
+
 ### New: automatically playing concept animations, all 95 pages
 
 Every lesson from **Real-Time Control** through **Shipping It** now includes a
-**Watch the idea** movie: 104 sequences across 95 pages, with 359 narrated scenes.
+**Watch the idea** movie. The original 104 sequences with 359 narrated scenes
+are supplemented by the detailed SEA movies and animated section recaps above.
 They show moving joints, series and parallel springs, gearing, robot links,
 phase lead and lag, lake episodes, Bellman backups, return arithmetic, neural
 signals and gradients, replay storage, and the fast/slow deployment loops.
@@ -73,8 +116,8 @@ Check animation coverage, rendering, example arithmetic and playback with
 `python -m unittest discover -s tests -p test_lesson_animations.py`.
 For a page-by-page GUI check and screenshots, run
 `python tests/review_lesson_animations.py`; output goes to `_shots/animations/`.
-Use `--start 1 --end 15` to review just the opening lessons, including all ten
-embedded page-1 movies.
+`--start` and `--end` select inclusive positions in the complete registry,
+including summary pages. Use `--lessons 1,6,26` for original lesson numbers.
 
 ### New: gait-to-torque visual walkthroughs
 

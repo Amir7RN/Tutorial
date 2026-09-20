@@ -15,9 +15,10 @@ from PySide6.QtWidgets import QAbstractScrollArea, QComboBox, QHBoxLayout, QLabe
 from .. import theme
 from .common import Card, body
 from .foundation_scenes import FoundationScenes
+from .sea_scenes import SeaScenes
 
 
-class LessonCanvas(FoundationScenes, QWidget):
+class LessonCanvas(FoundationScenes, SeaScenes, QWidget):
     def __init__(self, story, parent=None):
         super().__init__(parent)
         self.story = story

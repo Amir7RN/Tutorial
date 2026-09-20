@@ -199,16 +199,9 @@ def sea_bandwidth_hz(k: float, j_l: float) -> float:
 
         f_n = (1 / 2pi) * sqrt(k / J_l)
 
-    This is the mechanical low-pass corner. Command the joint faster than
-    f_n and the spring simply absorbs the motion instead of passing it to
-    the arm. Typical numbers from the notes:
-
-        direct drive   50-100 Hz and up
-        SEA            10-20 Hz
-
-    10 Hz is plenty for walking and far too slow for a cat-like reflex or
-    for catching a falling object -- which is the trade every humanoid
-    designer has to sign.
+    Historical API name retained for compatibility. This computes the
+    imposed-motor-angle resonance, NOT a closed-loop -3 dB bandwidth.
+    Controller, damping, sensing and boundary conditions determine the latter.
     """
     if j_l <= 0 or k <= 0:
         return 0.0
@@ -361,10 +354,12 @@ def scale_factors(length_ratio: float) -> dict[str, float]:
     every linear dimension.
 
         mass      m ~ L^3     (volume)
-        torque  tau ~ L^2     (cross-sectional area of motor and gear teeth)
+        force     F ~ L^2     (fixed allowable stress, similar geometry)
+        torque  tau ~ L^3     (force capacity times moment arm)
+        gravity tau ~ L^4     (weight times moment arm)
         inertia   J ~ L^5     (mass * length^2  =  L^3 * L^2)
 
-    Torque grows slower than the weight it has to lift, and inertia grows
+    Torque capacity grows slower than gravity torque demand, and inertia grows
     faster than anything. A big robot is relatively weaker AND relatively
     lazier than a small one. That is why a quadruped can run on quasi-direct
     drive while a human-sized humanoid is pushed toward high gear ratios --
@@ -374,10 +369,13 @@ def scale_factors(length_ratio: float) -> dict[str, float]:
     return {
         "length": L,
         "mass": L ** 3,
-        "torque": L ** 2,
+        "force": L ** 2,
+        "torque": L ** 3,
+        "gravity_torque": L ** 4,
+        "capacity_to_gravity": 1 / L if L else 0.0,
         "inertia": L ** 5,
         # torque available per unit of weight to be carried
-        "torque_per_mass": L ** 2 / L ** 3 if L else 0.0,
+        "torque_per_mass": 1.0 if L else 0.0,
     }
 
 
