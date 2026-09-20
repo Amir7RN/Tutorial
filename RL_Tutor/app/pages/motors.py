@@ -28,6 +28,14 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
 )
 
+from ctrlcore.linear import (
+    TF,
+    bode,
+    is_stable,
+    log_freqs,
+    margins,
+    step_response,
+)
 from ctrlcore.realtime import practical_bandwidth
 from ctrlcore.actuators import (
     TOPOLOGY_NAMES,
@@ -222,6 +230,249 @@ def slider_row(label, sld, readout):
         f"background:transparent; min-width:78px;")
     lay.addWidget(readout)
     return lay
+
+
+def preset_row(*pairs):
+    """A row of preset buttons. `pairs` are (label, callable) tuples."""
+    lay = QHBoxLayout()
+    lay.setSpacing(8)
+    for label, fn in pairs:
+        b = QPushButton(label)
+        b.clicked.connect(lambda _=False, f=fn: f())
+        lay.addWidget(b)
+    lay.addStretch(1)
+    return lay
+
+
+# ==========================================================================
+# The elastic element as a plant -- shared by pages 1 to 4 of this block
+#
+# Every claim these four pages make about "the bandwidth of the spring" comes
+# from one of the functions below, so they live in one place and each page
+# plots the same objects rather than asserting numbers at each other.
+# ==========================================================================
+
+def elastic_corner_hz(k: float, j: float) -> float:
+    r"""
+    (1/2pi) sqrt(k / J) -- the ONLY frequency a spring-plus-inertia has.
+
+    A spring on its own has no frequency; an inertia on its own has no
+    frequency. Put them together and there is exactly one, and it is the
+    frequency at which the spring's torque k*theta and the inertial torque
+    J*w^2*theta are equal. Below it the spring dominates; above it the
+    inertia does. Every "bandwidth" on these four pages is this expression
+    with a different J substituted in.
+    """
+    if k <= 0 or j <= 0:
+        return 0.0
+    return math.sqrt(k / j) / (2.0 * math.pi)
+
+
+def reduced_inertia(j_m: float, j_l: float) -> float:
+    """Jm*JL/(Jm+JL) -- the inertia the SERIES mode actually swings."""
+    if j_m <= 0 or j_l <= 0:
+        return 0.0
+    return j_m * j_l / (j_m + j_l)
+
+
+def spring_damping(k: float, j_m: float, j_l: float, zeta_r: float) -> float:
+    """
+    The physical damping b_s (N m s/rad) across the series spring that gives
+    its mode a damping ratio of zeta_r.
+
+    The relative coordinate d = theta_m - theta_L obeys
+        J_red * d'' + b_s * d' + k * d = 0,     J_red = Jm JL/(Jm+JL)
+    so zeta_r = b_s / (2 sqrt(k J_red)), which inverts to the line below.
+    This is the parameter the whole SEA ceiling turns on, and on real
+    hardware it is small -- a steel flexure is 0.02 to 0.05.
+    """
+    jr = reduced_inertia(j_m, j_l)
+    if jr <= 0 or k <= 0:
+        return 0.0
+    return 2.0 * zeta_r * math.sqrt(k * jr)
+
+
+def dd_plant(j_m: float, j_l: float, b: float = 0.4) -> TF:
+    """Rigid: motor torque in, load angle out. Two poles, one at the origin."""
+    return TF([1.0], [j_m + j_l, b, 0.0])
+
+
+def pea_plant(j_m: float, j_l: float, k: float, b: float = 0.4) -> TF:
+    """
+    Parallel spring: the SAME rigid body, with +k added to the denominator.
+
+    Note what did NOT happen -- the order did not go up, and no pole left the
+    real axis on its way anywhere new. A parallel spring adds stiffness to a
+    plant you already had.
+    """
+    return TF([1.0], [j_m + j_l, b, k])
+
+
+def sea_plant(j_m: float, j_l: float, k: float, b: float = 0.4,
+              zeta_r: float = 0.05) -> TF:
+    r"""
+    Series spring: motor torque in, LOAD angle out. Fourth order.
+
+    With D(s) = b_s s + k the two bodies give
+
+        Jm s^2 theta_m = tau - D (theta_m - theta_L)
+        JL s^2 theta_L + b s theta_L = D (theta_m - theta_L)
+
+    Eliminating theta_m:
+
+        theta_L     D(s)
+        ------- = ----------------------------------------------------------
+          tau     Jm JL s^4 + [Jm b + (Jm+JL) b_s] s^3
+                             + [(Jm+JL) k + b b_s] s^2 + b k s
+
+    Four poles: the origin, a load pole, and the lightly damped PAIR that is
+    the entire subject of these pages.
+    """
+    bs = spring_damping(k, j_m, j_l, zeta_r)
+    num = [bs, k]
+    den = [j_m * j_l,
+           j_m * b + (j_m + j_l) * bs,
+           (j_m + j_l) * k + b * bs,
+           b * k,
+           0.0]
+    return TF(num, den)
+
+
+def sea_crossover_ceiling_hz(k: float, j_m: float, j_l: float,
+                             zeta_r: float, gm_db: float = 6.0) -> float:
+    r"""
+    The ceiling derived on the Bode page:  w_gc <= 2 zeta_r w_res / g.
+
+    At the resonance the spring hands the loop 180 degrees of lag AND
+    multiplies its magnitude by Q = 1/(2 zeta_r). Demanding a gain margin of
+    g = 10^(GM/20) and assuming the usual 20 dB/decade rolloff above
+    crossover gives the bound. Returns hertz.
+
+    Note what is in it and what is not: k, the inertias and the SPRING's
+    damping. Not your gains, not your sample rate, not your control law.
+    """
+    if k <= 0 or zeta_r <= 0:
+        return math.inf
+    w_res = sea_resonance_rad_s(k, j_m, j_l)
+    g = 10.0 ** (gm_db / 20.0)
+    return (2.0 * zeta_r * w_res / g) / (2.0 * math.pi)
+
+
+def pd_loop(plant: TF, kp: float, kd: float, tau_d: float = 1.0 / 400.0) -> TF:
+    """Plant with a filtered-derivative PD wrapped round it, as shipped."""
+    ctrl = TF([kd, kp], [tau_d, 1.0]) if kd > 0 else TF([kp], [1.0])
+    return plant * ctrl
+
+
+def closed_loop_bw_hz(t: TF, f_hi: float = 5.0e4) -> float:
+    """
+    Where |T| first falls 3 dB below its DC value -- the closed-loop
+    bandwidth, same definition as any filter.
+
+    This is the number to compare across topologies, because crossover is
+    not comparable: a PEA's loop can cross over while the phase is still
+    near zero, which makes its "phase margin" meaningless without also
+    saying what the closed loop actually does.
+    """
+    try:
+        dc = abs(t.response(1e-6))
+    except Exception:
+        return 0.0
+    if dc <= 0:
+        return 0.0
+    target = dc / math.sqrt(2.0)
+    lo, hi = 1e-4, f_hi * 2 * math.pi
+    if abs(t.response(lo)) < target:
+        return 0.0
+    if abs(t.response(hi)) > target:
+        return f_hi
+    for _ in range(60):
+        mid = math.sqrt(lo * hi)
+        if abs(t.response(mid)) > target:
+            lo = mid
+        else:
+            hi = mid
+    return math.sqrt(lo * hi) / (2.0 * math.pi)
+
+
+#: memo for max_sea_crossover_hz -- the search is the expensive part of the
+#: SEA widgets and its answer does not depend on Kp, so dragging the gain
+#: slider must not pay for it.
+_xover_cache: dict[tuple, float] = {}
+
+
+def max_sea_crossover_hz(j_m: float, j_l: float, k: float, zeta_r: float,
+                         kd: float = 0.0, gm_min: float = 6.0) -> float:
+    """
+    The largest crossover this spring actually allows at `gm_min` dB of gain
+    margin -- found by search rather than estimated.
+
+    This is the honest counterpart to sea_crossover_ceiling_hz(): the formula
+    assumes a 20 dB/decade rolloff between crossover and the resonance, and
+    when the real rolloff is steeper the formula is conservative. Showing
+    both is the point, so this has to be cheap enough to run on a slider.
+
+    Gain margin falls monotonically with Kp, so bisect on Kp instead of
+    sweeping it. Returns hertz, or 0.0 if no gain meets the margin.
+    """
+    key = (round(j_m, 6), round(j_l, 6), round(k, 3), round(zeta_r, 4),
+           round(kd, 3), round(gm_min, 2))
+    hit = _xover_cache.get(key)
+    if hit is not None:
+        return hit
+
+    plant = sea_plant(j_m, j_l, k, 0.4, zeta_r)
+
+    if kd <= 0.0:
+        # Fast path, and it is exact rather than a shortcut. A pure gain adds
+        # no phase, so w_pc does not move with Kp at all -- which means
+        #     GM(Kp) dB = GM(1) dB - 20 log10(Kp)
+        # and the largest admissible gain can be read off in one step instead
+        # of bisected for. Two margins() calls instead of twenty-eight, which
+        # is what makes the stiffness sweep on the comparison page draggable.
+        base = margins(pd_loop(plant, 1.0, 0.0), 1e-2, 1e5, 800)
+        gm1 = base.gain_margin_db
+        if not math.isfinite(gm1):
+            out = 0.0                            # no -180 crossing: see below
+        else:
+            kp_max = 10.0 ** ((gm1 - gm_min) / 20.0)
+            if kp_max <= 0:
+                out = 0.0
+            else:
+                mg = margins(pd_loop(plant, kp_max, 0.0), 1e-2, 1e5, 800)
+                out = mg.wgc / (2.0 * math.pi) if mg.wgc else 0.0
+        if not math.isfinite(gm1):
+            # phase never reaches -180, so gain margin is not the binding
+            # constraint; fall through to the general search below
+            pass
+        else:
+            _xover_cache[key] = out
+            return out
+
+    def ok(kp: float) -> bool:
+        # a coarse grid is plenty here: we only need the sign of a 6 dB test
+        gm = margins(pd_loop(plant, kp, kd), 1e-2, 1e5, 400).gain_margin_db
+        return (not math.isfinite(gm)) or gm >= gm_min
+
+    lo, hi = 1e-3, 1e6
+    if not ok(lo):
+        _xover_cache[key] = 0.0
+        return 0.0
+    if ok(hi):
+        lo = hi
+    else:
+        for _ in range(28):                      # 1e9 range down to ~2% in Kp
+            mid = math.sqrt(lo * hi)
+            if ok(mid):
+                lo = mid
+            else:
+                hi = mid
+    mg = margins(pd_loop(plant, lo, kd), 1e-2, 1e5, 400)
+    out = mg.wgc / (2.0 * math.pi) if mg.wgc else 0.0
+    if len(_xover_cache) > 4096:                 # bounded; these are cheap
+        _xover_cache.clear()
+    _xover_cache[key] = out
+    return out
 
 
 # ==========================================================================
@@ -468,6 +719,99 @@ class EffectiveInertiaPage(Page):
             "— the sampling is not the constraint. The mechanics is.", dim=True))
         self.add(b)
 
+        # ==================================================================
+        # the primitive the next two pages are entirely built out of
+        # ==================================================================
+        self.add(hline())
+        self.add(title("Before the spring pages: what \"the bandwidth of an "
+                       "elastic element\" even means"))
+
+        pr = Card("a spring has no frequency; an inertia has no frequency; "
+                  "together they have exactly one")
+        pr.add(body(
+            "The next two pages both bolt a spring onto this actuator — one in "
+            "series, one in parallel — and both immediately start quoting a "
+            "frequency for it. It is worth being precise about where that "
+            "frequency comes from, because <b>it is not a property of the "
+            "spring.</b>"))
+        pr.add(body(
+            "Ask a spring on its own \"what is your bandwidth?\" and the "
+            "question is meaningless — a spring produces torque kθ at any "
+            "frequency you like, instantly, forever. Ask an inertia on its own "
+            "and it is equally meaningless. <b>The frequency appears only when "
+            "you ask which of the two wins</b>, and that has an exact answer:"))
+        pr.add(math_label(r"\underbrace{k\,\theta}_{\text{spring torque}} "
+                          r"\;=\; \underbrace{J\,\omega^2\theta}"
+                          r"_{\text{inertial torque}} "
+                          r"\qquad\Longrightarrow\qquad "
+                          r"\omega = \sqrt{\frac{k}{J}}, \qquad "
+                          r"f = \frac{1}{2\pi}\sqrt{\frac{k}{J}}", 17))
+        pr.add(body(
+            "The θ cancels, which is why the answer does not depend on how far "
+            "you push. <b>Below that frequency the spring's torque is the "
+            "bigger of the two and the element behaves like a spring. Above it "
+            "the inertial torque wins and the element behaves like a mass.</b> "
+            "That crossing is the entire content of the phrase \"the bandwidth "
+            "of the elastic element\"."))
+        pr.add(callout(
+            "<b>And here is the thing that makes the next two pages "
+            "different from each other: the formula has a J in it, and "
+            "<i>which</i> J depends on where you bolt the spring.</b><br><br>"
+            "&nbsp;&nbsp;• Bolt it <b>in parallel</b> and the spring works "
+            "against the whole rigid machine, so J = J<sub>m</sub> + "
+            "J<sub>L</sub>. One frequency, and it is the joint's new natural "
+            "frequency.<br>"
+            "&nbsp;&nbsp;• Bolt it <b>in series</b> and the spring has a "
+            "different inertia on each end, so it produces <b>three</b> "
+            "frequencies — √(k/J<sub>L</sub>) looking one way, "
+            "√(k/J<sub>m</sub>) looking the other, and "
+            "√(k/J<sub>red</sub>) for the two ends swinging against each other, "
+            "with J<sub>red</sub> = J<sub>m</sub>J<sub>L</sub>/(J<sub>m</sub>+"
+            "J<sub>L</sub>).<br><br>"
+            "Same spring. Same stiffness. <b>One frequency or three, decided "
+            "purely by which inertias the spring can see.</b> Every argument "
+            "on the next three pages traces back to that sentence.", "key"))
+        self.add(pr)
+
+        el = Card("watch the two torques cross — this one crossing is what "
+                  "every later plot is made of")
+        el.add(body(
+            "Left: the two torques against frequency, on log axes, for a "
+            "one-radian motion. The <b>flat</b> line is the spring, kθ, which "
+            "does not care about frequency at all. The <b>rising</b> line is "
+            "the inertia, Jω²θ, climbing at 40 dB per decade. Where they cross "
+            "is f<sub>n</sub>, and the shading says which one you are "
+            "feeling.<br><br>"
+            "Right: let it go from one radian and watch it ring at exactly "
+            "that frequency — the same number, seen in the time domain.<br><br>"
+            "<b>Two things to do.</b> Raise <b>k</b> and watch the flat line "
+            "lift, pushing the crossing to the <i>right</i>: a stiffer spring "
+            "stays in charge up to a higher frequency. Then raise <b>J</b> and "
+            "watch the rising line move <i>left</i>, dragging the crossing "
+            "down. Note that quadrupling either one only doubles "
+            "f<sub>n</sub> — the square root is why stiffness is such an "
+            "expensive way to buy bandwidth.", dim=True))
+        self.s_ek = slider(10, 4000, 300)        # N m / rad
+        self.s_ej = slider(2, 400, 100)          # x0.001 kg m^2
+        self.l_ek, self.l_ej = QLabel(), QLabel()
+        el.add_layout(slider_row("spring k (N·m/rad)", self.s_ek, self.l_ek))
+        el.add_layout(slider_row("inertia J (×0.001)", self.s_ej, self.l_ej))
+        self.st_efn = Stat("f_n = √(k/J)/2π", "--", theme.ACCENT)
+        self.st_ewn = Stat("ω_n", "--", theme.VIOLET)
+        self.st_eper = Stat("ring period", "--", theme.GOOD)
+        self.st_ecmp = Stat("at 2·f_n the inertia wins by", "--", theme.WARN)
+        el.add_layout(stat_row(self.st_efn, self.st_ewn, self.st_eper,
+                               self.st_ecmp))
+        self.c_el = MplCanvas(width=7.6, height=3.0, ncols=2)
+        self._el_drawn = False
+        el.add(self.c_el)
+        self.t_el = body("", dim=True)
+        el.add(self.t_el)
+        self.add(el)
+        for s in (self.s_ek, self.s_ej):
+            s.valueChanged.connect(self._redraw_elastic)
+        self._redraw_elastic()
+
         self.add(callout(
             "<b>Real machines, so the numbers mean something.</b><br><br>"
             "&nbsp;&nbsp;• <b>MIT Cheetah 3 / Mini Cheetah</b> — QDD, ~6:1. "
@@ -500,6 +844,85 @@ class EffectiveInertiaPage(Page):
             "sentence above is written in.", "good"))
 
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_elastic(self):
+        """
+        The one crossing the next three pages are built out of: spring torque
+        (flat) against inertial torque (rising), for a fixed one-radian
+        motion. They meet at sqrt(k/J), and that is the whole definition.
+        """
+        k = float(self.s_ek.value())
+        j = self.s_ej.value() / 1000.0
+        self.l_ek.setText(f"{k:.0f}")
+        self.l_ej.setText(f"{j:.3f}")
+
+        wn = math.sqrt(k / j)
+        fn = wn / (2.0 * math.pi)
+        self.st_efn.set(f"{fn:.2f} Hz")
+        self.st_ewn.set(f"{wn:.1f} rad/s")
+        self.st_eper.set(f"{1.0/fn*1000:.1f} ms")
+        # at twice f_n the inertial torque is (2)^2 = 4x the spring torque,
+        # always, for every k and J -- which is worth seeing stay fixed
+        self.st_ecmp.set("4.0×")
+
+        c = self.c_el
+        c.clear()
+        a1, a2 = c.axes
+
+        ws = log_freqs(wn / 60.0, wn * 60.0, 300)
+        spring = [k] * len(ws)
+        inertial = [j * w * w for w in ws]
+        a1.loglog(ws, spring, color=theme.ACCENT, lw=2.2,
+                  label="spring  k·θ  (flat)")
+        a1.loglog(ws, inertial, color=theme.WARN, lw=2.2,
+                  label="inertia  J·ω²·θ  (+40 dB/dec)")
+        a1.axvline(wn, color=theme.VIOLET, lw=1.4, ls="-.")
+        a1.scatter([wn], [k], s=60, color=theme.VIOLET, zorder=6)
+        lo, hi = ws[0], ws[-1]
+        a1.axvspan(lo, wn, color=theme.ACCENT, alpha=0.07)
+        a1.axvspan(wn, hi, color=theme.WARN, alpha=0.07)
+        a1.set_xlim(lo, hi)
+        a1.set_ylim(min(inertial[0], k) / 30.0, max(inertial[-1], k) * 3.0)
+        a1.text(wn / 7.0, k * 12.0, "spring wins\n(feels like a SPRING)",
+                color=theme.ACCENT, fontsize=7.5, ha="center")
+        a1.text(wn * 7.0, k / 14.0, "inertia wins\n(feels like a MASS)",
+                color=theme.WARN, fontsize=7.5, ha="center")
+        a1.set_xlabel("frequency ω  (rad/s)")
+        a1.set_ylabel("torque for θ = 1 rad  (N·m)")
+        a1.set_title("they cross at ω = √(k/J) — that IS f_n", fontsize=8.5)
+        c.legend(a1, loc="upper left")
+
+        # the same number in the time domain: release from 1 rad, light damping
+        zeta = 0.04
+        wd = wn * math.sqrt(1 - zeta * zeta)
+        dur = 6.0 * (2 * math.pi / wd)
+        ts = [dur * i / 600 for i in range(601)]
+        ys = [math.exp(-zeta * wn * t) * math.cos(wd * t) for t in ts]
+        a2.plot(ts, ys, color=theme.ACCENT, lw=2.0)
+        a2.plot(ts, [math.exp(-zeta * wn * t) for t in ts],
+                color=theme.VIOLET, lw=1.0, ls=":")
+        a2.plot(ts, [-math.exp(-zeta * wn * t) for t in ts],
+                color=theme.VIOLET, lw=1.0, ls=":")
+        a2.axhline(0, color=theme.BORDER, lw=1.0)
+        for n in range(1, 7):
+            tp = n / fn
+            if tp < dur:
+                a2.axvline(tp, color=theme.TEXT_FAINT, lw=0.7, ls=":")
+        a2.set_xlabel("time (s)")
+        a2.set_ylabel("θ (rad)")
+        a2.set_title(f"released from 1 rad — rings at {fn:.2f} Hz",
+                     fontsize=8.5)
+        c.refresh(layout=not self._el_drawn)
+        self._el_drawn = True
+
+        self.t_el.setText(
+            f"<b>k = {k:.0f} N·m/rad against J = {j:.3f} kg·m² gives "
+            f"f<sub>n</sub> = {fn:.2f} Hz.</b> Below that the joint pushes "
+            f"back with stiffness; above it, with mass. To double "
+            f"f<sub>n</sub> you must <b>quadruple k</b> — and on the next "
+            f"page quadrupling k is exactly what stops the spring protecting "
+            f"anybody, which is the whole trade in one sentence.")
 
     def _vals(self):
         return self.s_jm.value() / 1000.0, self.s_jl.value() / 1000.0
@@ -737,6 +1160,224 @@ class SEAPage(Page):
             "bandwidth</b> — is the whole reason SEAs trade safety for speed.",
             "key"))
 
+        # ==================================================================
+        # the ceiling, closed round a real loop and measured
+        # ==================================================================
+        self.add(hline())
+        self.add(title("The ceiling, and a loop running into it"))
+
+        why = Card("why the spring's frequency is a CEILING and not just "
+                   "another pole")
+        why.add(body(
+            "The card above says f<sub>n</sub> \"limits\" tracking. That is "
+            "true but soft — plenty of poles sit in a loop without limiting "
+            "anything. What makes this one a hard ceiling is that it does "
+            "<b>two things at the same frequency</b>, and they compound."))
+        why.add(body(
+            "&nbsp;&nbsp;<b>1 · It hands the loop 180° of phase lag</b>, "
+            "almost all of it inside one octave, because the spring's damping "
+            "ζ<sub>r</sub> is tiny and the transition is therefore sharp.<br>"
+            "&nbsp;&nbsp;<b>2 · It multiplies the magnitude by "
+            "Q = 1/(2ζ<sub>r</sub>)</b> at that same frequency. A steel "
+            "flexure at ζ<sub>r</sub> = 0.05 is a <b>ten-times amplifier</b> "
+            "sitting exactly where the phase has just gone through −180°."))
+        why.add(callout(
+            "<b>That coincidence is the whole problem.</b> An ordinary plant "
+            "is safe because phase and magnitude are racing each other: by "
+            "the time the phase crawls to −180°, the plant's own rolloff has "
+            "crushed the gain far below 1, so there is nothing left to "
+            "sustain an oscillation.<br><br>"
+            "<b>A lightly damped series resonance breaks that race in the "
+            "worst possible way — it supplies the phase AND boosts the gain, "
+            "at the same frequency.</b> It is the same structural problem as "
+            "a pure transport delay, except a delay merely refuses to "
+            "attenuate, whereas a resonance actively amplifies.<br><br>"
+            "So gain margin, which was infinite on the rigid actuator of the "
+            "previous page, becomes finite the moment you fit the spring — "
+            "and it can be <i>negative before you have tuned anything</i>.",
+            "warn"))
+        why.add(body(
+            "Demanding a gain margin of a factor g at that resonance, and "
+            "taking the loop's magnitude out there as roughly "
+            "ω<sub>gc</sub>/ω<sub>res</sub>, gives the bound the Bode page "
+            "derived:"))
+        why.add(math_label(r"Q\,\frac{\omega_{gc}}{\omega_{res}} \leq "
+                           r"\frac{1}{g} \qquad\Longrightarrow\qquad "
+                           r"\boxed{\;\omega_{gc} \;\leq\; "
+                           r"\frac{2\zeta_r}{g}\,\omega_{res}\;}", 17))
+        why.add(body(
+            "<b>Read what is in that inequality and what is not.</b> In it: "
+            "the stiffness, the two inertias, and <b>the damping of a spring "
+            "nobody designed to be damped</b>. Not in it: your gains, your "
+            "sample rate, your control law, your budget. <b>That is what "
+            "makes it a property of the hardware.</b>", dim=True))
+        why.add(callout(
+            "<b>Two honest caveats, because the widget below will show you "
+            "both whether or not this card mentions them.</b><br><br>"
+            "<b>1 · That bound assumes the −180° crossing happens AT the "
+            "resonance.</b> On the Bode page's plant it did. On <i>this</i> "
+            "plant it does not: θ<sub>L</sub>/τ has a pole at the origin and "
+            "a real load pole, which between them drag the phase to −180° "
+            "<b>below</b> the resonance — at about 0.7 ω<sub>res</sub> — so "
+            "gain margin is measured before the resonance peak is even "
+            "reached. The bound is therefore <b>conservative here, often by "
+            "a factor of five or more.</b><br><br>"
+            "<b>2 · Because of that, ζ<sub>r</sub> barely helps a pure-P "
+            "loop.</b> Damping the spring lowers the resonance peak, but the "
+            "peak is not what is binding; meanwhile the damper adds a zero at "
+            "−k/b<sub>s</sub> that <i>lifts</i> the loop gain near the phase "
+            "crossing. Measured on this plant, raising ζ<sub>r</sub> from "
+            "0.02 to 0.4 moves the achievable crossover from 5.3 Hz to "
+            "4.3 Hz — slightly <b>worse</b>.<br><br>"
+            "<b>Neither caveat rescues the spring.</b> The ceiling is still "
+            "there, it is still mechanical, and it still scales with √k. It "
+            "is simply set by the phase crossing rather than by Q. Press "
+            "presets 5 and 6 to see the case where ζ<sub>r</sub> becomes "
+            "decisive after all.", "warn"))
+        self.add(why)
+
+        law = Card("what the ceiling actually is on this plant — measured, "
+                   "not assumed")
+        law.add(body(
+            "The widget searches for the largest crossover that still holds "
+            "6 dB of gain margin, at each stiffness. Run that search across "
+            "four decades of k and the answer is strikingly regular:"))
+        law.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>k (N·m/rad)</b></td><td><b>f<sub>res</sub></b></td>"
+            "<td><b>√(k/J<sub>L</sub>)/2π</b></td>"
+            "<td><b>max crossover</b></td>"
+            "<td><b>÷ √(k/J<sub>L</sub>)</b></td></tr>"
+            "<tr><td>50</td><td>7.3 Hz</td><td>4.6 Hz</td><td>2.76 Hz</td>"
+            "<td>0.60</td></tr>"
+            "<tr><td>180</td><td>13.8 Hz</td><td>8.7 Hz</td><td>5.27 Hz</td>"
+            "<td>0.60</td></tr>"
+            "<tr><td>600</td><td>25.2 Hz</td><td>15.9 Hz</td><td>9.52 Hz</td>"
+            "<td>0.60</td></tr>"
+            "<tr><td>2000</td><td>45.9 Hz</td><td>29.1 Hz</td><td>16.9 Hz</td>"
+            "<td>0.58</td></tr>"
+            "<tr><td>6000</td><td>79.6 Hz</td><td>50.3 Hz</td><td>27.8 Hz</td>"
+            "<td>0.55</td></tr>"
+            "</table>"))
+        law.add(callout(
+            "<b>That last column is the answer to \"what is the bandwidth of "
+            "the elastic element\".</b><br><br>"
+            "&nbsp;&nbsp;<b>f<sub>max</sub> ≈ 0.6 × (1/2π)√(k/J<sub>L</sub>)"
+            "</b>, which is the page's f<sub>n</sub> with a safety factor on "
+            "it — equivalently about <b>0.37 × f<sub>res</sub></b>, and the "
+            "ratio holds to within ten percent over a <b>120×</b> range of "
+            "stiffness.<br><br>"
+            "So the spring's frequency is not a loose analogy for the "
+            "bandwidth. <b>It is the bandwidth, times a constant near 0.6</b>, "
+            "and that constant is set by how much gain margin you insist on "
+            "rather than by anything mechanical. Ask for 12 dB instead of 6 "
+            "and the constant halves; the √k scaling does not budge.<br><br>"
+            "And because it goes as <b>√k</b>, buying bandwidth with "
+            "stiffness is brutally expensive: <b>four times the stiffness for "
+            "twice the bandwidth</b> — and four times the stiffness is a "
+            "spring that deflects a quarter as far under the same impact, "
+            "which is to say a spring that has largely stopped being one.",
+            "key"))
+        self.add(law)
+
+        ceil = Card("close a PD loop round the spring and watch the margin "
+                    "die")
+        ceil.add(body(
+            "This is the SEA plant in full — motor torque in, <b>load</b> "
+            "angle out, four poles — with a filtered-derivative PD wrapped "
+            "round it. Left is the open-loop Bode of L, where the margins "
+            "live; right is the closed-loop step, where you see what the "
+            "margins meant.<br><br>"
+            "The dotted vertical is the resonance. The solid green vertical "
+            "is your crossover. <b>The entire game is keeping those two "
+            "apart.</b>", dim=True))
+        ceil.add(body(
+            "<b>Press the presets in this order — it is a six-step "
+            "argument, and the last two are the interesting ones:</b><br>"
+            "&nbsp;&nbsp;<b>1 · rigid baseline</b> — k is 5500, so the "
+            "resonance sits at 76 Hz, far above crossover. <b>24 dB of gain "
+            "margin</b> and a clean step. This is the previous page's "
+            "actuator, and note it is the <i>spring's</i> stiffness doing "
+            "that, not your gains.<br>"
+            "&nbsp;&nbsp;<b>2 · fit a real spring</b> — k drops to 180, a "
+            "spring that would actually protect someone. The resonance falls "
+            "to 14 Hz. To keep a healthy margin you must back K<sub>p</sub> "
+            "right off, and crossover lands at <b>3.7 Hz</b>.<br>"
+            "&nbsp;&nbsp;<b>3 · push the gain</b> — the instinct that works "
+            "on every rigid plant. Crossover climbs to 5.5 Hz and gain "
+            "margin falls to <b>5.5 dB</b>. You have bought 1.8 Hz and spent "
+            "nearly all your margin for it.<br>"
+            "&nbsp;&nbsp;<b>4 · over the edge</b> — K<sub>p</sub> doubled "
+            "again. Gain margin goes <b>negative</b> and the step diverges, "
+            "ringing at the spring's frequency rather than at anything you "
+            "chose. Note there was no warning region: 5.5 dB to −0.5 dB in "
+            "one doubling.<br>"
+            "&nbsp;&nbsp;<b>5 · add a D term</b> — back to the stable gain, "
+            "but with K<sub>d</sub> = 2. On a rigid joint a D term is free "
+            "damping. Here it <b>destroys the loop</b> — gain margin −9.9 dB "
+            "— because a derivative lifts loop gain at high frequency, which "
+            "is precisely where the resonance peak is waiting.<br>"
+            "&nbsp;&nbsp;<b>6 · damp the spring</b> — identical gains, "
+            "ζ<sub>r</sub> raised from 0.02 to 0.25. <b>Margin returns to "
+            "+4.2 dB and the step settles cleanly.</b> <i>This</i> is where "
+            "spring damping earns its place: not for a P loop, but the "
+            "moment your controller has any high-frequency gain at all.",
+            dim=True))
+        self.s_cjm = slider(2, 200, 40)          # x0.001 kg m^2
+        self.s_cjl = slider(2, 400, 60)          # x0.001
+        self.s_ck = slider(10, 6000, 300)        # N m / rad
+        self.s_czr = slider(1, 50, 5)            # x0.01  spring damping
+        self.s_ckp = slider(5, 6000, 300)
+        self.s_ckd = slider(0, 200, 0)           # x0.1
+        self.l_cjm, self.l_cjl, self.l_ck = QLabel(), QLabel(), QLabel()
+        self.l_czr, self.l_ckp, self.l_ckd = QLabel(), QLabel(), QLabel()
+        ceil.add_layout(slider_row("Motor Jₘ (×0.001)", self.s_cjm,
+                                   self.l_cjm))
+        ceil.add_layout(slider_row("Limb Jʟ (×0.001)", self.s_cjl, self.l_cjl))
+        ceil.add_layout(slider_row("Spring k (N·m/rad)", self.s_ck, self.l_ck))
+        ceil.add_layout(slider_row("Spring damping ζ_r (×0.01)", self.s_czr,
+                                   self.l_czr))
+        ceil.add_layout(slider_row("K_p", self.s_ckp, self.l_ckp))
+        ceil.add_layout(slider_row("K_d (×0.1)", self.s_ckd, self.l_ckd))
+        ceil.add_layout(preset_row(
+            ("1 · rigid baseline",
+             lambda: self._preset_ceil(jm=40, jl=60, k=5500, zr=2, kp=300,
+                                       kd=0)),
+            ("2 · fit a real spring",
+             lambda: self._preset_ceil(jm=40, jl=60, k=180, zr=2, kp=50,
+                                       kd=0)),
+            ("3 · push the gain",
+             lambda: self._preset_ceil(jm=40, jl=60, k=180, zr=2, kp=100,
+                                       kd=0)),
+            ("4 · over the edge",
+             lambda: self._preset_ceil(jm=40, jl=60, k=180, zr=2, kp=200,
+                                       kd=0)),
+            ("5 · add a D term",
+             lambda: self._preset_ceil(jm=40, jl=60, k=180, zr=2, kp=100,
+                                       kd=20)),
+            ("6 · damp the spring",
+             lambda: self._preset_ceil(jm=40, jl=60, k=180, zr=25, kp=100,
+                                       kd=20)),
+            ("reset",
+             lambda: self._preset_ceil(jm=40, jl=60, k=300, zr=5, kp=100,
+                                       kd=0))))
+        self.st_cres = Stat("resonance f_res", "--", theme.BAD)
+        self.st_cgc = Stat("your crossover", "--", theme.GOOD)
+        self.st_cgm = Stat("gain margin", "--", theme.WARN)
+        self.st_cbound = Stat("Bode-page bound", "--", theme.VIOLET)
+        self.st_cmax = Stat("measured ceiling", "--", theme.CYAN)
+        ceil.add_layout(stat_row(self.st_cres, self.st_cgc, self.st_cgm,
+                                 self.st_cbound, self.st_cmax))
+        self.c_ceil = MplCanvas(width=7.6, height=4.4, nrows=2, ncols=2)
+        self._ceil_drawn = False
+        ceil.add(self.c_ceil)
+        self.t_ceil = body("", dim=True)
+        ceil.add(self.t_ceil)
+        self.add(ceil)
+        for s in (self.s_cjm, self.s_cjl, self.s_ck, self.s_czr, self.s_ckp,
+                  self.s_ckd):
+            s.valueChanged.connect(self._redraw_ceiling)
+
         num = Card("so what do 50–100 Hz and 10–20 Hz actually mean?")
         num.add(body(
             "They are <b>closed-loop force-control bandwidths</b>: the frequency "
@@ -886,7 +1527,149 @@ class SEAPage(Page):
         self.add(pc)
 
         self._redraw()
+        self._redraw_ceiling()
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _preset_ceil(self, **kw):
+        for name, sld in (("jm", self.s_cjm), ("jl", self.s_cjl),
+                          ("k", self.s_ck), ("zr", self.s_czr),
+                          ("kp", self.s_ckp), ("kd", self.s_ckd)):
+            if name in kw:
+                sld.blockSignals(True)
+                sld.setValue(int(kw[name]))
+                sld.blockSignals(False)
+        self._redraw_ceiling()
+
+    def _ceil_params(self):
+        return (self.s_cjm.value() / 1000.0,
+                self.s_cjl.value() / 1000.0,
+                float(self.s_ck.value()),
+                self.s_czr.value() / 100.0,
+                float(self.s_ckp.value()),
+                self.s_ckd.value() / 10.0)
+
+    def _redraw_ceiling(self):
+        jm, jl, k, zr, kp, kd = self._ceil_params()
+        self.l_cjm.setText(f"{jm:.3f}")
+        self.l_cjl.setText(f"{jl:.3f}")
+        self.l_ck.setText(f"{k:.0f}")
+        self.l_czr.setText(f"{zr:.2f}")
+        self.l_ckp.setText(f"{kp:.0f}")
+        self.l_ckd.setText(f"{kd:.1f}")
+
+        plant = sea_plant(jm, jl, k, 0.4, zr)
+        loop = pd_loop(plant, kp, kd)
+        mg = margins(loop)
+        f_res = sea_resonance_rad_s(k, jm, jl) / (2.0 * math.pi)
+        f_gc = mg.wgc / (2.0 * math.pi) if mg.wgc else 0.0
+        bound = sea_crossover_ceiling_hz(k, jm, jl, zr, 6.0)
+        fmax = max_sea_crossover_hz(jm, jl, k, zr, kd)
+
+        self.st_cres.set(f"{f_res:.1f} Hz")
+        self.st_cgc.set(f"{f_gc:.2f} Hz" if f_gc else "—")
+        gm = mg.gain_margin_db
+        self.st_cgm.set("∞" if not math.isfinite(gm) else f"{gm:.1f} dB")
+        self.st_cgm.set_color(theme.GOOD if (not math.isfinite(gm) or gm >= 6)
+                              else (theme.WARN if gm > 0 else theme.BAD))
+        self.st_cbound.set(f"{bound:.2f} Hz" if math.isfinite(bound) else "∞")
+        self.st_cmax.set(f"{fmax:.2f} Hz" if fmax else "none")
+
+        c = self.c_ceil
+        c.clear()
+        a_m, a_p, a_s, a_b = c.axes
+
+        ws = log_freqs(max(0.05, f_res * 0.003) * 2 * math.pi,
+                       f_res * 40.0 * 2 * math.pi, 420)
+        _, mag, ph = bode(loop, ws)
+        fs_ = [w / (2 * math.pi) for w in ws]
+        a_m.semilogx(fs_, mag, color=theme.ACCENT, lw=2.0)
+        a_m.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_m.axvline(f_res, color=theme.BAD, lw=1.3, ls=":")
+        if f_gc:
+            a_m.axvline(f_gc, color=theme.GOOD, lw=1.3)
+        a_m.set_ylim(-80, max(40, max(mag) + 6))
+        a_m.set_ylabel("|L| (dB)")
+        a_m.set_title("loop gain — dotted red is the spring resonance",
+                      fontsize=8)
+        a_p.semilogx(fs_, ph, color=theme.ACCENT, lw=2.0)
+        a_p.axhline(-180, color=theme.BAD, lw=1.1, ls=":")
+        a_p.axvline(f_res, color=theme.BAD, lw=1.3, ls=":")
+        if f_gc:
+            a_p.axvline(f_gc, color=theme.GOOD, lw=1.3)
+        a_p.set_ylim(max(-560, min(ph) - 20), 20)
+        a_p.set_ylabel("∠L (deg)")
+        a_p.set_xlabel("frequency (Hz)")
+        a_p.set_title("180° of lag arrives in one octave", fontsize=8)
+
+        cl = loop.feedback()
+        dur = min(4.0, max(0.5, 18.0 / max(f_res, 1.0)))
+        t, y = step_response(cl, dur, dur / 600.0)
+        stable = max(abs(v) for v in y) < 12.0
+        a_s.plot(t, y, color=theme.GOOD if stable else theme.BAD, lw=2.0)
+        a_s.axhline(1.0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_s.set_ylim(-0.6, 2.6 if stable else 12.0)
+        a_s.set_xlabel("time (s)")
+        a_s.set_ylabel("load angle")
+        a_s.set_title("closed-loop step", fontsize=8)
+
+        # the ceiling picture: bound, true max, and where you actually are
+        names = ["Bode-page\nbound", "measured\nceiling", "you", "resonance"]
+        vals = [bound if math.isfinite(bound) else 0.0, fmax, f_gc, f_res]
+        cols = [theme.VIOLET, theme.CYAN, theme.GOOD, theme.BAD]
+        a_b.bar(names, vals, color=cols, alpha=0.85)
+        a_b.set_ylabel("Hz")
+        a_b.set_title("the ceiling, three ways", fontsize=8)
+        a_b.tick_params(axis="x", labelsize=7)
+        for i, v in enumerate(vals):
+            if v > 0:
+                a_b.text(i, v, f" {v:.1f}", ha="center", va="bottom",
+                         color=theme.TEXT_DIM, fontsize=7)
+        # tight_layout is ~70% of a four-pane redraw and the pane geometry
+        # never changes after the first one, so pay for it once
+        c.refresh(layout=not self._ceil_drawn)
+        self._ceil_drawn = True
+
+        f_load = elastic_corner_hz(k, jl)
+        if not stable:
+            verdict = (f"<b>Unstable.</b> Gain margin is {gm:.1f} dB, so the "
+                       f"loop sustains its own oscillation — and look at the "
+                       f"step: it is ringing near <b>{f_res:.1f} Hz</b>, the "
+                       f"<i>spring's</i> frequency, not anything you chose. "
+                       f"That is the signature worth recognising on "
+                       f"hardware: when a compliant joint goes unstable it "
+                       f"rings at the mechanism, which is why turning the "
+                       f"gain down is the only thing that helps and retuning "
+                       f"K<sub>d</sub> often makes it worse.")
+        elif math.isfinite(gm) and gm < 6.0:
+            verdict = (f"<b>Stable but thin.</b> {gm:.1f} dB of gain margin "
+                       f"is a factor of only {10**(gm/20):.1f}× — and a "
+                       f"spring's k moves with temperature and fatigue while "
+                       f"J<sub>L</sub> moves with every payload. This is not "
+                       f"enough room to ship.")
+        else:
+            verdict = (f"<b>Healthy.</b> Crossover {f_gc:.2f} Hz sits "
+                       f"{f_res/max(f_gc,1e-6):.1f}× below the "
+                       f"{f_res:.1f} Hz resonance, with "
+                       + ("infinite" if not math.isfinite(gm)
+                          else f"{gm:.1f} dB of") + " gain margin.")
+
+        if fmax > 0 and f_load > 0:
+            verdict += (
+                f"<br><br><b>This spring's ceiling is {fmax:.2f} Hz</b> — "
+                f"the largest crossover that still holds 6 dB, found by "
+                f"search rather than formula. That is "
+                f"<b>{fmax/f_load:.2f} × √(k/J<sub>L</sub>)/2π</b> and "
+                f"{fmax/max(f_res,1e-6):.2f} × f<sub>res</sub>, and both "
+                f"ratios stay put as you drag k — which is the sense in "
+                f"which the spring's frequency <i>is</i> the bandwidth.")
+        if math.isfinite(bound) and bound > 0 and fmax > 0:
+            verdict += (
+                f" The Bode page's bound says {bound:.2f} Hz, a factor of "
+                f"{fmax/bound:.1f} lower, because on this plant the −180° "
+                f"crossing happens below the resonance rather than at it. "
+                f"<b>Use it as a design-stage floor, not a prediction.</b>")
+        self.t_ceil.setText(verdict)
 
     def _vals(self):
         return (self.s_jm.value() / 1000.0,
@@ -1071,6 +1854,151 @@ class PEAPage(Page):
         for s in (self.s_jm, self.s_jl, self.s_k):
             s.valueChanged.connect(self._redraw)
 
+        # ==================================================================
+        # the same spring, the other side of the motor
+        # ==================================================================
+        self.add(hline())
+        self.add(title("The same spring, the other side of the motor — and "
+                       "why its frequency is a FLOOR here, not a ceiling"))
+
+        ask = Card("the question the previous page leaves you holding")
+        ask.add(body(
+            "The SEA page ended with a hard number: a series spring caps your "
+            "crossover at about <b>0.6 × (1/2π)√(k/J<sub>L</sub>)</b>, and no "
+            "controller moves it. The obvious next question is whether a "
+            "parallel spring costs you the same thing — it is, after all, the "
+            "same spring with the same stiffness and the same natural "
+            "frequency.<br><br>"
+            "<b>It does not. It does the opposite.</b> And the reason is one "
+            "line of algebra."))
+        ask.add(math_label(r"\text{SEA:}\;\; \frac{\theta_L}{\tau} = "
+                           r"\frac{k}{J_mJ_Ls^4 + \dots} "
+                           r"\qquad\qquad "
+                           r"\text{PEA:}\;\; \frac{\theta}{\tau} = "
+                           r"\frac{1}{(J_m{+}J_L)s^2 + bs + k}", 16))
+        ask.add(body(
+            "The series spring put a <b>fourth-order</b> plant in your loop, "
+            "with a lightly damped pole pair sitting in the middle of it. The "
+            "parallel spring left the order exactly where it was — <b>still "
+            "two poles</b> — and simply added <b>+k</b> to the stiffness term "
+            "that was already there."))
+        ask.add(callout(
+            "<b>Now close a proportional loop round each and read where the "
+            "spring ends up.</b><br><br>"
+            "For the PEA, the closed-loop denominator is "
+            "(J<sub>m</sub>+J<sub>L</sub>)s² + (b+K<sub>d</sub>)s + "
+            "<b>(k + K<sub>p</sub>)</b>. The spring's stiffness lands in the "
+            "<i>same slot</i> as your proportional gain — they are added "
+            "together, and the closed loop cannot tell them apart:", "key"))
+        ask.add(math_label(r"\omega_n^{PEA} = \sqrt{\frac{k + K_p}"
+                           r"{J_m + J_L}}", 18))
+        ask.add(body(
+            "<b>So in a parallel actuator the spring is free proportional "
+            "gain.</b> It raises the natural frequency exactly as if you had "
+            "turned K<sub>p</sub> up, it costs no phase, it adds no order, "
+            "and it consumes no torque budget to hold. Set K<sub>p</sub> to "
+            "<b>zero</b> and the joint still has a bandwidth of "
+            "√(k/(J<sub>m</sub>+J<sub>L</sub>)) — <b>a passive bandwidth, "
+            "with the controller switched off.</b><br><br>"
+            "That is why the same √(k/J) that was a ceiling one page ago is a "
+            "<b>floor</b> here: it is the slowest the joint can be, not the "
+            "fastest.", dim=True))
+        ask.add(callout(
+            "<b>One sentence, and it is the one to remember out of both "
+            "pages.</b><br><br>"
+            "<b>A series spring is in the force path, so it filters what the "
+            "motor can do — it is a lag. A parallel spring is beside the "
+            "force path, so it adds to what the motor does — it is a "
+            "gain.</b><br><br>"
+            "Same component, same stiffness, same stored energy, opposite "
+            "sign of consequence, decided entirely by which side of the load "
+            "it is bolted to. Everything else on these two pages is "
+            "bookkeeping on that sentence.", "good"))
+        self.add(ask)
+
+        cmp_ = Card("both loops, same spring, same gains — side by side")
+        cmp_.add(body(
+            "Identical J<sub>m</sub>, J<sub>L</sub>, k and gains fed to both "
+            "topologies. Top row is the loop gain of each; bottom left is the "
+            "two closed-loop steps; bottom right compares the bandwidths that "
+            "result.<br><br>"
+            "<b>The three things to watch as you drag k upward:</b><br>"
+            "&nbsp;&nbsp;<b>1.</b> The <b>SEA</b> curve grows a resonant peak "
+            "and its gain margin is finite and falling. The <b>PEA</b> curve "
+            "has no peak and <b>no −180° crossing at all</b>, so its gain "
+            "margin stays at ∞ for every gain you can type.<br>"
+            "&nbsp;&nbsp;<b>2.</b> The PEA bandwidth <b>rises</b> with k, "
+            "because k is adding to K<sub>p</sub>. The SEA bandwidth rises "
+            "only as √k and stays pinned below its ceiling.<br>"
+            "&nbsp;&nbsp;<b>3.</b> Set <b>K<sub>p</sub> = 5</b>, essentially "
+            "no controller. The PEA joint is still <b>fast and stiff</b> — "
+            "ω<sub>n</sub> = √(k/(J<sub>m</sub>+J<sub>L</sub>)) with the "
+            "controller switched off — while the SEA goes limp. <b>That is "
+            "the parallel spring holding the joint up for free.</b><br><br>"
+            "<b>And then read the steady-state error stat, because that is "
+            "the bill.</b> A parallel spring pulls back against your "
+            "command, so a proportional loop settles at "
+            "K<sub>p</sub>/(k+K<sub>p</sub>) of where you asked — at "
+            "K<sub>p</sub> = 5 against k = 3000 that is a <b>99.8% "
+            "error</b>. The joint is stiff, fast and in the wrong place. "
+            "Fixing it needs an integrator, or a feedforward torque that "
+            "cancels the spring — which is precisely the gravity-"
+            "compensation section below.<br><br>"
+            "<b>So the steps are drawn scaled to their own final values</b>, "
+            "because the honest comparison is of <i>shape</i> — how fast, "
+            "how damped — with the offset reported separately rather than "
+            "hidden inside a curve that never leaves zero. The SEA, by "
+            "contrast, has a pole at the origin and therefore <b>no "
+            "steady-state error at all</b>: slower, but it does arrive.",
+            dim=True))
+        self.s_pjm = slider(2, 200, 40)
+        self.s_pjl = slider(2, 400, 60)
+        self.s_pk = slider(0, 6000, 600)
+        self.s_pzr = slider(1, 50, 5)
+        self.s_pkp = slider(0, 4000, 300)
+        self.s_pkd = slider(0, 200, 0)
+        self.l_pjm, self.l_pjl, self.l_pk = QLabel(), QLabel(), QLabel()
+        self.l_pzr, self.l_pkp, self.l_pkd = QLabel(), QLabel(), QLabel()
+        cmp_.add_layout(slider_row("Motor Jₘ (×0.001)", self.s_pjm,
+                                   self.l_pjm))
+        cmp_.add_layout(slider_row("Limb Jʟ (×0.001)", self.s_pjl, self.l_pjl))
+        cmp_.add_layout(slider_row("Spring k (N·m/rad)", self.s_pk, self.l_pk))
+        cmp_.add_layout(slider_row("Spring damping ζ_r (×0.01)", self.s_pzr,
+                                   self.l_pzr))
+        cmp_.add_layout(slider_row("K_p", self.s_pkp, self.l_pkp))
+        cmp_.add_layout(slider_row("K_d (×0.1)", self.s_pkd, self.l_pkd))
+        cmp_.add_layout(preset_row(
+            ("no spring at all",
+             lambda: self._preset_pea(k=0, kp=300, kd=0)),
+            ("soft spring — SEA dies",
+             lambda: self._preset_pea(k=120, kp=300, kd=0)),
+            ("soft spring — SEA detuned",
+             lambda: self._preset_pea(k=120, kp=40, kd=0)),
+            ("stiff spring",
+             lambda: self._preset_pea(k=3000, kp=300, kd=0)),
+            ("switch the controller off",
+             lambda: self._preset_pea(k=3000, kp=5, kd=0)),
+            ("reset",
+             lambda: self._preset_pea(jm=40, jl=60, k=600, zr=5, kp=300,
+                                      kd=0))))
+        self.st_pgmS = Stat("SEA gain margin", "--", theme.BAD)
+        self.st_pgmP = Stat("PEA gain margin", "--", theme.GOOD)
+        self.st_pbwS = Stat("SEA bandwidth", "--", theme.WARN)
+        self.st_pbwP = Stat("PEA bandwidth", "--", theme.VIOLET)
+        self.st_ppass = Stat("PEA with K_p = 0", "--", theme.CYAN)
+        self.st_psse = Stat("PEA steady-state error", "--", theme.BAD)
+        cmp_.add_layout(stat_row(self.st_pgmS, self.st_pgmP, self.st_pbwS,
+                                 self.st_pbwP, self.st_ppass, self.st_psse))
+        self.c_cmp = MplCanvas(width=7.6, height=4.4, nrows=2, ncols=2)
+        self._cmp_drawn = False
+        cmp_.add(self.c_cmp)
+        self.t_cmp = body("", dim=True)
+        cmp_.add(self.t_cmp)
+        self.add(cmp_)
+        for s in (self.s_pjm, self.s_pjl, self.s_pk, self.s_pzr, self.s_pkp,
+                  self.s_pkd):
+            s.valueChanged.connect(self._redraw_cmp)
+
         # ---- gravity compensation ------------------------------------------
         self.add(hline())
         self.add(title("Why a PEA exists: gravity compensation"))
@@ -1171,7 +2099,201 @@ class PEAPage(Page):
             "ankle for balance and impact, PEA in the knee to hold up the torso "
             "without draining the battery.", "good"))
 
+        self._redraw_cmp()
         self.finish()
+
+    # ------------------------------------------------------------------
+    def _preset_pea(self, **kw):
+        for name, sld in (("jm", self.s_pjm), ("jl", self.s_pjl),
+                          ("k", self.s_pk), ("zr", self.s_pzr),
+                          ("kp", self.s_pkp), ("kd", self.s_pkd)):
+            if name in kw:
+                sld.blockSignals(True)
+                sld.setValue(int(kw[name]))
+                sld.blockSignals(False)
+        self._redraw_cmp()
+
+    def _redraw_cmp(self):
+        """
+        The same spring in both topologies, with the same gains, so the only
+        difference on screen is WHERE it is bolted.
+        """
+        jm = self.s_pjm.value() / 1000.0
+        jl = self.s_pjl.value() / 1000.0
+        k = float(self.s_pk.value())
+        zr = self.s_pzr.value() / 100.0
+        kp = float(self.s_pkp.value())
+        kd = self.s_pkd.value() / 10.0
+        self.l_pjm.setText(f"{jm:.3f}")
+        self.l_pjl.setText(f"{jl:.3f}")
+        self.l_pk.setText(f"{k:.0f}")
+        self.l_pzr.setText(f"{zr:.2f}")
+        self.l_pkp.setText(f"{kp:.0f}")
+        self.l_pkd.setText(f"{kd:.1f}")
+
+        l_pea = pd_loop(pea_plant(jm, jl, k), kp, kd)
+        t_pea = l_pea.feedback()
+        bw_pea = closed_loop_bw_hz(t_pea)
+        mg_pea = margins(l_pea, 1e-2, 1e5, 600)
+
+        sea_ok = True
+        if k > 0:
+            l_sea = pd_loop(sea_plant(jm, jl, k, 0.4, zr), kp, kd)
+            t_sea = l_sea.feedback()
+            # a -3 dB point on a diverging closed loop is a meaningless
+            # number, so check before quoting one
+            sea_ok = is_stable(t_sea.den)
+            bw_sea = closed_loop_bw_hz(t_sea) if sea_ok else 0.0
+            mg_sea = margins(l_sea, 1e-2, 1e5, 600)
+        else:
+            l_sea = t_sea = None
+            bw_sea, mg_sea = 0.0, None
+
+        # the whole point: a parallel spring alone, controller switched off
+        passive = closed_loop_bw_hz(pd_loop(pea_plant(jm, jl, k), 0.0,
+                                            0.0).feedback()) if k > 0 else 0.0
+        if k > 0:
+            passive = elastic_corner_hz(k, jm + jl)
+
+        gm_s = mg_sea.gain_margin_db if mg_sea else float("nan")
+        gm_p = mg_pea.gain_margin_db
+        self.st_pgmS.set("—" if k <= 0 else
+                         ("∞" if not math.isfinite(gm_s) else f"{gm_s:.1f} dB"))
+        self.st_pgmS.set_color(theme.GOOD if (k <= 0 or not math.isfinite(gm_s)
+                                              or gm_s >= 6) else theme.BAD)
+        self.st_pgmP.set("∞" if not math.isfinite(gm_p) else f"{gm_p:.1f} dB")
+        self.st_pgmP.set_color(theme.GOOD if (not math.isfinite(gm_p)
+                                              or gm_p >= 6) else theme.BAD)
+        self.st_pbwS.set("—" if k <= 0 else
+                         ("UNSTABLE" if not sea_ok else f"{bw_sea:.2f} Hz"))
+        self.st_pbwS.set_color(theme.BAD if (k > 0 and not sea_ok)
+                               else theme.WARN)
+        self.st_pbwP.set(f"{bw_pea:.2f} Hz")
+        self.st_ppass.set("no spring" if k <= 0 else f"{passive:.2f} Hz")
+        # the parallel spring's bill: it pulls back against the command, so
+        # a P loop cannot hold a setpoint without an offset
+        dc_pea = abs(t_pea.response(1e-6))
+        sse = max(0.0, 1.0 - dc_pea)
+        self.st_psse.set("no loop" if dc_pea <= 1e-9 else f"{sse*100:.1f}%")
+        self.st_psse.set_color(theme.TEXT_DIM if dc_pea <= 1e-9 else
+                               (theme.GOOD if sse < 0.1 else
+                                (theme.WARN if sse < 0.5 else theme.BAD)))
+
+        c = self.c_cmp
+        c.clear()
+        a_m, a_p, a_s, a_b = c.axes
+        ref = max(bw_pea, bw_sea, passive, 1.0)
+        ws = log_freqs(0.02 * ref * 2 * math.pi, 300.0 * ref * 2 * math.pi, 420)
+        fs_ = [w / (2 * math.pi) for w in ws]
+
+        _, mp_, pp_ = bode(l_pea, ws)
+        a_m.semilogx(fs_, mp_, color=theme.VIOLET, lw=2.0, label="PEA")
+        a_p.semilogx(fs_, pp_, color=theme.VIOLET, lw=2.0)
+        if l_sea is not None:
+            _, ms_, ps_ = bode(l_sea, ws)
+            a_m.semilogx(fs_, ms_, color=theme.WARN, lw=2.0, label="SEA")
+            a_p.semilogx(fs_, ps_, color=theme.WARN, lw=2.0)
+        a_m.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_m.set_ylim(-90, 70)
+        a_m.set_ylabel("|L| (dB)")
+        a_m.set_title("loop gain — same spring, same gains", fontsize=8)
+        c.legend(a_m, loc="lower left")
+        a_p.axhline(-180, color=theme.BAD, lw=1.1, ls=":")
+        a_p.set_ylim(-560, 20)
+        a_p.set_ylabel("∠L (deg)")
+        a_p.set_xlabel("frequency (Hz)")
+        a_p.set_title("PEA never reaches −180°; SEA sails past it",
+                      fontsize=8)
+
+        # Normalise each step by its own DC gain. Without this the PEA looks
+        # broken rather than offset: a parallel spring pulls back against the
+        # command, so its DC gain is Kp/(k+Kp) and the raw curve barely
+        # leaves zero. The SHAPE is what is being compared here; the offset
+        # is reported separately, because it is a real cost and not a
+        # plotting artefact.
+        dur = min(3.0, max(0.25, 12.0 / max(ref, 1.0)))
+        dc_p = abs(t_pea.response(1e-6))
+        t1, y1 = step_response(t_pea, dur, dur / 600.0)
+        # Kp = 0 with no spring is a loop with no gain at all: there is no
+        # final value to scale by, so plot it raw rather than dividing by it
+        if dc_p <= 1e-9:
+            pea_lbl, pea_y = "PEA (no loop gain)", list(y1)
+        elif dc_p < 0.95:
+            pea_lbl, pea_y = f"PEA (×{1/dc_p:.0f})", [v / dc_p for v in y1]
+        else:
+            pea_lbl, pea_y = "PEA", [v / dc_p for v in y1]
+        a_s.plot(t1, pea_y, color=theme.VIOLET, lw=2.0, label=pea_lbl)
+        ymax = 2.2
+        if t_sea is not None and sea_ok:
+            dc_s = abs(t_sea.response(1e-6))
+            t2, y2 = step_response(t_sea, dur, dur / 600.0)
+            ys = [v / dc_s if dc_s > 1e-9 else 0.0 for v in y2]
+            a_s.plot(t2, ys, color=theme.WARN, lw=2.0, label="SEA")
+            ymax = max(2.2, min(6.0, max(abs(v) for v in ys) * 1.1))
+        a_s.axhline(1.0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
+        a_s.set_ylim(-0.4, ymax)
+        a_s.set_xlabel("time (s)")
+        a_s.set_ylabel("angle ÷ its own final value")
+        a_s.set_title("step SHAPE (each scaled to its own DC gain)",
+                      fontsize=8)
+        c.legend(a_s, loc="lower right")
+
+        names = ["SEA", "PEA", "PEA,\nK_p = 0"]
+        vals = [bw_sea, bw_pea, passive]
+        a_b.bar(names, vals, color=[theme.WARN, theme.VIOLET, theme.CYAN],
+                alpha=0.85)
+        for idx, v in enumerate(vals):
+            if v > 0:
+                a_b.text(idx, v, f" {v:.1f}", ha="center", va="bottom",
+                         color=theme.TEXT_DIM, fontsize=7)
+        a_b.set_ylabel("closed-loop −3 dB (Hz)")
+        a_b.set_title("bandwidth that results", fontsize=8)
+        a_b.tick_params(axis="x", labelsize=7)
+        c.refresh(layout=not self._cmp_drawn)
+        self._cmp_drawn = True
+
+        if k <= 0:
+            self.t_cmp.setText(
+                "<b>k = 0 — there is no spring, so both topologies are the "
+                "same rigid joint.</b> This is the baseline: everything "
+                "below is what happens when you add the identical spring in "
+                "the two possible places.")
+        elif not sea_ok:
+            self.t_cmp.setText(
+                f"<b>At these gains the SEA loop is unstable and the PEA "
+                f"loop is not — with the identical spring.</b> The SEA's "
+                f"gain margin is {gm_s:.1f} dB; the PEA's is infinite, "
+                f"because a parallel spring adds no order and no phase, so "
+                f"its loop never reaches −180° to begin with.<br><br>"
+                f"There is no SEA bandwidth to quote here: a −3 dB point on "
+                f"a diverging response is not a number. Back K<sub>p</sub> "
+                f"off until the SEA is stable again and compare then — you "
+                f"will find you had to give up most of the gain that the PEA "
+                f"is still happily using.")
+        else:
+            ratio = bw_pea / bw_sea if bw_sea > 0 else float("inf")
+            self.t_cmp.setText(
+                f"<b>Same spring, k = {k:.0f}. SEA bandwidth "
+                f"{bw_sea:.2f} Hz, PEA bandwidth {bw_pea:.2f} Hz — a factor "
+                f"of {ratio:.1f}.</b><br><br>"
+                f"The PEA's gain margin is "
+                + ("<b>infinite</b>, because its loop phase never reaches "
+                   "−180° at all" if not math.isfinite(gm_p)
+                   else f"{gm_p:.1f} dB")
+                + (f", while the SEA's is {gm_s:.1f} dB"
+                   if math.isfinite(gm_s) else ", while the SEA's is ∞")
+                + f". And with the controller switched off entirely the PEA "
+                f"still has <b>{passive:.2f} Hz</b> of passive bandwidth "
+                f"from the spring alone — the SEA has none, because its "
+                f"spring is in the way rather than alongside."
+                f"<br><br><b>The parallel spring's bill: "
+                f"{sse*100:.1f}% steady-state error.</b> It pulls back "
+                f"against the command, so this P loop settles at "
+                f"K<sub>p</sub>/(k+K<sub>p</sub>) of the setpoint. The SEA "
+                f"has none — its plant contains an integrator. <b>Parallel "
+                f"buys you speed and stiffness and charges you position "
+                f"accuracy; series buys you protection and charges you "
+                f"bandwidth.</b>")
 
     def _redraw(self):
         jm = self.s_jm.value() / 1000.0
@@ -1479,6 +2601,105 @@ class ActuatorCompare(Page):
             s.valueChanged.connect(self._redraw_bw)
         self._redraw_bw()
 
+        # ==================================================================
+        # the money plot: sweep the spring and watch the two ceilings diverge
+        # ==================================================================
+        self.add(hline())
+        self.add(title("Sweep the spring itself — one plot with both ceilings "
+                       "on it"))
+
+        sw = Card("achievable bandwidth against stiffness, for all three "
+                  "topologies at once")
+        sw.add(body(
+            "Everything on the last three pages has been at one stiffness at "
+            "a time. This sweeps k across four decades and asks, at each "
+            "value, <b>what bandwidth can this topology actually deliver</b> "
+            "— by searching for the largest gain that still holds the margin "
+            "you set, not by quoting a formula.<br><br>"
+            "Three curves, and they have three different shapes for three "
+            "different reasons:"))
+        sw.add(body(
+            "&nbsp;&nbsp;• <b>Direct drive is flat.</b> It has no spring, so "
+            "k is not in its equations at all. Its ceiling is the "
+            "implementation one — f<sub>s</sub>/15 — and it sits there "
+            "regardless of anything on the x-axis.<br>"
+            "&nbsp;&nbsp;• <b>PEA rises as √(k + K<sub>p</sub>).</b> The "
+            "spring adds to the proportional gain, so stiffening the spring "
+            "is indistinguishable from turning the gain up, and the curve "
+            "climbs until it too hits the implementation ceiling.<br>"
+            "&nbsp;&nbsp;• <b>SEA rises as √k but from far below</b>, pinned "
+            "at roughly 0.6 × (1/2π)√(k/J<sub>L</sub>). It approaches the "
+            "other two only where k has become so large that the spring "
+            "deflects almost nothing — <b>which is exactly where it has "
+            "stopped being a safety device.</b>"))
+        sw.add(callout(
+            "<b>Why the SEA number here is smaller than the one in the "
+            "widget above, and why both are right.</b><br><br>"
+            "The bar widget quotes the SEA's mechanical ceiling as "
+            "<b>(1/2π)√(k/J<sub>L</sub>)</b>. That is the frequency at which "
+            "the spring <i>stops transmitting</i> — above it the load simply "
+            "does not follow the motor, whatever the controller wants. It is "
+            "a property of the mechanism alone.<br><br>"
+            "This sweep quotes about <b>0.6 ×</b> that, because it asks a "
+            "stricter question: not \"where does transmission stop\" but "
+            "<b>\"where can I still close a loop and keep 6 dB of gain "
+            "margin\"</b>. You always have to cross over some way below the "
+            "thing that is about to eat your margin, and 0.6 is the price of "
+            "that particular margin — ask for 12 dB and it halves.<br><br>"
+            "So: <b>√(k/J<sub>L</sub>)/2π is the wall; 0.6 of it is how "
+            "close you may safely drive to the wall.</b> Both scale as √k, "
+            "which is the only part that matters for the shape of this "
+            "plot.", "key"))
+        sw.add(callout(
+            "<b>The crossing point is the whole design decision, and the "
+            "plot puts a number on it.</b><br><br>"
+            "Read where the SEA curve meets the direct-drive line. To the "
+            "<b>left</b> of it you are paying bandwidth for impact "
+            "protection — that is the trade, made deliberately. To the "
+            "<b>right</b> of it you are paying for a spring that is too "
+            "stiff to protect anyone and are getting no bandwidth advantage "
+            "for it either. <b>A series spring stiff enough to stop costing "
+            "you bandwidth is a spring that has stopped doing its job.</b>"
+            "<br><br>"
+            "The shaded band marks where the spring's deflection under the "
+            "motor's peak torque falls below a degree — below which, for a "
+            "typical encoder, the spring has also stopped working as a "
+            "torque sensor. <b>Two of the three reasons to fit one are gone "
+            "in that band.</b>", "key"))
+        self.s_sjm = slider(2, 200, 40)
+        self.s_sjl = slider(2, 400, 60)
+        self.s_szr = slider(1, 50, 5)
+        self.s_skp = slider(10, 4000, 500)
+        self.s_sgm = slider(0, 200, 60)          # x0.1 dB
+        self.s_sfs = slider(100, 4000, 1000)
+        self.l_sjm, self.l_sjl, self.l_szr = QLabel(), QLabel(), QLabel()
+        self.l_skp, self.l_sgm, self.l_sfs = QLabel(), QLabel(), QLabel()
+        sw.add_layout(slider_row("Motor Jₘ (×0.001)", self.s_sjm, self.l_sjm))
+        sw.add_layout(slider_row("Limb Jʟ (×0.001)", self.s_sjl, self.l_sjl))
+        sw.add_layout(slider_row("Spring damping ζ_r (×0.01)", self.s_szr,
+                                 self.l_szr))
+        sw.add_layout(slider_row("PEA / DD  K_p", self.s_skp, self.l_skp))
+        sw.add_layout(slider_row("margin demanded (×0.1 dB)", self.s_sgm,
+                                 self.l_sgm))
+        sw.add_layout(slider_row("loop rate (Hz)", self.s_sfs, self.l_sfs))
+        self.st_scross = Stat("SEA catches DD at", "--", theme.WARN)
+        self.st_sdefl = Stat("deflection there", "--", theme.BAD)
+        self.st_sdd = Stat("DD ceiling", "--", theme.ACCENT)
+        self.st_ssea100 = Stat("SEA at k = 100", "--", theme.GOOD)
+        self.st_spea100 = Stat("PEA at k = 100", "--", theme.VIOLET)
+        sw.add_layout(stat_row(self.st_scross, self.st_sdefl, self.st_sdd,
+                               self.st_ssea100, self.st_spea100))
+        self.c_sw = MplCanvas(width=7.6, height=3.4)
+        self._sw_drawn = False
+        sw.add(self.c_sw)
+        self.t_sw = body("", dim=True)
+        sw.add(self.t_sw)
+        self.add(sw)
+        for s in (self.s_sjm, self.s_sjl, self.s_szr, self.s_skp, self.s_sgm,
+                  self.s_sfs):
+            s.valueChanged.connect(self._redraw_sweep)
+        self._redraw_sweep()
+
         self.add(callout(
             "<b>What the widget proves, stated once.</b> Bandwidth is never one "
             "number — it is the smallest of three:<br><br>"
@@ -1568,6 +2789,118 @@ class ActuatorCompare(Page):
                 sld.setValue(vals[key])
                 sld.blockSignals(False)
         self._redraw_bw()
+
+    def _redraw_sweep(self):
+        """
+        The one plot that puts both ceilings on the same axes: achievable
+        bandwidth against spring stiffness, searched rather than asserted.
+
+        DD is flat because k is not in its equations. PEA climbs because k
+        adds to Kp. SEA climbs as sqrt(k) from far below, and where it
+        finally catches DD is where the spring has become too stiff to
+        protect anything.
+        """
+        jm = self.s_sjm.value() / 1000.0
+        jl = self.s_sjl.value() / 1000.0
+        zr = self.s_szr.value() / 100.0
+        kp = float(self.s_skp.value())
+        gm_min = self.s_sgm.value() / 10.0
+        fs = float(self.s_sfs.value())
+        self.l_sjm.setText(f"{jm:.3f}")
+        self.l_sjl.setText(f"{jl:.3f}")
+        self.l_szr.setText(f"{zr:.2f}")
+        self.l_skp.setText(f"{kp:.0f}")
+        self.l_sgm.setText(f"{gm_min:.1f} dB")
+        self.l_sfs.setText(f"{fs:.0f} Hz")
+
+        impl = fs / 15.0                       # page 1's number
+        ks = [10.0 ** (1.0 + 3.2 * i / 39.0) for i in range(40)]
+
+        dd = closed_loop_bw_hz(pd_loop(dd_plant(jm, jl), kp, 0.0).feedback())
+        dd = min(dd, impl)
+
+        sea, pea = [], []
+        for k in ks:
+            s = max_sea_crossover_hz(jm, jl, k, zr, 0.0, gm_min)
+            sea.append(min(s, impl) if s > 0 else 0.0)
+            t = pd_loop(pea_plant(jm, jl, k), kp, 0.0).feedback()
+            pea.append(min(closed_loop_bw_hz(t), impl))
+
+        # where does the SEA finally catch direct drive?
+        k_cross, defl = None, None
+        for k, s in zip(ks, sea):
+            if s >= dd * 0.98:
+                k_cross = k
+                # deflection under a representative 20 N m peak torque
+                defl = math.degrees(20.0 / k)
+                break
+        self.st_sdd.set(f"{dd:.1f} Hz")
+        self.st_scross.set("never" if k_cross is None else
+                           f"k = {k_cross:.0f}")
+        self.st_sdefl.set("—" if defl is None else f"{defl:.2f}°")
+        self.st_sdefl.set_color(theme.BAD if (defl is not None and defl < 1.0)
+                                else theme.WARN)
+        s100 = max_sea_crossover_hz(jm, jl, 100.0, zr, 0.0, gm_min)
+        p100 = closed_loop_bw_hz(
+            pd_loop(pea_plant(jm, jl, 100.0), kp, 0.0).feedback())
+        self.st_ssea100.set(f"{min(s100, impl):.2f} Hz")
+        self.st_spea100.set(f"{min(p100, impl):.2f} Hz")
+
+        c = self.c_sw
+        c.clear()
+        a = c.ax
+        a.loglog(ks, [dd] * len(ks), color=theme.ACCENT, lw=2.2,
+                 label="direct drive — no k in its equations")
+        a.loglog(ks, pea, color=theme.VIOLET, lw=2.2,
+                 label="PEA — k adds to K_p")
+        a.loglog(ks, sea, color=theme.WARN, lw=2.4,
+                 label="SEA — pinned near 0.6·√(k/Jʟ)/2π")
+        a.axhline(impl, color=theme.CYAN, lw=1.2, ls="--",
+                  label=f"implementation ceiling  f_s/15 = {impl:.0f} Hz")
+        # the band where the spring has stopped being a spring: under a
+        # representative 20 N m peak the deflection is below one degree
+        k_stiff = 20.0 / math.radians(1.0)
+        if k_stiff < ks[-1]:
+            a.axvspan(max(k_stiff, ks[0]), ks[-1], color=theme.BAD,
+                      alpha=0.09)
+            a.text(max(k_stiff, ks[0]) * 1.15, min(sea[0] * 1.2, dd * 0.12)
+                   if sea[0] > 0 else dd * 0.12,
+                   "spring deflects <1°\nat peak torque:\nno longer protecting,\n"
+                   "no longer a sensor",
+                   color=theme.BAD, fontsize=6.6, va="bottom")
+        if k_cross is not None:
+            a.axvline(k_cross, color=theme.WARN, lw=1.1, ls=":")
+        a.set_xlabel("spring stiffness k  (N·m/rad)")
+        a.set_ylabel("achievable closed-loop bandwidth (Hz)")
+        a.set_title("the two ceilings, on one pair of axes", fontsize=9)
+        c.legend(loc="upper left")
+        c.refresh(layout=not self._sw_drawn)
+        self._sw_drawn = True
+
+        msg = (f"<b>Direct drive sits flat at {dd:.1f} Hz</b> — it has no "
+               f"spring, so nothing on the x-axis can move it; only the loop "
+               f"rate can. ")
+        if k_cross is None:
+            msg += ("<b>The SEA never catches it</b> anywhere in this range: "
+                    "at every stiffness you can build, the series spring is "
+                    "costing you bandwidth. That is the honest picture for a "
+                    "soft, protective spring.")
+        else:
+            msg += (f"<b>The SEA only catches it at k ≈ {k_cross:.0f} "
+                    f"N·m/rad</b> — and at that stiffness the spring "
+                    f"deflects just <b>{defl:.2f}°</b> under a 20 N·m peak. "
+                    + ("That is inside the shaded band: too stiff to absorb "
+                       "an impact, and too stiff to read as a torque sensor. "
+                       "You have paid for a spring and kept none of its "
+                       "benefits." if defl < 1.0 else
+                       "Still just about usable as a sensor, but the impact "
+                       "protection is already thin."))
+        msg += (f"<br><br>At a genuinely protective k = 100, the SEA manages "
+                f"<b>{min(s100, impl):.2f} Hz</b> against the PEA's "
+                f"<b>{min(p100, impl):.2f} Hz</b> with the identical spring. "
+                f"<b>That gap is not a controller problem and no controller "
+                f"closes it.</b>")
+        self.t_sw.setText(msg)
 
     def _redraw_bw(self):
         """
