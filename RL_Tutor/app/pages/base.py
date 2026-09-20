@@ -53,6 +53,15 @@ class Page(QWidget):
 
         self._build_header()
 
+        # Additive, fixed-example movies: existing lesson content and labs follow
+        # unchanged. Stable class keys survive future sidebar reordering.
+        from ..widgets.lesson_stories import STORIES
+        story = STORIES.get(type(self).__name__)
+        if story is not None:
+            from ..widgets.lesson_animation import LessonAnimation
+            self.lesson_animation = LessonAnimation(story)
+            self.content.addWidget(self.lesson_animation)
+
     # ------------------------------------------------------------------
     def _build_header(self):
         head = QWidget()
