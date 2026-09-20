@@ -170,6 +170,192 @@ def stat_row(*stats) -> QHBoxLayout:
 
 _math_cache: dict[tuple, QPixmap] = {}
 
+# matplotlib's mathtext is a SUBSET of LaTeX. A pile of perfectly ordinary
+# commands are simply absent from it, and when one appears mathtext throws and
+# the WHOLE formula falls through to the plain-text path -- which is how a page
+# ends up printing "1-\tfrac{s}{z}" instead of drawing the fraction. So rewrite
+# every one of them into a spelling mathtext does know, BEFORE handing it over.
+#
+# Straight synonyms: same meaning, different name, nothing is lost.
+_MATHTEXT_ALIASES = [
+    (r"\\tfrac(?![A-Za-z])", r"\\frac"),     # no textstyle fraction macro
+    (r"\\dfrac(?![A-Za-z])", r"\\frac"),     # no displaystyle fraction either
+    (r"\\nicefrac(?![A-Za-z])", r"\\frac"),
+    (r"\\displaystyle(?![A-Za-z])", ""),
+    (r"\\textstyle(?![A-Za-z])", ""),
+    (r"\\scriptstyle(?![A-Za-z])", ""),
+    (r"\\limits(?![A-Za-z])", ""),
+    (r"\\nolimits(?![A-Za-z])", ""),
+    (r"\\le(?![A-Za-z])", r"\\leq"),
+    (r"\\ge(?![A-Za-z])", r"\\geq"),
+    (r"\\ne(?![A-Za-z])", r"\\neq"),
+    (r"\\iff(?![A-Za-z])", r"\\Leftrightarrow"),
+    (r"\\implies(?![A-Za-z])", r"\\Rightarrow"),
+    (r"\\impliedby(?![A-Za-z])", r"\\Leftarrow"),
+    (r"\\lVert(?![A-Za-z])", r"\\|"),
+    (r"\\rVert(?![A-Za-z])", r"\\|"),
+    (r"\\lvert(?![A-Za-z])", r"|"),
+    (r"\\rvert(?![A-Za-z])", r"|"),
+    (r"\\textbf(?![A-Za-z])", r"\\mathbf"),
+    (r"\\textit(?![A-Za-z])", r"\\mathit"),
+    (r"\\textrm(?![A-Za-z])", r"\\mathrm"),
+    (r"\\texttt(?![A-Za-z])", r"\\mathtt"),
+    (r"\\mathsf(?![A-Za-z])", r"\\mathrm"),
+    # sizing delimiters: mathtext sizes them itself, so the hint just goes
+    (r"\\[Bb]igg?[lrm]?(?![A-Za-z])", ""),
+    (r"\\(?:mathrel|mathbin|mathord|mathopen|mathclose)(?![A-Za-z])", ""),
+    (r"\\boxed(?![A-Za-z])", ""),            # no frame; contents survive
+    (r"\\mbox(?![A-Za-z])", r"\\mathrm"),
+    (r"\\\[[0-9.]+(?:pt|ex|em)\]", ""),      # row spacing after a \\ break
+]
+
+# environment -> the delimiter pair it draws around its rows
+_MATH_ENVS = {
+    "bmatrix":  (r"\left[", r"\right]"),
+    "pmatrix":  (r"\left(", r"\right)"),
+    "vmatrix":  (r"\left|", r"\right|"),
+    "Vmatrix":  (r"\left\|", r"\right\|"),
+    "Bmatrix":  (r"\left\{", r"\right\}"),
+    "matrix":   (r"\left.", r"\right."),
+    "array":    (r"\left.", r"\right."),
+    "cases":    (r"\left\{", r"\right."),
+    "aligned":  (r"\left.", r"\right."),
+    "align":    (r"\left.", r"\right."),
+    "gathered": (r"\left.", r"\right."),
+}
+
+
+def _brace_arg(s: str, i: int):
+    """Read a balanced {...} starting at s[i]; return (body, index after it)."""
+    if i >= len(s) or s[i] != "{":
+        return None, i
+    depth, j = 0, i
+    while j < len(s):
+        if s[j] == "{":
+            depth += 1
+        elif s[j] == "}":
+            depth -= 1
+            if depth == 0:
+                return s[i + 1:j], j + 1
+        j += 1
+    return None, i                      # unbalanced: leave it alone
+
+
+def _stack(rows: list[str]) -> str:
+    r"""
+    Stack rows vertically. mathtext has no \begin{...} environments at all,
+    but it does have \genfrac -- a fraction whose rule thickness we can set to
+    zero, which is exactly a two-row stack. Nest it for more rows.
+    """
+    rows = [r.strip() or r"\;" for r in rows]
+    if len(rows) == 1:
+        return rows[0]
+    return r"\genfrac{}{}{0}{0}{%s}{%s}" % (rows[0], _stack(rows[1:]))
+
+
+def _expand_envs(s: str) -> str:
+    r"""Turn \begin{bmatrix}a & b \\ c & d\end{bmatrix} into a genfrac stack."""
+    import re
+    pat = re.compile(r"\\begin\{(" + "|".join(_MATH_ENVS) + r")\*?\}"
+                     r"(.*?)"
+                     r"\\end\{\1\*?\}", re.S)
+    prev = None
+    while prev != s:                    # repeat: environments can nest
+        prev = s
+
+        def repl(m):
+            lo, hi = _MATH_ENVS[m.group(1)]
+            rows = re.split(r"\\\\", m.group(2))
+            # a row break may carry a spacing hint, \\[2pt]; drop it
+            rows = [re.sub(r"^\s*\[[0-9.]+(?:pt|ex|em)\]", "", r) for r in rows]
+            # columns are only separated visually -- mathtext cannot align them
+            rows = [r"\;\;".join(c.strip() for c in r.split("&")) for r in rows]
+            return lo + _stack(rows) + hi
+
+        s = pat.sub(repl, s)
+    return s
+
+
+def _expand_braces(s: str) -> str:
+    r"""
+    \underbrace{X}_{Y} -> \underset{Y}{\underline{X}}, and the over- twin.
+    Not a curly brace, but it keeps the annotation, which is the whole point
+    of writing an underbrace on a teaching page.
+    """
+    for cmd, under in ((r"\underbrace", True), (r"\overbrace", False)):
+        while True:
+            i = s.find(cmd)
+            if i < 0:
+                break
+            body, j = _brace_arg(s, i + len(cmd))
+            if body is None:
+                s = s[:i] + s[i + len(cmd):]      # malformed: drop the command
+                continue
+            mark = "_" if under else "^"
+            label = None
+            if j < len(s) and s[j] == mark:
+                label, j = _brace_arg(s, j + 1)
+                if label is None:                 # e.g. \underbrace{X}_y
+                    label, j = s[j + 1], j + 2
+            rule = r"\underline" if under else r"\overline"
+            inner = r"%s{%s}" % (rule, _expand_braces(body))
+            if label:
+                setter = r"\underset" if under else r"\overset"
+                inner = r"%s{%s}{%s}" % (setter, _expand_braces(label), inner)
+            s = s[:i] + inner + s[j:]
+    return s
+
+
+def _brace_bare_args(s: str, cmd: str, nargs: int) -> str:
+    r"""
+    \sqrt\alpha and \tfrac12 are legal LaTeX shorthand -- a single token is an
+    argument whether or not it wears braces. mathtext insists on the braces,
+    so put them on.
+    """
+    import re
+    out, i = [], 0
+    while True:
+        j = s.find(cmd, i)
+        if j < 0:
+            out.append(s[i:])
+            return "".join(out)
+        # not a prefix of a longer command name (\frac must not match \fracture)
+        k = j + len(cmd)
+        if k < len(s) and s[k].isalpha():
+            out.append(s[i:k])
+            i = k
+            continue
+        out.append(s[i:k])
+        for _ in range(nargs):
+            while k < len(s) and s[k] == " ":
+                k += 1
+            if k >= len(s):
+                break
+            if s[k] == "{":                      # already braced: step over it
+                _, k2 = _brace_arg(s, k)
+                if k2 == k:                      # unbalanced; give up here
+                    break
+                out.append(s[k:k2])
+                k = k2
+                continue
+            m = re.match(r"\\[A-Za-z]+|.", s[k:])
+            out.append("{" + m.group(0) + "}")
+            k += m.end()
+        i = k
+
+
+def _sanitise_mathtext(latex: str) -> str:
+    r"""Rewrite full-LaTeX spellings into mathtext-compatible ones."""
+    import re
+    out = _expand_envs(latex)
+    out = _expand_braces(out)
+    for pat, rep in _MATHTEXT_ALIASES:
+        out = re.sub(pat, rep, out)
+    out = _brace_bare_args(out, r"\sqrt", 1)
+    out = _brace_bare_args(out, r"\frac", 2)
+    out = _brace_bare_args(out, r"\binom", 2)
+    return out
+
 
 def math_label(latex: str, fontsize=15, colour=None) -> QLabel:
     r"""
@@ -189,12 +375,13 @@ def math_label(latex: str, fontsize=15, colour=None) -> QLabel:
 
         fig = plt.figure(figsize=(0.01, 0.01), dpi=200)
         fig.patch.set_alpha(0.0)
-        fig.text(0, 0, f"${latex}$", fontsize=fontsize, color=colour)
+        fig.text(0, 0, f"${_sanitise_mathtext(latex)}$",
+                 fontsize=fontsize, color=colour)
         buf = io.BytesIO()
         try:
             fig.savefig(buf, format="png", bbox_inches="tight",
                         pad_inches=0.06, transparent=True)
-        except ValueError:
+        except Exception:
             # matplotlib's mathtext is a SUBSET of LaTeX -- no \begin{...}
             # environments, no \text in some versions. Rather than let a bad
             # formula kill an entire page, degrade to readable monospace.
@@ -221,23 +408,45 @@ def _math_fallback(latex: str, colour: str) -> QLabel:
     import re
     txt = latex
     for a, b in [(r"\\left", ""), (r"\\right", ""), (r"\\,", " "),
-                 (r"\\;", " "), (r"\\!", ""), (r"\\quad", "   "),
-                 (r"\\displaystyle", ""), (r"\\dfrac", r"\\frac")]:
+                 (r"\\;", " "), (r"\\:", " "), (r"\\!", ""),
+                 (r"\\qquad", "    "), (r"\\quad", "   "),
+                 (r"\\displaystyle", ""), (r"\\textstyle", ""),
+                 (r"\\limits", ""),
+                 (r"\\dfrac", r"\\frac"), (r"\\tfrac", r"\\frac")]:
         txt = re.sub(a, b, txt)
-    txt = re.sub(r"\\text\{([^}]*)\}", r"\1", txt)
+    txt = re.sub(r"\\(?:text|mathrm|mathbf|mathit|operatorname)\{([^}]*)\}",
+                 r"\1", txt)
     txt = re.sub(r"\\frac\{([^}]*)\}\{([^}]*)\}", r"(\1)/(\2)", txt)
+    txt = re.sub(r"\\sqrt\{([^}]*)\}", r"√(\1)", txt)
     txt = re.sub(r"\\begin\{[a-z]*\}|\\end\{[a-z]*\}", "", txt)
     greek = {"alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "pi": "π",
              "mu": "μ", "sigma": "σ", "theta": "θ", "epsilon": "ε",
-             "varepsilon": "ε", "tau": "τ", "phi": "φ", "lambda": "λ",
-             "sum": "Σ", "max": "max", "min": "min", "in": "∈",
+             "varepsilon": "ε", "tau": "τ", "phi": "φ", "varphi": "φ",
+             "lambda": "λ", "omega": "ω", "Omega": "Ω", "zeta": "ζ",
+             "eta": "η", "rho": "ρ", "psi": "ψ", "xi": "ξ", "kappa": "κ",
+             "Delta": "Δ", "Sigma": "Σ", "Phi": "Φ", "Lambda": "Λ",
+             "sum": "Σ", "prod": "Π", "int": "∫", "partial": "∂",
+             "max": "max", "min": "min", "in": "∈", "forall": "∀",
              "mid": "|", "approx": "≈", "cdot": "·", "times": "×",
-             "leftarrow": "←", "rightarrow": "→", "infty": "∞",
-             "geq": "≥", "leq": "≤", "neq": "≠", "nabla": "∇",
-             "mathbb{E}": "E", "arg": "arg", "sqrt": "sqrt"}
+             "pm": "±", "mp": "∓", "propto": "∝", "sim": "~",
+             "Longleftrightarrow": "⟺", "longleftrightarrow": "⟷",
+             "Leftrightarrow": "⟺", "leftrightarrow": "↔",
+             "Longrightarrow": "⟹", "longrightarrow": "⟶",
+             "Longleftarrow": "⟸", "longleftarrow": "⟵",
+             "Rightarrow": "⟹", "Leftarrow": "⟸",
+             "leftarrow": "←", "rightarrow": "→", "to": "→",
+             "infty": "∞", "ll": "≪", "gg": "≫",
+             "geq": "≥", "leq": "≤", "ge": "≥", "le": "≤",
+             "neq": "≠", "nabla": "∇", "angle": "∠", "deg": "°",
+             "mathbb{E}": "E", "arg": "arg", "sqrt": "√"}
     for k, v in sorted(greek.items(), key=lambda kv: -len(kv[0])):
         txt = txt.replace("\\" + k, v)
     txt = txt.replace("\\\\", "   |   ").replace("[6pt]", "")
+    # anything still carrying a backslash is a command this table has no
+    # spelling for -- show the NAME, never the backslash, so the reader sees
+    # "beta" rather than "\beta".
+    txt = re.sub(r"\\([A-Za-z]+)", r"\1", txt)
+    txt = txt.replace("\\", "")
     txt = re.sub(r"[{}]", "", txt).replace("&", " ")
     txt = re.sub(r"\s+", " ", txt).strip()
     lb = QLabel(txt)

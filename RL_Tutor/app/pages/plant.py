@@ -160,6 +160,65 @@ class MeasuringPage(Page):
         self.s_noise.valueChanged.connect(self._redraw_exp)
         self._redraw_exp()
 
+        # ---- the fourth number: zeta, from the same two traces -------------
+        lg = Card("getting ζ out of experiments 3 and 4 — the logarithmic "
+                  "decrement, as a bench procedure")
+        lg.add(body(
+            "Experiments 3 and 4 both produce a <b>ring-down</b>, and both of "
+            "them so far have used only its <i>frequency</i>. The shrinking is "
+            "the other half of the data, and it hands you the damping for "
+            "free. The derivation is on the Free Vibration page; this is the "
+            "recipe."))
+        lg.add(body(
+            "&nbsp;&nbsp;<b>1.</b> Find the resting value and <b>subtract "
+            "it</b>. Gravity sag or a sensor bias ruins every ratio "
+            "below.<br>"
+            "&nbsp;&nbsp;<b>2.</b> Pick a clear early <b>peak</b>, height "
+            "x<sub>1</sub>. Peaks, not arbitrary samples — at a peak the "
+            "derivative is zero, so timing error costs you almost no "
+            "amplitude error.<br>"
+            "&nbsp;&nbsp;<b>3.</b> Count forward <b>n</b> whole cycles to "
+            "another peak, height x<sub>2</sub>. Choose n so that "
+            "x<sub>2</sub> is <b>at most half</b> of x<sub>1</sub>.<br>"
+            "&nbsp;&nbsp;<b>4.</b> Compute δ, then ζ:"))
+        lg.add(math_label(r"\delta = \frac{1}{n}\ln\frac{x_1}{x_2} "
+                          r"\qquad\Longrightarrow\qquad "
+                          r"\zeta = \frac{\delta}{\sqrt{4\pi^2+\delta^2}} "
+                          r"\;\approx\; \frac{\delta}{2\pi}", 17))
+        lg.add(body(
+            "&nbsp;&nbsp;<b>5.</b> The same trace gives ω<sub>d</sub> = "
+            "2πn/Δt over those n cycles, then ω<sub>n</sub> = "
+            "ω<sub>d</sub>/√(1−ζ²), and finally <b>b = 2ζω<sub>n</sub>J</b> "
+            "once you have J from the swing test."))
+        lg.add(callout(
+            "<b>Why step 3 has a number in it.</b> δ is a ratio, so the "
+            "fractional error in δ is roughly your sensor noise divided by "
+            "ln(x<sub>1</sub>/x<sub>2</sub>). Compare two peaks 3% apart and "
+            "you are dividing noise by 0.03 — the answer is meaningless. "
+            "Compare peaks a factor of 2 apart and you divide by "
+            "ln 2 = 0.69.<br><br>"
+            "Half-amplitude means 2πnζ ≈ 0.693, so <b>n ≈ 0.11/ζ</b>: about "
+            "2 cycles at ζ = 0.05, about 11 at ζ = 0.01, and <b>less than "
+            "one</b> by ζ = 0.3. Above ζ ≈ 0.3 there are not enough peaks "
+            "left and you need a different method — which is fine, because "
+            "the lightly damped case is the one you urgently need the number "
+            "for.", "key"))
+        lg.add(body(
+            "<b>The self-check that catches a bad measurement.</b> Repeat the "
+            "calculation with a different pair of peaks. Because every pair "
+            "should give the same δ, <b>a ζ that drifts as you pick later "
+            "peaks means the model is wrong, not the arithmetic</b> — and it "
+            "is almost always one of two things: an offset you forgot to "
+            "subtract, or Coulomb friction. Coulomb friction removes a "
+            "<i>fixed</i> amount of amplitude per cycle rather than a fixed "
+            "<i>fraction</i>, so its peaks fall on a straight line rather "
+            "than an exponential, and fitting ζ to it gives a number that "
+            "grows with every cycle. On the log-amplitude plot in experiment "
+            "3, viscous damping is a straight line and Coulomb friction "
+            "curves downwards — which is the fastest way to find out which "
+            "one your joint has.", dim=True))
+        self.add(lg)
+
         # ---- the regression --------------------------------------------------
         self.add(hline())
         self.add(title("How it is really done: one trajectory, all the "

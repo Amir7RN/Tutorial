@@ -14,21 +14,29 @@ CONTROL & DYNAMICS
      3-4   where a plant's numbers come from, and how software moves them
      5-9   first order, slowly: what it is, tau and the pole, the integrator,
            frequency, the s-plane
-    10-13  second order, stability, Bode margins, Nyquist
-    14     zeros -- the other dot on the map, and the destination poles head for
-    15-19  controller design: stabilising, lead/lag, state feedback, LQR,
+    10     free vibration -- the homogeneous solution from (x0, v0), and why
+           the peak is a hypotenuse rather than x0
+    11-14  second order, stability, Bode margins, Nyquist
+    15     zeros -- the other dot on the map, and the destination poles head for
+    16-20  controller design: stabilising, lead/lag, state feedback, LQR,
            observers
-    20-21  CAPSTONE -- the biped and the arm, in the language of poles,
+    21-22  CAPSTONE -- the biped and the arm, in the language of poles,
            margins and gains
-    22-23  nonlinear systems, and the six things people do about them
-    24-28  actuator mechanics -- effective inertia, SEA, PEA, gearing
-    29-30  CAPSTONE -- an actuator for every joint of both machines
-    31-38  the four control paradigms, ending in the one spectrum they share
-    39-40  CAPSTONE -- which controller, which joint, which phase
-    41-43  choosing a drivetrain for a real robot, and one case study
-    44-46  proprioception: transparency, internal force sensing, active compliance
-    47-48  positive force feedback, and the honesty test for claiming it
-    49-50  translating human biomechanics into robot design
+    23-24  nonlinear systems, and the six things people do about them
+    25-29  actuator mechanics -- effective inertia, SEA, PEA, gearing
+    30-31  CAPSTONE -- an actuator for every joint of both machines
+    32-39  the four control paradigms, ending in the one spectrum they share
+    40-41  CAPSTONE -- which controller, which joint, which phase
+    42-44  choosing a drivetrain for a real robot, and one case study
+    45-47  proprioception: transparency, internal force sensing, active compliance
+    48-49  positive force feedback, and the honesty test for claiming it
+    50-51  translating human biomechanics into robot design
+
+Page 10 comes before second order because the four pages after it all quote
+the same function of time. Solving  m x'' + c x' + k x = 0  once, properly,
+from initial conditions, turns the step response into "1 minus that", the
+swept sine into "a sine at the drive frequency plus that", and the overshoot
+formula into a line of calculus rather than a thing to memorise.
 
 The three CAPSTONE pairs are the point of the whole structure. A block of
 theory that is never spent on a specific machine does not stick, so each
@@ -38,38 +46,38 @@ throughout so that the answers can be compared, and they disagree often
 enough to be worth the space.
 
 REINFORCEMENT LEARNING
-    51-57  the environment felt by hand, then the vocabulary and the MDP
-    58-61  how to measure how good a square is
-    62-65  the four Bellman equations, one page each, in full arithmetic
-    66-70  compute the perfect policy, given that we know the ice
-    71-73  learn it WITHOUT knowing the ice -- what a real robot must do
-    74-79  the surrounding ideas
+    52-58  the environment felt by hand, then the vocabulary and the MDP
+    59-62  how to measure how good a square is
+    63-66  the four Bellman equations, one page each, in full arithmetic
+    67-71  compute the perfect policy, given that we know the ice
+    72-74  learn it WITHOUT knowing the ice -- what a real robot must do
+    75-80  the surrounding ideas
 
 NEURAL NETWORKS
-    80-85  a neuron, the activations and their slopes, forward propagation,
+    81-86  a neuron, the activations and their slopes, forward propagation,
            backpropagation (multiply along a path, SUM across paths), what a
            loss is actually for, and the housekeeping -- L2, dropout, batch
            versus layer norm, initialisation, clipping
 
 DEEP RL & CONTINUOUS CONTROL
-    86     tables run out: continuous states kill the table, continuous
+    87     tables run out: continuous states kill the table, continuous
            actions kill the argmax
-    87     actor-critic, and deterministic mu(s) versus stochastic pi(a|s)
-    88     DDPG: four networks, three equations
-    89     the gradient handoff: dQ/da is the SEED of the actor's backward
+    88     actor-critic, and deterministic mu(s) versus stochastic pi(a|s)
+    89     DDPG: four networks, three equations
+    90     the gradient handoff: dQ/da is the SEED of the actor's backward
            pass, not a target for its output
-    90     inside the critic: two inputs of different kinds, and what the
+    91     inside the critic: two inputs of different kinds, and what the
            merge point does to dQ/da
-    91     it is still an MDP; and what separates DDPG from TD3, SAC, PPO
-    92     one rulebook -- Experience, StepResult, Env, ReplayBuffer, act():
+    92     it is still an MDP; and what separates DDPG from TD3, SAC, PPO
+    93     one rulebook -- Experience, StepResult, Env, ReplayBuffer, act():
            what every agent shares, and the two places PPO refuses to fit
-    93     case study -- learning the impedance of a knee prosthesis, where
+    94     case study -- learning the impedance of a knee prosthesis, where
            one gait cycle is one timestep
-    94     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
+    95     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
 
-The last block closes the loop the tutor opened. Pages 1-50 built a compliant
-joint and said what its impedance parameters mean; 51-79 built the machinery
-for learning from experience; 80-85 use the second to choose the first, and
+The last block closes the loop the tutor opened. Pages 1-51 built a compliant
+joint and said what its impedance parameters mean; 52-80 built the machinery
+for learning from experience; 81-86 use the second to choose the first, and
 then put the result in two real-time tasks without missing a deadline.
 
 Real-time comes first on purpose. Every later page makes a claim about how
@@ -113,6 +121,7 @@ from .firstorder import (
 )
 from .linsys import (
     BodePage,
+    FreeVibrationPage,
     NyquistPage,
     SecondOrderPage,
     StabilityPage,
@@ -194,20 +203,21 @@ PAGE_CLASSES = [
     IntegratorPage,        # 7   the pole at s = 0: a store with no drain
     FirstOrderFreqPage,    # 8   the corner, -3 dB, and the 90 deg ceiling
     SPlanePage,            # 9   what j is; the second store that lifts a pole
-    SecondOrderPage,       # 10  wn and zeta, and every joint you will tune
-    StabilityPage,         # 11  LHP, marginal, Routh-Hurwitz
-    BodePage,              # 12  gain and phase margin, and PM = damping
-    NyquistPage,           # 13  the -1 point, encirclements, vector margin
-    ZerosPage,             # 14  what a zero is: blocked inputs, wrong-way steps
+    FreeVibrationPage,     # 10  x0 cos + (v0/wn) sin, and A as a hypotenuse
+    SecondOrderPage,       # 11  wn and zeta, and every joint you will tune
+    StabilityPage,         # 12  LHP, marginal, Routh-Hurwitz
+    BodePage,              # 13  gain and phase margin, and PM = damping
+    NyquistPage,           # 14  the -1 point, encirclements, vector margin
+    ZerosPage,             # 15  what a zero is: blocked inputs, wrong-way steps
     # ---- Controller design: moving the poles on purpose -------------------
-    StabilisingPage,       # 15  root locus, and why D is the term that saves you
-    LeadLagPage,           # 16  lead, lag, notch -- and why notches betray you
-    StateFeedbackPage,     # 17  what a state is; u = -Kx; place all n poles
-    LQRPage,               # 18  name a price instead; Q, R, and P = V(s)
-    ObserverPage,          # 19  estimate what you cannot measure; disturbance obs
+    StabilisingPage,       # 16  root locus, and why D is the term that saves you
+    LeadLagPage,           # 17  lead, lag, notch -- and why notches betray you
+    StateFeedbackPage,     # 18  what a state is; u = -Kx; place all n poles
+    LQRPage,               # 19  name a price instead; Q, R, and P = V(s)
+    ObserverPage,          # 20  estimate what you cannot measure; disturbance obs
     # ---- Capstone: everything above, spent on two real machines -----------
-    BipedSystemsPage,      # 20  six joints, three unstable eigenvalues
-    ArmSystemsPage,        # 21  coupling, configuration, gravity's sign
+    BipedSystemsPage,      # 21  six joints, three unstable eigenvalues
+    ArmSystemsPage,        # 22  coupling, configuration, gravity's sign
     # ---- Nonlinear: what all of the above was assuming --------------------
     NonlinearSystemsPage,  # 19  superposition dies; limit cycles, basins
     NonlinearControlPage,  # 20  computed torque, sliding mode, passivity

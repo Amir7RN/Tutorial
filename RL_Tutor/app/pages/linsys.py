@@ -118,6 +118,702 @@ def _bode_axes(a_mag, a_ph, w, mag, ph, colour=None, label=None):
 
 
 # ==========================================================================
+# PAGE -- free vibration
+# ==========================================================================
+
+class FreeVibrationPage(Page):
+    TITLE = "Free Vibration — Solving It From Initial Conditions"
+    SUBTITLE = ("Nobody is pushing. Displace it, shove it, let go — and the "
+                "answer is one cosine with a shifted start. Every response on "
+                "the next four pages is this, plus a forcing term.")
+    SECTION = SECTION
+    NOTES = "foundation"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.add(callout(
+            "<b>Solve the system with nothing driving it first.</b><br><br>"
+            "The previous page put a second pole on the map and said the "
+            "system can now ring. This page does the thing that makes that "
+            "concrete: <b>writes down the actual function of time</b>, from "
+            "an initial displacement and an initial velocity, with no input "
+            "at all.<br><br>"
+            "It is worth its own page because of a structural fact about "
+            "linear equations: <b>the response to anything is the free "
+            "response plus a piece that depends on the input.</b> Solve the "
+            "free problem once and the step response, the ramp response and "
+            "the swept sine all become \"that, plus a term\". Skip it and "
+            "every one of those has to be memorised separately.", "key"))
+
+        # ---- the undamped case, solved -----------------------------------
+        u = Card("the undamped case: mass and spring, nothing else")
+        u.add(body(
+            "No damper, no torque. Just a mass, a spring, and whatever state "
+            "you left it in:"))
+        u.add(math_label(r"m\ddot x + k x = 0, \qquad "
+                         r"x(0) = x_0, \qquad \dot x(0) = v_0", 18))
+        u.add(body(
+            "<b>Step 1 — guess an exponential.</b> Every linear constant-"
+            "coefficient equation is solved by x = e<sup>st</sup>, because "
+            "differentiating an exponential just multiplies it by s. Substitute "
+            "and the whole equation collapses to a polynomial:"))
+        u.add(math_label(r"(m s^2 + k)\,e^{st} = 0 \;\Longrightarrow\; "
+                         r"s^2 = -\frac{k}{m} \;\Longrightarrow\; "
+                         r"s = \pm j\sqrt{k/m} = \pm j\omega_n", 17))
+        u.add(body(
+            "<b>The roots are purely imaginary, and that is the whole "
+            "story.</b> No real part means nothing decays — there is no "
+            "damper to decay into. The imaginary part is ω<sub>n</sub> = "
+            "√(k/m), so the answer oscillates at ω<sub>n</sub> forever."))
+        u.add(body(
+            "<b>Step 2 — turn e<sup>±jω<sub>n</sub>t</sup> into real "
+            "functions.</b> Euler says those two exponentials are cos ω<sub>n</sub>t "
+            "and sin ω<sub>n</sub>t in disguise, so the general real solution "
+            "is any mix of the two — two roots, two free constants:"))
+        u.add(math_label(r"x(t) = C_1\cos\omega_n t + C_2\sin\omega_n t", 18))
+        u.add(body(
+            "<b>Step 3 — the two constants are exactly the two initial "
+            "conditions.</b> Set t = 0: cos is 1, sin is 0, so C<sub>1</sub> = "
+            "x<sub>0</sub> immediately. Differentiate, then set t = 0: the cos "
+            "term's derivative vanishes and the sin term's leaves "
+            "C<sub>2</sub>ω<sub>n</sub> = v<sub>0</sub>. That is the whole "
+            "derivation:"))
+        u.add(math_label(r"\boxed{\;x(t) = x_0\cos\omega_n t \;+\; "
+                         r"\frac{v_0}{\omega_n}\sin\omega_n t\;}", 19))
+        u.add(body(
+            "<b>Read the two terms physically.</b> The cosine is the part you "
+            "put in <i>as position</i> — it starts at full height with zero "
+            "slope. The sine is the part you put in <i>as speed</i> — it "
+            "starts at zero height with full slope. They are the same "
+            "oscillation, a quarter cycle apart, and the system does not care "
+            "which way you loaded it.<br><br>"
+            "Note the division by ω<sub>n</sub> in the second term. A given "
+            "velocity buys you <i>less</i> displacement on a stiffer, faster "
+            "system: it turns around sooner. v<sub>0</sub>/ω<sub>n</sub> is "
+            "\"how far this speed gets you before the spring wins\", and it is "
+            "the only way a velocity can enter an answer measured in metres.",
+            dim=True))
+        self.add(u)
+
+        # ---- the amplitude-phase form ------------------------------------
+        ap = Card("the same answer as ONE cosine — amplitude and phase")
+        ap.add(body(
+            "Two terms is correct but hard to picture. A sum of a cosine and a "
+            "sine <i>at the same frequency</i> is always a single cosine of "
+            "that frequency, shifted — that is the standard trigonometric "
+            "identity, and it is worth applying here because the shifted form "
+            "is the one that answers the questions people ask:"))
+        ap.add(math_label(r"x(t) = A\cos(\omega_n t - \varphi)", 19))
+        ap.add(math_label(r"A = \sqrt{x_0^2 + \left(\frac{v_0}"
+                          r"{\omega_n}\right)^{2}}, \qquad "
+                          r"\varphi = \tan^{-1}\!\left(\frac{v_0}"
+                          r"{x_0\,\omega_n}\right)", 18))
+        ap.add(body(
+            "<b>Where it comes from:</b> expand the right-hand side with the "
+            "angle-subtraction rule — A cos(ω<sub>n</sub>t − φ) = "
+            "(A cos φ) cos ω<sub>n</sub>t + (A sin φ) sin ω<sub>n</sub>t — and "
+            "match it term by term against the solution above. So "
+            "A cos φ = x<sub>0</sub> and A sin φ = v<sub>0</sub>/ω<sub>n</sub>. "
+            "Square and add: the φ disappears and you get A. Divide instead: "
+            "the A disappears and you get tan φ. It is a right triangle whose "
+            "legs are the two initial conditions, and A is the "
+            "<b>hypotenuse</b>.", dim=True))
+        ap.add(callout(
+            "<b>So the peak is not x<sub>0</sub>. It is the hypotenuse, and it "
+            "is bigger.</b><br><br>"
+            "This is the practical content of the page. Release a joint from "
+            "x<sub>0</sub> with <i>any</i> velocity at all and the furthest it "
+            "ever gets is A = √(x<sub>0</sub>² + (v<sub>0</sub>/ω<sub>n</sub>)²) "
+            "— strictly greater than x<sub>0</sub> whenever v<sub>0</sub> ≠ 0, "
+            "and it does not matter which <i>direction</i> the velocity points, "
+            "because v<sub>0</sub> enters squared. A shove towards the target "
+            "and a shove away from it produce the same peak excursion; they "
+            "only differ in <i>when</i> it happens, which is the φ.<br><br>"
+            "An impact that leaves a limb at 2° of deflection and 40°/s of "
+            "speed on a joint with ω<sub>n</sub> = 20 rad/s does not swing to "
+            "2°. It swings to √(2² + (40/20)²) = <b>2.83°</b>.", "key"))
+        ap.add(body(
+            "<b>And A is conservation of energy wearing a different hat.</b> "
+            "At the peak the mass is momentarily still, so every joule is in "
+            "the spring: E = ½kA². At t = 0 the energy is ½kx<sub>0</sub>² in "
+            "the spring plus ½mv<sub>0</sub>² in the mass. Set them equal, "
+            "divide by ½k, and use k/m = ω<sub>n</sub>²:"))
+        ap.add(math_label(r"\tfrac12 k A^2 = \tfrac12 k x_0^2 "
+                          r"+ \tfrac12 m v_0^2 \;\Longrightarrow\; "
+                          r"A^2 = x_0^2 + \frac{m}{k}v_0^2 "
+                          r"= x_0^2 + \frac{v_0^2}{\omega_n^2}", 17))
+        ap.add(body(
+            "…the identical formula. The Pythagorean A is not a trigonometric "
+            "coincidence: <b>the two legs of that triangle are the square "
+            "roots of the two energy stores</b>, and the hypotenuse is the "
+            "total. This is the algebra behind the energy-sloshing picture the "
+            "next page opens with.", dim=True))
+        ap.add(body(
+            "<b>And φ is a time shift wearing angular units.</b> A cosine "
+            "peaks when its argument is zero, so A cos(ω<sub>n</sub>t − φ) "
+            "peaks at ω<sub>n</sub>t = φ. Divide:"))
+        ap.add(math_label(r"\Delta t = \frac{\varphi}{\omega_n} "
+                          r"\qquad\Longleftrightarrow\qquad "
+                          r"\varphi = \omega_n\,\Delta t", 17))
+        ap.add(body(
+            "<b>φ is literally \"how long until the peak\", scaled by "
+            "ω<sub>n</sub>.</b> That is the only reading of a phase angle "
+            "worth carrying: an angle is a delay, and the conversion factor "
+            "is the frequency. φ = 90° on a system with ω<sub>n</sub> = "
+            "20 rad/s means the peak arrives (π/2)/20 = 78 ms after you let "
+            "go.<br><br>"
+            "It also explains the sign convention. A <i>positive</i> φ is a "
+            "<i>later</i> peak — the cosine has been pushed to the right — "
+            "which is why a shove <b>towards</b> the target (v<sub>0</sub> the "
+            "same sign as x<sub>0</sub>) gives a positive φ and a delayed, "
+            "larger swing, while a shove <b>back</b> gives a negative φ and an "
+            "earlier one. Same A, opposite Δt. Every \"phase lag\" on every "
+            "later page is this same sentence at a different frequency.",
+            dim=True))
+        self.add(ap)
+
+        # ---- interactive: initial conditions -----------------------------
+        iv = Card("set x₀ and v₀, and watch the peak leave x₀ behind — then "
+                  "raise ζ through all three regimes")
+        iv.add(body(
+            "The two pale curves are the two terms — the cosine you loaded as "
+            "<b>position</b> and the sine you loaded as <b>speed</b>. The "
+            "bright curve is their sum, and the dotted lines are the ±A "
+            "envelope.<br><br>"
+            "<b>With ζ = 0:</b> set v<sub>0</sub> = 0 and the sine term "
+            "vanishes, A = x<sub>0</sub>, φ = 0 — the textbook \"release from "
+            "rest\". Now move v<sub>0</sub> either way and watch A grow while "
+            "the whole curve slides sideways. Flip v<sub>0</sub> from +60 to "
+            "−60: <b>A does not change at all</b>, only φ. And set "
+            "x<sub>0</sub> = 0 for a pure hammer blow — a clean sine, peak "
+            "v<sub>0</sub>/ω<sub>n</sub>, φ = 90°.<br><br>"
+            "<b>Now walk ζ across the three branches.</b> Below 1 the roots "
+            "are complex and the envelope squeezes a shrinking cosine. At "
+            "exactly 1 the roots collide, the pale curves change to the two "
+            "terms of the repeated-root solution, and the last crossing "
+            "disappears. Above 1 the roots are two real numbers and the pale "
+            "curves become <b>two plain exponentials</b> — watch the slower "
+            "one take over the shape completely as you push ζ to 2.",
+            dim=True))
+        self.s_x0 = slider(-40, 40, 20)          # degrees
+        self.s_v0 = slider(-200, 200, 60)        # deg/s
+        self.s_wnf = slider(10, 400, 100)        # x0.1 rad/s
+        self.s_zf0 = slider(0, 200, 0)           # x0.01 damping, 0 .. 2.0
+        self.l_x0, self.l_v0 = QLabel(), QLabel()
+        self.l_wnf, self.l_zf0 = QLabel(), QLabel()
+        iv.add_layout(slider_row("x₀ (°)", self.s_x0, self.l_x0))
+        iv.add_layout(slider_row("v₀ (°/s)", self.s_v0, self.l_v0))
+        iv.add_layout(slider_row("ω_n (×0.1 rad/s)", self.s_wnf, self.l_wnf))
+        iv.add_layout(slider_row("damping ζ (×0.01)", self.s_zf0, self.l_zf0))
+        self.st_A = Stat("amplitude A", "--", theme.ACCENT)
+        self.st_phi = Stat("phase φ", "--", theme.VIOLET)
+        self.st_gain = Stat("A / x₀", "--", theme.WARN)
+        self.st_per = Stat("damped period", "--", theme.GOOD)
+        self.st_regf = Stat("regime", "--", theme.CYAN)
+        iv.add_layout(stat_row(self.st_A, self.st_phi, self.st_gain,
+                               self.st_per, self.st_regf))
+        self.cfv = MplCanvas(width=7.4, height=3.2)
+        iv.add(self.cfv)
+        self.tfv = body("", dim=True)
+        iv.add(self.tfv)
+        self.add(iv)
+        for s in (self.s_x0, self.s_v0, self.s_wnf, self.s_zf0):
+            s.valueChanged.connect(self._redraw_free)
+        self._redraw_free()
+
+        # ---- the damped case ---------------------------------------------
+        dm = Card("now put the damper back — the same answer inside an "
+                  "envelope")
+        dm.add(body(
+            "Add the damper and redo the three steps. Only the first one "
+            "changes, and it changes in one place: the characteristic "
+            "polynomial picks up a middle term, so the roots pick up a real "
+            "part. Substitute x = A e<sup>st</sup> again — the same guess, "
+            "because the equation is still linear with constant coefficients "
+            "— and the quadratic formula does the rest:"))
+        dm.add(math_label(r"m\ddot x + c\dot x + kx = 0 \;\Longrightarrow\; "
+                          r"s^2 + 2\zeta\omega_n s + \omega_n^2 = 0 "
+                          r"\;\Longrightarrow\; "
+                          r"s_{1,2} = -\zeta\omega_n \pm "
+                          r"\omega_n\sqrt{\zeta^2-1}", 17))
+        dm.add(body(
+            "<b>Everything that follows is decided by the sign under that "
+            "square root, and by nothing else.</b> There is no third "
+            "possibility, which is why the three regimes are exhaustive:"))
+        dm.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>ζ &lt; 1</b></td>"
+            "<td>ζ²−1 is negative, so the root is imaginary: "
+            "s = −ζω<sub>n</sub> ± jω<sub>d</sub></td>"
+            "<td><b>oscillates.</b> Two complex-conjugate roots → a decaying "
+            "cosine</td></tr>"
+            "<tr><td><b>ζ = 1</b></td>"
+            "<td>the root is zero, so the two roots <i>collide</i> at "
+            "−ω<sub>n</sub></td>"
+            "<td><b>does not oscillate.</b> A repeated root, and the second "
+            "solution has to be t·e<sup>−ω<sub>n</sub>t</sup></td></tr>"
+            "<tr><td><b>ζ &gt; 1</b></td>"
+            "<td>the root is real, so both s are real and negative: "
+            "−ω<sub>n</sub>(ζ ∓ √(ζ²−1))</td>"
+            "<td><b>does not oscillate.</b> A sum of two plain decaying "
+            "exponentials</td></tr>"
+            "</table>"))
+        dm.add(body(
+            "<b>Take the ζ &lt; 1 branch first</b>, since it is the one real "
+            "joints live in. Write √(ζ²−1) = j√(1−ζ²) and the root becomes "
+            "s = −ζω<sub>n</sub> ± jω<sub>d</sub>, with ω<sub>d</sub> = "
+            "ω<sub>n</sub>√(1−ζ²). Then e<sup>st</sup> = "
+            "e<sup>−ζω<sub>n</sub>t</sup>·e<sup>±jω<sub>d</sub>t</sup> — a "
+            "<b>shrinking</b> factor times the same oscillation, at a slightly "
+            "lower frequency. The solution is therefore the undamped one with "
+            "two edits: a decaying multiplier out front, and ω<sub>d</sub> "
+            "wherever ω<sub>n</sub> used to be inside the cosine."))
+        dm.add(math_label(r"\boxed{\;x(t) = A\,e^{-\zeta\omega_n t}"
+                          r"\cos(\omega_d t - \varphi)\;}", 19))
+        dm.add(math_label(r"A = \sqrt{x_0^2 + \left("
+                          r"\frac{v_0 + \zeta\omega_n x_0}{\omega_d}"
+                          r"\right)^{2}}, \qquad "
+                          r"\varphi = \tan^{-1}\!\left("
+                          r"\frac{v_0 + \zeta\omega_n x_0}"
+                          r"{\omega_d\,x_0}\right)", 17))
+        dm.add(body(
+            "<b>Why v<sub>0</sub> became v<sub>0</sub> + ζω<sub>n</sub>x<sub>0</sub>.</b> "
+            "Matching the initial slope now has to account for the envelope, "
+            "which is already falling at t = 0 at a rate ζω<sub>n</sub>x<sub>0</sub>. "
+            "Part of the velocity you measure is the envelope coming down "
+            "rather than the oscillation moving, so the oscillation's own "
+            "share is the measured velocity <i>plus</i> what the envelope is "
+            "taking away. Set ζ = 0 and the correction disappears, "
+            "ω<sub>d</sub> → ω<sub>n</sub>, and both formulas collapse back to "
+            "the undamped pair — which is the check worth doing on any result "
+            "of this shape.", dim=True))
+        dm.add(callout(
+            "<b>This is the single most reused formula in the rest of the "
+            "tutor, so it is worth naming its three parts.</b><br><br>"
+            "&nbsp;&nbsp;• <b>A</b> — how big, set entirely by the initial "
+            "conditions. Nothing about the response's <i>shape</i>.<br>"
+            "&nbsp;&nbsp;• <b>e<sup>−ζω<sub>n</sub>t</sup></b> — the envelope, "
+            "set by the <b>real</b> part of the pole. This alone decides "
+            "settling time.<br>"
+            "&nbsp;&nbsp;• <b>cos(ω<sub>d</sub>t − φ)</b> — the wiggle, set by "
+            "the <b>imaginary</b> part. This alone decides how many visible "
+            "oscillations you get.<br><br>"
+            "Turn the damping slider in the widget above from 0 upwards and "
+            "watch exactly these three things separate: the envelope appears "
+            "and steepens, the wiggle slows a little, and A barely moves.",
+            "key"))
+        dm.add(body(
+            "One honest caveat on the damped case: <b>A is no longer the "
+            "peak.</b> It is the height of the envelope at t = 0, and the "
+            "curve touches that envelope a little later, by which time the "
+            "envelope has already come down. So A is an upper bound on the "
+            "excursion, tight when ζ is small and loose when it is not.",
+            dim=True))
+        self.add(dm)
+
+        # ---- the same answer, split by which IC caused it ----------------
+        sp = Card("the same solution, split by which initial condition "
+                  "caused which piece")
+        sp.add(body(
+            "The single-cosine form is compact, but it blends x<sub>0</sub> "
+            "and v<sub>0</sub> together inside A and φ, so you cannot see "
+            "which one is responsible for what. There is an equivalent "
+            "arrangement that keeps them apart, and it is the more useful one "
+            "when you are debugging a real ring-down:"))
+        sp.add(math_label(r"x(t) = e^{-\zeta\omega_n t}\left["
+                          r"\frac{x_0}{\sqrt{1-\zeta^2}}"
+                          r"\cos(\omega_d t - \psi) \;+\; "
+                          r"\frac{v_0}{\omega_n\sqrt{1-\zeta^2}}"
+                          r"\sin(\omega_d t)\right]", 17))
+        sp.add(math_label(r"\psi = \tan^{-1}\!\frac{\zeta}{\sqrt{1-\zeta^2}} "
+                          r"\;=\; \sin^{-1}\zeta", 17))
+        sp.add(body(
+            "<b>Two independent contributions, and each one is clean.</b> The "
+            "<b>displacement</b> you started with produces a cosine that is "
+            "already phase-shifted by ψ and inflated by 1/√(1−ζ²). The "
+            "<b>velocity</b> you started with produces a pure sine — no phase "
+            "shift at all — scaled by v<sub>0</sub>/ω<sub>d</sub>. Set either "
+            "initial condition to zero and the other term is the whole "
+            "answer, which makes this the form to reach for when you can only "
+            "excite one of them."))
+        sp.add(body(
+            "<b>It is the same function, not an approximation.</b> Expand the "
+            "cosine with the angle-subtraction rule, using cos ψ = √(1−ζ²) "
+            "and sin ψ = ζ — which is why ψ = sin⁻¹ζ — and the √(1−ζ²) "
+            "cancels out of the first term, leaving x<sub>0</sub> cos "
+            "ω<sub>d</sub>t plus a sine whose coefficient collects to exactly "
+            "(v<sub>0</sub> + ζω<sub>n</sub>x<sub>0</sub>)/ω<sub>d</sub>. The "
+            "previous card's constants, recovered.", dim=True))
+        sp.add(callout(
+            "<b>And notice ψ is the complement of φ from the pole "
+            "picture.</b> The pole-angle card on the next page reads the "
+            "angle from the negative real axis as arccos ζ; here the same "
+            "triangle is read from the other side as arcsin ζ. Adjacent ζ, "
+            "opposite √(1−ζ²), hypotenuse 1 — one right triangle, and <b>every "
+            "phase angle in second-order theory is one of its two acute "
+            "angles</b>. arccos ζ, arcsin ζ, and arctan(ζ/√(1−ζ²)) are three "
+            "names for the same two numbers.", "key"))
+        self.add(sp)
+
+        # ---- the light-damping simplification ----------------------------
+        lt = Card("when you may drop the √(1−ζ²), and the one place you may "
+                  "not")
+        lt.add(body(
+            "√(1−ζ²) is scattered through every formula above and it is "
+            "tiresome. For the damping a real joint actually has, most of "
+            "those instances are doing nothing, and dropping them is standard "
+            "practice. But one of them is <b>not</b> negligible, and the "
+            "distinction is the point of this card."))
+        lt.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>ζ</b></td><td><b>√(1−ζ²)</b></td>"
+            "<td><b>error if you call it 1</b></td>"
+            "<td><b>ψ = sin⁻¹ζ</b></td></tr>"
+            "<tr><td>0.05</td><td>0.9987</td><td>0.13%</td><td>2.9°</td></tr>"
+            "<tr><td>0.10</td><td>0.9950</td><td>0.50%</td><td>5.7°</td></tr>"
+            "<tr><td>0.20</td><td>0.9798</td><td>2.0%</td><td>11.5°</td></tr>"
+            "<tr><td>0.30</td><td>0.9539</td><td>4.6%</td><td>17.5°</td></tr>"
+            "</table>"))
+        lt.add(body(
+            "<b>Where it is safe to drop.</b> Anywhere it appears as an "
+            "<i>amplitude</i> or a <i>frequency</i> correction:"))
+        lt.add(math_label(r"\omega_d \approx \omega_n, \qquad "
+                          r"\frac{1}{\sqrt{1-\zeta^2}} \approx 1, \qquad "
+                          r"A \approx \sqrt{x_0^2 + (v_0/\omega_n)^2}", 16))
+        lt.add(body(
+            "At ζ = 0.1 these are all wrong by half a percent, which is far "
+            "inside the uncertainty on any J or K you measured. <b>The "
+            "undamped formulas are the right formulas for a lightly damped "
+            "system, as long as you keep the envelope.</b> That is the useful "
+            "form of the simplification: amplitude and frequency come from "
+            "the undamped analysis, and the only thing damping contributes is "
+            "e<sup>−ζω<sub>n</sub>t</sup> multiplying the lot."))
+        lt.add(callout(
+            "<b>Where you may NOT drop it: anything that is a phase, because "
+            "phases accumulate and amplitudes do not.</b><br><br>"
+            "ψ = sin⁻¹ζ is 5.7° at ζ = 0.1. That looks as negligible as the "
+            "0.5% next to it, and it is not — for two reasons.<br><br>"
+            "<b>1 · A phase error compounds along a cascade.</b> Amplitude "
+            "errors multiply, so 0.5% across four blocks is still 2%. Phase "
+            "errors <b>add</b>, so 5.7° across four blocks is 23° — and you "
+            "are spending it out of a phase margin that is only about 45° to "
+            "begin with. Half your margin, gone to a term you called "
+            "negligible.<br><br>"
+            "<b>2 · The frequency error accumulates in time.</b> Calling "
+            "ω<sub>d</sub> = ω<sub>n</sub> is a 0.5% frequency error, which "
+            "sounds harmless — but after n cycles the predicted waveform is "
+            "0.005 × n cycles out of step with the real one. By n = 50 that "
+            "is a quarter of a cycle: your prediction says peak where the "
+            "hardware says zero crossing. Fine for a settling-time estimate, "
+            "useless for anything that has to stay in step.<br><br>"
+            "<b>The rule: drop √(1−ζ²) from magnitudes freely; keep it in "
+            "anything you will integrate over time or add up around a "
+            "loop.</b>", "warn"))
+        self.add(lt)
+
+        # ---- the two non-oscillating branches ----------------------------
+        no = Card("the other two branches: ζ = 1 and ζ > 1, where there is no "
+                  "ω_d to have")
+        no.add(body(
+            "The boxed formula divides by √(1−ζ²), so it says nothing at all "
+            "once ζ reaches 1. The two remaining branches of the quadratic "
+            "have to be solved separately, and neither contains a "
+            "trigonometric function anywhere — which is the algebraic form of "
+            "\"it does not oscillate\"."))
+        no.add(body(
+            "<b>ζ = 1 — repeated root.</b> Both roots sit at −ω<sub>n</sub>, "
+            "so e<sup>−ω<sub>n</sub>t</sup> is only <i>one</i> solution and a "
+            "second-order equation needs two. The standard repeated-root rule "
+            "supplies the missing one by multiplying by t:"))
+        no.add(math_label(r"x(t) = e^{-\omega_n t}\left[x_0 + "
+                          r"(v_0 + \omega_n x_0)\,t\right]", 17))
+        no.add(body(
+            "The bracket is a straight line and the exponential beats it, so "
+            "the product rises at most once and then decays. <b>At most one "
+            "extremum, and no crossing unless the initial velocity points "
+            "hard enough the wrong way</b> — the boundary case, exactly."))
+        no.add(body(
+            "<b>ζ > 1 — two real roots.</b> Call them "
+            "s<sub>1,2</sub> = −ω<sub>n</sub>(ζ ∓ √(ζ²−1)). The answer is a "
+            "difference of two exponentials, and the constants come from the "
+            "same two initial conditions:"))
+        no.add(math_label(r"x(t) = C_1 e^{s_1 t} + C_2 e^{s_2 t}, \qquad "
+                          r"C_1 = \frac{v_0 - s_2 x_0}{s_1 - s_2}, \qquad "
+                          r"C_2 = \frac{s_1 x_0 - v_0}{s_1 - s_2}", 16))
+        no.add(callout(
+            "<b>And here is the thing worth taking away from the overdamped "
+            "branch.</b> As ζ rises past 1 the two roots do not both move "
+            "left — <b>they split, and one of them moves back towards the "
+            "origin</b>. At ζ = 3 they are at −0.17 ω<sub>n</sub> and "
+            "−5.83 ω<sub>n</sub>.<br><br>"
+            "The slow one dominates everything you see, so a heavily "
+            "overdamped joint behaves like a <i>first-order</i> system with "
+            "τ = 1/(0.17 ω<sub>n</sub>) — nearly six times slower than the "
+            "critically damped case. <b>That is why more damping is not "
+            "safer past ζ = 1</b>: you are not adding stability, you are "
+            "dragging a pole towards the imaginary axis.", "warn"))
+        self.add(no)
+
+        # ---- logarithmic decrement ---------------------------------------
+        ld = Card("measuring ζ from the trace: the logarithmic decrement")
+        ld.add(body(
+            "Everything above goes from parameters to a curve. On hardware "
+            "you have the curve and want the parameters, and for ζ there is a "
+            "method that needs no model, no excitation equipment and no "
+            "force sensor — just a ring-down and a ruler."))
+        ld.add(body(
+            "<b>The idea in one line.</b> The cosine repeats exactly every "
+            "damped period T<sub>d</sub> = 2π/ω<sub>d</sub>, so two samples "
+            "one period apart differ <i>only</i> by the envelope. Take any "
+            "two points n periods apart and the cosines cancel identically:"))
+        ld.add(math_label(r"\frac{x(t)}{x(t + nT_d)} = "
+                          r"\frac{A e^{-\zeta\omega_n t}\cos(\omega_d t"
+                          r"-\varphi)}"
+                          r"{A e^{-\zeta\omega_n (t+nT_d)}"
+                          r"\cos(\omega_d t + 2\pi n - \varphi)} "
+                          r"= e^{\zeta\omega_n n T_d}", 16))
+        ld.add(body(
+            "<b>Now take the log, and watch ω<sub>n</sub> disappear.</b> "
+            "Substitute T<sub>d</sub> = 2π/ω<sub>d</sub> and "
+            "ω<sub>d</sub> = ω<sub>n</sub>√(1−ζ²), and the ω<sub>n</sub> "
+            "cancels top and bottom:"))
+        ld.add(math_label(r"\ln\frac{x(t)}{x(t+nT_d)} = "
+                          r"\zeta\omega_n\,n\,\frac{2\pi}{\omega_d} = "
+                          r"\frac{2\pi n \zeta}{\sqrt{1-\zeta^2}} "
+                          r"\;\approx\; 2\pi n \zeta", 17))
+        ld.add(math_label(r"\boxed{\;\delta \equiv \frac{1}{n}"
+                          r"\ln\frac{x(t)}{x(t+nT_d)} "
+                          r"\qquad\Longrightarrow\qquad "
+                          r"\zeta = \frac{\delta}{\sqrt{4\pi^2 + \delta^2}} "
+                          r"\;\approx\; \frac{\delta}{2\pi}\;}", 17))
+        ld.add(callout(
+            "<b>ω<sub>n</sub> cancelled, and that is what makes this "
+            "usable.</b><br><br>"
+            "You do not need to know the stiffness, the inertia, the natural "
+            "frequency or the units of the sensor. Two amplitudes and a count "
+            "of cycles between them give you ζ outright — and because the "
+            "ratio is dimensionless, an uncalibrated sensor works perfectly "
+            "well. Hit the joint, record the ring-down, measure two peaks, "
+            "divide, take a log.<br><br>"
+            "Then, if you also count the time for those n cycles, you have "
+            "ω<sub>d</sub> = 2πn/Δt, and ω<sub>n</sub> = ω<sub>d</sub>/√(1−ζ²) "
+            "follows. <b>One ring-down gives you both parameters of the "
+            "system.</b>", "key"))
+        ld.add(body(
+            "<b>The rule of thumb for choosing n: pick enough cycles that the "
+            "amplitude has dropped by at least half.</b> That is not "
+            "arbitrary — it is a noise argument. δ comes from a ratio, so the "
+            "fractional error in δ goes roughly as the sensor noise divided "
+            "by ln(ratio). Comparing two peaks that differ by 3% means "
+            "dividing your noise by 0.03 and the answer is garbage; comparing "
+            "peaks that differ by 2× means dividing by ln 2 = 0.69 and the "
+            "answer is solid.<br><br>"
+            "Half-amplitude means 2πnζ ≈ ln 2 = 0.693, so:"))
+        ld.add(math_label(r"n_{50\%} \approx \frac{0.11}{\zeta}", 17))
+        ld.add(body(
+            "<b>ζ = 0.05 → about 2 cycles. ζ = 0.01 → about 11. ζ = 0.3 → "
+            "less than one</b>, which is the honest warning attached to this "
+            "method: at heavy damping there are not enough peaks left to "
+            "measure, and by ζ = 1 there are none at all. Log decrement is a "
+            "<i>lightly damped</i> technique — which is fine, because a "
+            "lightly damped system is exactly the case where you urgently "
+            "need to know ζ and cannot guess it.", dim=True))
+        ld.add(body(
+            "<b>Two practical cautions.</b> Use <b>peaks</b>, not arbitrary "
+            "samples — a peak is where the derivative is zero, so a small "
+            "timing error costs you almost no amplitude error, whereas on the "
+            "steep part of the curve it costs a lot. And subtract the "
+            "<b>resting offset</b> first: the derivation assumes the "
+            "oscillation decays to zero, and a gravity sag or a sensor bias "
+            "makes every ratio wrong in the same direction, which shows up as "
+            "a ζ that drifts as you choose later and later peaks. If your "
+            "answer depends on which pair you picked, you have an offset.",
+            dim=True))
+        self.add(ld)
+
+        self.add(callout(
+            "<b>What the next page adds, and why it is only one more term.</b> "
+            "Everything above is the <i>homogeneous</i> solution — the answer "
+            "when the right-hand side is zero. Put a force on the right and "
+            "linearity splits the problem in two: a <b>particular</b> solution "
+            "that matches the input, plus this same free response, sized so "
+            "the total starts where the system actually started.<br><br>"
+            "That is why the step response on the next page looks like "
+            "<b>1 − (this)</b>: the particular solution for a constant input "
+            "is the constant 1, and the free vibration is what rides on top "
+            "while the system gets there. And it is why a swept sine looks "
+            "like <b>a sine at the drive frequency plus (this)</b> — with the "
+            "free part fading out, which is exactly what \"wait for the "
+            "transient to die\" means.", "good"))
+
+        self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_free(self):
+        """
+        The free response from (x0, v0), drawn as its two component terms plus
+        their sum, so the amplitude-phase collapse is something you watch
+        rather than something you are told.
+
+        All three branches of the quadratic are here, because the whole point
+        of the page is that the sign of zeta^2 - 1 decides the shape:
+
+            zeta < 1   complex pair   -> decaying cosine inside an envelope
+            zeta = 1   repeated root  -> (a + b t) e^(-wn t)
+            zeta > 1   two real roots -> C1 e^(s1 t) + C2 e^(s2 t)
+        """
+        x0 = float(self.s_x0.value())           # degrees
+        v0 = float(self.s_v0.value())           # degrees / second
+        wn = self.s_wnf.value() / 10.0
+        z = self.s_zf0.value() / 100.0
+        self.l_x0.setText(f"{x0:.0f}°")
+        self.l_v0.setText(f"{v0:.0f}°/s")
+        self.l_wnf.setText(f"{wn:.1f} rad/s")
+        self.l_zf0.setText(f"{z:.2f}")
+
+        n = 900
+        critical = abs(z - 1.0) < 5e-3
+
+        if z < 1.0 and not critical:
+            # ---- underdamped: the branch the boxed formula covers ---------
+            wd = wn * math.sqrt(1.0 - z * z)
+            c1 = x0
+            # the envelope is already falling at t=0, so the oscillation's own
+            # share of the initial slope is v0 PLUS what the envelope takes
+            c2 = (v0 + z * wn * x0) / wd
+            amp = math.hypot(c1, c2)
+            phi = math.degrees(math.atan2(c2, c1))
+            period = 2 * math.pi / wd
+            dur = min(8.0, 6.0 * period)
+            ts = [i * dur / n for i in range(n + 1)]
+            env = [math.exp(-z * wn * t) for t in ts]
+            p1 = [c1 * e * math.cos(wd * t) for t, e in zip(ts, env)]
+            p2 = [c2 * e * math.sin(wd * t) for t, e in zip(ts, env)]
+            lab1 = "x₀·cos(ω_d t)  — loaded as position"
+            lab2 = "(v₀+ζω_n x₀)/ω_d · sin(ω_d t)  — loaded as speed"
+            labt = "their sum = A·e^(−ζω_n t)·cos(ω_d t − φ)"
+            regime = "underdamped" if z > 0 else "undamped"
+            reg_col = theme.WARN if 0 < z < 0.5 else (
+                theme.BAD if z <= 0 else theme.GOOD)
+        elif critical:
+            # ---- critical: repeated root, so the second solution is t e^st -
+            ts = [i * (6.0 / (wn)) / n for i in range(n + 1)]
+            env = [math.exp(-wn * t) for t in ts]
+            p1 = [x0 * e for e in env]
+            p2 = [(v0 + wn * x0) * t * e for t, e in zip(ts, env)]
+            amp, phi, period = abs(x0), 0.0, math.inf
+            lab1 = "x₀·e^(−ω_n t)"
+            lab2 = "(v₀+ω_n x₀)·t·e^(−ω_n t)  — the repeated-root term"
+            labt = "their sum — no cosine anywhere"
+            regime, reg_col = "critical", theme.GOOD
+        else:
+            # ---- overdamped: two real roots, and one of them is slow ------
+            r = wn * math.sqrt(z * z - 1.0)
+            s1, s2 = -z * wn + r, -z * wn - r     # s1 is the SLOW one
+            c1 = (v0 - s2 * x0) / (s1 - s2)
+            c2 = (s1 * x0 - v0) / (s1 - s2)
+            dur = min(12.0, 6.0 / abs(s1))
+            ts = [i * dur / n for i in range(n + 1)]
+            p1 = [c1 * math.exp(s1 * t) for t in ts]
+            p2 = [c2 * math.exp(s2 * t) for t in ts]
+            env = [math.exp(s1 * t) for t in ts]   # the slow pole's envelope
+            amp, phi, period = abs(x0), 0.0, math.inf
+            lab1 = f"slow root  s₁ = {s1:.2f}  — this one is the shape"
+            lab2 = f"fast root  s₂ = {s2:.2f}  — gone almost immediately"
+            labt = "their sum — two exponentials, no oscillation"
+            regime, reg_col = "overdamped", theme.WARN
+
+        tot = [a + b for a, b in zip(p1, p2)]
+
+        self.st_A.set(f"{amp:.2f}°")
+        self.st_phi.set("—" if z >= 1.0 else f"{phi:.1f}°")
+        if abs(x0) > 1e-6 and z < 1.0:
+            g = amp / abs(x0)
+            self.st_gain.set(f"{g:.2f}×")
+            self.st_gain.set_color(theme.GOOD if g < 1.05 else theme.WARN)
+        else:
+            self.st_gain.set("x₀ = 0" if abs(x0) <= 1e-6 else "—")
+            self.st_gain.set_color(theme.TEXT_DIM)
+        self.st_per.set("none" if not math.isfinite(period)
+                        else f"{period:.3f} s")
+        self.st_regf.set(regime)
+        self.st_regf.set_color(reg_col)
+
+        c = self.cfv
+        c.clear()
+        a = c.ax
+        a.plot(ts, p1, color=theme.TEXT_FAINT, lw=1.2, ls="--", label=lab1)
+        a.plot(ts, p2, color=theme.CYAN, lw=1.2, ls="--", alpha=0.8, label=lab2)
+        a.plot(ts, tot, color=theme.ACCENT, lw=2.4, label=labt)
+        if z < 1.0 and not critical:
+            a.plot(ts, [amp * e for e in env], color=theme.VIOLET, lw=1.1,
+                   ls=":", label="±A envelope")
+            a.plot(ts, [-amp * e for e in env], color=theme.VIOLET, lw=1.1,
+                   ls=":")
+        a.axhline(0, color=theme.BORDER, lw=1.0)
+        a.scatter([0.0], [x0], s=45, color=theme.WARN, zorder=6)
+        a.annotate("x₀", (0.0, x0), color=theme.WARN, fontsize=8,
+                   xytext=(6, 4), textcoords="offset points")
+        a.set_xlabel("time (s)")
+        a.set_ylabel("x (°)")
+        a.set_title("free vibration — no input, only initial conditions",
+                    fontsize=9)
+        c.legend(loc="upper right")
+        c.refresh()
+
+        if z >= 1.0 and not critical:
+            r = wn * math.sqrt(z * z - 1.0)
+            s1, s2 = -z * wn + r, -z * wn - r
+            self.tfv.setText(
+                f"<b>ζ = {z:.2f} &gt; 1 — overdamped, and the roots have "
+                f"split.</b> s₁ = {s1:.2f} and s₂ = {s2:.2f} per second. The "
+                f"fast one is {abs(s2/s1):.1f}× quicker and is over almost "
+                f"before the plot starts; <b>everything you see is the slow "
+                f"root</b>, which behaves like a first-order lag of "
+                f"τ = {1/abs(s1):.3f} s. Note s₁ is <i>closer to zero</i> "
+                f"than the critical case's −{wn:.1f}: more damping moved one "
+                f"pole the wrong way.")
+        elif critical:
+            self.tfv.setText(
+                f"<b>ζ = 1 — critical, the boundary.</b> Both roots sit on "
+                f"top of each other at −{wn:.1f}, so one exponential cannot "
+                f"carry two initial conditions and the second solution has to "
+                f"be t·e^(−ω_n t) — the cyan curve. It rises, the exponential "
+                f"beats it, and the sum reaches rest without a single "
+                f"crossing. This is the fastest arrival that has no "
+                f"overshoot at all.")
+        elif abs(x0) < 1e-6:
+            self.tfv.setText(
+                f"<b>x₀ = 0 — a pure hammer blow.</b> The cosine term is "
+                f"gone, so the answer is a clean sine of amplitude "
+                f"v₀/ω_d = {amp:.2f}°, and φ = {phi:.0f}°. All the energy "
+                f"entered as kinetic and the spring converts it to "
+                f"displacement over the first quarter cycle.")
+        elif abs(v0) < 1e-6 and z <= 0:
+            self.tfv.setText(
+                f"<b>v₀ = 0 — released from rest.</b> The sine term is gone, "
+                f"A = |x₀| = {amp:.2f}° and φ = 0°. This is the only case "
+                f"where the peak equals the starting displacement — and it is "
+                f"the case textbooks draw, which is why the general result "
+                f"surprises people.")
+        else:
+            extra = (amp / abs(x0) - 1.0) * 100.0 if abs(x0) > 1e-6 else 0.0
+            decay = ("100% of the one before — nothing is being taken, so it "
+                     "rings forever" if z <= 0 else
+                     f"{math.exp(-2*math.pi*z/math.sqrt(1-z*z))*100:.0f}% of "
+                     f"the one before — that ratio is the logarithmic "
+                     f"decrement")
+            self.tfv.setText(
+                f"<b>A = {amp:.2f}° against a start of {x0:.0f}°</b> — the "
+                f"envelope starts {extra:+.0f}% above where the curve began, "
+                f"because v₀ = {v0:.0f}°/s contributes through the second leg "
+                f"of the triangle. Flip the sign of v₀ and A is unchanged; "
+                f"only φ = {phi:.0f}° moves. Damped period "
+                f"{period:.3f} s, and each swing is {decay}.")
+
+
+# ==========================================================================
 # PAGE -- second order
 # ==========================================================================
 
@@ -443,7 +1139,180 @@ class SecondOrderPage(Page):
             "last visible trace of the second energy store.", dim=True))
         self.add(sh)
 
-        m = Card("the four formulas you will actually use")
+        # ---- the step response, solved in full ---------------------------
+        so = Card("the step response, actually solved — and then every metric "
+                  "falls out of it")
+        so.add(body(
+            "The envelope argument above gets the overshoot right, but it "
+            "leans on knowing where the peak is. Do it properly instead: "
+            "<b>write down y(t)</b>, and then the peak, the overshoot and the "
+            "settling time are three questions you <i>ask</i> of a function "
+            "you already have, rather than three formulas to memorise."))
+        so.add(body(
+            "<b>Step 1 — split the problem, which is all linearity ever "
+            "does.</b> With a constant command r = 1 on the right-hand side:"))
+        so.add(math_label(r"\ddot y + 2\zeta\omega_n\dot y + \omega_n^2 y "
+                          r"= \omega_n^2 \qquad\Longrightarrow\qquad "
+                          r"y(t) = \underbrace{y_p}_{\text{particular}} "
+                          r"+ \underbrace{y_h(t)}_{\text{free vibration}}",
+                          17))
+        so.add(body(
+            "The <b>particular</b> part is whatever holds the equation true "
+            "forever. Try a constant: the two derivatives vanish and you are "
+            "left with ω<sub>n</sub>²y = ω<sub>n</sub>², so "
+            "<b>y<sub>p</sub> = 1</b>. That is the final value, and it took "
+            "one line.<br><br>"
+            "The <b>homogeneous</b> part is the previous page, unchanged — "
+            "the free vibration of this same joint, "
+            "A e<sup>−ζω<sub>n</sub>t</sup>cos(ω<sub>d</sub>t − φ). Nothing "
+            "about it depends on the input; the input only decides how much "
+            "of it there is."))
+        so.add(body(
+            "<b>Step 2 — the initial conditions pick A and φ.</b> A step onto "
+            "a joint at rest means y(0) = 0 and ẏ(0) = 0. But the particular "
+            "part is already sitting at 1, so the free part has to start at "
+            "<b>−1</b> to cancel it. Feed x<sub>0</sub> = −1, v<sub>0</sub> = 0 "
+            "into the amplitude formula from the previous page:"))
+        so.add(math_label(r"A = \sqrt{(-1)^2 + \left(\frac{0 + "
+                          r"\zeta\omega_n(-1)}{\omega_d}\right)^{2}} "
+                          r"= \sqrt{1 + \frac{\zeta^2}{1-\zeta^2}} "
+                          r"= \frac{1}{\sqrt{1-\zeta^2}}", 17))
+        so.add(body(
+            "Write the result with a sine instead of a cosine — same function, "
+            "phase shifted by 90°, and this is the form everyone quotes:"))
+        so.add(math_label(r"\boxed{\;y(t) = 1 - \frac{e^{-\zeta\omega_n t}}"
+                          r"{\sqrt{1-\zeta^2}}\,\sin(\omega_d t + \varphi),"
+                          r"\qquad \varphi = \arccos\zeta\;}", 18))
+        so.add(body(
+            "<b>Every symbol in that line has already been earned.</b> The "
+            "<b>1</b> is the particular solution. The "
+            "<b>e<sup>−ζω<sub>n</sub>t</sup></b> is the pole's real part. "
+            "<b>ω<sub>d</sub></b> is its imaginary part. The "
+            "<b>1/√(1−ζ²)</b> is the initial-condition amplitude A. And "
+            "<b>φ = arccos ζ</b> is the <i>same angle the poles make with the "
+            "negative real axis</i> — the one the pole-plot card called \"the "
+            "angle is the damping\". It shows up here because it is the same "
+            "right triangle: adjacent ζ, opposite √(1−ζ²), hypotenuse 1.",
+            dim=True))
+        so.add(callout(
+            "<b>Sanity-check it at the two ends, which is how you catch a "
+            "dropped sign.</b><br><br>"
+            "At <b>t = 0</b>: sin φ = √(1−ζ²), so the second term is "
+            "(1/√(1−ζ²))·1·√(1−ζ²) = 1, and y(0) = 1 − 1 = <b>0</b>. "
+            "Correct.<br>"
+            "As <b>t → ∞</b>: the exponential kills the second term and "
+            "y → <b>1</b>. Correct — and note this is where \"no steady-state "
+            "error\" comes from, with nothing to do with damping.<br>"
+            "At <b>ζ → 0</b>: φ → 90°, the exponential → 1, and y = 1 − "
+            "cos ω<sub>n</sub>t — a pure undamped oscillation between 0 and "
+            "<b>2</b>. That is 100% overshoot, which is exactly what the "
+            "formula predicts at ζ = 0.", "key"))
+
+        so.add(body(
+            "<b>Step 3 — differentiate once, and the rest of the page is "
+            "arithmetic.</b> The derivative looks like it should be a mess of "
+            "two terms, but the ζ and √(1−ζ²) in them are cos φ and sin φ, so "
+            "the angle-subtraction rule collapses the pair into a single "
+            "sine — and the φ <b>disappears</b>:"))
+        so.add(math_label(r"\dot y(t) = \frac{\omega_n\,e^{-\zeta\omega_n t}}"
+                          r"{\sqrt{1-\zeta^2}}\;\sin(\omega_d t)", 17))
+        so.add(body(
+            "<b>That one line is worth more than the three formulas below "
+            "it.</b> The slope of a second-order step response is a decaying "
+            "sine at ω<sub>d</sub>, with <b>no phase offset at all</b>. So the "
+            "turning points are wherever sin ω<sub>d</sub>t = 0 — and they are "
+            "evenly spaced, forever, at multiples of π/ω<sub>d</sub>.",
+            dim=True))
+        self.add(so)
+
+        d = Card("the four metrics, each one derived in a line")
+        d.add(body(
+            "<b>Peak time t<sub>p</sub>.</b> Set ẏ = 0. The exponential is "
+            "never zero, so the condition is sin ω<sub>d</sub>t = 0, i.e. "
+            "ω<sub>d</sub>t = nπ. n = 0 is the start; <b>n = 1 is the first "
+            "peak</b>; n = 2 is the first trough, and so on:"))
+        d.add(math_label(r"t_p = \frac{\pi}{\omega_d}, \qquad "
+                         r"t_{\text{n-th extremum}} = \frac{n\pi}{\omega_d}",
+                         17))
+        d.add(body(
+            "So the peaks and troughs alternate on a fixed grid of half damped "
+            "periods. Counting visible wiggles on a scope trace and dividing is "
+            "how you measure ω<sub>d</sub> off hardware."))
+        d.add(body(
+            "<b>Overshoot M<sub>p</sub>.</b> Put t<sub>p</sub> back into y(t). "
+            "The sine term becomes sin(π + φ) = −sin φ = −√(1−ζ²), the minus "
+            "signs cancel, and the √(1−ζ²) <b>divides out against the "
+            "amplitude</b> — which is why the answer is so much simpler than "
+            "the function it came from:"))
+        d.add(math_label(r"M_p = y(t_p) - 1 = \frac{\sqrt{1-\zeta^2}}"
+                         r"{\sqrt{1-\zeta^2}}\,e^{-\zeta\omega_n \pi/\omega_d} "
+                         r"= e^{-\pi\zeta/\sqrt{1-\zeta^2}}", 17))
+        d.add(body(
+            "and the ω<sub>n</sub> cancels in the exponent too, because "
+            "ω<sub>n</sub>/ω<sub>d</sub> = 1/√(1−ζ²). <b>Two cancellations, "
+            "and that is the whole reason overshoot is a function of ζ "
+            "alone.</b> It is not a deep fact about robots; it is those two "
+            "ratios.<br><br>"
+            "The same substitution with n instead of 1 gives every later "
+            "extremum: the n-th one overshoots by "
+            "e<sup>−nπζ/√(1−ζ²)</sup>, alternating sides. Each swing is the "
+            "previous one raised to the same power — which is the logarithmic "
+            "decrement from earlier on the page, arriving a second time from a "
+            "different direction.", dim=True))
+        d.add(body(
+            "<b>Settling time t<sub>s</sub>.</b> \"Settled\" means the "
+            "oscillation is trapped inside a band. The sine is bounded by 1, "
+            "so |y − 1| never exceeds the envelope, and you solve the envelope "
+            "for the band instead of solving y:"))
+        d.add(math_label(r"\frac{e^{-\zeta\omega_n t_s}}{\sqrt{1-\zeta^2}} "
+                         r"= \delta \;\Longrightarrow\; "
+                         r"t_s = \frac{-\ln\!\left(\delta\sqrt{1-\zeta^2}"
+                         r"\right)}{\zeta\omega_n} \;\approx\; "
+                         r"\frac{4}{\zeta\omega_n}\ \ (\delta = 2\%)", 16))
+        d.add(body(
+            "−ln(0.02) = 3.91, and the √(1−ζ²) correction is small for the ζ "
+            "anyone uses, so it gets rounded to 4. <b>That is the entire "
+            "provenance of the famous 4/(ζω<sub>n</sub>)</b>: a logarithm of "
+            "the tolerance you chose, divided by the real part of the pole. "
+            "Use −ln(0.05) = 3.0 if your spec is a 5% band — the rule is not "
+            "attached to the number 4.", dim=True))
+        d.add(body(
+            "<b>Rise time t<sub>r</sub>.</b> This is the one with no clean "
+            "closed form: solving y(t) = 0.9 means solving a transcendental "
+            "equation, because t appears both in the exponential and inside "
+            "the sine. Everyone therefore quotes a fit, and it is honest to "
+            "call it that:"))
+        d.add(math_label(r"t_r^{(0-100\%)} = \frac{\pi - \varphi}{\omega_d} "
+                         r"\qquad "
+                         r"t_r^{(10-90\%)} \approx "
+                         r"\frac{2.16\zeta + 0.60}{\omega_n}\ \ "
+                         r"(0.3 \leq \zeta \leq 0.8)", 16))
+        d.add(body(
+            "The first one <i>is</i> exact, and it is the same calculation as "
+            "t<sub>p</sub>: the response first touches its final value when "
+            "the sine term vanishes, ω<sub>d</sub>t + φ = π. It is only usable "
+            "for underdamped systems, because an overdamped one never reaches "
+            "100% in finite time — which is exactly why the 10–90% definition "
+            "and its fitted formula exist.", dim=True))
+        d.add(callout(
+            "<b>And the two cases the boxed formula does not cover, because "
+            "√(1−ζ²) is zero or imaginary.</b><br><br>"
+            "At <b>ζ = 1</b> the two roots collide at −ω<sub>n</sub>. A "
+            "repeated root only supplies one exponential, so the second "
+            "solution is t·e<sup>−ω<sub>n</sub>t</sup> — the standard "
+            "repeated-root rule — and the answer is "
+            "<b>y = 1 − e<sup>−ω<sub>n</sub>t</sup>(1 + ω<sub>n</sub>t)</b>. "
+            "No sine anywhere: nothing oscillates, and the (1 + ω<sub>n</sub>t) "
+            "is the algebraic ghost of the missing wiggle.<br><br>"
+            "At <b>ζ > 1</b> the roots are two distinct real numbers "
+            "−ω<sub>n</sub>(ζ ∓ √(ζ²−1)), and y is a difference of two plain "
+            "exponentials. The <b>slower</b> one dominates everything you see, "
+            "which is the precise reason overdamped is slower than critical: "
+            "you have pushed one pole left, but the other one has moved "
+            "<i>right</i>, towards the origin.", "warn"))
+        self.add(d)
+
+        m = Card("the four formulas, now that they have been earned")
         m.add(math_label(r"M_p = e^{-\pi\zeta/\sqrt{1-\zeta^2}} \qquad "
                          r"t_s \approx \frac{4}{\zeta\omega_n} \qquad "
                          r"t_p = \frac{\pi}{\omega_d} \qquad "
@@ -586,6 +1455,84 @@ class SecondOrderPage(Page):
             dim=True))
         self.add(fr)
 
+        # ---- the swept sine, solved the same way -------------------------
+        sw = Card("solve the swept sine too — same split, different particular "
+                  "solution")
+        sw.add(body(
+            "The table above is the answer read off a picture. Here is the "
+            "same answer read off the equation, because it is the identical "
+            "two-part split that produced the step response, with exactly one "
+            "thing changed: the right-hand side."))
+        sw.add(math_label(r"\ddot y + 2\zeta\omega_n\dot y + \omega_n^2 y "
+                          r"= \omega_n^2\sin\omega t", 17))
+        sw.add(body(
+            "<b>The particular solution is a sine at the driving "
+            "frequency.</b> Not at ω<sub>n</sub>, not at ω<sub>d</sub> — at "
+            "<b>ω</b>, the frequency you are shaking it at. That is forced on "
+            "you by the algebra: differentiating a sine gives sines of the "
+            "same frequency, so nothing on the left can produce any other "
+            "frequency. Substitute y<sub>p</sub> = M sin(ωt + ψ), collect "
+            "terms, and M and ψ come straight out:"))
+        sw.add(math_label(r"M(\omega) = |G(j\omega)| = \frac{\omega_n^2}"
+                          r"{\sqrt{(\omega_n^2-\omega^2)^2 "
+                          r"+ (2\zeta\omega_n\omega)^2}}, \qquad "
+                          r"\psi(\omega) = -\tan^{-1}\!\frac"
+                          r"{2\zeta\omega_n\omega}{\omega_n^2-\omega^2}", 16))
+        sw.add(body(
+            "<b>That denominator is the whole frequency-response story in one "
+            "expression.</b> Two terms fight under the square root. "
+            "(ω<sub>n</sub>² − ω²) is the spring and the mass, and it goes to "
+            "<b>zero</b> when ω = ω<sub>n</sub> — that is them cancelling, "
+            "algebraically. The other term, 2ζω<sub>n</sub>ω, is the damper, "
+            "and it is the <i>only</i> thing left holding the denominator up "
+            "at that point. Small ζ, small denominator, enormous M. The "
+            "sentence \"only the damper resists you at resonance\" is that "
+            "cancellation.", dim=True))
+        sw.add(body(
+            "<b>And the homogeneous part is still there, unchanged.</b> "
+            "Adding it back gives the complete answer to \"shake it starting "
+            "from rest\":"))
+        sw.add(math_label(r"y(t) = \underbrace{M\sin(\omega t + \psi)}"
+                          r"_{\text{steady state, at }\omega} \;+\; "
+                          r"\underbrace{A\,e^{-\zeta\omega_n t}"
+                          r"\cos(\omega_d t - \phi)}"
+                          r"_{\text{transient, at }\omega_d}", 17))
+        sw.add(callout(
+            "<b>Two sinusoids at two different frequencies, and only one of "
+            "them survives.</b><br><br>"
+            "The second term is the free vibration from the previous page, "
+            "letter for letter — same envelope, same ω<sub>d</sub>. But "
+            "<b>A and φ here are not the initial conditions.</b> The joint "
+            "starts at rest, so the transient's job is to cancel whatever the "
+            "steady-state term is doing at t = 0, which means A and φ depend "
+            "on the <i>drive frequency</i> ω as well as on ζ and "
+            "ω<sub>n</sub>. Same shape, different constants, different "
+            "meaning — and that is the trap in reusing the letters A and "
+            "φ.<br><br>"
+            "The transient decays at e<sup>−ζω<sub>n</sub>t</sup> and the "
+            "steady-state term does not decay at all. So after roughly "
+            "<b>4/(ζω<sub>n</sub>)</b> — the same settling time as the step — "
+            "the ω<sub>d</sub> component is gone and only the ω component is "
+            "left. <b>That is what \"wait for the transient to die\" means, "
+            "and that is how long you have to wait.</b>", "key"))
+        sw.add(body(
+            "<b>So a frequency-response plot is a plot of M(ω) and ψ(ω), and "
+            "nothing else.</b> Pick an ω, drive, wait 4/(ζω<sub>n</sub>), "
+            "measure the surviving amplitude ratio and time shift, plot the "
+            "point, move to the next ω. The whole Bode plot is that loop. Two "
+            "practical consequences fall out of it immediately:<br><br>"
+            "&nbsp;&nbsp;<b>1.</b> <b>Sweep too fast and you measure the "
+            "transient.</b> A lightly damped joint needs a long dwell at every "
+            "point precisely <i>because</i> ζ is small — which is worst "
+            "exactly where the interesting peak is. A too-fast sweep smears "
+            "the resonance and under-reports its height.<br>"
+            "&nbsp;&nbsp;<b>2.</b> <b>The ringing you see while the sweep is "
+            "settling is at ω<sub>d</sub>, not at your drive frequency.</b> "
+            "Seeing two frequencies beat against each other on the scope is "
+            "the transient and the steady state coexisting, and it is the "
+            "normal appearance of this equation, not a fault.", dim=True))
+        self.add(sw)
+
         pk = Card("the peak exists only below ζ = 0.707 — and that is the whole "
                   "reason for that number")
         pk.add(body(
@@ -633,13 +1580,89 @@ class SecondOrderPage(Page):
         self.add(pk)
 
         # ---- interactive: the magnitude/phase family ---------------------
+        rd = Card("before the plot: the peak is NOT at ω_n, and the two dots "
+                  "that prove it")
+        rd.add(body(
+            "The widget below is the first place the three frequencies stop "
+            "being a table and start being pixels, and there is a specific "
+            "misreading it invites. It is worth heading off, because it is "
+            "the one people leave this material still believing."))
+        rd.add(body(
+            "<b>The misreading:</b> \"every curve peaks at ω/ω<sub>n</sub> = 1, "
+            "and the ω<sub>r</sub> marker sits to the left of the peak where "
+            "the curve is lower — so ω<sub>r</sub> is not where it "
+            "peaks.\"<br><br>"
+            "<b>What is actually true:</b> the curve peaks at ω<sub>r</sub>, "
+            "always, and the magnitude there is the <i>highest point on the "
+            "whole curve</i> — strictly higher than the magnitude at "
+            "ω<sub>n</sub>. Both of these are exact, not approximate:"))
+        rd.add(math_label(r"|G(j\omega_n)| = \frac{1}{2\zeta} = Q "
+                          r"\qquad\text{but}\qquad "
+                          r"|G(j\omega_r)| = M_r = "
+                          r"\frac{1}{2\zeta\sqrt{1-\zeta^2}} "
+                          r"\;=\; \frac{Q}{\sqrt{1-\zeta^2}} \;>\; Q", 16))
+        rd.add(body(
+            "The ratio between them is 1/√(1−ζ²), which is <b>always greater "
+            "than 1</b> and is the same factor that appeared in the step "
+            "response's amplitude. So M<sub>r</sub> > Q for every ζ > 0."))
+        rd.add(body(
+            "<b>So why does it look like the peak is at 1.0?</b> Because at "
+            "light damping the two are numerically the same to the width of a "
+            "drawn line, and light damping is where the peak is tall enough to "
+            "look at:"))
+        rd.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>ζ</b></td><td><b>ω<sub>r</sub>/ω<sub>n</sub></b></td>"
+            "<td><b>Q at ω<sub>n</sub></b></td>"
+            "<td><b>M<sub>r</sub> at ω<sub>r</sub></b></td>"
+            "<td><b>gap</b></td></tr>"
+            "<tr><td>0.05</td><td>0.9975</td><td>20.0 dB</td><td>20.01 dB</td>"
+            "<td>0.01 dB — invisible</td></tr>"
+            "<tr><td>0.20</td><td>0.959</td><td>7.96 dB</td><td>8.14 dB</td>"
+            "<td>0.18 dB — still invisible</td></tr>"
+            "<tr><td>0.40</td><td>0.825</td><td>1.94 dB</td><td>2.70 dB</td>"
+            "<td>0.76 dB — now visible</td></tr>"
+            "<tr><td>0.60</td><td>0.529</td><td>−1.58 dB</td><td>0.35 dB</td>"
+            "<td>1.96 dB — obvious</td></tr>"
+            "<tr><td>0.707</td><td>0 — no peak</td><td>−3.0 dB</td>"
+            "<td>0 dB at DC</td><td>the peak has reached DC</td></tr>"
+            "</table>"))
+        rd.add(callout(
+            "<b>Read the ζ = 0.6 row again, because it is the one that "
+            "settles it.</b> At ω<sub>n</sub> the magnitude is "
+            "<b>−1.58 dB</b> — the curve is <i>below</i> 0 dB there, already "
+            "attenuating. At ω<sub>r</sub> = 0.53 ω<sub>n</sub> it is "
+            "<b>+0.38 dB</b>. The highest point is nowhere near 1.0, and the "
+            "point at 1.0 is not even a local maximum.<br><br>"
+            "So the rule is: <b>at small ζ the peak is at ω<sub>n</sub> for "
+            "all practical purposes; at moderate ζ it is measurably to the "
+            "left; and above 0.707 it does not exist.</b> The widget draws a "
+            "dot at each of the two points so you can watch them separate "
+            "instead of taking this on trust — drag ζ from 0.05 up to 0.65 and "
+            "watch the two dots pull apart.", "key"))
+        rd.add(body(
+            "One more thing the same table explains: <b>the peak height at "
+            "ω<sub>n</sub> is the number worth quoting anyway.</b> Q = 1/(2ζ) "
+            "is what the SEA and vibration pages use, because it is the "
+            "energy-per-radian reading, it is exact, and at the light damping "
+            "where any of this is dangerous it is within a rounding error of "
+            "the true peak.", dim=True))
+        self.add(rd)
+
         i3 = Card("the plot itself — magnitude and phase against ω, for every ζ")
         i3.add(body(
-            "The pale curves are a family of ζ values so you can see the shape "
-            "change; the bright one is yours. The x-axis is ω/ω<sub>n</sub>, so "
-            "<b>1.0 is always the natural frequency</b> whatever you set it to."
-            "<br><br>"
-            "<b>Three things to check for yourself:</b><br>"
+            "The pale curves are a family of fixed ζ values — 0.05, 0.1, 0.2, "
+            "0.4, 0.707, 1.0, 2.0, labelled at the right-hand edge — drawn so "
+            "you can see the shape change; the bright one is yours. The x-axis "
+            "is ω/ω<sub>n</sub>, so <b>1.0 is always the natural "
+            "frequency</b> whatever you set it to.<br><br>"
+            "The two dots on the bright curve are the point the card above is "
+            "about: <b>violet sits at ω<sub>n</sub> (height Q), red sits at "
+            "ω<sub>r</sub> (height M<sub>r</sub>, the true maximum)</b>. The "
+            "small faint dots on the pale curves are <i>their</i> peaks, so "
+            "the leftward march of ω<sub>r</sub> with rising ζ is visible as a "
+            "trail.<br><br>"
+            "<b>Four things to check for yourself:</b><br>"
             "&nbsp;&nbsp;<b>1.</b> Every curve passes through the same point at "
             "ω/ω<sub>n</sub> = 1 on the <i>phase</i> plot: exactly <b>−90°</b>, "
             "for every ζ. That is how you find ω<sub>n</sub> from a measured "
@@ -650,7 +1673,11 @@ class SecondOrderPage(Page):
             "lightly damped system flips from 0° to −180° almost "
             "instantaneously, which is what makes it so dangerous to wrap a "
             "loop around.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Walk ζ up towards 0.707 and watch <i>how</i> "
+            "&nbsp;&nbsp;<b>3.</b> Drag ζ from 0.05 up through 0.6 and watch "
+            "the <b>two dots separate</b>. Below about 0.2 they are on top of "
+            "each other; by 0.6 the red one is at half the frequency and "
+            "the violet one has fallen below 0 dB.<br>"
+            "&nbsp;&nbsp;<b>4.</b> Walk ζ up towards 0.707 and watch <i>how</i> "
             "the peak goes. It does not shrink in place — the ω<sub>r</sub> "
             "marker <b>slides left towards DC</b> while the peak height falls "
             "to 0 dB, and the two arrive together exactly at ζ = 1/√2. Past "
@@ -658,13 +1685,17 @@ class SecondOrderPage(Page):
         self.s_zf = slider(3, 200, 30)           # x0.01
         self.l_zf = QLabel()
         i3.add_layout(slider_row("damping ζ (×0.01)", self.s_zf, self.l_zf))
-        self.st_mr = Stat("peak height M_r", "--", theme.BAD)
-        self.st_q = Stat("Q = gain at ω_n", "--", theme.VIOLET)
+        self.st_mr = Stat("peak M_r (at ω_r)", "--", theme.BAD)
+        self.st_q = Stat("Q = |G| at ω_n", "--", theme.VIOLET)
         self.st_wr = Stat("peak at ω_r", "--", theme.WARN)
+        self.st_gap = Stat("M_r − Q", "--", theme.CYAN)
         self.st_bw2 = Stat("−3 dB bandwidth", "--", theme.GOOD)
-        i3.add_layout(stat_row(self.st_mr, self.st_q, self.st_wr, self.st_bw2))
+        i3.add_layout(stat_row(self.st_mr, self.st_q, self.st_wr, self.st_gap,
+                               self.st_bw2))
         self.c3 = MplCanvas(width=7.4, height=3.8, nrows=2)
         i3.add(self.c3)
+        self.t3 = body("", dim=True)
+        i3.add(self.t3)
         self.add(i3)
         self.s_zf.valueChanged.connect(self._redraw_freq)
         self._redraw_freq()
@@ -1018,12 +2049,22 @@ class SecondOrderPage(Page):
         mr_db = resonant_peak_db(z)
         wr = resonant_frequency(z, wn)
         q = quality_factor(z)
+        q_db = 20.0 * math.log10(q) if math.isfinite(q) and q > 0 else math.inf
         bw = bandwidth_second_order(z, wn)
-        self.st_mr.set("none" if wr <= 0 else f"+{mr_db:.1f} dB")
+        self.st_mr.set("none" if wr <= 0 else f"+{mr_db:.2f} dB")
         self.st_mr.set_color(theme.GOOD if wr <= 0 else
                              (theme.WARN if mr_db < 10 else theme.BAD))
-        self.st_q.set(f"{q:.1f}" if math.isfinite(q) else "∞")
-        self.st_wr.set("no peak" if wr <= 0 else f"{wr:.2f} ω_n")
+        self.st_q.set(f"{q_db:+.2f} dB" if math.isfinite(q_db) else "∞")
+        self.st_wr.set("no peak" if wr <= 0 else f"{wr:.3f} ω_n")
+        # the number the confusion is actually about: the peak is ABOVE the
+        # value at wn, always, by exactly -20 log10 sqrt(1 - z^2)
+        if wr > 0 and math.isfinite(q_db):
+            self.st_gap.set(f"{mr_db - q_db:+.2f} dB")
+            self.st_gap.set_color(theme.CYAN if mr_db - q_db > 0.3
+                                  else theme.TEXT_DIM)
+        else:
+            self.st_gap.set("—")
+            self.st_gap.set_color(theme.TEXT_DIM)
         self.st_bw2.set(f"{bw:.2f} ω_n")
 
         c = self.c3
@@ -1035,6 +2076,12 @@ class SecondOrderPage(Page):
             a2.semilogx(ratios, p, color=theme.TEXT_FAINT, lw=0.9, alpha=0.55)
             a1.text(ratios[-1], m[-1], f" {zz:g}", color=theme.TEXT_FAINT,
                     fontsize=6.2, va="center")
+            # each pale curve's OWN peak, so the leftward march of w_r with
+            # rising zeta is a visible trail rather than a claim
+            wrr = resonant_frequency(zz, wn)
+            if wrr > 0:
+                a1.scatter([wrr], [resonant_peak_db(zz)], s=14,
+                           color=theme.TEXT_FAINT, alpha=0.8, zorder=4)
         m, p = mag_phase(z)
         a1.semilogx(ratios, m, color=theme.ACCENT, lw=2.4,
                     label=f"your ζ = {z:.2f}")
@@ -1043,13 +2090,19 @@ class SecondOrderPage(Page):
         a1.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
         a1.axhline(-3.0, color=theme.GOOD, lw=1.0, ls=":", label="−3 dB")
         a1.axvline(1.0, color=theme.VIOLET, lw=1.2, ls="-.", label="ω_n")
+        # the two dots the card above is about: |G| at w_n, and the real peak
+        if math.isfinite(q_db):
+            a1.scatter([1.0], [q_db], s=60, color=theme.VIOLET, zorder=7,
+                       label=f"at ω_n: {q_db:+.2f} dB")
         if wr > 0:
             a1.axvline(wr, color=theme.BAD, lw=1.2)
+            a1.scatter([wr], [mr_db], s=60, color=theme.BAD, zorder=7,
+                       label=f"peak at ω_r: {mr_db:+.2f} dB")
             a1.text(wr, mr_db + 1.5, " ω_r", color=theme.BAD, fontsize=7.5)
         a1.set_ylim(-45, max(30, mr_db + 8))
         a1.set_ylabel("|G|  (dB)")
-        a1.set_title("magnitude: the peak is 1/(2ζ) and vanishes above ζ = 0.707",
-                     fontsize=8.5)
+        a1.set_title("magnitude: |G| at ω_n is 1/(2ζ); the true peak is "
+                     "higher, and to the LEFT, at ω_r", fontsize=8.5)
         c.legend(a1, loc="lower left")
 
         a2.axvline(1.0, color=theme.VIOLET, lw=1.2, ls="-.")
@@ -1061,6 +2114,30 @@ class SecondOrderPage(Page):
         a2.set_title("phase: every curve passes −90° at ω_n, whatever ζ is",
                      fontsize=8.5)
         c.refresh()
+
+        if wr <= 0:
+            self.t3.setText(
+                f"<b>ζ = {z:.2f} ≥ 0.707 — there is no peak.</b> The red dot "
+                f"and the red ω<sub>r</sub> line are gone because "
+                f"√(1−2ζ²) is not a real number any more. The curve falls "
+                f"monotonically from DC, and |G| at ω<sub>n</sub> is "
+                f"{q_db:+.2f} dB — below 0 dB, so even the natural frequency "
+                f"is being attenuated.")
+        else:
+            gap = mr_db - q_db
+            near = gap < 0.25
+            self.t3.setText(
+                f"<b>Peak = {mr_db:+.2f} dB at ω<sub>r</sub> = "
+                f"{wr:.3f} ω<sub>n</sub>; the curve at ω<sub>n</sub> itself is "
+                f"only {q_db:+.2f} dB.</b> The peak is {gap:+.2f} dB higher "
+                f"than the point at 1.0 and sits {(1-wr)*100:.1f}% to the left "
+                + ("— which at this ζ is far too small to see, and is exactly "
+                   "why the peak <i>looks</i> like it is at ω<sub>n</sub>. "
+                   "Raise ζ past 0.4 and the two dots visibly separate."
+                   if near else
+                   "— now large enough to read straight off the plot. Note "
+                   "the violet dot at ω<sub>n</sub> is no longer anywhere near "
+                   "the top of the curve."))
 
     # ------------------------------------------------------------------
     def _redraw_energy(self):
@@ -1812,6 +2889,193 @@ class BodePage(Page):
             "the gain.", "key"))
         self.add(pm)
 
+        # ==================================================================
+        # bandwidth -- the word that six different frequencies answer to
+        # ==================================================================
+        self.add(hline())
+        self.add(title("\"Bandwidth\" — six different frequencies have now "
+                       "been introduced, and only two of them are one"))
+
+        zoo = Card("the six frequencies, what each one is a property of, and "
+                   "where you read it")
+        zoo.add(body(
+            "By this point in the tutor ω has been subscripted six ways, and "
+            "they are routinely swapped for each other in conversation. They "
+            "are not interchangeable, and the fastest way to keep them "
+            "straight is to notice that <b>each one is a property of a "
+            "different object</b>: some describe a pole pair, some describe a "
+            "loop, one describes a closed loop."))
+        zoo.add(body(
+            "<table cellpadding='6'>"
+            "<tr><td><b>Symbol</b></td><td><b>What it is</b></td>"
+            "<td><b>Property of</b></td><td><b>Read it off</b></td></tr>"
+
+            "<tr><td><b>1/τ</b></td>"
+            "<td>a first-order pole's rate. The <i>only</i> frequency a "
+            "first-order system has.</td>"
+            "<td>one real pole</td>"
+            "<td>the corner of its own magnitude plot — and it is also its "
+            "−3 dB point, exactly</td></tr>"
+
+            "<tr><td><b>ω<sub>n</sub></b></td>"
+            "<td>√(K/J). Pole radius; what it rings at undamped.</td>"
+            "<td>a complex pole pair</td>"
+            "<td>the −90° crossing on <i>that pair's</i> phase plot</td></tr>"
+
+            "<tr><td><b>ω<sub>d</sub></b></td>"
+            "<td>ω<sub>n</sub>√(1−ζ²). The pole's imaginary part.</td>"
+            "<td>the same pole pair</td>"
+            "<td>counting wiggles on a <b>step response</b></td></tr>"
+
+            "<tr><td><b>ω<sub>r</sub></b></td>"
+            "<td>ω<sub>n</sub>√(1−2ζ²). Where the magnitude actually peaks; "
+            "gone above ζ = 0.707.</td>"
+            "<td>the same pole pair</td>"
+            "<td>the top of the bump on a <b>swept sine</b></td></tr>"
+
+            "<tr><td><b>ω<sub>gc</sub></b></td>"
+            "<td>where |L| = 1. <b>The crossover.</b></td>"
+            "<td><b>L</b>, the loop gain</td>"
+            "<td>the 0 dB crossing on the L magnitude plot</td></tr>"
+
+            "<tr><td><b>ω<sub>pc</sub></b></td>"
+            "<td>where ∠L = −180°. Where gain margin is measured.</td>"
+            "<td><b>L</b>, the loop gain</td>"
+            "<td>the −180° crossing on the L phase plot</td></tr>"
+
+            "<tr><td><b>ω<sub>BW</sub></b></td>"
+            "<td>where |T| has fallen 3 dB below its DC value. "
+            "<b>The bandwidth.</b></td>"
+            "<td><b>T</b>, the closed loop</td>"
+            "<td>the −3 dB crossing on the T magnitude plot</td></tr>"
+            "</table>"))
+        zoo.add(callout(
+            "<b>The one sentence that sorts them.</b> ω<sub>n</sub>, "
+            "ω<sub>d</sub> and ω<sub>r</sub> are three readings of <b>one pole "
+            "pair</b> and differ only by factors of √(1−ζ²) and √(1−2ζ²). "
+            "ω<sub>gc</sub> and ω<sub>pc</sub> are two readings of <b>the "
+            "uncut loop</b> and have nothing to do with a pole pair. "
+            "ω<sub>BW</sub> is a reading of <b>the closed loop</b>.<br><br>"
+            "So: pole-pair frequencies describe <i>what rings</i>, loop "
+            "frequencies describe <i>how close to the edge you are</i>, and "
+            "the bandwidth describes <i>how fast the finished machine "
+            "is</i>.", "key"))
+        self.add(zoo)
+
+        tb = Card("converting a time constant into a bandwidth — the bridge "
+                  "back to first order")
+        tb.add(body(
+            "The first-order pages gave you τ; everything from here on is "
+            "specified in Hz. The conversion is not a convention, it is a "
+            "derivation, and it is two lines. Take the first-order magnitude "
+            "and ask where it has fallen to 1/√2 of its DC value — which is "
+            "what \"−3 dB\" means, because 20 log<sub>10</sub>(1/√2) = "
+            "−3.01:"))
+        tb.add(math_label(r"|G(j\omega)| = \frac{1}{\sqrt{1+(\omega\tau)^2}} "
+                          r"= \frac{1}{\sqrt2} \;\Longrightarrow\; "
+                          r"(\omega\tau)^2 = 1 \;\Longrightarrow\; "
+                          r"\boxed{\;\omega_{BW} = \frac{1}{\tau}, \qquad "
+                          r"f_{BW} = \frac{1}{2\pi\tau}\;}", 17))
+        tb.add(body(
+            "<b>So the pole, the corner and the bandwidth are the same "
+            "number.</b> For a first-order system there is nothing else to "
+            "know. A 10 ms current loop is a 100 rad/s pole is a "
+            "<b>15.9 Hz</b> bandwidth — three names for one fact.<br><br>"
+            "<b>And why −3 dB and not some other level:</b> 1/√2 in amplitude "
+            "is exactly <b>half</b> in power, since power goes as amplitude "
+            "squared. The \"half-power point\" is the honest name; −3 dB is "
+            "the same thing in the units people plot in."))
+        tb.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td><b>τ</b></td><td><b>ω<sub>BW</sub> = 1/τ</b></td>"
+            "<td><b>f<sub>BW</sub></b></td>"
+            "<td><b>t<sub>s</sub> (2%) = 4τ</b></td>"
+            "<td><b>t<sub>r</sub> (10–90%) = 2.2τ</b></td></tr>"
+            "<tr><td>10 ms</td><td>100 rad/s</td><td>15.9 Hz</td>"
+            "<td>40 ms</td><td>22 ms</td></tr>"
+            "<tr><td>50 ms</td><td>20 rad/s</td><td>3.2 Hz</td>"
+            "<td>200 ms</td><td>110 ms</td></tr>"
+            "<tr><td>200 ms</td><td>5 rad/s</td><td>0.80 Hz</td>"
+            "<td>800 ms</td><td>440 ms</td></tr>"
+            "</table>"))
+        tb.add(callout(
+            "<b>Multiply the last two columns of any row and you get the same "
+            "number: t<sub>r</sub> × f<sub>BW</sub> ≈ 0.35.</b><br><br>"
+            "That is the rise-time–bandwidth product, and it is exact for a "
+            "first-order system by construction: 2.2τ × 1/(2πτ) = 2.2/6.283 = "
+            "0.350, with the τ cancelling. It is the most useful sanity check "
+            "in this whole area — a datasheet claiming a 1 kHz bandwidth is "
+            "claiming a <b>0.35 ms</b> rise time, and if the scope shows 3 ms "
+            "then one of you is wrong.<br><br>"
+            "It generalises approximately to second order as well (0.35–0.45 "
+            "over the usual damping range), which is why the rule survives "
+            "contact with real hardware.", "key"))
+        tb.add(body(
+            "<b>The second-order version is not 1/τ, because there is no "
+            "τ.</b> Solve the same |T| = 1/√2 condition on the canonical form "
+            "and you get a less pretty closed form:"))
+        tb.add(math_label(r"\omega_{BW} = \omega_n\sqrt{\,1 - 2\zeta^2 "
+                          r"+ \sqrt{2 - 4\zeta^2 + 4\zeta^4}\,}", 16))
+        tb.add(body(
+            "<b>Worth knowing three values of it and no more:</b> at "
+            "ζ = 0.4 it is 1.37 ω<sub>n</sub>; at <b>ζ = 0.707 it is "
+            "1.000 ω<sub>n</sub></b>; at ζ = 1 it is 0.64 ω<sub>n</sub>. "
+            "The middle one is the fourth good property of 0.707 — the "
+            "bandwidth you get is the ω<sub>n</sub> you designed for, to four "
+            "figures. Away from it you are always within a factor of about "
+            "1.5 either way, which is why people say \"bandwidth ≈ "
+            "ω<sub>n</sub>\" and get away with it.", dim=True))
+        self.add(tb)
+
+        ol = Card("open-loop \"bandwidth\" is the crossover; closed-loop "
+                  "bandwidth is the −3 dB point")
+        ol.add(body(
+            "This is the question the vocabulary above was built to answer, "
+            "and the two halves have genuinely different definitions — but "
+            "they land within a factor of two of each other, which is why the "
+            "sloppiness usually survives."))
+        ol.add(body(
+            "<b>Open loop: the bandwidth is ω<sub>gc</sub>, the crossover.</b> "
+            "And that is a <i>derived</i> choice, not a naming convention. "
+            "Below crossover |L| > 1, so the error-rejection factor 1/(1+L) is "
+            "small and the loop is genuinely in charge — disturbances get "
+            "squashed and commands get followed. Above crossover |L| < 1, "
+            "1/(1+L) ≈ 1, and the loop is a spectator: whatever the world does "
+            "to the plant simply happens."))
+        ol.add(math_label(r"\frac{E}{R} = \frac{1}{1+L(j\omega)} \approx "
+                          r"\begin{cases} 1/L & |L| \gg 1 "
+                          r"\;\;(\omega \ll \omega_{gc}) \\ "
+                          r"1 & |L| \ll 1 \;\;(\omega \gg \omega_{gc}) "
+                          r"\end{cases}", 16))
+        ol.add(body(
+            "<b>ω<sub>gc</sub> is therefore the frequency at which authority "
+            "runs out</b>, and calling it the bandwidth is a statement about "
+            "control authority, not about tracking fidelity."))
+        ol.add(body(
+            "<b>Closed loop: the bandwidth is where |T| drops 3 dB below its "
+            "DC value.</b> Same definition as any filter, because T <i>is</i> "
+            "a filter — reference in, motion out. Note \"below its DC value\", "
+            "not \"below 0 dB\": a loop with steady-state droop starts under "
+            "0 dB and you measure the 3 dB from wherever it started."))
+        ol.add(callout(
+            "<b>And the bridge between them, which is the number to "
+            "remember.</b> For the standard loop the closed-loop bandwidth "
+            "lands consistently just above the crossover:<br><br>"
+            "&nbsp;&nbsp;ζ = 0.2 → ω<sub>BW</sub> = 1.57 ω<sub>gc</sub><br>"
+            "&nbsp;&nbsp;ζ = 0.4 → 1.61 ω<sub>gc</sub><br>"
+            "&nbsp;&nbsp;ζ = 0.707 → 1.55 ω<sub>gc</sub><br>"
+            "&nbsp;&nbsp;ζ = 1.0 → 1.32 ω<sub>gc</sub><br><br>"
+            "<b>So ω<sub>gc</sub> ≤ ω<sub>BW</sub> ≤ 2 ω<sub>gc</sub>, and "
+            "≈ 1.5× is the working estimate.</b> That is why the two usages "
+            "of \"bandwidth\" rarely cause an argument — and also why you "
+            "should say which one you mean when a factor of 1.5 matters, "
+            "which on a spec sheet it does.<br><br>"
+            "The physical reason they track each other: raising the loop gain "
+            "pushes ω<sub>gc</sub> right, which drags the closed-loop poles "
+            "outward, which moves ω<sub>BW</sub> right by the same rough "
+            "factor. One knob, both numbers.", "good"))
+        self.add(ol)
+
         # ---- interactive ------------------------------------------------
         i = Card("build a loop and watch the margins move")
         i.add(body(
@@ -1858,6 +3122,193 @@ class BodePage(Page):
             "every frequency — but the phase is dragged down by −360·f·T<sub>d</sub> "
             "degrees, and the phase margin drains away. Page 1 said delay is "
             "pure loss; this is the picture of it.", "good"))
+
+        # ==================================================================
+        # experiment 2, done properly -- the SEA ceiling as an inequality
+        # ==================================================================
+        self.add(hline())
+        self.add(title("Experiment 2 in full: why a spring in the drivetrain "
+                       "puts a hard ceiling on bandwidth"))
+
+        se = Card("what the resonance does to L — two effects, and only one "
+                  "of them is the phase")
+        se.add(body(
+            "Turning that resonance slider on multiplies the loop gain by one "
+            "extra factor — the canonical second-order form, with its own "
+            "ω<sub>res</sub> and its own, very small, ζ<sub>r</sub>:"))
+        se.add(math_label(r"L(s) = \underbrace{C(s)\,P_{rigid}(s)}"
+                          r"_{\text{what you designed}}\;\cdot\;"
+                          r"\underbrace{\frac{\omega_{res}^2}"
+                          r"{s^2 + 2\zeta_r\omega_{res}s + \omega_{res}^2}}"
+                          r"_{\text{the spring, uninvited}}", 16))
+        se.add(body(
+            "Below ω<sub>res</sub> that factor is ≈ 1 in magnitude and ≈ 0° "
+            "in phase: <b>the spring is invisible, and everything you "
+            "designed for a rigid joint is still true.</b> That is exactly "
+            "why the ceiling is a ceiling rather than a general penalty — "
+            "under it you pay nothing at all.<br><br>"
+            "At and above ω<sub>res</sub> it does two things at once, and "
+            "they compound:"))
+        se.add(body(
+            "&nbsp;&nbsp;<b>1 · It adds 180° of phase lag</b>, all of it "
+            "inside about one octave around ω<sub>res</sub>, because "
+            "ζ<sub>r</sub> is small and the transition is therefore sharp. "
+            "The rigid loop was already sitting near −90° from its "
+            "integrator, so the total sails through <b>−180°</b> right about "
+            "there. <b>That is where ω<sub>pc</sub> now lives</b>, and before "
+            "the spring existed there was no ω<sub>pc</sub> at all — gain "
+            "margin was infinite.<br>"
+            "&nbsp;&nbsp;<b>2 · It multiplies the magnitude by Q = "
+            "1/(2ζ<sub>r</sub>)</b> at that same frequency. A steel flexure "
+            "at ζ<sub>r</sub> = 0.05 is a <b>×10</b> amplifier, precisely "
+            "where the phase has just handed you −180°.", dim=True))
+        se.add(callout(
+            "<b>Both effects land at the same frequency, and that "
+            "coincidence is the entire problem.</b><br><br>"
+            "The card earlier on this page explained that a plain plant is "
+            "safe because phase and magnitude race each other: by the time "
+            "the phase reaches −180° the rolloff has already crushed the "
+            "gain. A lightly damped resonance breaks that race in the worst "
+            "possible way — it supplies the phase <b>and simultaneously "
+            "boosts the gain</b>. It is the same structural problem as a pure "
+            "delay, except a delay only refuses to attenuate, whereas a "
+            "resonance actively amplifies.", "warn"))
+        self.add(se)
+
+        ce = Card("the ceiling, as an inequality you can evaluate before "
+                  "building anything")
+        ce.add(body(
+            "Put the two effects together and gain margin falls out. Gain "
+            "margin is measured at ω<sub>pc</sub>, which we have just "
+            "established is ≈ ω<sub>res</sub>, and the loop gain there is the "
+            "rigid design's gain multiplied by Q:"))
+        ce.add(math_label(r"|L(j\omega_{res})| \;\approx\; Q\cdot"
+                          r"|L_{rigid}(j\omega_{res})| "
+                          r"\qquad\Longrightarrow\qquad "
+                          r"GM \;\approx\; -20\log_{10}\!\left("
+                          r"Q\,|L_{rigid}(j\omega_{res})|\right)\ \text{dB}",
+                          16))
+        ce.add(body(
+            "<b>That estimate is worth trusting.</b> Evaluated against the "
+            "exact margin of the widget's own plant it comes out within "
+            "1–3 dB across resonances from 15 Hz to 100 Hz and gains spanning "
+            "a factor of 13, and it errs on the pessimistic side. Two "
+            "quantities, both known before anything is built.", dim=True))
+        ce.add(body(
+            "<b>Now turn it into a bandwidth limit.</b> Above crossover a "
+            "typical loop rolls off at about −20 dB/decade, so its magnitude "
+            "out at the resonance is roughly ω<sub>gc</sub>/ω<sub>res</sub>. "
+            "Substitute, demand a gain margin of at least a factor g (g = 2 "
+            "is 6 dB), and solve for the crossover:"))
+        ce.add(math_label(r"Q\,\frac{\omega_{gc}}{\omega_{res}} \leq "
+                          r"\frac{1}{g} \qquad\Longrightarrow\qquad "
+                          r"\boxed{\;\omega_{gc} \;\leq\; "
+                          r"\frac{\omega_{res}}{g\,Q} "
+                          r"\;=\; \frac{2\zeta_r}{g}\,\omega_{res}\;}", 17))
+        ce.add(callout(
+            "<b>Read that inequality, because it is the SEA design rule and "
+            "it is brutal.</b><br><br>"
+            "The achievable bandwidth is <b>not</b> the resonant frequency. "
+            "It is the resonant frequency multiplied by <b>2ζ<sub>r</sub></b> "
+            "— the damping of a spring nobody designed to be damped — and "
+            "then divided by your margin requirement.<br><br>"
+            "A 15 Hz SEA spring at ζ<sub>r</sub> = 0.05 with a 6 dB gain "
+            "margin gives ω<sub>gc</sub> ≤ 15 × 0.10 / 2 = <b>0.75 Hz</b>. "
+            "Not 15 Hz. Not 5 Hz. <b>Under one hertz</b>, from a mechanism "
+            "whose resonance is at fifteen.", "warn"))
+        ce.add(body(
+            "<b>Which is why real SEAs do not live with that number, and "
+            "what they do instead.</b> Every term in the inequality is a "
+            "lever, and the fix is always one of exactly three things:<br><br>"
+            "&nbsp;&nbsp;<b>• Raise ζ<sub>r</sub>.</b> The bound is "
+            "<i>linear</i> in it, so this is the highest-value fix available: "
+            "damping the spring from 0.05 to 0.25 buys a 5× bandwidth. Do it "
+            "physically if you can, or with an inner torque loop, which is "
+            "the whole reason an SEA has a torque sensor and a cascade "
+            "structure in the first place.<br>"
+            "&nbsp;&nbsp;<b>• Raise ω<sub>res</sub>.</b> A stiffer spring — "
+            "but stiffness was the thing you fitted a spring to give up, so "
+            "this trades away force fidelity, shock tolerance and "
+            "backdriveability. <b>This is the SEA trade, stated as one "
+            "inequality</b>, and it is the same sentence the SEA page makes "
+            "with hardware.<br>"
+            "&nbsp;&nbsp;<b>• Notch it.</b> Put a filter zero on the "
+            "resonance so the loop never sees the Q. It works, and it is "
+            "fragile: a notch is tuned to a frequency that moves with "
+            "payload, temperature and wear, and a mistuned notch is worse "
+            "than none. The Lead/Lag page spends a full card on why.",
+            dim=True))
+        self.add(ce)
+
+        cmp_ = Card("SEA versus direct drive, in the terms of that "
+                    "inequality")
+        cmp_.add(body(
+            "The comparison people want is \"how much bandwidth does a series "
+            "spring cost me\", and the inequality answers it by saying <b>the "
+            "two architectures are limited by entirely different "
+            "things</b>."))
+        cmp_.add(body(
+            "<table cellpadding='7'>"
+            "<tr><td></td><td><b>Direct drive / rigid</b></td>"
+            "<td><b>Series elastic</b></td></tr>"
+
+            "<tr><td><b>What caps ω<sub>gc</sub></b></td>"
+            "<td>sampling rate, loop delay, motor electrical pole, "
+            "sensor noise — <b>all implementation</b></td>"
+            "<td>2ζ<sub>r</sub>ω<sub>res</sub>/g — <b>a mechanical "
+            "property you bolted in on purpose</b></td></tr>"
+
+            "<tr><td><b>Gain margin with a P controller</b></td>"
+            "<td><b>infinite</b> — the widget shows GM = ∞ at every "
+            "K<sub>p</sub> with the resonance off</td>"
+            "<td><b>finite, and it can start out negative.</b> With the "
+            "widget's 15 Hz spring and K<sub>d</sub> = 4 it is already "
+            "−4 dB at K<sub>p</sub> = 10, before you have tuned "
+            "anything</td></tr>"
+
+            "<tr><td><b>Which margin dies first</b></td>"
+            "<td>phase margin, gradually, as you raise the gain</td>"
+            "<td>gain margin, and it was already gone</td></tr>"
+
+            "<tr><td><b>Typical ceiling</b></td>"
+            "<td>tens of Hz to a few hundred — set by the 1 kHz loop rate "
+            "and its delay, from page 1</td>"
+            "<td>a few Hz, unless ζ<sub>r</sub> is engineered up or the "
+            "spring is stiffened</td></tr>"
+
+            "<tr><td><b>What you bought for it</b></td>"
+            "<td>bandwidth, and transparency only if the gearbox is "
+            "small</td>"
+            "<td>shock tolerance, honest force sensing from spring "
+            "deflection, and safety on impact</td></tr>"
+            "</table>"))
+        cmp_.add(callout(
+            "<b>The honest summary: an SEA trades bandwidth for force "
+            "fidelity, and the exchange rate is 2ζ<sub>r</sub>.</b><br><br>"
+            "That is not a criticism of series elasticity — it is the reason "
+            "to choose it. A leg that must survive heel strike wants the "
+            "spring, and does not need 100 Hz of position bandwidth to walk. "
+            "An arm doing precise insertion wants the bandwidth and can avoid "
+            "the impacts.<br><br>"
+            "What is <i>not</i> acceptable is choosing series elasticity and "
+            "then being surprised by the ceiling. The inequality is "
+            "evaluable at the CAD stage: you know ω<sub>res</sub> from the "
+            "spring rate and the load inertia, you can measure ζ<sub>r</sub> "
+            "with one ring-down test, and the bandwidth you are allowed "
+            "follows. The actuator pages later on spend this result on "
+            "specific joints of both robots.", "key"))
+        cmp_.add(body(
+            "<b>To watch all of this happen in the widget above:</b> set the "
+            "resonance to 0 (rigid) and K<sub>d</sub> = 4, then raise "
+            "K<sub>p</sub> from 10 to 1600 — crossover climbs from 2.6 Hz to "
+            "12.7 Hz, phase margin bleeds from 85° to 1°, and <b>gain margin "
+            "reads ∞ the entire way</b>. Now set the resonance to 15 Hz and "
+            "repeat: gain margin is <b>−4.3 dB at the very first step</b>, "
+            "and ω<sub>pc</sub> has appeared at 14.8 Hz — sitting right on "
+            "the spring. Move the resonance out to 50 Hz and gain margin "
+            "returns to about +9 dB, which is the inequality's "
+            "ω<sub>res</sub> term doing its work.", dim=True))
+        self.add(cmp_)
 
         self.finish()
 
