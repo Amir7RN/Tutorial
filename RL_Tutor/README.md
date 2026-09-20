@@ -32,10 +32,10 @@ effective inertia, bandwidth and safety envelope. The first half is that plant.
 
 ## Run it
 
-### New: automatically playing concept animations, pages 16–95
+### New: automatically playing concept animations, all 95 pages
 
-Every lesson from **Making It Stable** through **Shipping It** now includes a
-**Watch the idea** movie: 80 lesson-specific sequences with 279 narrated scenes.
+Every lesson from **Real-Time Control** through **Shipping It** now includes a
+**Watch the idea** movie: 104 sequences across 95 pages, with 359 narrated scenes.
 They show moving joints, series and parallel springs, gearing, robot links,
 phase lead and lag, lake episodes, Bellman backups, return arithmetic, neural
 signals and gradients, replay storage, and the fast/slow deployment loops.
@@ -46,16 +46,35 @@ pace. They stop consuming animation ticks when hidden or scrolled out of view,
 and retain their playback position when you return. Pausing a movie remains in
 effect when you leave and revisit its page.
 
-All existing lesson text, code, plots and interactive demonstrations remain.
+Page 1 has **ten movies with 38 scenes**, distributed alongside the text:
+updates inside a motion cycle, sensor/compute/command timing, delay, illustrative
+DD/SEA/PEA mechanisms and response bandwidths, stroboscopic aliasing, identical sample lists,
+the exactly-Nyquist failure, anti-alias filtering, and execution deadlines.
+The 950 Hz / 1 kHz example shows both the rotating-phase explanation and the
+sample arithmetic, with the sine phase reversal handled explicitly. Topic buttons
+at the top jump directly to each explanation.
+
+Existing lesson sections, code, plots and interactive demonstrations remain.
+Page 1 also corrects overly absolute wording: actuator type does not set a
+universal bandwidth, resonance is not automatically the closed-loop bandwidth,
+and prevention can include higher-rate acquisition with appropriate filtering.
 The new movies use fixed teaching examples, independently of the lab controls
 below them. Physical motion is schematic; displayed Bellman arithmetic and the
 deterministic value-iteration wave are calculated, including zero continuation
-at terminal states. Pages 1–15 have no new movies.
+at terminal states. Pages 2–15 add tanks, spring–mass motion, complex-mode
+rotation, phase feedback and cancellation animations. The first-order bandwidth
+examples show computed amplitude and phase, rather than claiming to simulate
+the full dynamics of a particular actuator.
+
+Sampling references: Analog Devices on [band-limited sampling and aliasing](https://www.analog.com/en/resources/technical-articles/basics-of-bandlimited-sampling-and-aliasing.html)
+and [filtering before digitisation](https://www.analog.com/en/resources/faqs/faq_antialiasing_filter.html).
 
 Check animation coverage, rendering, example arithmetic and playback with
 `python -m unittest discover -s tests -p test_lesson_animations.py`.
 For a page-by-page GUI check and screenshots, run
 `python tests/review_lesson_animations.py`; output goes to `_shots/animations/`.
+Use `--start 1 --end 15` to review just the opening lessons, including all ten
+embedded page-1 movies.
 
 ### New: gait-to-torque visual walkthroughs
 

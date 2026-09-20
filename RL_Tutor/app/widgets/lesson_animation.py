@@ -14,9 +14,10 @@ from PySide6.QtWidgets import QAbstractScrollArea, QComboBox, QHBoxLayout, QLabe
 
 from .. import theme
 from .common import Card, body
+from .foundation_scenes import FoundationScenes
 
 
-class LessonCanvas(QWidget):
+class LessonCanvas(FoundationScenes, QWidget):
     def __init__(self, story, parent=None):
         super().__init__(parent)
         self.story = story
@@ -403,6 +404,7 @@ class LessonAnimation(Card):
     def __init__(self, story, parent=None):
         super().__init__("Watch the idea · " + story.title, parent)
         self.story = story
+        self.SECONDS_PER_STEP = story.seconds
         self.playing = True
         self.position = 0.0
         self.rate = 1.0

@@ -20,14 +20,15 @@ class Story:
     scene: str
     steps: tuple[Step, ...]
     nodes: tuple[str, ...] = ()
+    seconds: float = 6.0
 
 
 def S(title, caption, **data):
     return Step(title, caption, data)
 
 
-def movie(title, scene, *steps, nodes=()):
-    return Story(title, scene, steps, nodes)
+def movie(title, scene, *steps, nodes=(), seconds=6.0):
+    return Story(title, scene, steps, nodes, seconds)
 
 
 @lru_cache(maxsize=1)
@@ -43,7 +44,116 @@ def deterministic_sweeps():
     return history
 
 
+PAGE_ONE_EXTRAS = {
+    "mechanisms": movie("What the fast computer is connected to", "actuator",
+        S("Direct drive: motor and load move together", "The motor's torque acts through a rigid connection in this ideal sketch. Both rotor and load inertia resist acceleration. Frequent command updates do not remove that inertia.", mode="dd", fast=True, equation="A 1 ms update changes the command; it does not instantly change mechanical velocity."),
+        S("SEA: the spring allows relative motion", "During fast interaction the load can move before the motor follows, stretching the spring. In the other direction, commanding motor torque must work through those spring–mass dynamics to change joint motion or torque.", mode="sea", fast=True, equation="Fast sensing, fast motor updates and fast load response are three different capabilities."),
+        S("PEA: a spring shares torque alongside the motor", "The parallel spring can help support a load or return stored energy. It leaves the direct motor–load path intact; it does not automatically impose the same motor-to-load bottleneck as a series spring.", mode="pea", fast=True, equation="Topology changes the dynamics, but does not assign a universal bandwidth number."), seconds=9),
+    "cycles": movie("Count the updates inside one physical cycle", "tick_cycle",
+        S("10 Hz takes 100 ms", "Imagine a joint moving left, then right, and back to its starting phase. At 10 cycles per second, each cycle lasts 100 ms. A 1 ms controller tick fits 100 times inside it.", f=10),
+        S("20 Hz takes 50 ms", "Now the motion repeats twice as quickly. The computer did not slow down: it still updates every millisecond, so there are 50 updates in each 20 Hz cycle.", f=20),
+        S("30 Hz takes about 33.3 ms", "A 30 Hz cycle lasts about 33.3 control intervals. Individual cycles contain 33 or 34 tick instants depending on their alignment with the sampling clock.", f=30),
+        S("50 Hz takes 20 ms", "There are 20 opportunities to correct each cycle. This says how densely you observe and update; it does not prove that the motor can follow the request.", f=50),
+        S("100 Hz takes 10 ms", "Only ten updates now fit inside a cycle. A fixed delay and the same mechanical lag occupy more of the movement, leaving less room for reliable correction.", f=100), seconds=8),
+    "timing": movie("The same delay becomes more harmful at higher frequency", "delay_clock",
+        S("At 20 Hz, a 2 ms delay is a small slice", "The cycle lasts 50 ms. A measurement delayed by 2 ms describes a point 4% of a cycle in the past: 14.4° of phase lag.", f=20, delay=2),
+        S("At 50 Hz, the same delay eats a tenth of a cycle", "The cycle now lasts 20 ms. The same 2 ms latency costs 36°. More frequent measurements alone do not remove a separate transport delay.", f=50, delay=2),
+        S("At 100 Hz, it eats a fifth", "A 10 ms cycle advances by 72° during that 2 ms delay. The controller is reacting to an increasingly stale picture of a changing situation.", f=100, delay=2),
+        S("Sample-and-hold also has a phase cost", "A zero-order hold contributes about half a sampling interval of phase delay in its baseband response. At a 1 kHz update rate, that is 0.5 ms: 18° at 100 Hz, before other delay and plant phase are counted.", f=100, delay=.5), seconds=8),
+    "mechanics": movie("Same 1 kHz computer, different mechanical responses", "tracking",
+        S("What a bandwidth number actually means", "These are illustrative closed-loop first-order responses with bandwidths of 100, 20 and 50 Hz. Gold is the requested motion; cyan is the result. DD/SEA/PEA labels identify examples, not universal ratings. A slow 5 Hz request is followed fairly well by all three.", f=5),
+        S("At 20 Hz, the 20 Hz example is already down to 70.7%", "Bandwidth is a response measure: for this model, at its −3 dB bandwidth the output excursion is 70.7% of the low-frequency excursion and lags by 45°. It has not stopped working, and it does not move only once every 50 ms.", f=20),
+        S("At 50 Hz, enough samples does not mean enough authority", "All three have 20 updates per requested cycle. Nevertheless the example with 20 Hz bandwidth follows with only 37.1% amplitude and 68.2° lag. The sampler can describe the 50 Hz motion while the system follows it poorly.", f=50),
+        S("At 100 Hz, the differences become larger", "The lower-bandwidth responses become smaller and later. A real spring–mass system can also resonate rather than behave like this smooth first-order model; the actuator pages analyse those resonances.", f=100),
+        S("Double the update rate; keep these response models fixed", "There are now twice as many updates, but these specified closed-loop responses have not changed. Faster sampling can reduce sampling-related delay and enable redesign; it does not by itself stiffen an SEA spring, reduce inertia, or guarantee doubled bandwidth.", f=50, rate=2000), seconds=9),
+    "alias_wheel": movie("Aliasing is the camera missing the turns between snapshots", "alias_wheel",
+        S("A slow phase advance is easy to follow", "Treat the rotating hand as signal phase, not a literal rotating robot. A 50 Hz signal advances 18° between 1 kHz samples. The camera sees many nearby positions per revolution.", f=50),
+        S("950 Hz nearly completes a revolution per sample", "Between flashes the true hand travels 342° forward. The camera records only the endpoints: a step of 342° forward lands at exactly the same orientation as 18° backward.", f=950),
+        S("The apparent motion is 50 Hz backward", "Twenty backward steps of 18° make one apparent revolution. Twenty samples at 1,000 samples per second take 20 ms, corresponding to 50 Hz. The missing near-full turns are invisible in the snapshots.", f=950),
+        S("1,050 Hz can masquerade as 50 Hz forward", "Now the true advance is 378°: one whole turn plus 18°. The snapshots cannot tell whether the whole turn happened. This is another continuous signal compatible with the sampled phase.", f=1050), seconds=9),
+    "alias_data": movie("The ambiguity is in the numbers, not just the picture", "sample_identity",
+        S("Look at the actual recorded values", "At t = n/1000 seconds, cos(2π×950t) and cos(2π×50t) have exactly the same values. Each new pair of boxes is another indistinguishable sample.", f=950, other=50),
+        S("The computer receives just this list", "It does not receive the path taken between samples. Without additional information it cannot determine which of these two continuous motions produced the list.", f=950, other=50),
+        S("The phase convention matters for sine", "For zero-phase sine, the exact identity uses −50 Hz: sin(2π×950n/1000) = −sin(2π×50n/1000). That is a 50 Hz alias with reversed phase, not an identical positive-phase 50 Hz sine.", f=950, other=-50, sine=True, note="Negative frequency here denotes phase direction; the oscillation's frequency magnitude is 50 Hz."),
+        S("Filtering this list cannot identify its origin", "A digital filter applied to identical data must return identical results. You can suppress the apparent 50 Hz component, but cannot preserve a real 50 Hz signal while rejecting this indistinguishable alias from these samples alone.", f=950, other=50), seconds=9),
+    "nyquist": movie("Exactly two samples per cycle can hide the whole motion", "sample_identity",
+        S("At 500 Hz with a 1 kHz sampler", "This sine is sampled exactly at its zero crossings. Every recorded value is zero, just as if the signal were absent. This is why the boundary itself is unsafe for an arbitrary-phase tone.", f=500, other=0, sine=True, note="Here sin(πn) = 0 at every sample, although the signal moves between samples."),
+        S("Shift phase and the samples change", "Cosine is the same-frequency oscillation shifted by a quarter cycle. It is sampled at alternating peaks instead. Two samples per cycle do not determine arbitrary amplitude and phase at this boundary.", f=500, other=-500, note="At Nyquist: samples are +1, −1, +1, −1 … for a unit cosine."),
+        S("A different faster signal can share the data too", "A 1,500 Hz cosine also produces these alternating samples at 1 kHz. The samples become uniquely interpretable only with a suitable prior bandwidth restriction, not by looking at their shape alone.", f=1500, other=500, note="Nyquist applies to a band-limited signal, not to an unrestricted collection of possible frequencies."), seconds=9),
+    "filter": movie("Remove unwanted fast content before it folds", "filter_gate",
+        S("Filter while the frequencies are still distinguishable", "Before sampling, a wanted low-frequency signal and a 950 Hz vibration are different signals. An analog low-pass filter can attenuate the unwanted band before the ADC samples it.", before=True),
+        S("After sampling, both may occupy the wanted band", "If 950 Hz has already folded to 50 Hz, a digital low-pass that passes wanted 50 Hz content also passes this alias. Moving the same filtering idea after the ADC is too late to separate their origins.", before=False),
+        S("Faster acquisition is another design option", "You can sample initially at a higher rate, filter digitally while the unwanted component is still distinct, then decimate. The first acquisition still needs adequate analog bandwidth control. Filter roll-off and delay must be included in the design.", before=True), seconds=9),
+    "deadline": movie("The loop period is a deadline, not an average", "deadline",
+        S("Finish with time to spare", "A 0.35 ms job fits inside a 1 ms period with 0.65 ms remaining. The next tick can begin on time.", duration=.35),
+        S("A slow tick can still fit", "This 0.9 ms job just finishes before the next deadline. Its margin is small, so other work, interruptions or blocking need to be accounted for.", duration=.9),
+        S("One late job misses the deadline", "A 1.3 ms execution overlaps the next required tick. An excellent average execution time does not make that missed deadline disappear.", duration=1.3), seconds=8),
+}
+
+
 STORIES = {
+    # 1–15: frequency, sampling, and the physical meaning of system dynamics.
+    "RealTimePage": movie("A thousand updates inside much slower motion", "tick_cycle",
+        S("First separate updates from movement", "1 kHz = 1,000 control updates per second: one update every 1 ms. A 20 Hz oscillation takes 50 ms for one complete back-and-forth cycle, so the controller gets 50 updates during that cycle.", f=20),
+        S("Now ask for faster motion", "At 50 Hz, a complete cycle lasts 20 ms. The same controller still updates every 1 ms, but now it has only 20 chances per cycle to observe and correct the motion.", f=50),
+        S("Faster again: fewer corrections per cycle", "At 100 Hz, a cycle lasts 10 ms, leaving 10 updates. Delays and the actuator dynamics occupy a bigger fraction of that faster cycle.", f=100),
+        S("What happens inside each update?", "Read the sensor, calculate a command, and write it to the drive. The command is held until the next update. The joint moves continuously between updates; it does not teleport between sampled positions.", scene="tick_work"), seconds=8),
+    "ControlProblemPage": movie("Same joint, different behaviour under feedback", "joint",
+        S("Without an angle-restoring command", "A torque command makes the joint move, but does not by itself tell the joint which angle to hold.", mode="force", labels=("Torque alone", "Restoring feedback"), equation="The plant is the physical system; the controller chooses its input."),
+        S("Make position error generate torque", "A restoring command acts like a virtual spring. Displacement from the target now produces a push back toward it.", damping=.12, labels=("Weak correction", "Restoring action"), equation="Feedback connects measured behaviour to the next command."),
+        S("Damp the remaining motion", "Position and velocity together help describe where the joint is going. Damping removes the oscillation rather than merely reversing its direction.", damping=.8, labels=("Keeps ringing", "Settles toward target"), equation="Characterise the plant → choose behaviour → design feedback.")),
+    "MeasuringPage": movie("The joint's motion contains clues about its parameters", "mass",
+        S("Release from displacement", "Displace the spring-loaded body and release it. The time between peaks carries information about stiffness relative to inertia.", zeta=.06, equation="Natural frequency: ωn = √(k/m). One frequency alone does not identify both k and m."),
+        S("Watch successive peaks shrink", "Damping dissipates stored energy. Ratios of successive peaks help estimate damping after subtracting the resting offset.", zeta=.3, equation="Ring-down reveals frequency AND decay rate."),
+        S("Give it an initial push instead", "Different excitation reveals different information. Constant speed cannot identify inertia from acceleration torque because acceleration is then zero.", x0=0, v0=2, zeta=.15, equation="Identification needs measurements that excite the parameters you want to estimate.")),
+    "SoftwarePhysicsPage": movie("A motor can imitate a spring and damper", "joint",
+        S("Match mechanical and virtual behaviour", "In an ideal model, a physical spring–damper and a motor applying the equivalent position/velocity law can produce the same motion.", left_damping=.65, damping=.65, labels=("Physical spring + damper", "Motor renders the same law"), equation="J θ̈ + (b + Kd) θ̇ + Kp θ = Kp θd"),
+        S("Change a gain, change the response", "The controller adds torque terms to the equation of motion. It does not change the actual mass or move the material in the link.", left_damping=.2, damping=.9, labels=("Little damping", "More virtual damping"), equation="Gains change commanded effort; the hardware still supplies the real inertia."),
+        S("A delayed virtual response is different", "The physical damper acts on present velocity. A virtual damper acts on its measurement, and a sufficiently old measurement can point the wrong way.", scene="delay_clock", f=100, delay=2)),
+    "FirstOrderPage": movie("One store, one drain", "tank",
+        S("Turn on the input", "The tank is an analogy for a first-order state. At first its level is low, its leak is small, and most incoming flow raises the level.", tau=1),
+        S("The drain catches up", "As the level rises, outflow grows. The gap between inflow and outflow shrinks, so the rise slows down rather than overshooting.", tau=.7, equation="τ ẏ + y = u: the rate depends on the remaining gap."),
+        S("Remove the input", "With no incoming flow, the stored quantity decays through the drain. The same time constant governs the exponential decay.", mode="drain", tau=1, equation="Zero input: y(t) = y(0)e^(−t/τ)")),
+    "TimeConstantPage": movie("τ sets how quickly the remaining gap shrinks", "tank",
+        S("One-second time constant", "For a unit step, the level reaches 63.2% at one time constant, 86.5% at two, and about 98.2% at four. It approaches the final value smoothly.", tau=1, equation="At t = τ: 1 − e^(−1) = 0.632"),
+        S("Halve τ", "The same sequence now happens twice as fast. τ is a duration, so a smaller time constant means a faster response.", tau=.5, equation="τ = 0.5 s corresponds to a pole at −2 per second."),
+        S("Watch the stored disturbance drain", "After the input is removed, one time constant leaves 36.8% of the initial deviation. Four time constants leave about 1.8%.", mode="drain", tau=1, equation="Pole p = −1/τ; the transient is e^(pt).")),
+    "IntegratorPage": movie("Remove the drain: the input accumulates", "tank",
+        S("A store with a drain settles", "With outflow proportional to level, a constant input can balance the drain at a finite level.", tau=1),
+        S("A store without a drain keeps filling", "The ideal integrator keeps accumulating under a constant input. This finite tank drawing shows a short time window; the mathematical ideal has no capacity limit.", mode="integrate", equation="ẏ = u → a constant u makes y increase linearly."),
+        S("Past input remains in the state", "An integrator's output remembers the accumulated input. A real controller must also manage saturation, otherwise accumulated error creates windup.", mode="integrate", equation="Integral state: I_next = I + error × Δt")),
+    "FirstOrderFreqPage": movie("Shake faster and watch the output fall behind", "tracking",
+        S("Well below the corner", "Gold is the requested oscillation; cyan is the response of H(s) = 1/(1 + sτ). At one tenth of the corner frequency it follows closely.", f=2, bands=(20,), labels=("First-order system",)),
+        S("At the corner", "At f = f_bw = 1/(2πτ), response amplitude is 70.7% of the low-frequency value and phase lag is 45°. That amplitude ratio is −3 dB.", f=20, bands=(20,), labels=("First-order system",)),
+        S("Far above the corner", "Faster input is still an oscillation at that same frequency, but the output excursion is much smaller and lags toward a quarter cycle.", f=100, bands=(20,), labels=("First-order system",))),
+    "SPlanePage": movie("A complex pole is rotation plus changing size", "spiral",
+        S("Negative real part: shrink while rotating", "The arrow rotates while its length decays. Its horizontal projection is a decaying oscillation.", sigma=-.45, omega=3),
+        S("Zero real part: keep rotating", "The arrow keeps its size. An ideal simple imaginary-axis mode oscillates without decay; this is not asymptotic stability.", sigma=0, omega=3),
+        S("More negative means faster decay", "The angular speed is unchanged while the radius collapses more quickly. Decay rate and oscillation rate are different coordinates.", sigma=-1, omega=3)),
+    "FreeVibrationPage": movie("Two initial conditions set the free motion", "mass",
+        S("Displace, then release with no shove", "The mass starts away from rest with zero velocity. Spring energy turns into kinetic energy and back.", x0=.7, v0=0, zeta=0, equation="x(t) = x₀ cos(ωn t), when v₀ = 0 and damping = 0."),
+        S("Start at rest position but give it velocity", "Zero initial displacement does not mean zero motion. The initial kinetic energy carries the mass away from rest.", x0=0, v0=2.1, zeta=0, equation="x(t) = (v₀/ωn) sin(ωn t), when x₀ = 0."),
+        S("Add damping", "The mass and spring still exchange energy, but the damper removes some each cycle, shrinking the peaks.", x0=.7, v0=1, zeta=.25, equation="Both x₀ and v₀ matter; damping adds an exponential envelope.")),
+    "SecondOrderPage": movie("Momentum carries the response past the target", "mass",
+        S("Light damping: overshoot", "The gold marker is the step target. The mass has velocity when it reaches that target, so it passes it before the spring turns it back.", mode="step", zeta=.2, equation="Two-state dynamics permit overshoot and energy exchange."),
+        S("Critical damping", "For this standard second-order model, ζ = 1 removes oscillation and gives the fastest non-overshooting step response among ζ ≥ 1 at fixed ωn.", mode="step", zeta=1, equation="Critical damping: repeated real pole at −ωn."),
+        S("Overdamping", "Stronger damping suppresses oscillation but slows the approach in this comparison. More damping is not always faster.", mode="step", zeta=1.7, equation="Same natural frequency; different damping ratio.")),
+    "StabilityPage": movie("What remains after the disturbance?", "joint",
+        S("A decaying motion", "After release, the oscillation becomes smaller. This mode loses its initial-condition effect over time.", left_damping=.2, damping=.9, labels=("Slow decay", "Fast decay"), equation="Negative pole real part → transient decays."),
+        S("Motion that never decays", "Without damping, this ideal oscillation persists. Remaining bounded is different from returning to the equilibrium.", left_damping=0, damping=0, labels=("Undamped oscillation", "Persistent initial-condition effect"), equation="Simple imaginary-axis modes can be marginal; they are not asymptotically stable."),
+        S("A growing motion", "The uncontrolled upright link falls farther from equilibrium. Stabilising feedback must change the dynamics, not merely measure the fall more often.", mode="unstable", upright=True, labels=("Growing disturbance", "Stabilising correction"), equation="Positive pole real part → a growing mode.")),
+    "BodePage": movie("At crossover, phase determines how correction returns", "feedback_phase",
+        S("45 degrees left in hand", "At unit loop gain with 135° of lag, there are 45° left before the critical 180° lag. The two arrows show the perturbation and the signal after the loop AND feedback subtraction.", degrees=135),
+        S("Delay consumes the separation", "More phase lag makes the returned signal align more closely with the original perturbation. That is why a delayed correction may reinforce motion.", degrees=165),
+        S("The critical alignment", "At unit gain and exactly 180° lag, the loop reverses sign and the feedback subtraction reverses it again. The ideal perturbation can return unchanged.", degrees=180)),
+    "NyquistPage": movie("Why the special point is minus one", "feedback_phase",
+        S("A loop response is a complex multiplier", "Magnitude tells how much the perturbation is scaled, and phase tells how it is rotated. Here magnitude is fixed at one while the phase approaches the critical direction.", degrees=120),
+        S("Approach L = −1", "The complex value −1 has unit magnitude and a 180° phase reversal. The extra subtraction at the feedback junction is what makes this value special.", degrees=165),
+        S("At minus one, 1 + L = 0", "This animation explains the critical point. The full Nyquist test below still needs the complete contour and the count of open-loop right-half-plane poles.", degrees=180)),
+    "ZerosPage": movie("Two nonzero paths can cancel at the output", "cancellation",
+        S("Send a decaying exponential into two paths", "This ideal PD example has a proportional gain of 2 and a derivative gain of 1. Both paths receive x(t) = e^(−2t)."),
+        S("The derivative changes its sign", "The P path produces +2e^(−2t), while the derivative produces −2e^(−2t). Watch equal-and-opposite contributions flow toward the same output."),
+        S("The output sums to zero", "Neither internal path is zero, yet their sum is zero. This input shape is rejected by C(s) = s + 2: its zero is s = −2. A zero is not a statement that every input is blocked.")),
     # 16–24: controller design and nonlinear dynamics.
     "StabilisingPage": movie("Push back, then remove energy", "joint",
         S("Gravity wins", "The upright link on the left moves farther from balance. Feedback on the right must oppose the fall quickly enough.", mode="unstable", upright=True, labels=("Uncontrolled upright", "PD correction"), equation="Upright: J θ̈ + Kd θ̇ + (Kp − mgl) θ = 0"),

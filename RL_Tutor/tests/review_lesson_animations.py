@@ -1,4 +1,4 @@
-"""Build pages 16 onward in order and capture the real page around each movie.
+"""Build pages in order and capture the real page around each movie.
 
 Run: python tests/review_lesson_animations.py
 Output: _shots/animations/ (ignored build artifacts).
@@ -6,6 +6,7 @@ Unlike smoke_gui.py this does not sweep expensive numerical lab sliders.
 """
 import os
 import sys
+import argparse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,6 +21,14 @@ from PySide6.QtWidgets import QApplication, QScrollArea
 
 from app import theme
 from app.pages import PAGE_CLASSES
+from app.widgets.lesson_animation import LessonAnimation
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--start", type=int, default=1)
+parser.add_argument("--end", type=int, default=len(PAGE_CLASSES))
+args = parser.parse_args()
+if not 1 <= args.start <= args.end <= len(PAGE_CLASSES):
+    parser.error("Choose an inclusive page range inside the registry.")
 
 app = QApplication([])
 font = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts/segoeui.ttf"
@@ -30,7 +39,7 @@ app.setStyleSheet(theme.QSS)
 out = ROOT / "_shots/animations"
 out.mkdir(parents=True, exist_ok=True)
 
-for cls in PAGE_CLASSES[15:]:
+for cls in PAGE_CLASSES[args.start-1:args.end]:
     page = cls()
     page.resize(1200, 1000)
     page.show()
@@ -46,6 +55,15 @@ for cls in PAGE_CLASSES[15:]:
     movie.replay()
     assert movie.timer.isActive()
     scroll = page.findChild(QScrollArea)
+    for index, extra in enumerate(page.findChildren(LessonAnimation)):
+        scroll.ensureWidgetVisible(extra.canvas, 0, 15)
+        app.processEvents()
+        assert extra.timer.isActive(), f"{cls.NUM}: inline movie did not resume"
+        extra.position = 1.5 * extra.SECONDS_PER_STEP
+        extra.render_position()
+        app.processEvents()
+        if cls.NUM == 1:
+            assert extra.grab().save(str(out / f"01_movie_{index:02d}.png"))
     scroll.verticalScrollBar().setValue(scroll.verticalScrollBar().maximum())
     app.processEvents()
     if scroll.verticalScrollBar().maximum() > movie.height():
@@ -60,4 +78,4 @@ for cls in PAGE_CLASSES[15:]:
     page.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 
-print(f"All {len(PAGE_CLASSES)-15} requested pages passed. Screenshots: {out}", flush=True)
+print(f"All {args.end-args.start+1} requested pages passed. Screenshots: {out}", flush=True)

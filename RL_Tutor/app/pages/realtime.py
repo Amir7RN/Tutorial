@@ -16,8 +16,8 @@ from __future__ import annotations
 
 import math
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QTableWidget, QTableWidgetItem
+from PySide6.QtCore import Qt, QPoint
+from PySide6.QtWidgets import QLabel, QTableWidget, QTableWidgetItem, QGridLayout, QPushButton, QScrollArea
 
 from ctrlcore.realtime import (
     TaskProfile,
@@ -43,6 +43,8 @@ from ..widgets import (
 )
 from .base import Page
 from .motors import slider, slider_row
+from ..widgets.lesson_animation import LessonAnimation
+from ..widgets.lesson_stories import PAGE_ONE_EXTRAS
 
 SECTION = "Real-Time"
 
@@ -76,9 +78,21 @@ class RealTimePage(Page):
         super().__init__(parent)
 
         self.add(callout(
+            "<b>Start with two different clocks.</b> A <b>1 kHz control loop</b> "
+            "reads measurements, computes and updates a motor command every "
+            "<b>1 millisecond</b>. A <b>20 Hz motion</b> completes one entire "
+            "back-and-forth cycle every <b>50 milliseconds</b>. That gives the "
+            "controller <b>50 updates inside one motion cycle</b>.<br><br>"
+            "A <b>20 Hz bandwidth</b> is a different statement again: it describes "
+            "how well the system follows changing commands, not how often its "
+            "software runs. It is not a maximum joint speed in degrees/second. "
+            "The animations below separate these ideas one at a time.", "key"))
+
+        self.add(callout(
             "<b>What \"real-time\" means — and does not mean.</b><br><br>"
             "Real-time does <b>not</b> mean fast. It means <b>predictable</b>. A "
-            "system that always answers in 8 ms is real-time; a system that "
+            "system that always answers in 8 ms can meet a 10 ms deadline, "
+            "but cannot meet a 1 ms deadline. A system that "
             "usually answers in 0.2 ms but occasionally takes 40 ms is not, and "
             "is far more dangerous, because you will design around the 0.2 ms and "
             "be destroyed by the 40 ms.<br><br>"
@@ -113,6 +127,7 @@ class RealTimePage(Page):
         self.add(hline())
         self.add(title("The three numbers — this answers \"we sample at 1 kHz, "
                        "so what?\""))
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["cycles"]))
 
         n = Card("sampling rate ≠ Nyquist ≠ bandwidth")
         n.add(body(
@@ -140,6 +155,16 @@ class RealTimePage(Page):
             "the loop rings and then oscillates"))
         self.add(n)
 
+        self.add(callout(
+            "<b>50–100 Hz is a design rule of thumb, not a theorem.</b> "
+            "Using 10–20 updates per cycle gives that range for a 1 kHz loop. "
+            "It leaves more room for sampling/hold, computation and plant phase "
+            "than merely taking two samples per cycle. The actual closed-loop "
+            "bandwidth must still be checked from the designed system's response "
+            "and stability margins. Being below 500 Hz Nyquist only addresses "
+            "measurement ambiguity under suitable input bandwidth assumptions.", "key"))
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["timing"]))
+
         i = Card("watch the phase get eaten")
         i.add(body(
             "A pure delay costs phase linearly with frequency: "
@@ -165,18 +190,44 @@ class RealTimePage(Page):
         self.s_delay.valueChanged.connect(self._redraw_phase)
         self._redraw_phase()
 
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["mechanisms"]))
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["mechanics"]))
+        self.add(callout(
+            "<b>DD, SEA and PEA do not have one universal bandwidth each.</b><br><br>"
+            "<b>Direct drive:</b> rotor and load are coupled directly. Inertia, "
+            "motor/current limits, structural modes, sensing and controller design "
+            "still limit the response.<br>"
+            "<b>Series elasticity:</b> the spring between motor and load introduces "
+            "relative motion and a resonance. For a simplified fixed-motor "
+            "spring–load model, f_n = √(k/J_L)/(2π). Changing k or J_L changes "
+            "that frequency. Different feedback designs and measured outputs can "
+            "have different bandwidths.<br>"
+            "<b>Parallel elasticity:</b> the spring shares load but does not break "
+            "the rigid motor–load connection. It changes the dynamics; it is "
+            "not automatically a 20–50 Hz device.<br><br>"
+            "Treat <b>10–30 Hz, 20–50 Hz and 100 Hz</b> as examples from particular "
+            "designs. Always ask: bandwidth from <i>which command</i> to "
+            "<i>which output</i>—motor current, joint torque or joint angle? "
+            "Our moving-marker comparison uses specified first-order closed-loop "
+            "examples so you can see what the numbers mean; it is not a universal "
+            "ranking of actuator topologies.", "key"))
+
         self.add(callout(
             "<b>And there is a fourth number that beats all three.</b> The "
             "mechanics. If you have a series elastic actuator whose spring-load "
-            "resonance sits at 12 Hz, then your control bandwidth is 12 Hz no "
-            "matter how fast the CPU is. Sampling faster cannot make a spring "
+            "resonance sits at 12 Hz, that mode can severely constrain achievable "
+            "joint-response bandwidth. The bandwidth is <b>not automatically "
+            "equal to 12 Hz</b>: damping, sensing, feedback, output choice and "
+            "stability margins matter. Sampling faster cannot make a spring "
             "stiffer.<br><br>"
-            "Order of who wins, worst first: <b>mechanics → delay → sample rate "
-            "→ CPU speed</b>. People optimise that list backwards.", "warn"))
+            "Check <b>mechanics, delay, sampling and execution deadlines</b> "
+            "together. Faster computation helps only when it improves a "
+            "limiting part of that chain.", "warn"))
 
         # ---- aliasing --------------------------------------------------------
         self.add(hline())
         self.add(title("Aliasing: the failure you cannot debug in software"))
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["alias_wheel"]))
 
         a = Card("what folding actually looks like")
         a.add(math_label(r"f_{alias} = \left| f_{signal} - f_s \cdot "
@@ -190,11 +241,14 @@ class RealTimePage(Page):
             "Hz, sampled at 1 kHz, appears as a <b>50 Hz</b> oscillation. Your "
             "controller sees a 50 Hz disturbance that is not there, fights it, "
             "and injects a real 50 Hz oscillation into the robot.<br><br>"
-            "<b>No digital filter can fix this.</b> The information was "
-            "destroyed at the ADC. The only cure is an <b>analog anti-alias "
-            "filter before the converter</b>, with its corner below "
-            "f<sub>s</sub>/2.", dim=True))
+            "<b>A digital filter cannot uniquely undo this ambiguity.</b> "
+            "Prevent the unwanted content from folding: use an <b>analog "
+            "anti-alias filter before the converter</b>, with adequate "
+            "attenuation above the wanted band, or redesign the acquisition "
+            "rate and filter before any later downsampling.", dim=True))
         self.add(a)
+
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["alias_data"]))
 
         a2 = Card("that disaster, unpacked line by line — because every clause "
                   "in it is doing work")
@@ -210,9 +264,11 @@ class RealTimePage(Page):
             "50 Hz. It is the wagon-wheel effect, in your ADC."))
         a2.add(body(
             "<b>2 · Why the samples are indistinguishable from a real 50 Hz "
-            "signal.</b> Sample a genuine 50 Hz sine at 1 kHz and sample the "
-            "950 Hz tooth-mesh at 1 kHz, and you get <i>the same list of "
-            "numbers</i>. Not similar — identical. Every algorithm downstream "
+            "signal.</b> Sample zero-phase 50 Hz and 950 Hz <b>cosines</b> at "
+            "1 kHz and you get <i>the same list of numbers</i>. For zero-phase "
+            "sines the 950 Hz samples equal a <b>phase-reversed</b> 50 Hz sine. "
+            "In either case, distinct continuous signals give identical data "
+            "once the matching phase is accounted for. Every algorithm downstream "
             "sees one array of numbers, so no algorithm downstream can tell "
             "them apart. That is what \"the information was destroyed at the "
             "ADC\" means, and it is why <b>no digital filter can fix this</b>: "
@@ -223,19 +279,21 @@ class RealTimePage(Page):
             "controller does not know the 50 Hz is a ghost. It sees error at "
             "50 Hz, and it does its job: it commands torque at 50 Hz to cancel "
             "it. That torque is real, it reaches a real motor, and the joint "
-            "now physically oscillates at 50 Hz — a frequency at which nothing "
+            "can now physically oscillate at 50 Hz — a frequency at which nothing "
             "was wrong until the controller started fighting an artefact. "
             "<b>The measurement was fictional; the vibration it causes is "
             "not.</b> If it lands near a structural mode you get a resonance "
             "the mechanism never had."))
         a2.add(callout(
-            "<b>The only cure is analog, and it must sit BEFORE the "
-            "converter.</b> An anti-alias filter is a physical RC or "
+            "<b>For a fixed-rate ADC, attenuate unwanted content BEFORE the "
+            "converter.</b> An anti-alias filter can be a physical RC or "
             "active-filter stage between the sensor and the ADC pin, with its "
-            "corner below f<sub>s</sub>/2, so that content which would fold is "
-            "attenuated <i>while it is still a continuous voltage</i> — the one "
-            "and only moment at which it can still be removed. Filtering in "
-            "software afterwards is filtering the wrong array.<br><br>"
+            "corner below f<sub>s</sub>/2 and enough stopband rejection, so "
+            "content which would fold is attenuated <i>while it is still a "
+            "continuous voltage</i>. A corner frequency alone is not a complete "
+            "filter specification. Filtering after unwanted content has folded "
+            "cannot separate it from wanted content at the same apparent "
+            "frequency.<br><br>"
             "Practical audit for a robot: analogue current sense, load cells, "
             "strain gauges, analogue IMUs and potentiometers all need one. "
             "<b>Encoders are a different failure mode</b> — a counter cannot "
@@ -246,6 +304,8 @@ class RealTimePage(Page):
             "nobody can trace.", "warn"))
         self.add(a2)
 
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["filter"]))
+
         i2 = Card("fold a signal yourself")
         i2.add(body(
             "Grey is the truth, red dots are the samples joined by straight "
@@ -254,9 +314,10 @@ class RealTimePage(Page):
             "rebuild Nyquist actually promises, computed from the samples "
             "alone.<br><br>"
             "That third curve is the one that settles the argument. Above "
-            "Nyquist it lies on top of the grey truth however ugly the red "
+            "the required Nyquist sample rate (f_s > 2 f_signal), it lies near "
+            "the grey truth away from finite-window edges, however ugly the red "
             "polyline looks — the information is all there and only the drawing "
-            "was crude. Below Nyquist it lies on top of the <i>alias</i> "
+            "was crude. Below the required rate, it lies near the <i>alias</i> "
             "instead, because the folded frequency is genuinely all that "
             "survived.", dim=True))
         self.s_sig = slider(10, 3000, 950)
@@ -276,6 +337,8 @@ class RealTimePage(Page):
         self.s_sig.valueChanged.connect(self._redraw_alias)
         self.s_rate.valueChanged.connect(self._redraw_alias)
         self._redraw_alias()
+
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["nyquist"]))
 
         # ---- reconstruction vs "it looks wrong" -------------------------------
         r = Card("\"2× is not enough, 3× still looks wrong, 4× is fine\" — "
@@ -420,6 +483,7 @@ class RealTimePage(Page):
         # ---- scheduling -------------------------------------------------------
         self.add(hline())
         self.add(title("Scheduling: FreeRTOS and friends"))
+        self.add(LessonAnimation(PAGE_ONE_EXTRAS["deadline"]))
 
         s = Card("the task model")
         s.add(body(
@@ -532,6 +596,30 @@ class RealTimePage(Page):
             "Every actuator page that follows is really a statement about which "
             "of these five limits binds first.", "good"))
 
+        # Page 1 is intentionally detailed; jump straight to the visual answer
+        # without removing the sequential reading path or the existing labs.
+        navigation = Card("Choose a visual explanation — or read downward in order")
+        links = QGridLayout()
+        by_story = {id(m.story): m for m in self.findChildren(LessonAnimation)}
+        topics = [("1 · What 1 kHz means", self.lesson_animation)]
+        topics += [(label, by_story[id(PAGE_ONE_EXTRAS[key])]) for key, label in (
+            ("cycles", "2 · Count updates per cycle"),
+            ("timing", "3 · Why delay matters"),
+            ("mechanisms", "4 · DD / SEA / PEA mechanics"),
+            ("mechanics", "5 · What bandwidth means"),
+            ("alias_wheel", "6 · Watch aliasing happen"),
+            ("alias_data", "7 · Compare the sample numbers"),
+            ("filter", "8 · Where filtering must happen"),
+            ("nyquist", "9 · The Nyquist boundary"),
+            ("deadline", "10 · The one-millisecond deadline"))]
+        scroll = self.findChild(QScrollArea)
+        for index, (label, target) in enumerate(topics):
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, target=target:
+                scroll.verticalScrollBar().setValue(target.mapTo(scroll.widget(), QPoint()).y()-16))
+            links.addWidget(button, index//3, index%3)
+        navigation.add_layout(links)
+        self.content.insertWidget(1, navigation)
         self.finish()
 
     # ------------------------------------------------------------------
