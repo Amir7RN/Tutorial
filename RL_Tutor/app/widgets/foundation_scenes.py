@@ -5,11 +5,18 @@ comparisons explicitly use illustrative first-order CLOSED-LOOP models, not an
 unvalidated simulation of a particular DD, SEA or PEA actuator.
 """
 import math
+import cmath
 
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import QColor, QPen
 
 from .. import theme
+
+
+def notch_response(frequency, centre=18, zero_damping=.015, pole_damping=.15):
+    """Exact N(jω), using frequency ratio so Hz and rad/s factors cancel."""
+    r = frequency / centre
+    return (1-r*r+2j*zero_damping*r)/(1-r*r+2j*pole_damping*r)
 
 
 def sampled_value(frequency, rate, index, sine=False):
@@ -168,6 +175,29 @@ class FoundationScenes:
                  theme.BAD if duration > 1 else theme.CYAN)
         self.text(70, 170, 150, 28, "release: 0 ms", size=11)
         self.note(f"Execution time = {duration:g} ms → {'MISSED deadline' if duration > 1 else f'{1-duration:.2f} ms spare before the next tick'}.")
+
+    def draw_notch_signal(self):
+        f = self.d['f']
+        response = notch_response(f)
+        gain, phase = abs(response), cmath.phase(response)
+        self.text(25, 5, 260, 30, f'Input component: {f:g} Hz', theme.WARN, 13)
+        self.text(615, 5, 260, 30, f'Output: {100*gain:.1f}% amplitude', theme.CYAN, 13)
+        self.box(330, 65, 240, 95, 'NOTCH\ncentre fixed at 18 Hz\nζ_z = 0.015; ζ_p = 0.15', True)
+        self.arrow(285, 110, 322, 110, theme.WARN)
+        self.arrow(578, 110, 615, 110, theme.CYAN)
+        # Shared amplitude and time scales. A moving waveform, not a plot control.
+        for left, amplitude, offset, color in ((30, 1, 0, theme.WARN), (620, gain, phase, theme.CYAN)):
+            self.line(left, 112, left+250, 112, theme.TEXT_FAINT, 1)
+            previous = None
+            for i in range(126):
+                angle = 2*math.pi*f*(i/125*.125-self.progress*.25)+offset
+                point = (left+2*i, 112-48*amplitude*math.sin(angle))
+                if previous is not None:
+                    self.line(*previous, *point, color, 2)
+                previous = point
+            self.dot(*previous, 5, color)
+        self.text(30, 168, 840, 28, f'Filter gain = {gain:.3f}  ({20*math.log10(gain):.1f} dB) · same vertical scale on both sides', theme.TEXT_DIM, 11)
+        self.note('Steady sinusoidal response of the filter only; playback slowed. Plant motion is not shown.')
 
     def draw_tank(self):
         mode = self.d.get("mode", "fill")

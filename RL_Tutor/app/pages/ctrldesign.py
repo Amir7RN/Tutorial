@@ -1382,10 +1382,13 @@ class LeadLagPage(Page):
                          r"{s^2 + 2\zeta_p\omega_0 s + \omega_0^2}, \qquad "
                          r"\zeta_z \ll \zeta_p", 17))
         n.add(body(
-            "Unity gain everywhere except a deep narrow hole at ω<sub>0</sub>. "
+            "Gain approaches one well below and above a dip at ω<sub>0</sub>. "
             "You place the hole on the SEA spring, the belt, the flexible "
             "forearm — the mode that is stopping you raising the gain — and the "
-            "loop stops seeing it."))
+            "loop gain is reduced around that frequency. The physical mode remains."))
+        from ..widgets.lesson_animation import LessonAnimation
+        from ..widgets.notch_walkthrough import NOTCH_MOVIE
+        n.add(LessonAnimation(NOTCH_MOVIE))
         n.add(callout(
             "<b>A notch cancels a pole with a zero, and cancellation is a "
             "promise about a number you do not control.</b><br><br>"

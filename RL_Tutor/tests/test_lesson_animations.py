@@ -21,6 +21,8 @@ from app.widgets.lesson_animation import LessonAnimation
 from app.widgets.lesson_stories import STORIES, PAGE_ONE_EXTRAS, deterministic_sweeps
 from app.widgets.sea_walkthroughs import SEA_MOVIES
 from app.pages.section_summaries import RECAP_MOVIES
+from app.widgets.notch_walkthrough import NOTCH_MOVIE
+from app.widgets.foundation_scenes import notch_response
 from app.widgets.foundation_scenes import sampled_value, signed_alias, response_gain_phase, step_response
 
 
@@ -68,7 +70,7 @@ class LessonAnimationTests(unittest.TestCase):
         messages = []
         previous = qInstallMessageHandler(lambda kind, context, msg: messages.append(msg))
         try:
-            for name, story in (STORIES | PAGE_ONE_EXTRAS | SEA_MOVIES | RECAP_MOVIES).items():
+            for name, story in (STORIES | PAGE_ONE_EXTRAS | SEA_MOVIES | RECAP_MOVIES | {'notch': NOTCH_MOVIE}).items():
                 widget = LessonAnimation(story)
                 widget.resize(1100, 500)
                 widget.show()
@@ -97,6 +99,13 @@ class LessonAnimationTests(unittest.TestCase):
             qInstallMessageHandler(previous)
         errors = [m for m in messages if any(x in m for x in ("QPainter", "QPaintDevice", "Cannot", "Traceback"))]
         self.assertEqual(errors, [])
+
+    def test_notch_selectivity_and_drift(self):
+        self.assertAlmostEqual(notch_response(0), 1)
+        self.assertAlmostEqual(abs(notch_response(18)), .1)
+        self.assertGreater(abs(notch_response(4)), .99)
+        self.assertAlmostEqual(abs(notch_response(24)), .89, delta=.01)
+        self.assertGreater(abs(notch_response(18000)), .999)
 
     def test_aliasing_is_numerically_indistinguishable_at_sample_instants(self):
         self.assertEqual(signed_alias(950, 1000), -50)
