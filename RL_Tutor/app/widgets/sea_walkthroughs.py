@@ -1,4 +1,4 @@
-"""A fixed-example movie for each SEA explanation panel, plus a port-by-port guide."""
+"""A focused SEA reading path with four complementary concept movies."""
 from PySide6.QtCore import QPoint
 from PySide6.QtWidgets import QLabel, QPushButton, QGridLayout, QScrollArea
 
@@ -95,68 +95,62 @@ def add_sea_guide(page):
                    '<tr><td>Load torque τ_L; τ_m = 0</td><td>Load angle θ_L</td><td>Anti-resonance at ω_a = √(k/J_m)</td></tr>'
                    '<tr><td>Motor torque τ_m; τ_L = 0</td><td>Load angle θ_L</td><td>No finite undamped anti-resonance; pole at ω_r</td></tr>'
                    '<tr><td>Motor angle θ_m prescribed</td><td>Load angle θ_L</td><td>Resonance at ω_n, a different boundary condition</td></tr></table>'))
-    guide.add(LessonAnimation(SEA_MOVIES['ports']))
-    page.content.insertWidget(3,guide)
+    page.lesson_animation = LessonAnimation(SEA_MOVIES['ports'])
+    guide.add(page.lesson_animation)
+    page.content.insertWidget(2,guide)
     motor = Card('Motor-side anti-resonance: motor torque in, motor angle out')
     motor.add(math_label(r'\frac{\theta_m}{\tau_m}=\frac{J_Ls^2+k}{s^2[J_mJ_Ls^2+k(J_m+J_L)]}',16))
     motor.add(body('The numerator vanishes at ω_n = √(k/J_L), while the load still moves. The motor encoder’s dip is therefore <b>not</b> evidence that the whole actuator stopped. The cross response θ_L/τ_m has numerator k and no finite zero in this undamped model. This is the zero-versus-pole distinction from the earlier lesson, now tied to a sensor location.'))
-    motor.add(LessonAnimation(SEA_MOVIES['motor_zero']))
-    page.content.insertWidget(4,motor)
+    page.content.insertWidget(3,motor)
     units=Card('Keep f_n, ω_n, ω_a and ω_r in one unit system')
     units.add(body('Use ω for rad/s and f = ω/(2π) for Hz. This page keeps the legacy name f_n for the imposed-motor-motion resonance; equivalently ω_n is the motor driving-point anti-resonance. ω_a means the load driving-point anti-resonance. ω_r is the free two-inertia relative-mode frequency. With damping the modal frequency and exact response-peak frequency can differ.'))
-    units.add(LessonAnimation(SEA_MOVIES['units']))
-    page.content.insertWidget(5,units)
+    units.add(body('<b>One example:</b> J_m = 0.04, J_L = 0.06 kg·m² and k = 300 N·m/rad give ω_n = 70.71 rad/s (f_n = 11.25 Hz), ω_a = 86.60 rad/s (13.78 Hz), and ω_r = 111.80 rad/s (17.79 Hz). These are mechanical frequencies, not the controller update rate.'))
+    page.content.insertWidget(4,units)
     return guide,motor,units
 
 
 def attach_sea_walkthroughs(page):
-    """Each pre-existing Card and callout gets a topic-matched movie; labs remain."""
+    """Keep four distinct visual explanations; leave other cards and labs readable."""
     from .lesson_connection import LessonConnection
-    cards = list(page.findChildren(Card))
-    from PySide6.QtWidgets import QFrame
-    callouts = [w for w in page.findChildren(QFrame) if w.objectName().startswith('Callout')]
+
+    # Replace the general opening movie with the more useful port comparison.
+    original = page.lesson_animation
+    original.timer.stop()
+    page.content.removeWidget(original)
+    original.setParent(None)
+    original.deleteLater()
+
     matches = [
-        ('derivation','balance'), ('the two limits','limits'), ('slow push','slow'),
-        ('high-speed impact','fast'), ('watch the transition','stiffness'),
-        ('below the antiresonance','deflection'), ('after the antiresonance','fast'),
-        ('transmissibility','imposed'), ('ceiling and not','margin'),
-        ('ceiling actually','damping'), ('close a pd','margin'), ('50–100','numbers'),
-        ('protective','energy'), ('higher stiffness','stiffness'), ('where seas','selection'),
-        ('pros and cons','selection'),
+        ('derivation', 'balance'),
+        ('the two limits', 'limits'),
+        ('transmissibility', 'imposed'),
     ]
-    page.sea_panel_movies=[]
-    for card in cards:
-        if isinstance(card,(LessonAnimation,LessonConnection)):
+    page.sea_panel_movies = []
+    for card in list(page.findChildren(Card)):
+        if isinstance(card, (LessonAnimation, LessonConnection)):
             continue
-        heading=next((w.text().lower() for w in card.findChildren(QLabel) if w.objectName()=='CardTitle'),'')
-        key=next((key for needle,key in matches if needle in heading),None)
+        heading = next((w.text().lower() for w in card.findChildren(QLabel)
+                        if w.objectName() == 'CardTitle'), '')
+        key = next((key for needle, key in matches if needle in heading), None)
         if key is None:
-            raise ValueError('Unreviewed SEA panel: '+heading)
-        animation=LessonAnimation(SEA_MOVIES[key])
+            continue
+        animation = LessonAnimation(SEA_MOVIES[key])
         card.add(animation)
-        page.sea_panel_movies.append((card,animation))
-    for panel in callouts:
-        text=' '.join(w.text() for w in panel.findChildren(QLabel))
-        if 'three different frequencies' in text or 'three experiments' in text:
-            key='ports'
-        elif 'sensor' in text.lower() or 'feel the world' in text:
-            key='sensor'
-        elif 'ceiling' in text.lower() or 'bound' in text.lower() or 'coincidence' in text.lower() or 'last column' in text.lower():
-            key='margin'
-        else:
-            key='limits'
-        animation=LessonAnimation(SEA_MOVIES[key])
-        panel.layout().addWidget(animation)
-        page.sea_panel_movies.append((panel,animation))
-    guide,motor,units=add_sea_guide(page)
-    nav=Card('Read in this order, or jump to a question')
-    grid=QGridLayout()
-    targets=[('1 · Which input and output?',guide),('2 · Motor anti-resonance',motor),('3 · Decode the symbols',units)]
-    targets += [(a.story.title,p) for p,a in page.sea_panel_movies if isinstance(p,Card) and not any(p.isAncestorOf(q) for q,_ in page.sea_panel_movies if q is not p)]
-    scroll=page.findChild(QScrollArea)
-    for i,(label,target) in enumerate(targets):
-        button=QPushButton(label)
-        button.clicked.connect(lambda checked=False,t=target: scroll.verticalScrollBar().setValue(t.mapTo(scroll.widget(),QPoint(0,0)).y()-12))
-        grid.addWidget(button,i//2,i%2)
+        page.sea_panel_movies.append((card, animation))
+
+    guide, motor, units = add_sea_guide(page)
+    nav = Card('A short path through this lesson')
+    nav.add(body('Start with the input/output comparison, then use the symbol reference. '
+                 'The three later animations explain cancellation, slow/fast motion, and prescribed motor motion. '
+                 'Read the remaining derivations and numerical labs when you want more detail.'))
+    grid = QGridLayout()
+    targets = [('Compare motor and load sides', guide), ('Frequency reference', units)]
+    targets += [(a.story.title, p) for p, a in page.sea_panel_movies]
+    scroll = page.findChild(QScrollArea)
+    for i, (label, target) in enumerate(targets):
+        button = QPushButton(label)
+        button.clicked.connect(lambda checked=False, t=target: scroll.verticalScrollBar().setValue(
+            t.mapTo(scroll.widget(), QPoint(0, 0)).y() - 12))
+        grid.addWidget(button, i // 2, i % 2)
     nav.add_layout(grid)
-    page.content.insertWidget(2,nav)
+    page.content.insertWidget(2, nav)

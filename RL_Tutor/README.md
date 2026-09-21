@@ -42,9 +42,10 @@ inertia, reference from loaded equilibrium, and state from observation. It also
 repairs old page references and distinctions such as reward/return/value,
 on-policy/off-policy versus stochastic/deterministic, and gradient versus update.
 
-Page **26 — Series Elastic Actuators** has **27 movie panels**. Every existing
-explanatory card and callout has an associated animation; the original numerical
-labs remain. A new port table and motor-side experiment show why:
+Page **26 — Series Elastic Actuators** has **four focused movie panels**: input/output
+comparison, torque cancellation, slow/fast limits, and prescribed motor motion.
+A static frequency reference replaces repetitive animations; the explanations
+and original numerical labs remain. The port table and motor-side experiment show why:
 
 - motor torque → motor angle has an anti-resonance at `sqrt(k/J_L)`;
 - load torque → load angle has an anti-resonance at `sqrt(k/J_m)`;

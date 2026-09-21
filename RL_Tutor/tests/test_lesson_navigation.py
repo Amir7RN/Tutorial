@@ -37,9 +37,13 @@ class LessonNavigationTests(unittest.TestCase):
         self.assertTrue(widget.definitions.isHidden())
         widget.deleteLater()
 
-    def test_each_sea_panel_has_a_movie_and_original_labs_remain(self):
+    def test_focused_sea_movies_and_original_labs_remain(self):
         page=SEAPage();page.resize(1200,1000);page.show();self.app.processEvents()
-        self.assertGreaterEqual(len(page.sea_panel_movies),22)
+        self.assertEqual(len(page.sea_panel_movies),3)
+        self.assertEqual(len(page.findChildren(LessonAnimation)),4)
+        for panel in page.findChildren(QFrame):
+            if panel.objectName().startswith("Callout"):
+                self.assertFalse(panel.findChildren(LessonAnimation))
         for panel,movie in page.sea_panel_movies:
             self.assertTrue(panel.isAncestorOf(movie))
             self.assertGreaterEqual(len(movie.story.steps),3)
