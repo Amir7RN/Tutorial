@@ -32,6 +32,10 @@ effective inertia, bandwidth and safety envelope. The first half is that plant.
 
 ## Run it
 
+On Windows, run `.\run.bat` or double-click `run.bat`. The window opens before
+lessons are constructed. Each lesson loads on its first visit and stays cached
+for the session, preserving its controls when you navigate away and return.
+
 ### Consistent terminology, detailed SEA experiments and section recaps
 
 Every numbered lesson now has a concise **Connect this lesson to what you know**

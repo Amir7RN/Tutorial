@@ -11,7 +11,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -26,12 +26,6 @@ from PySide6.QtWidgets import (
 )
 
 from app import theme
-
-
-def build_pages():
-    """Import and instantiate every page, in order."""
-    from app.pages import PAGE_CLASSES
-    return [cls() for cls in PAGE_CLASSES]
 
 
 class MainWindow(QWidget):
@@ -87,10 +81,10 @@ class MainWindow(QWidget):
         self.stack = QStackedWidget()
         root.addWidget(self.stack, 1)
 
-        self.pages = build_pages()
-        self._class_indices = {type(page).__name__: i for i, page in enumerate(self.pages)}
-        for page in self.pages:
-            page.navigate_requested.connect(self._navigate_lesson)
+        from app.pages import PAGE_CLASSES
+        self.page_classes = tuple(PAGE_CLASSES)
+        self.pages = [None] * len(self.page_classes)
+        self._class_indices = {cls.__name__: i for i, cls in enumerate(self.page_classes)}
         self._page_items = {}        # stack index  -> QTreeWidgetItem
         self._section_items = {}     # section name -> QTreeWidgetItem
 
@@ -98,8 +92,8 @@ class MainWindow(QWidget):
         sec_font.setBold(True)
         sec_font.setLetterSpacing(QFont.AbsoluteSpacing, 1.1)
 
-        for i, page in enumerate(self.pages):
-            self.stack.addWidget(page)
+        for i, page in enumerate(self.page_classes):
+            self.stack.addWidget(QWidget())
             sec = page.SECTION
             top = self._section_items.get(sec)
             if top is None:
@@ -124,8 +118,8 @@ class MainWindow(QWidget):
         self.nav.currentItemChanged.connect(self._nav_changed)
         self.nav.itemClicked.connect(self._item_clicked)
 
-        self._current = 0
-        self.select_page(0)
+        self._current = -1
+        QTimer.singleShot(0, lambda: self.select_page(0))
 
         QShortcut(QKeySequence("Ctrl+Right"), self, self.next_page)
         QShortcut(QKeySequence("Ctrl+Left"), self, self.prev_page)
@@ -160,7 +154,20 @@ class MainWindow(QWidget):
         idx = cur.data(0, Qt.UserRole)
         if idx is None or idx == self._current:
             return
-        self.pages[self._current].on_hide()
+        if self._current >= 0:
+            self.pages[self._current].on_hide()
+        if self.pages[idx] is None:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                page = self.page_classes[idx]()
+                page.navigate_requested.connect(self._navigate_lesson)
+                placeholder = self.stack.widget(idx)
+                self.stack.removeWidget(placeholder)
+                placeholder.deleteLater()
+                self.stack.insertWidget(idx, page)
+                self.pages[idx] = page
+            finally:
+                QApplication.restoreOverrideCursor()
         self._current = idx
         self.stack.setCurrentIndex(idx)
         self.pages[idx].on_show()
@@ -198,6 +205,8 @@ class MainWindow(QWidget):
 
     def closeEvent(self, ev):
         for p in self.pages:
+            if p is None:
+                continue
             try:
                 p.on_hide()
             except Exception:
@@ -215,7 +224,6 @@ def main():
     # --selftest: open the real window, click through every page, save a
     # screenshot of each, then quit. Used to verify the app end to end.
     if "--selftest" in sys.argv:
-        from PySide6.QtCore import QTimer
         out = os.path.join(os.path.dirname(os.path.dirname(
             os.path.abspath(__file__))), "_shots_app")
         os.makedirs(out, exist_ok=True)

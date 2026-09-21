@@ -81,6 +81,7 @@ echo   Done.
 echo.
 
 :run
+echo   Opening Control and RL Tutor ...
 "%VPY%" -m app.main %*
 if errorlevel 1 pause
 endlocal
