@@ -28,7 +28,8 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QPushButton, QHBoxLayout
 
 from ctrlcore.linear import (
     TF,
@@ -1990,13 +1991,16 @@ class LeadLagPage(Page):
 class ObserverPage(Page):
     TITLE = "Observers & Observability"
     SUBTITLE = ("You have an encoder and you need velocity, load torque and "
-                "everything else. Differentiating is the wrong answer; this is "
-                "the right one.")
+                "other unmeasured states. Learn what the sensor history reveals and how a model helps estimate it.")
     SECTION = SECTION
     NOTES = "design"
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._obs_timer = QTimer(self); self._dob_timer = QTimer(self)
+        for timer, callback in ((self._obs_timer, self._redraw_obs), (self._dob_timer, self._redraw_dob)):
+            timer.setSingleShot(True); timer.setInterval(120); timer.timeout.connect(callback)
+        self.add(callout('<b>The point of this page:</b> pages 18–19 compute u = −Kx, assuming x is known. Here we estimate x̂ from measured y and the known input u. Observability asks whether the sensor history contains enough information; observer design asks how quickly and noisily to extract it. The first lab estimates velocity; the second adds an unknown constant torque as a state. Neither lab closes a position-control loop.', 'key'))
 
         self.add(callout(
             "<b>The problem, stated concretely.</b> State feedback needs "
@@ -2022,36 +2026,25 @@ class ObserverPage(Page):
                    "e = x − x̂ obeys something remarkably clean:"))
         e.add(math_label(r"\dot e = (A - LC)\,e", 18))
         e.add(body(
-            "<b>No input, no reference, no coupling to the control.</b> The "
+            "<b>With an exact model and noiseless measurements,</b> the "
             "estimation error is a little autonomous linear system, and you "
             "choose its poles by choosing L. Place them far left and the "
             "estimate converges fast.", dim=True))
         self.add(e)
 
         d = Card("duality — the observer is a controller in a mirror")
-        d.add(math_label(r"(A, B)\ \text{controllable} \;\Longleftrightarrow\; "
-                         r"(A^T, B^T)\ \text{...} \qquad "
+        d.add(math_label(r"(A, C)\ \text{observable} \;\Longleftrightarrow\; "
+                         r"(A^T, C^T)\ \text{controllable} \qquad "
                          r"L = \text{place}(A^T, C^T, p)^T", 16))
         d.add(body(
             "Placing eigenvalues of <b>A − LC</b> is the same algebra as placing "
             "eigenvalues of <b>A − BK</b>, transposed. So the observer needs no "
-            "new theory and, in this tutor, no new code — "
-            "<code>observer_gain</code> literally calls the pole-placement "
-            "routine on the transposed system and transposes the answer back."))
+            "new placement method: apply the previous page’s calculation to the transposed pair, then transpose the resulting gain to obtain L."))
         d.add(math_label(r"\mathcal{O} = "
                          r"[\,C;\; CA;\; CA^2;\; \cdots\; CA^{n-1}\,]", 16))
         d.add(body(
-            "<b>Observability</b> is the mirror of controllability. Full rank ⇒ "
-            "the output history determines the state. Rank deficient ⇒ some "
-            "internal motion produces <b>no signature at the sensor at all</b>, "
-            "and no observer, no filter and no amount of machine learning can "
-            "recover it. Like uncontrollability, it is a sensing-hardware "
-            "verdict, not a software one.<br><br>"
-            "A concrete robot case: measure only motor-side position on an SEA "
-            "and the <i>link</i> deflection is weakly observable — which is "
-            "exactly why SEAs carry a second encoder across the spring. The "
-            "spring deflection is the force measurement, and you cannot infer "
-            "it from the motor side alone.", dim=True))
+            '<b>Observability means rank(O) = number of states.</b> For this joint, x = [θ, ω], C = [1, 0], and CA = [0, 1]. Thus O is the 2×2 identity: a history of position reveals both angle and velocity under the model, even though one reading only gives angle.<br><br>'
+            '<b>What would fail?</b> On the ideal free two-body SEA, measuring only spring deflection cannot reveal motion in which motor and load move together. Different common angles give the same deflection. No gain can recover that missing information without another measurement or assumption. Motor angle alone, however, can make that ideal model observable through its coupled dynamics; practical accuracy still depends on noise and modelling.', dim=True))
         self.add(d)
 
         s = Card("the separation principle — why this is allowed to work")
@@ -2065,10 +2058,9 @@ class ObserverPage(Page):
             "— the union of the two designs, unchanged. <b>Design them "
             "independently.</b> That is the separation principle, it is why "
             "observer-based control is practical at all, and it is exact for "
-            "linear systems (and merely a good approximation for the real "
-            "nonlinear robot, which is the usual bargain).<br><br>"
+            "matching linear models with the assumed input and measurements. Noise, model error, delay and saturation still require checks.<br><br>"
             "<b>How fast should the observer be?</b> Conventionally <b>2–5× the "
-            "controller bandwidth</b> — fast enough that estimation lag does "
+            "controller pole decay rates as a starting heuristic</b> — fast enough that estimation lag does "
             "not show up inside the control loop, slow enough that it is still "
             "filtering. Push it faster and L grows, which weights the noisy "
             "measurement more heavily, and you have rebuilt the finite "
@@ -2079,44 +2071,42 @@ class ObserverPage(Page):
         # ---- interactive 1 -----------------------------------------------
         i = Card("finite difference vs observer, on the same noisy encoder")
         i.add(body(
-            "A joint is driven with a 1 Hz torque. Its angle is measured "
-            "through an encoder with noise and quantisation. Both velocity "
-            "estimates see <b>exactly the same measurements</b>.", dim=True))
+            '<b>Purpose: compare two ways to estimate velocity from one noisy position encoder.</b> A known 1 Hz torque drives the joint; both methods receive identical samples at 1 kHz. The observer also receives the known torque and model. The true velocity is available only because this is a simulation.<br><br>'
+            '<b>Top plot:</b> compare true velocity, raw finite difference and the observer. <b>Bottom:</b> the observer’s estimation error; zero is ideal. The error stats are mean absolute errors after the first 15% of the record, not peak errors.<br><br>'
+            '<b>Use the buttons:</b> moderate and fast observers see the same noise. Compare error rather than assuming faster is better. The clean-encoder case shows how much of the difference came from noise. You can then add quantisation to see the effect of finite encoder resolution.<br><br>'
+            'The speed slider sets poles at −β and −1.4β. The displayed 1/β is a decay-time scale, not a measured signal delay or closed-loop bandwidth. The model here is exact apart from numerical sampling; a slow observer need not lag a perfectly predicted input. Release sliders to update.', dim=True))
         self.s_bw = slider(5, 400, 60)           # rad/s
         self.s_noise = slider(0, 100, 20)        # x1e-5 rad
         self.s_q = slider(0, 100, 0)             # x1e-5 rad, quantisation
         self.l_bw, self.l_noise, self.l_q = QLabel(), QLabel(), QLabel()
-        i.add_layout(slider_row("observer bandwidth (rad/s)", self.s_bw,
+        i.add_layout(slider_row("pole rate β (1/s)", self.s_bw,
                                 self.l_bw))
         i.add_layout(slider_row("encoder noise (×1e-5)", self.s_noise,
                                 self.l_noise))
         i.add_layout(slider_row("quantisation (×1e-5)", self.s_q, self.l_q))
         self.st_efd = Stat("finite-diff error", "--", theme.BAD)
         self.st_eob = Stat("observer error", "--", theme.GOOD)
-        self.st_ratio = Stat("improvement", "--", theme.ACCENT)
-        self.st_lag = Stat("observer lag", "--", theme.WARN)
+        self.st_ratio = Stat("FD / observer error", "--", theme.ACCENT)
+        self.st_lag = Stat("1/β decay scale", "--", theme.WARN)
         i.add_layout(stat_row(self.st_efd, self.st_eob, self.st_ratio,
                               self.st_lag))
         self.c1 = MplCanvas(width=7.4, height=3.4, nrows=2)
         i.add(self.c1)
         self.add(i)
         for s_ in (self.s_bw, self.s_noise, self.s_q):
-            s_.valueChanged.connect(self._redraw_obs)
+            s_.setTracking(False)
+            s_.valueChanged.connect(lambda _value: self._obs_timer.start())
+        row = QHBoxLayout()
+        for label, values in (('1 · Moderate', (60,20,0)), ('2 · Faster, same noise', (300,20,0)), ('3 · Clean encoder', (60,0,0))):
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, v=values: self._observer_example('velocity', v))
+            row.addWidget(button)
+        i.add_layout(row)
         self._redraw_obs()
 
         self.add(callout(
-            "<b>Turn the observer bandwidth down to 10 and back up to 400.</b> "
-            "At the low end the estimate is beautifully smooth and arrives "
-            "late — it is trusting the model. At the high end it is fast and "
-            "noisy — it is trusting the encoder. Somewhere in the middle is "
-            "your design, and the right answer depends on how good your model "
-            "is relative to your sensor.<br><br>"
-            "<b>That sentence is the Kalman filter.</b> A Kalman filter is a "
-            "Luenberger observer whose L is computed <i>optimally</i> from two "
-            "numbers you supply: how noisy the sensor is, and how wrong the "
-            "model is. Same structure, same equations — the gain is derived "
-            "rather than placed, and it is time-varying while it converges. "
-            "Everything on this page is the thing a Kalman filter is.", "key"))
+            '<b>Read the tradeoff, not a universal ranking.</b> Larger L corrects initial/model errors faster but also admits more measurement noise. Raw finite difference is a deliberately simple baseline; filtered differentiation is another practical option.<br><br>'
+            'A Kalman filter chooses gains using process- and measurement-noise covariance models. These are generally matrices, not just two numbers. In the linear setting, a steady-state Kalman filter has a related predict/correct structure; this panel uses pole placement and is not a Kalman-filter demonstration.', 'key'))
 
         # ---- disturbance observer ----------------------------------------
         self.add(hline())
@@ -2155,16 +2145,16 @@ class ObserverPage(Page):
         # ---- interactive 2 -----------------------------------------------
         i2 = Card("watch it recover an unmeasured load")
         i2.add(body(
-            "A constant external torque is applied that the controller never "
-            "measures. The observer's third state converges on it — from the "
-            "position encoder alone.", dim=True))
+            '<b>Purpose: show what changes when the unknown torque is included in the model.</b> The same position-only observer now has a third state τ_ext with derivative zero. The actual torque is constant from t = 0; the estimate starts at zero.<br><br>'
+            '<b>Read the plot:</b> dashed is the hidden true load; green is the estimate reconstructed using encoder history, known commanded torque and the model. Compare +2 N·m, −2 N·m, then a noisier encoder. The sign should reverse, while noise causes fluctuations around the inferred load.<br><br>'
+            'The convergence readout is the first time after which the estimate stays within 10% of the load (minimum band 0.01 N·m) for the remainder of this 3-second record. A single crossing is not convergence. No disturbance cancellation is applied here: estimating a load and feeding its negative into the motor are separate operations. Release sliders to update.', dim=True))
         self.s_text = slider(-60, 60, 20)        # x0.1 N m
         self.s_dbw = slider(5, 120, 25)          # rad/s
         self.s_dn = slider(0, 60, 10)            # x1e-5
         self.l_text, self.l_dbw, self.l_dn = QLabel(), QLabel(), QLabel()
         i2.add_layout(slider_row("true τ_ext (×0.1 N·m)", self.s_text,
                                  self.l_text))
-        i2.add_layout(slider_row("observer bandwidth", self.s_dbw, self.l_dbw))
+        i2.add_layout(slider_row("pole rate β (1/s)", self.s_dbw, self.l_dbw))
         i2.add_layout(slider_row("encoder noise (×1e-5)", self.s_dn, self.l_dn))
         self.st_true = Stat("true τ_ext", "--", theme.WARN)
         self.st_est = Stat("estimated", "--", theme.GOOD)
@@ -2176,26 +2166,34 @@ class ObserverPage(Page):
         i2.add(self.c2)
         self.add(i2)
         for s_ in (self.s_text, self.s_dbw, self.s_dn):
-            s_.valueChanged.connect(self._redraw_dob)
+            s_.setTracking(False)
+            s_.valueChanged.connect(lambda _value: self._dob_timer.start())
+        row = QHBoxLayout()
+        for label, values in (('1 · +2 N·m', (20,25,10)), ('2 · −2 N·m', (-20,25,10)), ('3 · More noise', (20,25,60))):
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, v=values: self._observer_example('load', v))
+            row.addWidget(button)
+        i2.add_layout(row)
         self._redraw_dob()
 
         self.add(callout(
-            "<b>Carry forward.</b> An observer is a model you run alongside the "
-            "robot, corrected by whatever you can measure. It buys you the "
-            "states you did not instrument, at the price of trusting your "
-            "model exactly as far as its bandwidth. Controllability and "
-            "observability are hardware verdicts decided before any code is "
-            "written, and the separation principle is what lets you design "
-            "controller and estimator without them interfering.", "good"))
+            '<b>Carry forward in three steps.</b> First check whether the chosen measurements make the model observable. Then design L and test estimation error against noise and model mismatch. Finally use x̂ in the controller and check the combined implementation.<br><br>'
+            'Adding τ_ext as a constant state explains the second lab: persistent unexplained acceleration is attributed to a load. Wrong inertia, friction or motor torque can produce the same discrepancy, so the estimate is a model-dependent residual, not an independent force-sensor reading. An observer supplies information; compensation is a separate control decision.', 'good'))
 
         self.finish()
 
     # ------------------------------------------------------------------
+    def _observer_example(self, group, values):
+        sliders = (self.s_bw, self.s_noise, self.s_q) if group == 'velocity' else (self.s_text, self.s_dbw, self.s_dn)
+        for slider_, value in zip(sliders, values): slider_.setValue(value)
+        (self._obs_timer if group == 'velocity' else self._dob_timer).stop()
+        (self._redraw_obs if group == 'velocity' else self._redraw_dob)()
+
     def _redraw_obs(self):
         bw = float(self.s_bw.value())
         noise = self.s_noise.value() * 1e-5
         quant = self.s_q.value() * 1e-5
-        self.l_bw.setText(f"{bw:.0f} rad/s")
+        self.l_bw.setText(f"{bw:.0f} 1/s")
         self.l_noise.setText(f"{noise:.0e}" if noise else "none")
         self.l_q.setText(f"{quant:.0e}" if quant else "none")
 
@@ -2209,7 +2207,7 @@ class ObserverPage(Page):
                    zip(tr.omega_hat[skip:], tr.omega[skip:])) / (n - skip)
         self.st_efd.set(f"{e_fd:.3f}")
         self.st_eob.set(f"{e_ob:.4f}")
-        self.st_ratio.set(f"{e_fd/max(e_ob,1e-9):.0f}×")
+        self.st_ratio.set(f"{e_fd/max(e_ob,1e-9):.2f}×")
         self.st_lag.set(f"{1000.0/bw:.1f} ms")
 
         c = self.c1
@@ -2231,14 +2229,15 @@ class ObserverPage(Page):
         a2.set_xlabel("time (s)")
         a2.set_ylabel("estimation error")
         c.legend(a2, loc="upper right")
-        c.refresh()
+        c.fig.subplots_adjust(left=.11, right=.96, bottom=.16, top=.94, hspace=.5)
+        c.refresh(layout=False)
 
     def _redraw_dob(self):
         text = self.s_text.value() * 0.1
         bw = float(self.s_dbw.value())
         noise = self.s_dn.value() * 1e-5
         self.l_text.setText(f"{text:+.1f} N·m")
-        self.l_dbw.setText(f"{bw:.0f} rad/s")
+        self.l_dbw.setText(f"{bw:.0f} 1/s")
         self.l_dn.setText(f"{noise:.0e}" if noise else "none")
 
         tr = run_velocity_observer(duration=3.0, obs_bw=bw, noise=noise,
@@ -2249,9 +2248,11 @@ class ObserverPage(Page):
         self.st_err.set(f"{abs(est-text):.3f}")
         self.st_err.set_color(theme.GOOD if abs(est - text) < 0.15
                               else theme.BAD)
-        conv = next((t for t, v in zip(tr.t, tr.tau_hat)
-                     if abs(v - text) < 0.1 * max(abs(text), 0.1)), None)
-        self.st_conv.set(f"{conv*1000:.0f} ms" if conv else "—")
+        band = 0.1 * max(abs(text), 0.1)
+        outside = [i for i, value in enumerate(tr.tau_hat) if abs(value-text) >= band]
+        index = outside[-1]+1 if outside else 0
+        conv = tr.t[index] if index < len(tr.t) else None
+        self.st_conv.set(f"{conv*1000:.0f} ms" if conv is not None else 'not within 3 s')
 
         c = self.c2
         c.clear()
@@ -2263,4 +2264,5 @@ class ObserverPage(Page):
         c.ax.set_xlabel("time (s)")
         c.ax.set_ylabel("τ (N·m)")
         c.legend(loc="lower right")
-        c.refresh()
+        c.fig.subplots_adjust(left=.11, right=.96, bottom=.16, top=.94, hspace=.5)
+        c.refresh(layout=False)

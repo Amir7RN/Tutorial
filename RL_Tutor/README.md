@@ -679,3 +679,8 @@ Covered in detail on page 70 (Code Lab). Summary:
 
 The three files also use three *different* action encodings, so their printed
 policies are not comparable with each other.
+
+Pages 19–20 also include guided example buttons and plot-reading explanations.
+LQR distinguishes soft weights from limits and uses an exact linear transition
+for stiff modes. Observers distinguish observability, pole decay rate, estimation
+and disturbance cancellation. Sliders update on release to avoid repeated work.

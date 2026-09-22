@@ -3,6 +3,32 @@ import cmath
 import numpy as np
 
 
+def linear_regulator_response(ss, K, x0, dur, dt):
+    """Sample the exact homogeneous linear response, including stiff LQR modes.
+
+    Small-matrix exponential by scaled Taylor series and squaring. Unlike an
+    explicit integration step, the display interval does not limit stability.
+    This routine has no saturation or disturbances.
+    """
+    gain = np.asarray(K)
+    matrix = (np.asarray(ss.A) - np.asarray(ss.B) @ gain)*dt
+    norm = float(np.linalg.norm(matrix, np.inf))
+    scale = max(0, int(np.ceil(np.log2(max(norm, 1e-300)/.5))))
+    matrix = matrix / (2.0**scale)
+    transition = np.eye(len(matrix))
+    term = transition.copy()
+    for order in range(1, 40):
+        term = term @ matrix / order
+        transition += term
+        if np.linalg.norm(term, np.inf) < 1e-16: break
+    for _ in range(scale): transition = transition @ transition
+    ts = np.arange(int(round(dur/dt))+1)*dt
+    xs = np.empty((len(ts), len(matrix)))
+    xs[0] = x0
+    for i in range(1, len(ts)): xs[i] = transition @ xs[i-1]
+    return ts, xs, -xs @ gain.T, 0.0
+
+
 def second_order_poles(wn, zeta):
     root = cmath.sqrt(zeta*zeta - 1)
     return [-wn*zeta + wn*root, -wn*zeta - wn*root]

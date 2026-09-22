@@ -24,7 +24,7 @@ import math
 import numpy as np
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import QComboBox, QLabel, QPushButton, QHBoxLayout
-from ctrlcore.pole_lesson import second_order_poles, regulator_response
+from ctrlcore.pole_lesson import second_order_poles, regulator_response, linear_regulator_response
 
 from ctrlcore.linear import StateSpace, lqr, place_poles, settling_time
 from ctrlcore.multibody import (
@@ -738,6 +738,11 @@ class LQRPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._lqr_msd_timer = QTimer(self)
+        self._lqr_sea_timer = QTimer(self)
+        for timer, callback in ((self._lqr_msd_timer, self._redraw_lqr_msd), (self._lqr_sea_timer, self._redraw_lqr_sea)):
+            timer.setSingleShot(True); timer.setInterval(120); timer.timeout.connect(callback)
+        self.add(callout('<b>The point of this page:</b> page 18 chose poles and solved for K. Here you choose how much to penalise state error (Q) and effort (R); LQR solves for K and the poles follow. Both use u = −Kx. The cost weights are preferences, not hard limits. The first lab isolates this tradeoff on two states; the second adds spring deflection as another quantity to penalise.', 'key'))
 
         self.add(callout(
             "<b>The question pole placement cannot answer.</b> A trunkless "
@@ -795,9 +800,8 @@ class LQRPage(Page):
         cf.add(body(
             "<b>Only the ratio matters.</b> Multiply Q and R both by 1000 and "
             "K does not change — the same controller is optimal, the bill is "
-            "just denominated in different units. So there are not 2n knobs, "
-            "there are 2n−1, and the single most useful one is <b>Q/R "
-            "overall</b>: crank it up for aggressive, down for gentle. Every "
+            "just denominated in different units. For diagonal weights, common scaling removes one redundant degree of freedom. Increasing the relative state penalty versus effort "
+            "overall means: crank it up for aggressive, down for gentle. Every "
             "other adjustment is about the relative importance of states to "
             "each other.", dim=True))
         self.add(cf)
@@ -822,7 +826,7 @@ class LQRPage(Page):
                           r"R_{jj} = \frac{1}{(u_j^{\max})^2}", 18))
         br.add(body(
             "<b>Now every term is dimensionless and equals 1 when that "
-            "variable is at its limit.</b> The cost has become \"how many "
+            "variable is at its reference scale.</b> The cost has become \"how many "
             "times over budget am I, summed\", which is comparable across "
             "quantities with different units. After Bryson, tuning means "
             "scaling blocks by factors of ten and each factor has a "
@@ -835,12 +839,7 @@ class LQRPage(Page):
                           r"\end{bmatrix} = \begin{bmatrix}2500 & 0\\ 0 & 11.1"
                           r"\end{bmatrix}, \qquad R = \frac{1}{10^2} = 0.01",
                           17))
-        br.add(body(
-            "Note what those numbers say without any control theory: position "
-            "matters about 225 times more than velocity, because 2 cm is a "
-            "much tighter budget than 30 cm/s. <b>That ratio came out of the "
-            "specification, not out of tuning</b>, and that is the whole "
-            "point of the rule.", dim=True))
+        br.add(body('At 2 cm, the position term equals 1. At 0.3 m/s, the velocity term also equals 1. Their raw weights have different units: 2500/11.1 does not mean position is 225 times more important. These scales normalise the quantities; they are soft preferences, not enforced limits.', dim=True))
         self.add(br)
 
         # ==============================================================
@@ -856,7 +855,7 @@ class LQRPage(Page):
         ans.add(body(
             "The first is the <b>algebraic Riccati equation</b>. It is "
             "quadratic in P (that is the −PBR⁻¹BᵀP term), which is why it has "
-            "several solutions and you want the unique positive-definite one. "
+            "several solutions; under the usual stabilisability and detectability assumptions, use the stabilising positive-semidefinite solution. "
             "<code>ctrlcore</code> solves it through the Hamiltonian matrix's "
             "stable eigenvectors, which is how it is actually done."))
         ans.add(callout(
@@ -875,54 +874,17 @@ class LQRPage(Page):
             "gives the Riccati equation. This is a concrete connection to "
             "Bellman reasoning; it does not make every Riccati numerical solver "
             "a value-iteration algorithm.", "key"))
-        ans.add(body(
-            "<b>And the guarantees, which are why LQR is trusted.</b> If "
-            "(A,B) is stabilisable and Q does not hide an unstable mode, the "
-            "closed loop is <b>guaranteed stable</b> — for any positive Q and "
-            "R, with no stability check needed. On top of that, full-state "
-            "LQR has famous margins: <b>at least 60° of phase margin</b>, "
-            "infinite gain margin upward, and tolerance of a 50% gain "
-            "reduction. You could not ask for a better robustness "
-            "certificate."))
-        ans.add(callout(
-            "<b>And now the caveat every interview eventually reaches.</b> "
-            "Those margins hold for <i>full state feedback</i>. Put a Kalman "
-            "filter or any observer in front of it — which you must, because "
-            "you cannot measure twelve states — and <b>the guarantees "
-            "vanish</b>. Doyle's 1978 paper is one page long and its title is "
-            "\"Guaranteed Margins for LQG Regulators\"; the abstract says "
-            "there are none. The fix in practice is <b>loop transfer "
-            "recovery</b>, or designing the observer several times faster "
-            "than the controller and then checking the margins you actually "
-            "got rather than the ones you were promised.", "warn"))
+        ans.add(body('For the ideal continuous-time model, stabilisability of (A,B), detectability through Q, and positive R give a stabilising LQR solution. Full-state LQR has classical input-loop robustness results under their stated assumptions. These are not universal margins for every sensor loop or sampled implementation. Always check the actual loop after adding estimation, delay, filters or saturation.'))
         self.add(ans)
 
         # ---- interactive 1: MSD LQR -------------------------------------
         i1 = Card("price the mass-spring-damper, and watch the poles move "
                   "without being told where to go")
         i1.add(body(
-            "The sliders are <b>tolerances</b>, not gains and not poles: how "
-            "much position error you will accept, how much velocity, and how "
-            "much force you have. Q and R are built from them by Bryson's "
-            "rule and printed below. You never name a pole; the poles move "
-            "anyway, and the map shows where they went.<br><br>"
-            "<b>Four things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Tighten the position tolerance. Gains rise, "
-            "poles move left, force rises. You are buying speed with "
-            "torque and the exchange rate is being computed for you.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Now tighten the <i>force budget</i> "
-            "instead. The optimiser backs off on its own — no re-tuning, no "
-            "instability, just a gentler controller. Compare that with what "
-            "happened on the previous page when you saturated: LQR does not "
-            "get you out of a torque limit, but it lets you <b>state</b> the "
-            "limit up front instead of discovering it.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Scale both budgets by the same factor. "
-            "<b>K does not change.</b> Only the ratio matters, and the stat "
-            "confirms it.<br>"
-            "&nbsp;&nbsp;<b>4.</b> Read J* = x₀ᵀPx₀ as you move things. That "
-            "single number is the whole future cost from the current start, "
-            "and it is the closest thing classical control has to a critic.",
-            dim=True))
+            '<b>Purpose: see how a preference changes K without specifying any poles.</b> The fixed plant is m = 1 kg, b = 0.6 N·s/m, k = 20 N/m. It starts 2 cm from zero at rest. This is regulation, as on page 18.<br><br>'
+            '<b>Read left → right:</b> return to zero; motor force; the poles resulting from the optimisation. Dashed lines are weight-setting reference scales, not enforced boundaries. No force clipping is simulated.<br><br>'
+            '<b>Use the buttons:</b> baseline uses 20 mm, 0.3 m/s and 10 N, so Q = diag(2500, 11.11), R = 0.01. Tightening position to 10 mm quadruples its weight. Changing the effort scale to 2 N makes R = 0.25, making force more expensive. Compare the motion and peak force.<br><br>'
+            '<b>Finally scale Q and R together:</b> ×10 changes the numerical cost and P by ×10, but leaves K, poles and motion unchanged. Do not compare J* across different weights as if it were a common score. Release sliders to update.', dim=True))
         self.s_xmax = slider(2, 200, 20)         # x0.001 m
         self.s_vmax = slider(2, 300, 30)         # x0.01 m/s
         self.s_umax = slider(1, 400, 100)        # x0.1 N
@@ -952,7 +914,14 @@ class LQRPage(Page):
         i1.add(self.t3)
         self.add(i1)
         for s in (self.s_xmax, self.s_vmax, self.s_umax, self.s_scale):
-            s.valueChanged.connect(self._redraw_lqr_msd)
+            s.setTracking(False)
+            s.valueChanged.connect(lambda _value: self._lqr_msd_timer.start())
+        row = QHBoxLayout()
+        for label, values in (('1 · Baseline', (20,30,100,0)), ('2 · Tighter position', (10,30,100,0)), ('3 · Costlier effort', (20,30,20,0))):
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, v=values: self._lqr_example('msd', v))
+            row.addWidget(button)
+        i1.add_layout(row)
         self._redraw_lqr_msd()
 
         # ---- interactive 2: SEA LQR -------------------------------------
@@ -1001,23 +970,10 @@ class LQRPage(Page):
 
         i2 = Card("tune a SEA by naming tolerances")
         i2.add(body(
-            "Same plant as the previous page. Now nothing names a pole.<br><br>"
-            "<b>Three things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Raise the load-angle weight alone. The "
-            "response gets faster and the spring deflection grows — the only "
-            "way to move the load harder is to wind the spring "
-            "further.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Now raise the <b>deflection</b> weight. "
-            "Peak deflection falls, which means peak <i>output torque</i> "
-            "falls, which is exactly how you protect a spring or a harmonic "
-            "drive from its own controller. Note that this is a constraint "
-            "you could not express at all in the language of pole "
-            "placement.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Set the load weights to zero and leave "
-            "only motor weights. The motor behaves beautifully and the load "
-            "rings — you optimised the thing you measured instead of the "
-            "thing you wanted, which is the most common way a well-posed "
-            "optimal controller produces a bad machine.", dim=True))
+            '<b>Purpose: price a relationship between states, not just each state separately.</b> Motor and load begin together at 0.20 rad, both at rest, with no initial spring deflection. This matches page 18. The plant is J_m = 0.02, J_L = 0.25 kg·m² and k = 400 N·m/rad.<br><br>'
+            '<b>Read left → right:</b> motor/load return to zero; spring deflection δ = θ_m−θ_L; motor torque. Spring torque is kδ and can differ from motor torque during acceleration.<br><br>'
+            '<b>Compare the buttons:</b> start at q₃₃ = 1000, q₄₄ = 10, q_δ = 0.001, R = 0.1. Raise q₃₃ to 10000 to penalise load error more. Then keep that weight and raise q_δ to 100000: now relative motor/load motion is expensive too. Inspect the whole trajectory and effort; no weight guarantees a peak limit.<br><br>'
+            'Motor angle and speed each retain weight 0.001. The log sliders change positive weights in powers of ten; their minimum is not zero. J* changes its meaning when the weights change. Release sliders to update.', dim=True))
         self.s_q3 = slider(-20, 60, 30)          # log10 x0.1, load angle
         self.s_q4 = slider(-20, 60, 10)          # log10 x0.1, load speed
         self.s_qd = slider(-30, 60, -30)         # log10 x0.1, deflection
@@ -1043,7 +999,14 @@ class LQRPage(Page):
         i2.add(self.t4)
         self.add(i2)
         for s in (self.s_q3, self.s_q4, self.s_qd, self.s_ru):
-            s.valueChanged.connect(self._redraw_lqr_sea)
+            s.setTracking(False)
+            s.valueChanged.connect(lambda _value: self._lqr_sea_timer.start())
+        row = QHBoxLayout()
+        for label, values in (('1 · Baseline', (30,10,-30,-10)), ('2 · Load accuracy', (40,10,-30,-10)), ('3 · Also price deflection', (40,10,50,-10))):
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, v=values: self._lqr_example('sea', v))
+            row.addWidget(button)
+        i2.add_layout(row)
         self._redraw_lqr_sea()
 
         # ==============================================================
@@ -1053,51 +1016,17 @@ class LQRPage(Page):
         self.add(title("Pole placement versus LQR, and where each one belongs"))
 
         cmp_ = Card("head to head")
-        cmp_.add(body(
-            "<table cellpadding='7'>"
-            "<tr><td></td><td><b>Pole placement</b></td><td><b>LQR</b></td>"
-            "</tr>"
-            "<tr><td><b>You specify</b></td><td>n pole locations</td>"
-            "<td>2 weight matrices — really, a set of tolerances</td></tr>"
-            "<tr><td><b>Intuition needed</b></td>"
-            "<td>high, and it does not survive past n = 2</td>"
-            "<td>low; the units are engineering units</td></tr>"
-            "<tr><td><b>MIMO</b></td>"
-            "<td>awkward — K is not unique, and the extra freedom has to be "
-            "resolved by something</td>"
-            "<td>natural; one gain matrix falls out</td></tr>"
-            "<tr><td><b>Knows about effort</b></td><td>no, not at all</td>"
-            "<td>yes — R is exactly that</td></tr>"
-            "<tr><td><b>Stability</b></td>"
-            "<td>you chose it, so yes by construction</td>"
-            "<td>guaranteed for any valid Q, R</td></tr>"
-            "<tr><td><b>Margins</b></td><td>whatever you happen to get</td>"
-            "<td>≥60° PM, ∞ GM — with full state feedback only</td></tr>"
-            "<tr><td><b>Good for</b></td>"
-            "<td>small systems where you genuinely want a specific response; "
-            "matching a known second-order spec; teaching</td>"
-            "<td>anything with more than about three states; every "
-            "multi-joint robot</td></tr>"
-            "</table>"))
-        cmp_.add(body(
-            "<b>They are not rivals.</b> A very standard workflow is: use "
-            "LQR to get a sensible gain, look at where the poles landed, and "
-            "if one of them is somewhere you dislike, adjust Q rather than "
-            "the pole. You are steering with a specification and checking "
-            "with a map.", dim=True))
+        cmp_.add(body('<b>Pole placement:</b> specify a target dynamic response, then solve for K. Useful when the pole locations themselves express your requirement.<br><br><b>LQR:</b> specify state and effort weights, then solve for K and inspect the resulting response. Useful when balancing several states and inputs.<br><br>Both need a suitable model and available states. Neither enforces actuator limits. For LQR, stabilisability and detectability conditions matter; optimality for the ideal cost is not a universal robustness guarantee. Check tracking, disturbances, saturation and the implemented loop in either case.'))
         self.add(cmp_)
 
         lqi = Card("LQI — the same trick that gives PID its I term")
         lqi.add(body(
-            "LQR regulates to zero and, exactly like state feedback, has no "
-            "answer to a constant load. The fix is to invent a new state that "
-            "<i>accumulates error</i> and then let the optimiser deal with "
-            "it:"))
+            'For a known target and load, use the equilibrium/feedforward construction from page 18. An unknown constant load can leave an offset. If the mass remains 1 cm below its target for 2 seconds, the accumulated error is 0.02 m·s. Integral feedback uses that persistent error to adjust the command. Add this state:'))
         lqi.add(math_label(r"\dot x_I = r - y = r - Cx, \qquad "
                            r"\tilde x = \begin{bmatrix} x \\ x_I\end{bmatrix}",
                            17))
         lqi.add(body(
-            "Now run LQR on the augmented system. The extra diagonal entry in "
+            "Provided the augmented model is stabilisable and the cost detects its unstable modes, run LQR on it. The extra diagonal entry in "
             "Q is <b>the price of accumulated error</b>, and the extra column "
             "in K is an integral gain. Steady-state error goes to zero for "
             "the same reason it does in PI control — there is a pole at the "
@@ -1110,31 +1039,20 @@ class LQRPage(Page):
         self.add(lqi)
 
         self.add(callout(
-            "<b>The bridge to the second half of this tutor, stated "
-            "plainly.</b> LQR and reinforcement learning solve the same "
-            "problem: choose a policy that minimises an accumulated cost. "
-            "Line them up:<br><br>"
-            "&nbsp;&nbsp;• cost ∫(xᵀQx + uᵀRu)dt &nbsp;↔&nbsp; return "
-            "Σγᵗr<sub>t</sub> &nbsp;(negated)<br>"
-            "&nbsp;&nbsp;• P, with J* = xᵀPx &nbsp;↔&nbsp; V(s), the value "
-            "function<br>"
-            "&nbsp;&nbsp;• K, with u = −Kx &nbsp;↔&nbsp; π(s), the policy — "
-            "and it is deterministic, which is why DDPG's actor is the direct "
-            "descendant<br>"
-            "&nbsp;&nbsp;• the Riccati equation &nbsp;↔&nbsp; the Bellman "
-            "optimality equation<br>"
-            "&nbsp;&nbsp;• solving Riccati &nbsp;↔&nbsp; value iteration<br><br>"
-            "<b>LQR is the case where you can do the whole thing with "
-            "linear algebra</b> because A and B are known and the cost is "
-            "quadratic. You reach for RL when the dynamics are nonlinear, or "
-            "unknown, or the cost is not quadratic — and you give up the "
-            "closed form, the guarantees and the margins in exchange. Knowing "
-            "exactly which of those three you are giving up, and why, is the "
-            "difference between choosing RL and defaulting to it.", "good"))
+            '<b>Carry forward: three different objects.</b> You choose Q and R (what matters). The solver returns K (what action to take) and P (how much optimal cost remains). For the same model and objective, starting from x₀ costs x₀ᵀPx₀.<br><br>'
+            'The later RL lessons also distinguish a policy from a value function. With reward equal to negative running cost and matching time/horizon conventions, the optimal return is −xᵀPx. P alone is not the value function, and solving Riccati is not automatically value iteration.<br><br>'
+            '<b>Next question, page 20:</b> these controllers assumed every state was known. Observers estimate missing states from a model and sensor history. Changing how states are obtained requires a fresh check of the implemented loop.', 'good'))
 
         self.finish()
 
     # ------------------------------------------------------------------
+    def _lqr_example(self, group, values):
+        sliders = (self.s_xmax, self.s_vmax, self.s_umax, self.s_scale) if group == 'msd' else (self.s_q3, self.s_q4, self.s_qd, self.s_ru)
+        for slider_, value in zip(sliders, values): slider_.setValue(value)
+        timer = self._lqr_msd_timer if group == 'msd' else self._lqr_sea_timer
+        timer.stop()
+        (self._redraw_lqr_msd if group == 'msd' else self._redraw_lqr_sea)()
+
     def _redraw_lqr_msd(self):
         xm = self.s_xmax.value() / 1000.0
         vm = self.s_vmax.value() / 100.0
@@ -1153,11 +1071,11 @@ class LQRPage(Page):
         K = res.K
         k1, k2 = float(K[0, 0]), float(K[0, 1])
 
-        ts, xs, us, _s = simulate_feedback(ss, K, x0, dur=3.0, dt=5e-4)
+        ts, xs, us, _s = linear_regulator_response(ss, K, x0, dur=3.0, dt=5e-4)
         pk = float(np.max(np.abs(us))) if len(us) else 0.0
         dom = max(res.poles, key=lambda p: p.real)
         wn_cl = abs(dom)
-        z_cl = (-dom.real / wn_cl) if wn_cl > 1e-9 else 0.0
+        z_cl = (0.6+k2)/(2*math.sqrt(20+k1))
 
         self.st_lk1.set(f"{k1:.0f}")
         self.st_lk2.set(f"{k2:.1f}")
@@ -1211,7 +1129,7 @@ class LQRPage(Page):
         a2.set_title("R is the price of this", fontsize=9)
         c.legend(a2, loc="upper right")
 
-        lim = max(4.0, wn_cl * 1.6)
+        lim = max(4.0, 1.6*max(abs(p) for p in res.poles))
         _splane(a3, res.poles, lim=lim, marker_label="LQR poles")
         op = np.linalg.eigvals(np.asarray(ss.A))
         a3.scatter([p.real for p in op], [p.imag for p in op], marker="x",
@@ -1219,7 +1137,8 @@ class LQRPage(Page):
                    label="open loop")
         a3.set_title("nobody placed these", fontsize=8.5)
         c.legend(a3, loc="upper left")
-        c.refresh()
+        c.fig.subplots_adjust(left=.085, right=.96, bottom=.22, top=.84, wspace=.65)
+        c.refresh(layout=False)
 
     # ------------------------------------------------------------------
     def _redraw_lqr_sea(self):
@@ -1238,11 +1157,11 @@ class LQRPage(Page):
         c_def = np.array([1.0, 0.0, -1.0, 0.0]).reshape(-1, 1)
         Q = Q + qd * (c_def @ c_def.T)
         R = np.array([[r]])
-        x0 = np.array([0.0, 0.0, 0.20, 0.0])
+        x0 = np.array([0.20, 0.0, 0.20, 0.0])
         res = lqr_design(ss, Q, R, x0=x0)
         K = res.K
 
-        ts, xs, us, _s = simulate_feedback(ss, K, x0, dur=1.5, dt=2e-4)
+        ts, xs, us, _s = linear_regulator_response(ss, K, x0, dur=1.5, dt=2e-4)
         defl = np.degrees(xs[:, 0] - xs[:, 2]) if len(xs) else np.zeros(1)
         pk_def = float(np.max(np.abs(defl)))
         pk_tau = float(np.max(np.abs(us))) if len(us) else 0.0
@@ -1251,14 +1170,14 @@ class LQRPage(Page):
         ts_set = None
         for i in range(len(ts) - 1, -1, -1):
             if abs(xs[i, 2]) > band:
-                ts_set = ts[min(i + 1, len(ts) - 1)]
+                ts_set = ts[i+1] if i+1 < len(ts) else None
                 break
         fastest = min(res.poles, key=lambda p: p.real)
 
         self.st_sdef.set(f"{pk_def:.1f}°")
         self.st_sdef.set_color(theme.BAD if pk_def > 25 else theme.VIOLET)
         self.st_stau.set(f"{pk_tau:.1f} N·m")
-        self.st_sts.set("—" if ts_set is None else f"{ts_set:.2f} s")
+        self.st_sts.set(">1.5 s" if ts_set is None else f"{ts_set:.2f} s")
         self.st_scost.set(f"{res.cost:.3g}")
         self.st_sfast.set(f"{fastest.real:.0f} 1/s")
         self.st_sfast.set_color(theme.BAD if fastest.real < -2000
@@ -1272,37 +1191,10 @@ class LQRPage(Page):
             "&nbsp;·&nbsp; output torque = k·deflection = "
             f"{k*math.radians(pk_def):.1f} N·m peak</span>")
 
-        if q3 < 1e-2 and q4 < 1e-2:
-            self.t4.setText(
-                "<b>You put weight only on the motor states.</b> Look at the "
-                "left panel: the motor is beautifully behaved and the load is "
-                "still ringing. The optimiser did exactly what you asked and "
-                "the machine is worse for it. This is the failure mode of "
-                "every well-posed optimisation — <b>it optimises the thing "
-                "you weighted, not the thing you wanted</b> — and on a SEA "
-                "the thing you wanted is on the far side of a spring from the "
-                "thing you measured.")
-        elif qd > 10 * q3:
-            self.t4.setText(
-                f"<b>Deflection is dominating the cost, so peak deflection is "
-                f"held to {pk_def:.1f}° and peak output torque to "
-                f"{k*math.radians(pk_def):.1f} N·m.</b> The load settles more "
-                f"slowly in exchange, which is the trade you asked for. Note "
-                f"what just happened: <b>you constrained output torque by "
-                f"weighting a state</b>. Pole placement has no vocabulary for "
-                "that at all, and it is how a spring — or a harmonic drive, "
-                "or a tendon — gets protected from its own controller.")
-        else:
-            self.t4.setText(
-                f"<b>Load-dominated weighting.</b> Peak deflection "
-                f"{pk_def:.1f}° = {k*math.radians(pk_def):.1f} N·m of output "
-                f"torque, fastest closed-loop pole at {fastest.real:.0f} 1/s. "
-                f"Watch that last number as you cheapen torque (R down): the "
-                f"optimiser will place a pole at several thousand rad/s "
-                f"without hesitation, because nothing in the cost knows about "
-                "your sample rate. LQR respects your torque budget and knows "
-                "nothing whatsoever about your loop rate — that check is "
-                "still yours to make, on page 1's terms.")
+        self.t4.setText(
+            f'<b>Measured in this ideal trajectory:</b> peak deflection {pk_def:.1f}°, spring torque {k*math.radians(pk_def):.1f} N·m, motor torque {pk_tau:.1f} N·m. '
+            'Q penalises state motion and R penalises motor effort; neither imposes a hard bound. '
+            'Check the time traces when changing weights, then check actuator capacity, sensing, model uncertainty and sampling before using these gains.')
 
         c = self.c4
         c.clear()
@@ -1314,7 +1206,7 @@ class LQRPage(Page):
         a1.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls=":")
         a1.set_xlabel("time (s)")
         a1.set_ylabel("angle (°)")
-        a1.set_title("load released from 11.5°", fontsize=8.5)
+        a1.set_title("both bodies released from 11.5°", fontsize=8.5)
         c.legend(a1, loc="upper right")
 
         a2.plot(ts, defl, color=theme.VIOLET, lw=1.9, label="deflection")
@@ -1328,4 +1220,5 @@ class LQRPage(Page):
         a3.set_xlabel("time (s)")
         a3.set_ylabel("motor τ (N·m)")
         a3.set_title("R is the price of this", fontsize=8.5)
-        c.refresh()
+        c.fig.subplots_adjust(left=.085, right=.96, bottom=.22, top=.84, wspace=.65)
+        c.refresh(layout=False)
