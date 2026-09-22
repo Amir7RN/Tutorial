@@ -94,13 +94,16 @@ pace. They stop consuming animation ticks when hidden or scrolled out of view,
 and retain their playback position when you return. Pausing a movie remains in
 effect when you leave and revisit its page.
 
-Page 1 has **ten movies with 38 scenes**, distributed alongside the text:
-updates inside a motion cycle, sensor/compute/command timing, delay, illustrative
-DD/SEA/PEA mechanisms and response bandwidths, stroboscopic aliasing, identical sample lists,
-the exactly-Nyquist failure, anti-alias filtering, and execution deadlines.
-The 950 Hz / 1 kHz example shows both the rotating-phase explanation and the
-sample arithmetic, with the sine phase reversal handled explicitly. Topic buttons
-at the top jump directly to each explanation.
+Page 1 keeps **four focused movies**: the opening real-time overview, updates
+inside a motion cycle, response bandwidth, and stroboscopic aliasing. The sample
+arithmetic, filtering and deadline explanations remain as text and existing labs.
+Topic buttons at the top jump directly to the four animations.
+
+Page 18 explains each pole-placement lab with a purpose, plot-reading guide and
+preset experiments. Slider drags update on release, repeated changes are grouped,
+and changing the sensor reuses the simulated trajectory. The final takeaways
+connect actuator effort to LQR and distinguish regulation from nonzero targets.
+
 
 Existing lesson sections, code, plots and interactive demonstrations remain.
 Page 1 also corrects overly absolute wording: actuator type does not set a

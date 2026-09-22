@@ -163,7 +163,6 @@ class RealTimePage(Page):
             "bandwidth must still be checked from the designed system's response "
             "and stability margins. Being below 500 Hz Nyquist only addresses "
             "measurement ambiguity under suitable input bandwidth assumptions.", "key"))
-        self.add(LessonAnimation(PAGE_ONE_EXTRAS["timing"]))
 
         i = Card("watch the phase get eaten")
         i.add(body(
@@ -190,7 +189,6 @@ class RealTimePage(Page):
         self.s_delay.valueChanged.connect(self._redraw_phase)
         self._redraw_phase()
 
-        self.add(LessonAnimation(PAGE_ONE_EXTRAS["mechanisms"]))
         self.add(LessonAnimation(PAGE_ONE_EXTRAS["mechanics"]))
         self.add(callout(
             "<b>DD, SEA and PEA do not have one universal bandwidth each.</b><br><br>"
@@ -248,7 +246,6 @@ class RealTimePage(Page):
             "rate and filter before any later downsampling.", dim=True))
         self.add(a)
 
-        self.add(LessonAnimation(PAGE_ONE_EXTRAS["alias_data"]))
 
         a2 = Card("that disaster, unpacked line by line — because every clause "
                   "in it is doing work")
@@ -304,7 +301,6 @@ class RealTimePage(Page):
             "nobody can trace.", "warn"))
         self.add(a2)
 
-        self.add(LessonAnimation(PAGE_ONE_EXTRAS["filter"]))
 
         i2 = Card("fold a signal yourself")
         i2.add(body(
@@ -338,7 +334,6 @@ class RealTimePage(Page):
         self.s_rate.valueChanged.connect(self._redraw_alias)
         self._redraw_alias()
 
-        self.add(LessonAnimation(PAGE_ONE_EXTRAS["nyquist"]))
 
         # ---- reconstruction vs "it looks wrong" -------------------------------
         r = Card("\"2× is not enough, 3× still looks wrong, 4× is fine\" — "
@@ -483,7 +478,6 @@ class RealTimePage(Page):
         # ---- scheduling -------------------------------------------------------
         self.add(hline())
         self.add(title("Scheduling: FreeRTOS and friends"))
-        self.add(LessonAnimation(PAGE_ONE_EXTRAS["deadline"]))
 
         s = Card("the task model")
         s.add(body(
@@ -604,14 +598,8 @@ class RealTimePage(Page):
         topics = [("1 · What 1 kHz means", self.lesson_animation)]
         topics += [(label, by_story[id(PAGE_ONE_EXTRAS[key])]) for key, label in (
             ("cycles", "2 · Count updates per cycle"),
-            ("timing", "3 · Why delay matters"),
-            ("mechanisms", "4 · DD / SEA / PEA mechanics"),
-            ("mechanics", "5 · What bandwidth means"),
-            ("alias_wheel", "6 · Watch aliasing happen"),
-            ("alias_data", "7 · Compare the sample numbers"),
-            ("filter", "8 · Where filtering must happen"),
-            ("nyquist", "9 · The Nyquist boundary"),
-            ("deadline", "10 · The one-millisecond deadline"))]
+            ("mechanics", "3 · What bandwidth means"),
+            ("alias_wheel", "4 · Watch aliasing happen"))]
         scroll = self.findChild(QScrollArea)
         for index, (label, target) in enumerate(topics):
             button = QPushButton(label)

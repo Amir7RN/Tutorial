@@ -139,8 +139,8 @@ class LessonAnimationTests(unittest.TestCase):
         page.show()
         self.app.processEvents()
         movies = page.findChildren(LessonAnimation)
-        self.assertEqual(len(movies), 1+len(PAGE_ONE_EXTRAS))
-        self.assertEqual({id(m.story) for m in movies}, {id(STORIES['RealTimePage']), *(id(s) for s in PAGE_ONE_EXTRAS.values())})
+        self.assertEqual(len(movies), 4)
+        self.assertEqual({id(m.story) for m in movies}, {id(STORIES['RealTimePage']), *(id(PAGE_ONE_EXTRAS[k]) for k in ("cycles", "mechanics", "alias_wheel"))})
         scroll = page.findChild(QScrollArea)
         for movie in movies:
             scroll.ensureWidgetVisible(movie.canvas, 0, 15)

@@ -22,7 +22,9 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from PySide6.QtWidgets import QComboBox, QLabel
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QComboBox, QLabel, QPushButton, QHBoxLayout
+from ctrlcore.pole_lesson import second_order_poles, regulator_response
 
 from ctrlcore.linear import StateSpace, lqr, place_poles, settling_time
 from ctrlcore.multibody import (
@@ -67,7 +69,7 @@ def _matrix_html(M, name, fmt="{:+.2f}", colour=None):
         cells += "<tr>"
         for c in range(M.shape[1]):
             cells += (f"<td align='right' style='padding:2px 9px;'>"
-                      f"<code>{fmt.format(M[r, c])}</code></td>")
+                      f"<span style='font-family:Segoe UI; font-size:13px;'>{fmt.format(M[r, c])}</span></td>")
         cells += "</tr>"
     return (f"<table cellspacing='0'><tr><td valign='middle'>"
             f"<b style='color:{col}'>{name}</b> &nbsp;=&nbsp;</td>"
@@ -81,14 +83,26 @@ def _matrix_html(M, name, fmt="{:+.2f}", colour=None):
 
 class StateFeedbackPage(Page):
     TITLE = "State Feedback & Pole Placement"
-    SUBTITLE = ("What a 'state' is, what u = −Kx literally computes, and why "
-                "placing poles by hand is both more powerful than PID and "
-                "less useful than it looks.")
+    SUBTITLE = ("Choose the response, solve for the gains, then check force limits, "
+                "available measurements and the target equilibrium.")
     SECTION = SECTION
     NOTES = "design"
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._msd_timer = QTimer(self)
+        self._sea_timer = QTimer(self)
+        for timer, callback in ((self._msd_timer, self._redraw_msd), (self._sea_timer, self._redraw_sea)):
+            timer.setSingleShot(True)
+            timer.setInterval(120)
+            timer.timeout.connect(callback)
+        self.add(callout(
+            '<b>The point of this page:</b> choose a response, solve for the gains, then check what the actuator must deliver. '
+            'Writing ẋ = Ax + Bu describes the plant; applying u = −Kx changes it to ẋ = (A−BK)x. '
+            'Matching the second-order polynomial gives k₁ and k₂ for a controllable two-state model. '
+            'It does not guarantee that a real motor can supply the resulting force, or that every state is measured. '
+            '<br><br><b>Read the labs as two questions:</b> (1) Does the chosen response fit the force limit? '
+            '(2) How does the same method work when a spring adds two more states? Both labs return an initial displacement to zero; neither is a reference-tracking test.', 'key'))
 
         # ==============================================================
         # 1. what is a state
@@ -278,32 +292,17 @@ class StateFeedbackPage(Page):
         i1 = Card("place the poles of a mass-spring-damper, and watch the "
                   "formula be right")
         i1.add(body(
-            "<b>Top three sliders: the plant.</b> Mass, damping, spring — the "
-            "physics you are stuck with. <b>Bottom two: the closed loop you "
-            "want.</b> The gains are computed by Ackermann's formula from "
-            "<code>ctrlcore</code>, and printed next to the hand-derived "
-            "boxed formula above so you can check they agree.<br><br>"
-            "<b>Four things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Set desired ω<sub>n</sub> equal to the "
-            "plant's own ω<sub>n</sub> and ζ to the plant's own ζ. "
-            "<b>K goes to zero.</b> You asked for what you already had, so "
-            "the controller does nothing — a good sanity check on the whole "
-            "idea.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Ask for ω<sub>n</sub> below the plant's. "
-            "<b>k₁ goes negative.</b> That is not a bug: making the system "
-            "slower than its own spring requires <i>cancelling part of the "
-            "spring</i>, which means pushing with the displacement. Perfectly "
-            "valid, and perfectly terrifying if the model is wrong, because a "
-            "negative stiffness that over-cancels is an unstable "
-            "machine.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Drive ω<sub>n</sub> to the top and read "
-            "the peak force. The pole location is free; the force is "
-            "not.<br>"
-            "&nbsp;&nbsp;<b>4.</b> Turn the force limit down until the "
-            "saturation stat lights up, then look at the response. "
-            "<b>Everything pole placement promised is void the moment the "
-            "actuator clips</b>, and nothing in the mathematics warned you.",
-            dim=True))
+            '<b>Purpose: separate “I can calculate these poles” from “my actuator can deliver this response.”</b> '
+            'The mass starts 5 cm from zero, at rest. We are watching it return to zero, not follow a step command.<br><br>'
+            '<b>Read left → right:</b> position compares controlled motion with the same plant without feedback; '
+            'force shows what the controller actually delivers and its limit; the pole map shows the ideal unsaturated design.<br><br>'
+            '<b>Try the three buttons in order.</b> At m = 5 kg, b = 0.6 and k = 20, '
+            'ω_n = 4 and ζ = 0.9 give k₁ = 60, k₂ = 35.4 and an initial force of −3 N. '
+            'Raising ω_n to 12 gives k₁ = 700, k₂ = 107.4 and −35 N initially: faster recovery requires more force. '
+            'Keep that design and limit force to 5 N: the pole markers stay put, but the actual response changes.<br><br>'
+            '<b>Then explore:</b> change mass while holding the requested response fixed. The gains are recalculated, so more mass '
+            'requires more control effort to preserve that response. This differs from the earlier experiment with fixed gains. '
+            'The top three sliders describe the plant, the next two the desired response, and the last the actuator. Release a slider to update.', dim=True))
         self.s_m = slider(1, 200, 50)            # x0.1 kg
         self.s_b = slider(0, 200, 6)             # x0.1
         self.s_k = slider(0, 800, 200)           # x0.1
@@ -335,7 +334,14 @@ class StateFeedbackPage(Page):
         self.add(i1)
         for s in (self.s_m, self.s_b, self.s_k, self.s_wn, self.s_z,
                   self.s_fmax):
-            s.valueChanged.connect(self._redraw_msd)
+            s.setTracking(False)
+            s.valueChanged.connect(lambda _value: self._msd_timer.start())
+        presets = QHBoxLayout()
+        for label, wn, limit in (('1 · Moderate response', 40, 600), ('2 · Faster response', 120, 600), ('3 · Same poles, 5 N limit', 120, 5)):
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, w=wn, f=limit: self._msd_example(w, f))
+            presets.addWidget(button)
+        i1.add_layout(presets)
         self._redraw_msd()
 
         # ==============================================================
@@ -370,22 +376,12 @@ class StateFeedbackPage(Page):
             "controllable.</b> Set k = 0 and the two halves are mechanically "
             "disconnected and the rank collapses."))
         ct.add(callout(
-            "<b>A rank test is a cliff, and real hardware never sits exactly "
-            "on it.</b> Nothing is ever exactly uncontrollable; things are "
-            "<i>nearly</i> uncontrollable, which is worse, because the test "
-            "says yes and the machine says no. The useful measurement is the "
-            "<b>singular values</b> of that matrix. A direction with a "
-            "singular value 10⁻⁶ times the largest is technically reachable "
-            "and practically not — reaching it costs a million times more "
-            "input than the easy directions, and pole placement will happily "
-            "hand you gains of 10⁶ to do it.<br><br>"
-            "<b>When it fails, it is a mechanical verdict.</b> The answer is "
-            "a different linkage, a different actuator location, or another "
-            "actuator — never a better algorithm. A tendon that can only pull "
-            "gives one-sided authority, which is why tendon hands are built "
-            "in antagonistic pairs. A perfectly symmetric two-link arm driven "
-            "at the base cannot excite its antisymmetric mode, which is why "
-            "real designs break symmetry on purpose.", "warn"))
+            '<b>Controllable does not mean easy to control.</b> Exact uncontrollable modes can exist: '
+            'with a disconnected spring, motor torque cannot move the load. Even when the rank test passes, '
+            'weak coupling can require large gains and make a design sensitive to error. '
+            'The singular values of the controllability matrix depend on state units and scaling; '
+            'their ratio is not directly a motor-force or energy ratio. Check actual effort, limits and robustness. '
+            'Observability is a separate question: can the chosen sensor reveal the state over time?', 'warn'))
         self.add(ct)
 
         # ---- interactive 2: SEA ---------------------------------------
@@ -395,34 +391,23 @@ class StateFeedbackPage(Page):
         i2 = Card("one motor, one spring, one load — and all four poles "
                   "placed at once")
         i2.add(body(
-            "This is the first plant in the tutor where PID has genuinely run "
-            "out. The state is [θ<sub>m</sub>, θ̇<sub>m</sub>, θ<sub>l</sub>, "
-            "θ̇<sub>l</sub>]: motor and load can move independently, so a "
-            "controller that reads only one of them is blind to half the "
-            "system. Full state feedback reads all four and places all four "
-            "poles.<br><br>"
-            "<b>The two frequencies a SEA has</b>, both shown on the map: the "
-            "<b>resonance</b> √(k(1/J<sub>m</sub> + 1/J<sub>l</sub>)), where "
-            "motor and load swing against each other through the spring, and "
-            "the <b>antiresonance</b> √(k/J<sub>l</sub>), where the load "
-            "stands still no matter what the motor does. Neither is optional "
-            "and neither appears in a rigid-joint model.<br><br>"
-            "<b>Four things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Place the closed-loop poles well below the "
-            "resonance. Gains are modest, the response is clean, and the "
-            "spring deflection stays small. This is what a well-designed SEA "
-            "loop looks like.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Push the desired bandwidth <i>above</i> "
-            "the resonance. Watch the gains explode. You are asking the "
-            "controller to make a spring behave as if it were not there, and "
-            "the only way to do that is to fight it with torque.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Soften the spring. The resonance drops, so "
-            "the same desired bandwidth is now above it — <b>a mechanical "
-            "change moved the control problem</b>, which is the argument the "
-            "actuator pages make in the other direction.<br>"
-            "&nbsp;&nbsp;<b>4.</b> Switch the sensor to <b>load only</b> and "
-            "read the observability verdict, then think about what that means "
-            "for the next page.", dim=True))
+            '<b>Purpose: extend the same pole-placement calculation from two states to four.</b> '
+            'A motor and load joined by a spring each have an angle and velocity: '
+            'x = [θ_m, θ̇_m, θ_L, θ̇_L]. One motor torque can influence all four through the spring. '
+            'The later actuator lesson (page 26) explores the mechanics in detail; here focus on the extra states.<br><br>'
+            '<b>What is being designed?</b> The first pair follows your ω_n and ζ, just as above. '
+            'The other pair is set to −3ω_n ± j0.6ω_n for this demonstration. Four desired poles give four feedback gains. '
+            'ω_n is a pole-design parameter, not a measured tracking bandwidth.<br><br>'
+            '<b>Read left → right:</b> motor and load start together at 11.5° with an unstretched spring and return to zero; '
+            'the middle plot shows the spring deflection and motor torque needed; the right shows all four ideal closed-loop poles. '
+            'There is no torque limit in this lab: use the torque curve to judge effort, not as a promise the hardware can deliver it.<br><br>'
+            '<b>Try:</b> compare the two speed buttons at the same hardware, then soften the spring. '
+            'Watch the gains, torque and relative motion change. The dashed frequency lines mark the free elastic resonance. '
+            'The motor anti-resonance stat is the zero of motor angle / motor torque, where the motor can stay still while the load moves.<br><br>'
+            '<b>The sensor menu asks a separate question:</b> could one sensor’s time history let an observer reconstruct all states? '
+            'It only changes the observability verdict; the simulation still assumes full-state feedback. '
+            'A load-angle sensor can be observable without directly measuring all four states. Spring deflection alone misses common motion. '
+            'Observers are introduced on page 20. Release a slider to update.', dim=True))
         self.s_sk = slider(50, 3000, 400)        # N m / rad
         self.s_jm = slider(5, 200, 20)           # x0.001 kg m^2
         self.s_jl = slider(20, 800, 250)         # x0.001
@@ -441,11 +426,11 @@ class StateFeedbackPage(Page):
                          ("motor angle only  (collocated)", "motor"),
                          ("spring deflection  (torque sensor)", "deflection")):
             self.cmb_sensor.addItem(lab, key)
-        self.cmb_sensor.currentIndexChanged.connect(self._redraw_sea)
+        self.cmb_sensor.currentIndexChanged.connect(lambda _index: self._sea_timer.start())
         i2.add_layout(labelled("Sensor", self.cmb_sensor, width=60))
         self.st_res = Stat("resonance", "--", theme.WARN)
-        self.st_anti = Stat("antiresonance", "--", theme.CYAN)
-        self.st_kmax = Stat("largest gain", "--", theme.BAD)
+        self.st_anti = Stat("motor anti-resonance", "--", theme.CYAN)
+        self.st_kmax = Stat("max |Kᵢ| (mixed units)", "--", theme.BAD)
         self.st_defl = Stat("peak deflection", "--", theme.VIOLET)
         self.st_ctrb = Stat("controllable?", "--", theme.GOOD)
         i2.add_layout(stat_row(self.st_res, self.st_anti, self.st_kmax,
@@ -458,42 +443,58 @@ class StateFeedbackPage(Page):
         i2.add(self.t2)
         self.add(i2)
         for s in (self.s_sk, self.s_jm, self.s_jl, self.s_bw, self.s_sz):
-            s.valueChanged.connect(self._redraw_sea)
+            s.setTracking(False)
+            s.valueChanged.connect(lambda _value: self._sea_timer.start())
+        presets = QHBoxLayout()
+        for label, speed in (('1 · ω_n = 20 rad/s', 200), ('2 · ω_n = 60 rad/s', 600)):
+            button = QPushButton(label)
+            button.clicked.connect(lambda checked=False, w=speed: self._sea_example(w))
+            presets.addWidget(button)
+        i2.add_layout(presets)
         self._redraw_sea()
 
         self.add(callout(
-            "<b>What pole placement will never tell you.</b> It answers "
-            "<i>where</i> and has nothing whatsoever to say about <i>what "
-            "that costs</i>. Every experiment above ended at the same wall: "
-            "the placement is free, the torque is not, and there is no term "
-            "anywhere in Ackermann's formula that knows a motor exists.<br><br>"
-            "Worse, past two states nobody has real intuition for pole "
-            "locations. Where do you put twelve poles for a biped? \"All at "
-            "−20\"? Why −20? Why all together? The method demands an answer "
-            "to a question you have no basis for answering.<br><br>"
-            "The next page fixes both problems at once by asking a different "
-            "question: instead of naming the poles, name the <b>price</b>.",
-            "warn"))
+            '<b>Takeaway 1 · Choosing the poles is still a design decision.</b><br><br>'
+            'You now know how to calculate K once the poles are chosen. The first lab shows why “make them faster” is not enough: '
+            'the 12 rad/s design starts by asking for 35 N, versus 3 N at 4 rad/s. A 5 N actuator cannot reproduce that ideal fast response.<br><br>'
+            'Pole placement does not include a penalty for force or tell you which response is worth its cost. '
+            'In the four-state lab you must also choose a second pole pair. '
+            '<b>Page 19, LQR, chooses K from weights on state error and control effort.</b> Its poles are a result of that tradeoff. '
+            'LQR still needs checks for saturation and model error; it is not an automatic hardware guarantee.', 'key'))
 
-        n = Card("one more honest gap: u = −Kx does not track")
+        n = Card('Takeaway 2 · Returning to zero and reaching a requested position are different tasks')
         n.add(body(
-            "u = −Kx drives the state to <b>zero</b>. That is regulation, not "
-            "tracking, and a robot spends its life being told to go somewhere "
-            "that is not zero. Three fixes, in increasing order of "
-            "robustness:<br><br>"
-            "&nbsp;&nbsp;• <b>Feedforward gain</b> u = −Kx + N·r, with N from "
-            "the closed-loop DC gain. Exact if the model is exact, and wrong "
-            "by exactly the model error otherwise.<br>"
-            "&nbsp;&nbsp;• <b>An integral state.</b> Augment x with ∫(r − y) "
-            "and place its pole too. This is state feedback rediscovering the "
-            "I term — and it becomes <b>LQI</b> on the next page.<br>"
-            "&nbsp;&nbsp;• <b>A disturbance observer</b> that estimates the "
-            "steady load and cancels it — the page after."))
+            '<b>Both labs here are regulation:</b> start displaced and use u = −Kx to return to zero. '
+            'Placing poles shapes how deviations decay. To hold a nonzero target, also define the required equilibrium.<br><br>'
+            '<b>Example using the first lab:</b> ask the mass to hold r = 0.05 m against its spring k = 20 N/m. '
+            'At rest the spring pulls with 1 N, so the motor must supply +1 N. Use '
+            '<b>u = −k₁(q−r) − k₂q̇ + kr</b>. At q = r and q̇ = 0, the feedback terms vanish and kr holds the spring. '
+            'Expanding gives u = −Kx + (k+k₁)r; the feedforward factor is N = k+k₁. '
+            'This changes the target while preserving the same ideal error poles.<br><br>'
+            '<b>Why add an integrator later?</b> An unknown constant load or an inaccurate spring model can leave an offset. '
+            'An integral state accumulates r−q and adjusts the command until that persistent error vanishes, '
+            'provided the augmented loop is stable and the actuator has enough authority. Page 19 introduces LQI.<br><br>'
+            '<b>Why an observer?</b> If velocities or other states are not measured, an observer estimates them from sensors and a model (page 20). '
+            'Estimating an unknown disturbance requires an additional disturbance model; an ordinary state observer does not automatically cancel it.'))
         self.add(n)
 
         self.finish()
 
     # ------------------------------------------------------------------
+    def _msd_example(self, wn, limit):
+        for slider_, value in ((self.s_m, 50), (self.s_b, 6), (self.s_k, 200),
+                               (self.s_wn, wn), (self.s_z, 90), (self.s_fmax, limit)):
+            slider_.setValue(value)
+        self._msd_timer.stop()
+        self._redraw_msd()
+
+    def _sea_example(self, wn):
+        for slider_, value in ((self.s_sk, 400), (self.s_jm, 20), (self.s_jl, 250),
+                               (self.s_bw, wn), (self.s_sz, 80)):
+            slider_.setValue(value)
+        self._sea_timer.stop()
+        self._redraw_sea()
+
     def _redraw_msd(self):
         m = self.s_m.value() / 10.0
         b = self.s_b.value() / 10.0
@@ -509,11 +510,7 @@ class StateFeedbackPage(Page):
         self.l_fmax.setText(f"{fmax:.0f} N")
 
         ss = msd_ss(m, b, k)
-        if z < 1.0:
-            wd = wn * math.sqrt(1 - z * z)
-            desired = [complex(-z * wn, wd), complex(-z * wn, -wd)]
-        else:
-            desired = [complex(-z * wn, 0), complex(-z * wn * 1.02, 0)]
+        desired = second_order_poles(wn, z)
         K = place_poles(ss.A, ss.B, desired)
         k1, k2 = float(K[0, 0]), float(K[0, 1])
         k1_hand = m * wn * wn - k
@@ -528,7 +525,7 @@ class StateFeedbackPage(Page):
         self.st_check.set("matches" if agree else "differs!")
         self.st_check.set_color(theme.GOOD if agree else theme.BAD)
 
-        ts, xs, us, sat = simulate_feedback(ss, K, [0.05, 0.0], dur=3.0,
+        ts, xs, us, sat = regulator_response(ss, K, [0.05, 0.0], dur=3.0,
                                             dt=5e-4, u_max=fmax)
         pk = float(np.max(np.abs(us))) if len(us) else 0.0
         self.st_pk.set(f"{pk:.0f} N")
@@ -547,14 +544,10 @@ class StateFeedbackPage(Page):
         wn0, z0 = msd_natural(m, b, k)
         if sat > 1e-9:
             self.t1.setText(
-                f"<b>The actuator is clipping on {sat*100:.0f}% of ticks, so "
-                f"the closed loop you designed does not exist.</b> While u is "
-                f"saturated the loop is open — the plant is running on a "
-                f"constant force, and A − BK describes nothing. The poles you "
-                f"placed are still on the map, and the map is currently "
-                "fiction. This is the single most common reason a "
-                "beautifully designed controller behaves nothing like the "
-                "simulation.")
+                f'<b>The force is limited for {sat*100:.0f}% of simulation steps.</b> '
+                'The plotted poles describe A−BK before clipping. During clipping the command no longer equals −Kx, '
+                'so those poles alone do not predict the nonlinear response. Compare the actual position trace '
+                'with the same design at a higher force limit; the requested gains and ideal poles stay unchanged.')
         elif abs(k1) < 0.05 and abs(k2) < 0.05:
             self.t1.setText(
                 f"<b>Both gains are ~0, because you asked for what the plant "
@@ -588,7 +581,7 @@ class StateFeedbackPage(Page):
         a1, a2, a3 = c.axes
         a1.plot(ts, xs[:, 0] * 100, color=theme.ACCENT, lw=2.0,
                 label="closed loop")
-        ts0, xs0, _u0, _s = simulate_feedback(ss, np.zeros_like(K),
+        ts0, xs0, _u0, _s = regulator_response(ss, np.zeros_like(K),
                                               [0.05, 0.0], dur=3.0, dt=5e-4)
         a1.plot(ts0, xs0[:, 0] * 100, color=theme.TEXT_FAINT, lw=1.3, ls="--",
                 label="no control")
@@ -606,7 +599,7 @@ class StateFeedbackPage(Page):
         a2.set_title("what it costs", fontsize=9)
         c.legend(a2, loc="upper right")
 
-        lim = max(4.0, wn * 1.6)
+        lim = max(4.0, wn * 1.6, 1.2*float(np.max(np.abs(np.linalg.eigvals(A_cl)))))
         _splane(a3, [complex(v) for v in np.linalg.eigvals(A_cl)], lim=lim,
                 marker_label="placed")
         op = np.linalg.eigvals(np.asarray(ss.A))
@@ -615,7 +608,8 @@ class StateFeedbackPage(Page):
                    label="open loop")
         a3.set_title("open loop → placed", fontsize=8.5)
         c.legend(a3, loc="upper left")
-        c.refresh()
+        c.fig.subplots_adjust(left=.085, right=.94, bottom=.22, top=.84, wspace=.65)
+        c.refresh(layout=False)
 
     # ------------------------------------------------------------------
     def _redraw_sea(self):
@@ -638,10 +632,7 @@ class StateFeedbackPage(Page):
         self.st_ctrb.set_color(theme.GOOD if controllable(ss) else theme.BAD)
 
         # dominant pair at (wn, z); the other pair pushed 3x further left
-        wd = wn * math.sqrt(max(1e-9, 1 - z * z))
-        desired = [complex(-z * wn, wd), complex(-z * wn, -wd),
-                   complex(-3.0 * wn, 0.6 * wn),
-                   complex(-3.0 * wn, -0.6 * wn)]
+        desired = second_order_poles(wn, z) + [complex(-3.0*wn, .6*wn), complex(-3.0*wn, -.6*wn)]
         try:
             K = place_poles(ss.A, ss.B, desired)
         except Exception:
@@ -654,7 +645,11 @@ class StateFeedbackPage(Page):
         # from where it should be, with the spring relaxed. Starting with
         # the spring pre-wound would confuse a transient for a design.
         x0 = [0.20, 0.0, 0.20, 0.0]
-        ts, xs, us, _sat = simulate_feedback(ss, K, x0, dur=1.2, dt=2e-4)
+        key = (k, jm, jl, wn, z)
+        if getattr(self, '_sea_response_key', None) != key:
+            self._sea_response = regulator_response(ss, K, x0, dur=1.2, dt=2e-4)
+            self._sea_response_key = key
+        ts, xs, us, _sat = self._sea_response
         defl = float(np.max(np.abs(xs[:, 0] - xs[:, 2]))) if len(xs) else 0.0
         self.st_defl.set(f"{math.degrees(defl):.1f}°")
         self.st_defl.set_color(theme.BAD if math.degrees(defl) > 20
@@ -674,33 +669,21 @@ class StateFeedbackPage(Page):
         ratio = wn / w_res if w_res > 0 else 0.0
         obs_txt = ("observable" if obs_ok else
                    "<b style='color:#f85149'>NOT observable</b>")
-        if ratio > 1.0:
-            self.t2.setText(
-                f"<b>You asked for ω<sub>n</sub> = {wn:.0f} rad/s against a "
-                f"resonance at {w_res:.0f} — {ratio:.1f}× above it — and the "
-                f"largest gain is {kmax:.3g}.</b> That is the controller "
-                f"buying stiffness it was not given: to move faster than the "
-                f"spring allows, it must fight the spring on every cycle. On "
-                f"hardware this shows up as torque saturation, audible whine "
-                f"and a loop that is exquisitely sensitive to the spring "
-                f"constant you measured. <b>The fix is mechanical</b> — a "
-                f"stiffer spring, or a lower bandwidth target. With the "
-                f"{self.cmb_sensor.currentText().split('  ')[0]} sensor the "
-                f"plant is {obs_txt}.")
-        else:
-            self.t2.setText(
-                f"<b>ω<sub>n</sub> = {wn:.0f} rad/s sits at {ratio:.2f}× the "
-                f"{w_res:.0f} rad/s resonance, which is where a SEA loop "
-                f"belongs.</b> Peak spring deflection "
-                f"{math.degrees(defl):.1f}° — that deflection <i>is</i> your "
-                f"torque measurement, so a SEA is a torque sensor and a "
-                f"compliant element at once. Note that all four gains are "
-                f"nonzero: the controller is reading the load's motion "
-                f"directly, which no PID on the motor encoder can do. With "
-                f"the {self.cmb_sensor.currentText().split('  ')[0]} sensor "
-                f"the plant is {obs_txt}.")
+        self.t2.setText(
+            f'<b>Requested pole scale:</b> ω_n = {wn:.1f} rad/s; free resonance = {w_res:.1f} rad/s. '
+            f'Peak motor torque = {np.max(np.abs(us)):.2f} N·m; peak spring deflection = {math.degrees(defl):.1f}°. '
+            'These traces assume an ideal unsaturated motor and all four states available. '
+            f'<br><b>Selected sensor:</b> {self.cmb_sensor.currentText()} → {obs_txt}. '
+            'This verdict concerns reconstructing the states from measurements over time. '
+            'Changing the menu does not replace full-state feedback in these traces.')
+        if getattr(self, '_last_sea_plot', None) == (k, jm, jl, wn, z):
+            return
+        self._last_sea_plot = (k, jm, jl, wn, z)
 
         c = self.c2
+        for axis in list(c.fig.axes):
+            if axis not in c.axes:
+                axis.remove()
         c.clear()
         a1, a2, a3 = c.axes
         a1.plot(ts, np.degrees(xs[:, 2]), color=theme.GOOD, lw=2.0,
@@ -736,7 +719,8 @@ class StateFeedbackPage(Page):
         a3.axhline(-w_res, color=theme.WARN, lw=1.0, ls=":")
         a3.set_title("4 poles placed at once", fontsize=8.5)
         c.legend(a3, loc="upper left")
-        c.refresh()
+        c.fig.subplots_adjust(left=.085, right=.94, bottom=.22, top=.84, wspace=.65)
+        c.refresh(layout=False)
 
 
 # ==========================================================================
