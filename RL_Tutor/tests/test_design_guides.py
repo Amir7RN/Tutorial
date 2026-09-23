@@ -31,6 +31,10 @@ class DesignLessonTests(unittest.TestCase):
     p._lqr_example('msd',(20,30,100,0));gains=(p.st_lk1._val.text(),p.st_lk2._val.text());line=p.c3.axes[0].lines[0].get_ydata().copy()
     p._lqr_example('msd',(20,30,100,10));self.assertEqual(gains,(p.st_lk1._val.text(),p.st_lk2._val.text()));np.testing.assert_allclose(line,p.c3.axes[0].lines[0].get_ydata(),atol=1e-8)
     for values in ((30,10,-30,-10),(40,10,-30,-10),(40,10,50,-10)):p._lqr_example('sea',values)
+    for values, expected in (((20,30,20,0),(False,True)), ((10,30,100,0),(True,False)), ((20,30,100,0),(True,True))):
+     p._lqr_example('msd',values);self.assertEqual(p.msd_requirements,expected)
+    for values, expected in (((30,10,-30,-10),(False,True,True)), ((40,10,-30,-10),(True,False,True)), ((40,10,50,-10),(True,True,True))):
+     p._lqr_example('sea',values);self.assertEqual(p.sea_requirements,expected)
     methods=('_redraw_lqr_msd','_redraw_lqr_sea')
    else:
     for values in ((60,20,0),(300,20,0),(60,0,0)):p._observer_example('velocity',values)
@@ -42,7 +46,7 @@ class DesignLessonTests(unittest.TestCase):
     start=time.perf_counter();getattr(p,name)();print(cls.__name__,name,round(time.perf_counter()-start,3),'s',flush=True)
    for i,card in enumerate(p.findChildren(Card)):
     heading=next((w.text().lower() for w in card.findChildren(QLabel) if w.objectName()=='CardTitle'),'')
-    if heading.startswith(('price the mass','tune a sea','finite difference','watch it recover','duality','lqi')):
+    if heading.startswith(('worked problem','price the mass','tune a sea','finite difference','watch it recover','duality','lqi')):
      app.processEvents();card.grab().save(str(out/f'{cls.__name__}-{i}.png'))
    p.close()
 if __name__=='__main__':unittest.main()

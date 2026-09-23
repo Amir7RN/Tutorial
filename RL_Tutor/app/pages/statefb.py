@@ -878,22 +878,22 @@ class LQRPage(Page):
         self.add(ans)
 
         # ---- interactive 1: MSD LQR -------------------------------------
-        i1 = Card("price the mass-spring-damper, and watch the poles move "
-                  "without being told where to go")
+        i1 = Card('Worked problem 1 · Return a positioning carriage to its station')
         i1.add(body(
-            '<b>Purpose: see how a preference changes K without specifying any poles.</b> The fixed plant is m = 1 kg, b = 0.6 N·s/m, k = 20 N/m. It starts 2 cm from zero at rest. This is regulation, as on page 18.<br><br>'
-            '<b>Read left → right:</b> return to zero; motor force; the poles resulting from the optimisation. Dashed lines are weight-setting reference scales, not enforced boundaries. No force clipping is simulated.<br><br>'
-            '<b>Use the buttons:</b> baseline uses 20 mm, 0.3 m/s and 10 N, so Q = diag(2500, 11.11), R = 0.01. Tightening position to 10 mm quadruples its weight. Changing the effort scale to 2 N makes R = 0.25, making force more expensive. Compare the motion and peak force.<br><br>'
-            '<b>Finally scale Q and R together:</b> ×10 changes the numerical cost and P by ×10, but leaves K, poles and motion unchanged. Do not compare J* across different weights as if it were a common score. Release sliders to update.', dim=True))
+            '<b>1 · The engineering question.</b> A 1 kg carriage on a spring is displaced 2 cm and released at rest. Its target is q = 0. Can we bring it within ±0.4 mm in 0.40 s and keep it there, while requesting no more than 10 N? These are illustrative requirements for this initial condition, not hardware specifications.<br><br>'
+            '<b>2 · Write the problem.</b> q̈ + 0.6q̇ + 20q = u, with u in newtons. Let x = [q, q̇]. Then A = [[0, 1], [−20, −0.6]], B = [0, 1]ᵀ, and x₀ = [0.02, 0]. We seek the feedback gains in u = −k₁q − k₂q̇.<br><br>'
+            '<b>3 · Decide what “best” means.</b> Minimise J = ∫₀∞ [(q/x_scale)² + (q̇/v_scale)² + (u/u_scale)²] dt. This charges for remaining displaced, moving fast, and using force over the whole recovery. Q = diag(1/x_scale², 1/v_scale²), R = 1/u_scale². The scales set preferences; the fixed 10 N requirement above is checked separately.<br><br>'
+            '<b>4 · How the solution is found.</b> For each chosen Q and R, solve AᵀP + PA − PBR⁻¹BᵀP + Q = 0, then K = R⁻¹BᵀP. This directly gives the optimal linear feedback for that ideal infinite-horizon cost. We do not guess K, simulate random gains, or ask LQR to choose Q and R. Then simulate the resulting controller and check the engineering requirements.<br><br>'
+            '<b>5 · Follow the three attempts below.</b> Gentle effort weighting saves force but misses the time target; tighter position weighting is fast but asks for too much force; the balanced choice meets both in this model. The live result explains your current design. Left plot = recovery, middle = force, right = resulting poles. Sliders let you try another set of priorities.', dim=True))
         self.s_xmax = slider(2, 200, 20)         # x0.001 m
         self.s_vmax = slider(2, 300, 30)         # x0.01 m/s
         self.s_umax = slider(1, 400, 100)        # x0.1 N
         self.l_xmax, self.l_vmax, self.l_umax = QLabel(), QLabel(), QLabel()
-        i1.add_layout(slider_row("accept x error (mm)", self.s_xmax,
+        i1.add_layout(slider_row("position scale (mm)", self.s_xmax,
                                  self.l_xmax))
-        i1.add_layout(slider_row("accept v (×0.01 m/s)", self.s_vmax,
+        i1.add_layout(slider_row("speed scale (×0.01)", self.s_vmax,
                                  self.l_vmax))
-        i1.add_layout(slider_row("force budget (×0.1 N)", self.s_umax,
+        i1.add_layout(slider_row("effort scale (×0.1 N)", self.s_umax,
                                  self.l_umax))
         self.s_scale = slider(-20, 20, 0)        # log10 x0.1, common scale
         self.l_scale = QLabel()
@@ -917,11 +917,11 @@ class LQRPage(Page):
             s.setTracking(False)
             s.valueChanged.connect(lambda _value: self._lqr_msd_timer.start())
         row = QHBoxLayout()
-        for label, values in (('1 · Baseline', (20,30,100,0)), ('2 · Tighter position', (10,30,100,0)), ('3 · Costlier effort', (20,30,20,0))):
+        for label, values in (('1 · Gentle: misses time', (20,30,20,0)), ('2 · Fast: exceeds force', (10,30,100,0)), ('3 · Balanced solution', (20,30,100,0))):
             button = QPushButton(label)
             button.clicked.connect(lambda checked=False, v=values: self._lqr_example('msd', v))
             row.addWidget(button)
-        i1.add_layout(row)
+        i1._lay.insertLayout(2, row)
         self._redraw_lqr_msd()
 
         # ---- interactive 2: SEA LQR -------------------------------------
@@ -968,12 +968,13 @@ class LQRPage(Page):
             "turns a position cost into a tracking-error cost.", dim=True))
         self.add(se)
 
-        i2 = Card("tune a SEA by naming tolerances")
+        i2 = Card('Worked problem 2 · Recenter a spring-coupled robot joint')
         i2.add(body(
-            '<b>Purpose: price a relationship between states, not just each state separately.</b> Motor and load begin together at 0.20 rad, both at rest, with no initial spring deflection. This matches page 18. The plant is J_m = 0.02, J_L = 0.25 kg·m² and k = 400 N·m/rad.<br><br>'
-            '<b>Read left → right:</b> motor/load return to zero; spring deflection δ = θ_m−θ_L; motor torque. Spring torque is kδ and can differ from motor torque during acceleration.<br><br>'
-            '<b>Compare the buttons:</b> start at q₃₃ = 1000, q₄₄ = 10, q_δ = 0.001, R = 0.1. Raise q₃₃ to 10000 to penalise load error more. Then keep that weight and raise q_δ to 100000: now relative motor/load motion is expensive too. Inspect the whole trajectory and effort; no weight guarantees a peak limit.<br><br>'
-            'Motor angle and speed each retain weight 0.001. The log sliders change positive weights in powers of ten; their minimum is not zero. J* changes its meaning when the weights change. Release sliders to update.', dim=True))
+            '<b>1 · The engineering question.</b> Motor and load start together at 0.20 rad (11.5°), at rest, with the spring relaxed. Return the load to within ±0.004 rad of zero by 0.25 s and keep it there. Also keep |θ_m−θ_L| ≤ 3° and |motor torque| ≤ 70 N·m during this recovery. These are example design checks, not limits imposed by the solver.<br><br>'
+            '<b>2 · State the dynamics and unknown.</b> J_m = 0.02, J_L = 0.25 kg·m², k = 400 N·m/rad. J_mθ̈_m = u−k(θ_m−θ_L), J_Lθ̈_L = k(θ_m−θ_L). The state is [θ_m, θ̇_m, θ_L, θ̇_L]. We seek four gains in u = −Kx, not a single torque to apply forever.<br><br>'
+            '<b>3 · What is optimised?</b> Minimise the accumulated cost ∫₀∞ [0.001θ_m² + 0.001θ̇_m² + q₃₃θ_L² + q₄₄θ̇_L² + q_δ(θ_m−θ_L)² + Ru²] dt. Load-angle weight prices missing the target, deflection weight prices winding the spring, and R prices motor effort. The previous card shows how the deflection term enters Q.<br><br>'
+            '<b>4 · Solve, then verify.</b> The same Riccati calculation returns P and K for these four states. Simulate u = −Kx from the given starting state. Left plot checks load recovery, middle checks spring travel, and right checks motor torque. The result below reports each requirement separately.<br><br>'
+            '<b>5 · Follow the attempts.</b> Baseline weights recover too slowly. Raising load-angle weight buys speed but bends the spring too far. Keeping that weight and also penalising deflection produces a candidate meeting all three checks in this model. LQR optimises the stated soft cost; you, the designer, revise its priorities after checking the outcome. No saturation, friction or sensor delay is included.', dim=True))
         self.s_q3 = slider(-20, 60, 30)          # log10 x0.1, load angle
         self.s_q4 = slider(-20, 60, 10)          # log10 x0.1, load speed
         self.s_qd = slider(-30, 60, -30)         # log10 x0.1, deflection
@@ -1002,11 +1003,11 @@ class LQRPage(Page):
             s.setTracking(False)
             s.valueChanged.connect(lambda _value: self._lqr_sea_timer.start())
         row = QHBoxLayout()
-        for label, values in (('1 · Baseline', (30,10,-30,-10)), ('2 · Load accuracy', (40,10,-30,-10)), ('3 · Also price deflection', (40,10,50,-10))):
+        for label, values in (('1 · Baseline: too slow', (30,10,-30,-10)), ('2 · Faster: too much bend', (40,10,-30,-10)), ('3 · Add spring protection', (40,10,50,-10))):
             button = QPushButton(label)
             button.clicked.connect(lambda checked=False, v=values: self._lqr_example('sea', v))
             row.addWidget(button)
-        i2.add_layout(row)
+        i2._lay.insertLayout(2, row)
         self._redraw_lqr_sea()
 
         # ==============================================================
@@ -1080,7 +1081,7 @@ class LQRPage(Page):
         self.st_lk1.set(f"{k1:.0f}")
         self.st_lk2.set(f"{k2:.1f}")
         self.st_lpk.set(f"{pk:.1f} N")
-        self.st_lpk.set_color(theme.BAD if pk > um else theme.GOOD)
+        self.st_lpk.set_color(theme.BAD if pk > 10 else theme.GOOD)
         self.st_lcost.set(f"{res.cost:.3g}")
         self.st_lpm.set(f"{z_cl:.2f}")
         self.st_lpm.set_color(theme.GOOD if z_cl > 0.5 else theme.WARN)
@@ -1091,30 +1092,29 @@ class LQRPage(Page):
             _matrix_html(res.P, "P", fmt="{:.4g}", colour=theme.CYAN) +
             _matrix_html(K, "K = R⁻¹BᵀP", fmt="{:.4g}", colour=theme.ACCENT))
 
-        over = pk > um
+        outside = np.flatnonzero(np.abs(xs[:, 0]) > .0004)
+        settled_index = outside[-1]+1 if len(outside) else 0
+        recovery = float(ts[settled_index]) if settled_index < len(ts) else float('inf')
+        time_ok, force_ok = recovery <= .4, pk <= 10
+        self.msd_requirements = (time_ok, force_ok)
         self.t3.setText(
-            (f"<b>The optimiser exceeded your own force budget "
-             f"({pk:.1f} N against {um:.1f} N declared).</b> Bryson's rule is "
-             "a soft weighting, not a hard constraint — LQR minimises an "
-             "average bill and will happily spend over budget briefly if the "
-             "state error term is worth more. If the limit is real, raise R "
-             "until the peak fits, or use a method that takes hard "
-             "constraints, which is exactly what MPC is for."
-             if over else
-             f"<b>k₁ = {k1:.0f}, k₂ = {k2:.1f}, and you never named a "
-             f"pole.</b> They came from three tolerances and one matrix "
-             f"equation. J* = x₀ᵀPx₀ = {res.cost:.3g} is the entire remaining "
-             f"cost from 2 cm — the number a critic network spends its life "
-             f"trying to approximate. Closed-loop ζ = {z_cl:.2f} and peak "
-             f"force {pk:.1f} N, inside the {um:.1f} N you declared."))
+            f'<b>Current solved controller:</b> u = −({k1:.3f})q − ({k2:.3f})q̇. '
+            f'At release it requests {(-k1*.02):.2f} N; thereafter the force changes with measured position and speed.<br>'
+            f'<b>Check the original question:</b> ±0.4 mm recovery = {recovery:.3f} s / 0.400 s '
+            f'({"PASS" if time_ok else "FAIL"}); peak force = {pk:.2f} N / 10 N ({"PASS" if force_ok else "FAIL"}).<br>'
+            f'<b>{"Candidate meets both example requirements." if time_ok and force_ok else "Revise the weights and solve again."}</b> '
+            'If recovery is too slow, increase the relative price of position error. If effort is too high, increase R. '
+            'The three buttons show this design loop; they are not iterations inside the Riccati solver.<br>'
+            f'For these weights the optimal cost is J* = {res.cost:.4g}. Multiplying Q and R together changes that number, '
+            'not K or motion. Costs from different objectives are not a fair ranking of controllers. Checks use the displayed 3-second ideal response.')
 
         c = self.c3
         c.clear()
         a1, a2, a3 = c.axes
         a1.plot(ts, xs[:, 0] * 100, color=theme.GOOD, lw=2.0)
-        a1.axhline(xm * 100, color=theme.WARN, lw=1.1, ls=":",
-                   label="declared tolerance")
-        a1.axhline(-xm * 100, color=theme.WARN, lw=1.1, ls=":")
+        a1.axhline(.04, color=theme.WARN, lw=1.1, ls=":",
+                   label="target ±0.4 mm")
+        a1.axhline(-.04, color=theme.WARN, lw=1.1, ls=":")
         a1.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
         a1.set_xlabel("time (s)")
         a1.set_ylabel("position (cm)")
@@ -1122,8 +1122,8 @@ class LQRPage(Page):
         c.legend(a1, loc="upper right")
 
         a2.plot(ts, us[:, 0], color=theme.BAD, lw=1.8)
-        a2.axhline(um, color=theme.WARN, lw=1.2, ls="--", label="budget")
-        a2.axhline(-um, color=theme.WARN, lw=1.2, ls="--")
+        a2.axhline(10, color=theme.WARN, lw=1.2, ls="--", label="10 N requirement")
+        a2.axhline(-10, color=theme.WARN, lw=1.2, ls="--")
         a2.set_xlabel("time (s)")
         a2.set_ylabel("force (N)")
         a2.set_title("R is the price of this", fontsize=9)
@@ -1191,10 +1191,21 @@ class LQRPage(Page):
             "&nbsp;·&nbsp; output torque = k·deflection = "
             f"{k*math.radians(pk_def):.1f} N·m peak</span>")
 
+        time_ok = ts_set is not None and ts_set <= .25
+        bend_ok, torque_ok = pk_def <= 3, pk_tau <= 70
+        self.sea_requirements = (time_ok, bend_ok, torque_ok)
+        recovery_text = f'{ts_set:.3f} s' if ts_set is not None else '>1.5 s'
         self.t4.setText(
-            f'<b>Measured in this ideal trajectory:</b> peak deflection {pk_def:.1f}°, spring torque {k*math.radians(pk_def):.1f} N·m, motor torque {pk_tau:.1f} N·m. '
-            'Q penalises state motion and R penalises motor effort; neither imposes a hard bound. '
-            'Check the time traces when changing weights, then check actuator capacity, sensing, model uncertainty and sampling before using these gains.')
+            '<b>Current solved controller:</b> u = −Kx with the four gains printed above. '
+            f'Its initial motor command is {us[0,0]:.2f} N·m; subsequent commands depend on all four states.<br>'
+            f'<b>Check the original question:</b> load recovery = {recovery_text} / 0.250 s ({"PASS" if time_ok else "FAIL"}); '
+            f'peak deflection = {pk_def:.2f}° / 3° ({"PASS" if bend_ok else "FAIL"}); '
+            f'peak motor torque = {pk_tau:.2f} N·m / 70 N·m ({"PASS" if torque_ok else "FAIL"}).<br>'
+            f'<b>{"Candidate meets all three example requirements." if time_ok and bend_ok and torque_ok else "This candidate needs another design step."}</b> '
+            'A slow recovery suggests more load-angle weight; excessive deflection suggests pricing relative motion; excessive motor effort suggests larger R. '
+            'Recheck every requirement after a change: improving one can worsen another.<br>'
+            f'Peak spring torque is {k*math.radians(pk_def):.1f} N·m, distinct from motor torque. '
+            'These are sampled checks for this initial state over 1.5 seconds, not hard constraints or a hardware guarantee.')
 
         c = self.c4
         c.clear()
@@ -1210,6 +1221,8 @@ class LQRPage(Page):
         c.legend(a1, loc="upper right")
 
         a2.plot(ts, defl, color=theme.VIOLET, lw=1.9, label="deflection")
+        a2.axhline(3, color=theme.WARN, ls="--", lw=1)
+        a2.axhline(-3, color=theme.WARN, ls="--", lw=1, label="3° requirement")
         a2.set_xlabel("time (s)")
         a2.set_ylabel("deflection (°)")
         a2.set_title(f"= output torque / {k:.0f}", fontsize=8.5)
@@ -1218,6 +1231,8 @@ class LQRPage(Page):
         a3.plot(ts, us[:, 0], color=theme.BAD, lw=1.8)
         a3.axhline(0, color=theme.TEXT_FAINT, lw=1.0, ls="--")
         a3.set_xlabel("time (s)")
+        a3.axhline(70, color=theme.WARN, ls="--", lw=1)
+        a3.axhline(-70, color=theme.WARN, ls="--", lw=1)
         a3.set_ylabel("motor τ (N·m)")
         a3.set_title("R is the price of this", fontsize=8.5)
         c.fig.subplots_adjust(left=.085, right=.96, bottom=.22, top=.84, wspace=.65)
