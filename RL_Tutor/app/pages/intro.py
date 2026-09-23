@@ -12,6 +12,8 @@ once the reader has actually felt the environment.
 
 from __future__ import annotations
 
+from ..widgets.cpp_source import get_example
+
 import random
 
 from PySide6.QtCore import Qt
@@ -841,11 +843,7 @@ class ReturnPage(Page):
             "return. So walk the episode <b>backwards</b> from the end, carrying one "
             "running number:", dim=True))
         s4.add(CodePane(
-            "G = 0.0\n"
-            "for t in range(len(trajectory) - 1, -1, -1):   # backwards!\n"
-            "    state, action, reward = trajectory[t]\n"
-            "    G = gamma * G + reward      # G is now exactly G_t\n"
-            "    ..."))
+            get_example("returns")))
         s4.add(callout(
             (
                 "Memorise those three lines. They appear <b>unchanged</b> in every Monte Carlo function on pages"

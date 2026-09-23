@@ -11,6 +11,8 @@ Pages 20-23.
 
 from __future__ import annotations
 
+from ..widgets.cpp_source import get_example
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -257,22 +259,14 @@ class ModelPage(Page):
         l1 = QLabel("MODEL-BASED  (planning)")
         l1.setStyleSheet(f"color:{theme.GOOD}; font-weight:700; font-size:11px;"
                          f"background:transparent;")
-        p1 = CodePane("def value_iteration(P, gamma, theta):\n"
-                      "    #              ^\n"
-                      "    #  the full transition table:\n"
-                      "    #  P[s][a] -> [(prob, s', r, done), ...]\n"
-                      "    ...")
+        p1 = CodePane(get_example("model_based_interface"))
         p1.sizeHintLine(6); p1.mark(1, "#1f7a4d")
         c1.addWidget(l1); c1.addWidget(p1)
         c2 = QVBoxLayout()
         l2 = QLabel("MODEL-FREE  (learning)")
         l2.setStyleSheet(f"color:{theme.WARN}; font-weight:700; font-size:11px;"
                          f"background:transparent;")
-        p2 = CodePane("def mc_control(env, gamma, episodes):\n"
-                      "    #          ^\n"
-                      "    #  only a simulator:\n"
-                      "    #  env.reset() / env.step(a) -> one sample\n"
-                      "    ...")
+        p2 = CodePane(get_example("model_free_interface"))
         p2.sizeHintLine(6); p2.mark(1, "#6b4e13")
         c2.addWidget(l2); c2.addWidget(p2)
         row.addLayout(c1); row.addLayout(c2)

@@ -10,6 +10,8 @@ Pages 12-16: Dynamic Programming / path planning on a known model.
 
 from __future__ import annotations
 
+from ..widgets.cpp_source import get_example
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
@@ -583,8 +585,8 @@ class ValueIterationPage(Page):
         cc.add(cp)
         cc.add(body(
             "Two structural differences from policy evaluation:<br>"
-            "&nbsp;&nbsp;<b>1.</b> <code>max(q_from_V(...) for a in range(N_ACTIONS))"
-            "</code> replaces <code>q_from_V(..., pi[s], ...)</code>.<br>"
+            "&nbsp;&nbsp;<b>1.</b> Compute all four action values, then use "
+            "<code>q[argmax(q)]</code> instead of the value for <code>pi[s]</code>.<br>"
             "&nbsp;&nbsp;<b>2.</b> There is no policy inside the loop at all. It is "
             "<b>extracted once at the end</b>, from the converged values.", dim=True))
         self.add(cc)
@@ -677,13 +679,9 @@ class CompareDPPage(Page):
         l1.setStyleSheet(f"color:{theme.ACCENT}; font-size:11px; font-weight:700;"
                          f"background:transparent;")
         cp1 = CodePane(
-            "for s in range(N_STATES):\n"
-            "    # FOLLOW the policy -- no choice allowed\n"
-            "    v_new = q_from_V(P, V_prev, s, pi[s], gamma)\n"
-            "    delta = max(delta, abs(v_new - V[s]))\n"
-            "    V[s] = v_new")
+            get_example("evaluation_sweep"))
         cp1.sizeHintLine(6)
-        cp1.mark(3, theme.ACCENT_DIM)
+        cp1.mark_matching("q_from_V", theme.ACCENT_DIM)
         c1.addWidget(l1); c1.addWidget(cp1)
         l1b = QLabel("→ solves the Bellman EXPECTATION equation → V^π")
         l1b.setStyleSheet(f"color:{theme.TEXT_DIM}; font-size:11px; background:transparent;")
@@ -694,14 +692,9 @@ class CompareDPPage(Page):
         l2.setStyleSheet(f"color:{theme.GOOD}; font-size:11px; font-weight:700;"
                          f"background:transparent;")
         cp2 = CodePane(
-            "for s in range(N_STATES):\n"
-            "    # take the BEST action -- no policy needed\n"
-            "    v_new = max(q_from_V(P, V_prev, s, a, gamma)\n"
-            "                for a in range(N_ACTIONS))\n"
-            "    delta = max(delta, abs(v_new - V[s]))\n"
-            "    V[s] = v_new")
+            get_example("optimality_sweep"))
         cp2.sizeHintLine(7)
-        cp2.mark([3, 4], "#1f7a4d")
+        cp2.mark_matching("argmax(q)", "#1f7a4d")
         c2.addWidget(l2); c2.addWidget(cp2)
         l2b = QLabel("→ solves the Bellman OPTIMALITY equation → V*")
         l2b.setStyleSheet(f"color:{theme.TEXT_DIM}; font-size:11px; background:transparent;")

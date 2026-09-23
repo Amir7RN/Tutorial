@@ -8,6 +8,8 @@ Pages 24-25.
 
 from __future__ import annotations
 
+from ..widgets.cpp_source import get_example
+
 import os
 
 from PySide6.QtCore import Qt
@@ -48,23 +50,20 @@ from .base import Page
 
 class CodeLabPage(Page):
     TITLE = "Code Lab"
-    SUBTITLE = ("Every algorithm in this tutor, browsable. Edit the files under "
-                "rlcore/ and the whole app changes with them.")
+    SUBTITLE = "C++17 implementations of the algorithms taught in this tutor."
     SECTION = "Beyond"
-    NOTES = "rlcore/"
+    NOTES = "C++17"
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.add(callout(
-            "Nothing on any page re-implements an algorithm. Every grid, chart and "
-            "number you have seen came from these functions, pulled live with "
-            "<code>inspect.getsource</code>. Change a line here, relaunch, and the "
-            "animations change. That is the point of keeping <code>rlcore/</code> "
-            "free of any Qt import.", "key"))
+            'The code cards show C++17 teaching implementations from <b>cpp/</b>, with shared types and helpers supplied there. '
+            'The GUI itself still runs its existing simulations. Editing these C++ examples changes the examples, not the live simulations. '
+            'Some teaching APIs omit GUI logging and package results in C++ structs. Random samples differ between languages even with the same seed.', 'key'))
 
         # ---- browser --------------------------------------------------------
-        br = Card("browse rlcore")
+        br = Card("browse C++ implementations")
         from rlcore import bandit, deeprl, dp, frozen_lake, mc
 
         self._registry = {}
@@ -134,27 +133,9 @@ class CodeLabPage(Page):
 
         # ---- how to run ------------------------------------------------------
         howto = Card("use it outside the GUI")
-        howto.add(body("Everything is importable. From the project root:", dim=True))
+        howto.add(body("Include cpp/examples.hpp, then call tutor::console_demo() from main(). Build with a C++17 compiler; see cpp/README.md for the complete command.", dim=True))
         howto.add(CodePane(
-            ">>> from rlcore import *\n"
-            ">>>\n"
-            ">>> # --- model-based ---------------------------------------\n"
-            ">>> P = build_model(slip='classic', reward='shaped')\n"
-            ">>> pi, V, sweeps = value_iteration(P, gamma=0.99)\n"
-            ">>> print(sweeps, round(V[0], 4))\n"
-            ">>> print([ACTION_ARROWS[a] for a in pi[:4]])\n"
-            ">>>\n"
-            ">>> # --- model-free ----------------------------------------\n"
-            ">>> env = FrozenLake(slip='classic', reward='shaped', seed=0)\n"
-            ">>> Q, pi_mc, stats = mc_control(env, episodes=30000)\n"
-            ">>> print(stats['success_rate'])\n"
-            ">>>\n"
-            ">>> # --- do they agree? ------------------------------------\n"
-            ">>> V_mc = policy_evaluation(P, pi_mc, 0.99)\n"
-            ">>> print(round(V[0], 4), round(V_mc[0], 4))\n"
-            ">>>\n"
-            ">>> # --- run the correctness suite -------------------------\n"
-            ">>> # python tests/test_core.py"))
+            get_example("console_demo")))
         self.add(howto)
 
         # ---- exercises -------------------------------------------------------
@@ -166,37 +147,15 @@ class CodeLabPage(Page):
         tbl.setColumnWidth(0, 400)
         tbl.setEditTriggers(QTableWidget.NoEditTriggers)
         rows = [
-            ("In dp.py, change value_iteration's `max(...)` to `min(...)`",
-             "You now solve for the WORST policy. The arrows point at holes. "
-             "Proof that the max is the only thing making it 'optimal'."),
-            ("In policy_evaluation, read `V` instead of `V_prev`",
-             (
-                 "Gauss-Seidel instead of Jacobi. Same answer, fewer sweeps. Watch the sweep count on page 67 "
-                 "drop."
-             )),
-            ("In frozen_lake.py, add a 4th slip preset with intended=0.5",
-             "It appears in every dropdown on every page automatically — the "
-             "pages read SLIP_MODELS, they do not hard-code it."),
-            ("Set REWARD_SCHEMES['gym'].hole to -1.0",
-             "Value iteration barely changes; MC control gets dramatically faster. "
-             "That difference IS reward shaping."),
-            ("In mc.py, delete the `first_idx` forward pass and use a "
-             "backward-filled set",
-             "You silently get LAST-visit MC. The estimates still look plausible, "
-             "which is exactly why this bug survives in real code."),
-            ("In mc_control, remove the random tie-break from epsilon_greedy",
-             "Q starts all-zero, so max() always returns action 0. Three quarters "
-             "of the grid never gets explored."),
-            ("In policy_improvement, test `best_a != pi_old[s]` instead of "
-             "comparing Q-values",
-             "Policy iteration hangs forever on tie states. This is the bug in "
-             "your RL-FrozenLake_Prob.cpp."),
-            ("Write `sarsa(env, ...)` next to mc_control",
-             "Same skeleton, but update inside the step loop with "
-             "Q(s,a) += α[r + γQ(s',a') − Q(s,a)]. No waiting for the episode."),
-            ("Write `q_learning(env, ...)`",
-             "Change SARSA's Q(s',a') to max_a' Q(s',a'). That single token is the "
-             "on-policy / off-policy divide."),
+            ('In cpp/tutor.hpp, use the minimum action value in value_iteration', 'The objective changes: the worst action replaces the best.'),
+            ('In policy_evaluation, read V instead of previous', 'Gauss–Seidel updates instead of simultaneous Jacobi sweeps.'),
+            ('Construct SlipModel{0.5, 0.25, 0.25}', 'Recompute the policy for a different transition model.'),
+            ('Construct RewardScheme{1.0, -1.0, -0.04}', 'Compare policies and sampled returns under shaped rewards.'),
+            ('Remove the forward first-visit index in mc_prediction', 'A reverse-filled set keeps last visits instead of first visits.'),
+            ('Remove random tie-breaking in epsilon_greedy', 'Observe action bias when the initial Q values are equal.'),
+            ('Compare policy action indices instead of their Q values', 'Equally valuable actions should not count as strict improvements.'),
+            ('Add a SARSA update inside an episode loop', 'Bootstrap from the next action actually selected by the behavior policy.'),
+            ('Replace the SARSA next-action value with the maximum Q', 'The update becomes the Q-learning target.'),
         ]
         for i, (a, b) in enumerate(rows):
             it = QTableWidgetItem(a)

@@ -1,5 +1,5 @@
 """
-CodePane -- syntax-highlighted Python with live line highlighting.
+CodePane -- syntax-highlighted C++17 with live line highlighting.
 
 The highlighting is what makes it a teaching tool rather than a text box: pages
 call `pane.mark(lines, colour)` while an algorithm runs, so you see exactly which
@@ -9,7 +9,6 @@ sit side by side with the differing lines flagged.
 
 from __future__ import annotations
 
-import keyword
 import re
 
 from PySide6.QtCore import QRegularExpression, Qt
@@ -47,29 +46,28 @@ def _fmt(colour, bold=False, italic=False) -> QTextCharFormat:
     return f
 
 
-class PythonHighlighter(QSyntaxHighlighter):
+class CppHighlighter(QSyntaxHighlighter):
     def __init__(self, doc):
         super().__init__(doc)
         self.rules = []
 
-        for kw in keyword.kwlist:
+        for kw in "alignas auto bool break case catch char class const constexpr continue decltype default delete do double else enum explicit false float for if inline int long namespace new nullptr operator private protected public return short signed sizeof static struct switch template this throw true try typedef typename union unsigned using virtual void volatile while".split():
             self.rules.append((QRegularExpression(rf"\b{kw}\b"),
                                _fmt(C_KEYWORD, bold=True)))
 
-        builtins = ("range len max min sum abs sorted enumerate zip list dict set "
-                    "tuple float int str bool print any all reversed").split()
+        builtins = "std vector array string pair tuple map size_t Matrix Vec Model Values Policy QTable".split()
         for b in builtins:
             self.rules.append((QRegularExpression(rf"\b{b}\b"), _fmt(C_BUILTIN)))
 
         self.rules += [
-            (QRegularExpression(r"\bself\b"), _fmt(C_SELF, italic=True)),
+            (QRegularExpression(r"\bthis\b"), _fmt(C_SELF, italic=True)),
             (QRegularExpression(r"\b\d+\.?\d*(e-?\d+)?\b"), _fmt(C_NUMBER)),
-            (QRegularExpression(r"(?<=def\s)\w+"), _fmt(C_DEF, bold=True)),
+            (QRegularExpression(r"\b[A-Za-z_]\w*(?=\s*\()"), _fmt(C_DEF, bold=True)),
             (QRegularExpression(r"(?<=class\s)\w+"), _fmt(C_DEF, bold=True)),
-            (QRegularExpression(r"@\w+"), _fmt(C_DECOR)),
+            (QRegularExpression(r"^\s*#\s*\w+"), _fmt(C_DECOR)),
             (QRegularExpression(r"'[^']*'"), _fmt(C_STRING)),
             (QRegularExpression(r'"[^"]*"'), _fmt(C_STRING)),
-            (QRegularExpression(r"#[^\n]*"), _fmt(C_COMMENT, italic=True)),
+            (QRegularExpression(r"//[^\n]*"), _fmt(C_COMMENT, italic=True)),
         ]
 
     def highlightBlock(self, text: str):
@@ -93,12 +91,14 @@ class CodePane(QPlainTextEdit):
         f.setStyleHint(QFont.Monospace)
         self.setFont(f)
         self.setTabStopDistance(4 * self.fontMetrics().horizontalAdvance(" "))
-        self._hl = PythonHighlighter(self.document())
+        self._hl = CppHighlighter(self.document())
         self._marks: list[tuple[int, str]] = []
+        self.setToolTip("C++17 teaching example. Shared types and helpers are in cpp/.")
+        self.setAccessibleName("C++17 code example")
         self.set_code(code)
 
     def set_code(self, code: str):
-        self.setPlainText(code.strip("\n"))
+        self.setPlainText("// C++17 teaching example · supporting code in cpp/\n" + code.strip("\n"))
         self._marks = []
         self._apply()
 
@@ -109,9 +109,13 @@ class CodePane(QPlainTextEdit):
         """
         if isinstance(lines, int):
             lines = [lines]
-        new = [(int(n), colour) for n in lines]
+        new = [(int(n)+1, colour) for n in lines]
         self._marks = new if replace else self._marks + new
         self._apply()
+
+    def mark_matching(self, needle, colour=theme.ACCENT_DIM):
+        line = line_of(self.toPlainText().split("\n",1)[1], needle)
+        self.mark(line, colour) if line else self.clear_marks()
 
     def clear_marks(self):
         self._marks = []
@@ -137,7 +141,7 @@ class CodePane(QPlainTextEdit):
         self.setExtraSelections(sels)
 
     def scroll_to(self, line_no: int):
-        block = self.document().findBlockByLineNumber(max(0, line_no - 1))
+        block = self.document().findBlockByLineNumber(max(0, line_no))
         if block.isValid():
             cur = QTextCursor(block)
             self.setTextCursor(cur)
@@ -151,22 +155,13 @@ class CodePane(QPlainTextEdit):
 
 
 # --------------------------------------------------------------------------
-# Source extraction -- show the REAL rlcore source, never a copy
+# C++ counterparts for the educational code cards
 # --------------------------------------------------------------------------
 
 def get_source(func) -> str:
-    """
-    Pull a function's actual source out of rlcore with inspect.
-
-    This matters: the code on screen is literally the code that just ran. There
-    is no second copy to drift out of sync with the algorithms.
-    """
-    import inspect
-    import textwrap
-    try:
-        return textwrap.dedent(inspect.getsource(func))
-    except (OSError, TypeError):
-        return f"# source unavailable for {getattr(func, '__name__', func)}"
+    """Return the reviewed C++ counterpart of a simulation function."""
+    from .cpp_source import get_cpp_source
+    return get_cpp_source(func)
 
 
 def strip_docstring(src: str) -> str:

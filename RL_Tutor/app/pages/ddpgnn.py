@@ -24,6 +24,8 @@ mechanically. It is the single most misread step in the algorithm.
 
 from __future__ import annotations
 
+from ..widgets.cpp_source import get_example
+
 import numpy as np
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QPushButton
 
@@ -182,41 +184,36 @@ class GradientHandoffPage(Page):
         me = Card("five lines, in order, with the shapes")
         me.add(_table(
             ["Step", "Code", "Shape", "What is happening"],
-            [("1", "a_pi = actor.forward(s) * a_max", "64 × d_a",
+            [("1", "auto a_pi = scaled(actor.forward(s), a_max);", "64 × d_a",
               "the actor proposes an action for each state in the batch. "
               "This forward pass caches every x and z inside the ACTOR — "
               "that cache is what makes step 5 possible."),
-             ("2", "q = critic.forward([s, a_pi])", "64 × 1",
+             ("2", "auto q = critic.forward(concatenate(s, a_pi));", "64 × 1",
               "the critic grades those proposals. Caches inside the CRITIC "
               "this time."),
-             ("3", "dx = critic.backward(ones/N)", "64 × (d_s + d_a)",
+             ("3", "auto dx = critic.backward(Matrix(N, Vec(1, 1.0/N)));", "64 × (d_s + d_a)",
               "seed the critic's backward pass with ∂J/∂Q = 1/N and run it "
               "all the way to the critic's INPUT. Weight gradients get "
               "filled in on the way and are never used — the critic's "
               "optimiser is not called on this pass, which is what "
               "'the critic is frozen here' means concretely."),
-             ("4", "dq_da = dx[:, dim_s:]", "64 × d_a",
+             ("4", "auto dq_da = action_columns(dx, dim_s);", "64 × d_a",
               "throw away the state half of that input gradient and keep the "
               "action half. ∂Q/∂s is a perfectly real number and is of no "
               "use to anybody: the actor cannot change the state it was "
               "given."),
-             ("5", "actor.backward(-dq_da * a_max)", "→ every actor weight",
+             ("5", "actor.backward(scaled(dq_da, -a_max));", "→ every actor weight",
               (
                   "hand that array to the actor as the blame at its OUTPUT layer. From here it is the ordinary "
                   "backward pass of page 84: multiply by tanh's slope, spread back through each weight, sum at "
                   "every node."
               ))],
             col0=45, colw=250, height=390))
-        me.add(body("The real source, from <code>rlcore/deeprl.py</code>:"))
+        me.add(body("The C++17 counterpart, from <b>cpp/learning.hpp</b>:"))
         pane = CodePane(
-            "a_pi = self.actor.forward(s) * c.a_max\n"
-            "q_pi = self.critic.forward(np.concatenate([s, a_pi], axis=1))\n"
-            "dx   = self.critic.backward(np.ones((c.batch, 1)) / c.batch)\n"
-            "dq_da = dx[:, c.dim_s:]                 # the action half only\n"
-            "self.actor.backward(-dq_da * c.a_max)   # minus = ascent\n"
-            "self.actor.adam(c.lr_actor)             # only NOW does anything move")
+            get_example("actor_gradient"))
         pane.sizeHintLine(7)
-        pane.mark([3, 4], "#6b4e13")
+        pane.mark_matching("action_columns", "#6b4e13")
         me.add(pane)
         me.add(body(
             "<b>Three details in those six lines that are easy to read past.</b> "
@@ -494,7 +491,7 @@ class CriticArchPage(Page):
             "Glue s and a into one vector of length d<sub>s</sub> + "
             "d<sub>a</sub> and feed it to an ordinary MLP. <b>This is what "
             "this tutor's code does</b>, and you can see it in every "
-            "<code>np.concatenate([s, a], axis=1)</code> in the training "
+            "<code>concatenate(s, a)</code> in the C++ training "
             "step.<br><br>"
             "&nbsp;&nbsp;• <b>For:</b> it is one network with nothing special "
             "in it. The action can interact with the state from the very "
@@ -625,12 +622,7 @@ class CriticArchPage(Page):
         # ---- what the code builds ----------------------------------------
         cd = Card("what the code actually constructs")
         cd.add(_code(
-            "self.actor    = MLP([dim_s, h, h, dim_a], out_act=\"tanh\")\n"
-            "self.critic   = MLP([dim_s + dim_a, h, h, 1], out_act=\"linear\")\n"
-            "self.actor_t  = MLP([dim_s, h, h, dim_a], out_act=\"tanh\")\n"
-            "self.critic_t = MLP([dim_s + dim_a, h, h, 1], out_act=\"linear\")\n"
-            "self.actor_t.copy_from(self.actor, tau=1.0)    # start identical\n"
-            "self.critic_t.copy_from(self.critic, tau=1.0)"))
+            get_example("four_networks")))
         cd.add(body(
             (
                 "Four lines, and every asymmetry between the actor and the critic is visible in them: the "
@@ -897,16 +889,7 @@ class AgentSkeletonPage(Page):
         ac = Card("four bodies, side by side")
         ac.add(_code(
             (
-                "# tabular Q-learning -- a lookup and a comparison\ndef act(self, s):\n    if rng.random() < "
-                "self.eps:\n        return rng.integers(self.n_actions)\n    return int(np.argmax(self.Q[s]))"
-                "          # argmax over a ROW\n\n# DQN -- the row became a forward pass, nothing else changed\ndef"
-                " act(self, s):\n    if rng.random() < self.eps:\n        return rng.integers(self.n_actions)\n    "
-                "return int(np.argmax(self.net.forward(s)))  # argmax over OUTPUTS\n\n# DDPG -- no argmax exists; "
-                "the actor approximates a high-value action through training\ndef act(self, s, noise):\n    a = "
-                "self.actor.forward(s) * self.a_max\n    return np.clip(a + rng.normal(0, noise), -a_max, a_max)"
-                "\n\n# PPO -- sample, and REMEMBER how likely the sample was\ndef act(self, s):\n    mu, sigma = "
-                "self.policy.forward(s)\n    a = mu + sigma * rng.normal(size=mu.shape)\n    return a, log_prob(a,"
-                " mu, sigma), self.value.forward(s)"
+                get_example("action_comparison")
             )))
         ac.add(body(
             "<b>Four things to notice, in order of how much they matter.</b>"
@@ -936,13 +919,7 @@ class AgentSkeletonPage(Page):
         # ---- the training loop --------------------------------------------
         tl = Card("and the loop around all of it")
         tl.add(_code(
-            "s = env.reset()\n"
-            "for t in range(total_steps):\n"
-            "    a = agent.act(s)                     # <- differs per algorithm\n"
-            "    s2, r, done, info = env.step(a)      # <- identical everywhere\n"
-            "    agent.store(s, a, r, s2, done)       # <- differs per algorithm\n"
-            "    agent.train_step()                   # <- differs per algorithm\n"
-            "    s = s2 if not done else env.reset()"))
+            get_example("training_loop")))
         tl.add(body(
             "Seven lines, and they are the same seven for every model-free "
             "method in this tutor. Tabular Q-learning fills in store() as a "

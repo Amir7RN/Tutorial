@@ -6,8 +6,8 @@ actuator dynamics and reinforcement learning** — built from `Impedance_Materia
 (`ImpedanceControl.pdf`), and `RL.pdf` (pages 1, 3, 4, 5, 6, 7, 8, 11).
 
 95 numbered lessons plus 20 animated section summaries (115 pages), with live algorithms, rendered formulas and code
-panel pulled from the real source with `inspect.getsource` so nothing on screen
-can drift out of sync with what actually ran.
+cards showing C++17 teaching implementations. The GUI simulations run in Python;
+the compilable C++ counterparts and build instructions are in [cpp/](cpp/README.md).
 
 The tutor is in two halves and is written to be read **in order**:
 

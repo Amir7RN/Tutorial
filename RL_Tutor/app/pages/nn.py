@@ -338,8 +338,8 @@ class NeuronPage(Page):
         ly.add(_code(get_source(Dense.forward)))
         ly.add(body(
             (
-                "That is the real forward pass out of <code>rlcore/deeprl.py</code> — the one the DDPG pages "
-                "run. <code>self._x</code> and <code>self._z</code> are cached on the way through because the "
+                "This C++ counterpart shows the forward pass used by the DDPG pages. "
+                "<code>cached_x</code> and <code>z</code> are cached on the way through because the "
                 "backward pass cannot be computed without them; page 84 spends a card on exactly why those two "
                 "and nothing else."
             ), dim=True))
@@ -991,13 +991,13 @@ class ForwardPropPage(Page):
         cc.add(body(
             "Two assignments in that function are not about computing the "
             "output at all:<br><br>"
-            "&nbsp;&nbsp;• <b><code>self._x = x</code></b> — the layer's "
+            "&nbsp;&nbsp;• <b><code>cached_x = x;</code></b> — the layer's "
             "input. The weight gradient is going to be "
             "<code>x<sup>T</sup> · dz</code>, so the input <i>is</i> half of "
             "every weight update. \"How much this weight is to blame\" is "
             "\"how much blame arrived\" times \"how big the thing it was "
             "multiplying was\".<br>"
-            "&nbsp;&nbsp;• <b><code>self._z = x @ W + b</code></b> — the "
+            "&nbsp;&nbsp;• <b><code>z[n][j] += x[n][i] * W[i][j];</code></b> — starting from the bias, the loop accumulates the "
             "pre-activation. The backward pass needs σ′(z), <i>not</i> σ(z), "
             "and z is the cheapest thing to keep that recovers it.<br><br>"
             "This is why training a network costs more memory than running "
@@ -1301,19 +1301,19 @@ class BackpropPage(Page):
         rl.add(_code(get_source(Dense.backward)))
         rl.add(_table(
             ["Line", "Formula", "What it is"],
-            [("dz = dout * σ′(z)", "δ = ∂L/∂a ⊙ σ′(z)",
+            [("double dz = dout[n][j] * derivative;", "δ = ∂L/∂a ⊙ σ′(z)",
               "push the blame through the squash. Element-wise: no mixing. "
               "This is the ONLY place the activation appears in the backward "
               "pass, and it appears as its derivative."),
-             ("self.gW = x.T @ dz / n", "∂L/∂W = xᵀδ / N",
+             ("gW[i][j] += cached_x[n][i]*dz/batch;", "∂L/∂W = xᵀδ / N",
               "blame × input. A weight that multiplied a large input is more "
               "responsible for the error than one that multiplied a small "
               "one. This is the entire content of \"blame × the value that "
               "fed it\", averaged over the batch."),
-             ("self.gb = dz.mean(0)", "∂L/∂b = δ",
+             ("gb[j] += dz/batch;", "∂L/∂b = mean(δ)",
               "the bias multiplies a constant 1, so its gradient is the "
               "blame itself, averaged over the batch."),
-             ("return dz @ W.T", "∂L/∂x = δWᵀ",
+             ("dx[n][i] += dz*W[i][j];", "∂L/∂x = δWᵀ",
               "the blame handed to the PREVIOUS layer. Each input's share is "
               "the sum, over every unit it fed, of that unit's blame times "
               "the weight between them — the 'sum across paths', done one "

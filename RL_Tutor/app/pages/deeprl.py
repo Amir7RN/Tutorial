@@ -27,6 +27,8 @@ policy gradient, the target networks -- is a consequence of that.
 
 from __future__ import annotations
 
+from ..widgets.cpp_source import get_example
+
 import math
 
 import numpy as np
@@ -625,14 +627,9 @@ class DDPGPage(Page):
             "In the code, that entire paragraph is four lines — and the third "
             "one, the slice, is the whole trick:"))
         pane = CodePane(
-            "a_pi = self.actor.forward(s) * c.a_max\n"
-            "q_pi = self.critic.forward(np.concatenate([s, a_pi], axis=1))\n"
-            "dx   = self.critic.backward(np.ones((c.batch, 1)) / c.batch)\n"
-            "dq_da = dx[:, c.dim_s:]          # <- gradient w.r.t. the ACTION\n"
-            "self.actor.backward(-dq_da * c.a_max)   # minus = ascent\n"
-            "self.actor.adam(c.lr_actor)")
+            get_example("actor_gradient"))
         pane.sizeHintLine(7)
-        pane.mark(3, "#6b4e13")
+        pane.mark_matching("action_columns", "#6b4e13")
         eq.add(pane)
         eq.add(body("<b>4 · Let the targets drift after the live networks.</b> "
                     "Not a copy every N steps — a continuous crawl.", dim=True))
