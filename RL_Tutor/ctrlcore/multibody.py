@@ -280,12 +280,11 @@ def two_link_ss(arm: TwoLink, q1: float = 0.0, q2: float = 0.5,
 @dataclass
 class PlanarLeg:
     """
-    Three joints, treated as a serial chain from the foot up, in stance.
+    Three independent upright joint approximations for the teaching lab.
 
-    The inertias are 'what the joint has to accelerate', which for a leg in
-    stance means everything ABOVE it -- so the ankle carries the whole body
-    and the hip carries almost nothing. That ordering is the single most
-    important fact for choosing actuators, and it is the reverse of an arm.
+    These diagonal inertias and gravity coefficients are illustrative, not
+    a derived multibody stance leg. Real contact constraints and coupling
+    change the modes; a mode cannot generally be assigned to one joint.
     """
     j_ankle: float = 3.2     # kg m^2 seen at the ankle in stance
     j_knee: float = 1.1
@@ -301,10 +300,8 @@ class PlanarLeg:
         r"""
         dG/dq for the stance leg, near upright.
 
-        Sign matters and it is the opposite of the arm's usual case: an
-        upright stance leg is an inverted pendulum at every joint, so the
-        gravity term is DESTABILISING -- positive feedback. Let go and it
-        collapses; that is what 'the leg buckles' means in equations.
+        Negative stiffness is an assumption of this diagonal teaching model,
+        not a statement that every joint of every standing leg is unstable.
         """
         m, g, z = self.body_mass, G, self.z_com
         base = m * g * z
@@ -314,9 +311,8 @@ class PlanarLeg:
 def leg_ss(leg: PlanarLeg) -> StateSpace:
     """
     Six states [q_a, q_k, q_h, qdot...], three inputs, unstable in every
-    joint because of the gravity sign. The point of this model on the biped
-    page is that its A matrix has three right-half-plane eigenvalues, and
-    every one of them sets a deadline.
+    joint because of the assumed gravity sign. Positive eigenvalues give
+    growth rates, not fixed fall deadlines. Damping breaks exact +/- pairing.
     """
     J = np.diag(leg.inertias())
     Ji = np.linalg.inv(J)

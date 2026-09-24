@@ -31,7 +31,7 @@ REVIEW = {
 18: ((2,4), 'Angle and velocity are separate state components. The matrix K maps the state vector to an input; it is not simply a stiffness. With u = −Kx, closed-loop modes belong to A−BK.'),
 19: ((18,), 'LQR minimises state and effort cost. Q and R are weight matrices; xᵀPx is cost-to-go, not P alone. Later RL maximises return, so reward equal to negative cost reverses the value sign.'),
 20: ((18,3), 'An observer estimates state from measurements and a model. Estimation-error poles differ from control poles. Faster estimation can also transmit more measurement noise.'),
-21: ((12,19,1), 'Apply local poles and margins to the coupled biped. Balance instability belongs to the stated equilibrium; sampling and execution deadlines remain separate constraints.'),
+21: ((12,18,19,1), 'Eigenvalues of A are state-space poles. Derive the growing modes of a simplified leg, then use a separate centre-of-mass model to check foot support. Physical growth time, sampling and software execution deadlines are distinct.'),
 22: ((21,18), 'A fixed base removes whole-body tipping from this model, not every unstable joint equilibrium. Configuration changes inertia and gravity terms; local linearisation and deadlines still matter.'),
 23: ((22,12), 'Superposition and fixed coefficients were assumptions of the earlier linear models. Saturation and contact can break them; a local pole test does not establish a global region of attraction.'),
 24: ((23,4), 'Predict known dynamics with feedforward and correct residuals with feedback. Cancelling a model term does not remove physical inertia. Each nonlinear method needs its own assumptions.'),

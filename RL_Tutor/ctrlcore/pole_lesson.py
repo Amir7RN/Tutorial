@@ -3,15 +3,9 @@ import cmath
 import numpy as np
 
 
-def linear_regulator_response(ss, K, x0, dur, dt):
-    """Sample the exact homogeneous linear response, including stiff LQR modes.
-
-    Small-matrix exponential by scaled Taylor series and squaring. Unlike an
-    explicit integration step, the display interval does not limit stability.
-    This routine has no saturation or disturbances.
-    """
-    gain = np.asarray(K)
-    matrix = (np.asarray(ss.A) - np.asarray(ss.B) @ gain)*dt
+def matrix_exponential(matrix):
+    """Small real-matrix exponential by scaled Taylor series and squaring."""
+    matrix = np.asarray(matrix, dtype=float)
     norm = float(np.linalg.norm(matrix, np.inf))
     scale = max(0, int(np.ceil(np.log2(max(norm, 1e-300)/.5))))
     matrix = matrix / (2.0**scale)
@@ -22,6 +16,14 @@ def linear_regulator_response(ss, K, x0, dur, dt):
         transition += term
         if np.linalg.norm(term, np.inf) < 1e-16: break
     for _ in range(scale): transition = transition @ transition
+    return transition
+
+
+def linear_regulator_response(ss, K, x0, dur, dt):
+    """Exact homogeneous response; no saturation or disturbances."""
+    gain = np.asarray(K)
+    matrix = (np.asarray(ss.A) - np.asarray(ss.B) @ gain)*dt
+    transition = matrix_exponential(matrix)
     ts = np.arange(int(round(dur/dt))+1)*dt
     xs = np.empty((len(ts), len(matrix)))
     xs[0] = x0

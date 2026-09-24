@@ -373,16 +373,10 @@ class StabilisingPage(Page):
 
         w = Card("two rules that come with unstable plants")
         w.add(body(
-            "<b>1 · You must be faster than the instability.</b> A right-half "
-            "plane pole at s = +p grows like e<sup>pt</sup>, doubling every "
-            "ln2/p seconds. Your loop crossover has to sit comfortably above p "
-            "— a common rule is ω<sub>gc</sub> &gt; 2p — or the divergence "
-            "outruns the correction.<br><br>"
-            "For a 1 m inverted pendulum, p = √(9.81/1) = 3.1 rad/s and the "
-            "doubling time is <b>220 ms</b>. That single number is why a "
-            "balance controller must run in the kHz and why a 200 ms perception "
-            "stall is a fall. It is the Real-Time page's argument arriving from "
-            "the other direction.<br><br>"
+            "<b>1 · Compare control speed with unstable growth.</b> A pole at +p gives a growing mode e<sup>pt</sup>, "
+            "doubling every ln2/p seconds. Designers often compare crossover with 2p or 5–10p for headroom, "
+            "but these are heuristics, not universal stability bounds. A 1 m ideal inverted pendulum has p = 3.13 s⁻¹ "
+            "and a 221 ms doubling time. This alone does not require a kHz controller or determine when a fall occurs.<br><br>"
             "<b>2 · Never cancel an unstable pole with a zero.</b> On paper "
             "(s−p)/(s−p) = 1 and the problem disappears. In reality the "
             "cancellation is never exact, and what you have built is a system "
@@ -405,38 +399,16 @@ class StabilisingPage(Page):
             "easier to balance than a broom handle, and why balancing a pencil "
             "on your finger is nearly impossible."))
         w2.add(body(
-            "<b>Why crossover is the number that has to beat it.</b> "
-            "ω<sub>gc</sub> is where the loop gain passes 1 — above it the loop "
-            "has less than unit authority and is, for practical purposes, not "
-            "correcting anything. So 1/ω<sub>gc</sub> is roughly how long the "
-            "loop takes to respond to a change. Put that next to the doubling "
-            "time: <b>if the error doubles faster than the loop can react, each "
-            "correction is aimed at a state the robot has already left</b>, and "
-            "you are always applying yesterday's answer to a bigger problem. "
-            "The margin you need for that race is where ω<sub>gc</sub> &gt; 2p "
-            "comes from — a factor of two is the minimum anyone quotes, and 5–10× "
-            "is what gets built."))
-        w2.add(callout(
-            "<b>And this is the sentence that connects to page 1.</b> Your "
-            "crossover is bounded above by sampling and delay — roughly "
-            "f<sub>s</sub>/10 to f<sub>s</sub>/20, minus whatever your latency "
-            "costs. The instability rate p is bounded below by physics you "
-            "cannot negotiate with. <b>The controller must fit in the gap, and "
-            "when there is no gap there is no controller</b> — no gain, no "
-            "algorithm, no learning method closes it. That is the real-time "
-            "page's claim arriving as a hard design constraint rather than "
-            "advice.", "warn"))
+            "<b>Crossover and sampling are different.</b> Crossover is where the designed open-loop gain magnitude is 1. "
+            "For many conventional loops, 1/ω_gc indicates a response timescale; it is not a guaranteed recovery time. "
+            "Sampling at 10–20 times f_gc is a useful guideline. Convert ω_gc [rad/s] to f_gc [Hz] by dividing by 2π. "
+            "Actual stability requires analysis of the controller, sample/hold, delays and plant; a heuristic ratio cannot prove that no controller exists."))
         self.add(w2)
-
-        i4 = Card("race the divergence: pick a machine, pick a loop rate")
+        i4 = Card("compare growth with illustrative sampling headroom")
         i4.add(body(
-            "Left: the error growing as e<sup>pt</sup>, with the doubling time "
-            "marked, against the loop's response time 1/ω<sub>gc</sub>. Right: "
-            "where your crossover sits relative to the p and 2p lines. The "
-            "sample rate slider caps the crossover through the f<sub>s</sub>/15 "
-            "rule from page 1, so you can watch a perfectly reasonable "
-            "controller become impossible by lowering the loop rate "
-            "alone.", dim=True))
+            "Left: growth of one unstable mode. Right: p, the illustrative 2p target and 2πf_s/15. "
+            "This is a sizing comparison, not a simulated controller. Lowering f_s reduces guideline headroom; "
+            "the plot alone does not determine stability. Page 21 tests an actual sampled controller.", dim=True))
         self.s_len = slider(5, 200, 100)          # x0.01 m, pendulum length
         self.s_fs = slider(20, 2000, 500)         # Hz
         self.l_len, self.l_fs = QLabel(), QLabel()
@@ -445,9 +417,9 @@ class StabilisingPage(Page):
         i4.add_layout(slider_row("loop rate f_s (Hz)", self.s_fs, self.l_fs))
         self.st_p = Stat("instability rate p", "--", theme.BAD)
         self.st_dbl = Stat("doubling time", "--", theme.WARN)
-        self.st_wgc = Stat("crossover available", "--", theme.ACCENT)
-        self.st_ratio2 = Stat("ω_gc / p", "--", theme.VIOLET)
-        self.st_race = Stat("verdict", "--", theme.GOOD)
+        self.st_wgc = Stat("sampling guideline ω", "--", theme.ACCENT)
+        self.st_ratio2 = Stat("guideline ω / p", "--", theme.VIOLET)
+        self.st_race = Stat("heuristic headroom", "--", theme.GOOD)
         i4.add_layout(stat_row(self.st_p, self.st_dbl, self.st_wgc,
                                self.st_ratio2, self.st_race))
         self.c4 = MplCanvas(width=7.6, height=2.8, ncols=2)
@@ -491,33 +463,15 @@ class StabilisingPage(Page):
         self.st_dbl.set(f"{t_double*1000:.0f} ms")
         self.st_wgc.set(f"{wgc:.0f} rad/s")
         self.st_ratio2.set(f"{ratio:.1f}×")
-        self.st_race.set("comfortable" if comfy
-                         else ("marginal" if ok else "IMPOSSIBLE"))
+        self.st_race.set("above 5p" if comfy
+                         else ("above 2p" if ok else "below 2p"))
         self.st_race.set_color(theme.GOOD if comfy else
                                (theme.WARN if ok else theme.BAD))
 
-        if not ok:
-            self.t4.setText(
-                f"<b>No controller exists at this loop rate.</b> The lean angle "
-                f"doubles every {t_double*1000:.0f} ms, and a {fs:.0f} Hz loop "
-                f"buys about {wgc:.0f} rad/s of crossover — under the 2p = "
-                f"{2*p:.1f} rad/s floor. Raise the loop rate, or lengthen the "
-                "pendulum. Nothing you do inside the controller helps.")
-        elif not comfy:
-            self.t4.setText(
-                f"<b>Marginal.</b> ω<sub>gc</sub>/p = {ratio:.1f}, just over "
-                "the factor of two that is quoted as the minimum. It will "
-                "balance on a clean day and fall over when a disturbance, a "
-                "missed deadline or a modelling error takes a bite out of the "
-                "margin. Real balance controllers are built at 5–10×.")
-        else:
-            self.t4.setText(
-                f"<b>Comfortable.</b> ω<sub>gc</sub>/p = {ratio:.1f}, so the "
-                f"loop answers roughly {ratio:.0f} times faster than the fall "
-                f"develops. Note what happens if you drag the length down: p "
-                "rises as 1/√l, the doubling time collapses, and the same "
-                "controller runs out of room — the machine got harder, not the "
-                "code.")
+        self.t4.setText(
+            f"<b>Growth doubles in {t_double*1000:.0f} ms.</b> At {fs:.0f} Hz, f_s/15 = {fs/15:.1f} Hz "
+            f"or {wgc:.1f} rad/s; this is {ratio:.1f} times p. "
+            "The 2p and 5p comparisons are illustrative targets. Check actual closed-loop poles, delay margins and saturation before drawing a stability conclusion.")
 
         c = self.c4
         c.clear()
@@ -529,7 +483,7 @@ class StabilisingPage(Page):
         a1.axvline(t_double, color=theme.WARN, lw=1.4, ls="--",
                    label=f"doubles at {t_double*1000:.0f} ms")
         a1.axvline(1.0 / wgc, color=theme.ACCENT, lw=1.4,
-                   label=f"loop responds in {1000/wgc:.0f} ms")
+                   label=f"guideline timescale {1000/wgc:.0f} ms")
         a1.set_xlabel("time (s)")
         a1.set_ylabel("error growth (×)")
         a1.set_ylim(0, 8)
@@ -541,10 +495,10 @@ class StabilisingPage(Page):
                 theme.GOOD if comfy else (theme.WARN if ok else theme.BAD)]
         a2.barh([0, 1, 2], bars, height=0.55, color=cols, alpha=0.7)
         a2.set_yticks([0, 1, 2])
-        a2.set_yticklabels(["p — instability", "2p — the floor",
-                            "ω_gc — what you have"], fontsize=8)
+        a2.set_yticklabels(["p — instability", "2p — example target",
+                            "2π f_s/15 — guideline"], fontsize=8)
         a2.set_xlabel("rad/s")
-        a2.set_title("crossover must clear the floor", fontsize=9)
+        a2.set_title("heuristic comparison, not stability proof", fontsize=9)
         c.refresh()
 
     # ------------------------------------------------------------------

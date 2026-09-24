@@ -72,6 +72,8 @@ from ..widgets import (
     title,
 )
 from .base import Page
+from .biped_context import poles_context, leg_derivation, sampling_context, lipm_context, learning_chain, actuator_context
+from ctrlcore.biped_lesson import joint_growth_rates, sampled_feedback
 from .linsys import _splane
 from .motors import slider, slider_row
 
@@ -114,9 +116,8 @@ def _spec_card(which: str) -> Card:
             "<b>Two legs, no trunk, six actuators.</b> Ankle, knee and hip on "
             "each side, all in the sagittal plane for the purposes of these "
             "pages. 30 kg, centre of mass 0.75 m up when standing, feet "
-            "0.20 m long. No arms, so no angular momentum to throw around — "
-            "the only way to stay upright is where the feet are and what the "
-            "ankles do."))
+            "0.20 m long. No arms; leg motion can still change angular momentum. "
+            "The simple balance example below deliberately omits that strategy."))
         c.add(body(
             "<table cellpadding='6'>"
             "<tr><td><b>Joint</b></td><td><b>Carries</b></td>"
@@ -124,7 +125,7 @@ def _spec_card(which: str) -> Card:
             "<td><b>Speed</b></td></tr>"
             "<tr><td>ankle</td><td>the entire body above it</td>"
             "<td>~90 N·m</td><td>−20° … +25°</td><td>modest</td></tr>"
-            "<tr><td>knee</td><td>trunk + thigh</td><td>~120 N·m</td>"
+            "<tr><td>knee</td><td>configuration-dependent leg load</td><td>~120 N·m</td>"
             "<td>0° … 110°</td><td>high in swing</td></tr>"
             "<tr><td>hip</td><td>the leg it is swinging</td><td>~80 N·m</td>"
             "<td>−25° … +90°</td><td>highest</td></tr>"
@@ -156,9 +157,8 @@ def _spec_card(which: str) -> Card:
 # ==========================================================================
 
 class BipedSystemsPage(Page):
-    TITLE = "Biped I — Poles, Deadlines and the Foot"
-    SUBTITLE = ("Everything from first order through LQR, spent on six "
-                "joints that are all trying to fall over.")
+    TITLE = "Biped I — Poles, Growth Time and the Foot"
+    SUBTITLE = "Connect poles and LQR to two explicit balance models, then check sampling and the foot."
     SECTION = SEC_SYS
     NOTES = "capstone"
 
@@ -166,76 +166,21 @@ class BipedSystemsPage(Page):
         super().__init__(parent)
         self.add(_spec_card("biped"))
 
-        self.add(callout(
-            "<b>One fact organises this entire page.</b> Every joint of a "
-            "standing leg is an inverted pendulum, so the gravity term enters "
-            "with the <i>wrong sign</i> — it pushes the joint further from "
-            "upright, not back toward it. In state-space terms the A matrix "
-            "has right-half-plane eigenvalues, one per joint, and each one is "
-            "a <b>deadline</b>. Nothing on this page is a tuning question "
-            "until those deadlines are met.", "key"))
-
-        # ---- the eigenvalues -------------------------------------------
-        ev = Card("six states, three unstable eigenvalues, three clocks")
-        ev.add(body(
-            "Linearise one stance leg about upright. Three joints, three "
-            "angles and three rates, so six states and a 6×6 A. Its "
-            "eigenvalues come in pairs ±p<sub>i</sub>, and the positive one "
-            "of each pair is the rate at which that joint collapses if you "
-            "stop pushing."))
-        ev.add(math_label(r"p_i = \sqrt{\frac{m g z_i}{J_i}} \qquad "
-                          r"t_{\text{double}} = \frac{\ln 2}{p_i}", 17))
-        ev.add(body(
-            "<b>Read the fraction.</b> The numerator is how hard gravity "
-            "pulls this joint over; the denominator is how much inertia "
-            "resists. So the ankle — carrying the whole body on a small "
-            "effective inertia lever — diverges fastest, and the hip, "
-            "swinging one leg, diverges slowest. <b>The joint with the "
-            "hardest control problem is the one at the bottom</b>, which is "
-            "the exact reverse of the manipulator on the next page."))
-        ev.add(callout(
-            "<b>And now the rule from the Stabilising page, applied six "
-            "times.</b> Crossover must clear 2p, and 5–10p is what gets "
-            "built. Page 1 caps crossover at roughly f<sub>s</sub>/15. Put "
-            "those together and <b>the sample rate for the whole robot is set "
-            "by its worst joint</b>, not by an average. That is why balance "
-            "controllers run in the kHz while the gait planner above them is "
-            "happy at 100 Hz — they are answering to different "
-            "eigenvalues.", "key"))
-        ev.add(body(
-            "Two things this does <i>not</i> say, because they are the usual "
-            "over-readings. It does not say the leg is uncontrollable — it is "
-            "perfectly controllable, and the interactive below places all six "
-            "poles. And it does not say a stiffer joint is better: raising "
-            "J<sub>i</sub> lowers p<sub>i</sub> and buys you time, which is "
-            "the real reason heavy feet and long feet make balancing easier "
-            "and why toddlers and robots both benefit from big shoes.",
-            dim=True))
-        self.add(ev)
-
-        i1 = Card("place all six poles, then take the sample rate away")
+        self.add(poles_context())
+        self.add(leg_derivation())
+        self.add(sampling_context())
+        i1 = Card("sample the controller: continuous poles versus actual sampled recovery")
         i1.add(body(
-            "<b>Left:</b> the open-loop eigenvalues of the stance leg — note "
-            "the three sitting in the red half. <b>Middle:</b> the three "
-            "joints recovering from a 5° lean under LQR. <b>Right:</b> each "
-            "joint's doubling time against the response time your loop rate "
-            "buys.<br><br>"
-            "<b>Three things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Drop the loop rate. Watch the ankle bar "
-            "cross first — it always does, and it is the joint that decides "
-            "your CPU budget.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Raise the body mass without changing "
-            "anything else. Every p grows as √m, so a heavier robot is a "
-            "<b>faster</b> problem, and the actuator sizing you did for the "
-            "lighter one is now a timing problem as well as a torque "
-            "one.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Tighten the torque budget until the "
-            "saturation stat lights up. The poles stay exactly where LQR put "
-            "them and the robot still falls, which is the whole lesson of the "
-            "state-feedback page arriving on a real machine.", dim=True))
+            "<b>Question:</b> can this simplified leg recover from a 5° ankle lean with the chosen torque limit and sample rate? "
+            "Left: a zoom around the open-loop and slow continuous LQR poles; faster stable poles may lie outside this view. Middle: sampled recovery with torque clipping. "
+            "Right: each joint mode's doubling time, correctly matched to that joint. "
+            "Lower f_s and compare the actual sampled stability stat. Increase mass with the teaching inertias held fixed. "
+            "Then reduce the torque limit: stable linear poles alone do not guarantee recovery when the command clips. "
+            "This diagonal model has no joint coupling: an ankle-only lean leaves the other joints at zero. The torque slider also changes R through Bryson scaling, so LQR is redesigned for that budget. "
+            "The f_s/15 stat is only sampling headroom; this lab does not include motor dynamics, extra delay or foot contact limits.", dim=True))
         self.s_mass = slider(100, 900, 300)      # x0.1 kg
         self.s_zc = slider(40, 120, 75)          # x0.01 m
-        self.s_fs = slider(50, 3000, 500)        # Hz
+        self.s_fs = slider(5, 3000, 500)        # Hz
         self.s_tmax = slider(10, 400, 150)       # N m
         self.l_mass, self.l_zc = QLabel(), QLabel()
         self.l_fs, self.l_tmax = QLabel(), QLabel()
@@ -248,8 +193,8 @@ class BipedSystemsPage(Page):
         self.st_pa = Stat("ankle p", "--", theme.BAD)
         self.st_pk = Stat("knee p", "--", theme.WARN)
         self.st_ph = Stat("hip p", "--", theme.VIOLET)
-        self.st_wgc = Stat("crossover available", "--", theme.ACCENT)
-        self.st_verdict = Stat("verdict", "--", theme.GOOD)
+        self.st_wgc = Stat("sampling guideline f_s/15", "--", theme.ACCENT)
+        self.st_verdict = Stat("sampled linear poles", "--", theme.GOOD)
         i1.add_layout(stat_row(self.st_pa, self.st_pk, self.st_ph,
                                self.st_wgc, self.st_verdict))
         self.c1 = MplCanvas(width=7.6, height=2.9, ncols=3)
@@ -266,64 +211,14 @@ class BipedSystemsPage(Page):
         self.add(title("The one constraint no controller negotiates with: "
                        "the foot"))
 
-        ft = Card("the input is bounded by geometry, not by the motor")
-        ft.add(body(
-            "Collapse the whole robot to its centre of mass and you get the "
-            "linear inverted pendulum, which is the model every balance "
-            "controller is really running:"))
-        ft.add(math_label(r"\ddot x = \omega^2 (x - p), \qquad "
-                          r"\omega = \sqrt{g/z}", 18))
-        ft.add(body(
-            "x is the CoM position and <b>p — the centre of pressure — is the "
-            "input</b>. Now read what kind of input that is. It is not a "
-            "torque, it is a <i>place under the foot where the ground pushes "
-            "back</i>. The ground can only push, never pull, so p is confined "
-            "to the support polygon:<br><br>"
-            "&nbsp;&nbsp;&nbsp;&nbsp;<b>|p| ≤ foot length / 2</b><br><br>"
-            "That is a hard saturation on the only input, and it comes from a "
-            "tape measure. Ankle torque is exactly τ = −m g p, so "
-            "\"maximum ankle torque\" and \"the CoP at the toe\" are the same "
-            "sentence — and buying a stronger ankle motor past that point "
-            "buys nothing at all, because the foot lifts."))
-        ft.add(callout(
-            "<b>The capture point, and why it is the most useful number in "
-            "legged robotics.</b> Take the LIPM's unstable eigenvector and "
-            "give its coordinate a name:<br><br>"
-            "&nbsp;&nbsp;&nbsp;&nbsp;<b>ξ = x + ẋ/ω</b><br><br>"
-            "ξ is where you would have to put the CoP to bring the CoM "
-            "exactly to rest. It is the one combination of position and "
-            "velocity that <i>grows</i>, cleanly separated from the "
-            "combination that decays — which is precisely what an "
-            "eigenvector is for.<br><br>"
-            "&nbsp;&nbsp;• <b>ξ inside the foot</b> → you can stop with "
-            "ankles alone. Stand still.<br>"
-            "&nbsp;&nbsp;• <b>ξ outside the foot</b> → no ankle torque "
-            "whatsoever will stop you. <b>You must step, and the step goes "
-            "to ξ.</b><br><br>"
-            "That verdict is geometry plus one eigenvalue. It contains no "
-            "gains, and it is why \"balance\" and \"where to step\" are the "
-            "same question rather than two.", "key"))
-        self.add(ft)
+        self.add(lipm_context())
 
         i2 = Card("push the robot and watch the capture point leave the foot")
         i2.add(body(
-            "A shove gives the CoM a velocity at t = 0. <b>Left:</b> the CoM "
-            "and the capture point over time, with the foot drawn as a band. "
-            "<b>Right:</b> the required CoP against what the foot can "
-            "deliver.<br><br>"
-            "<b>Three things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Small push: ξ stays in the band, the CoP "
-            "stays inside the foot, ankles handle it.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Bigger push: ξ leaves the band. The "
-            "controller now demands a CoP outside the foot, the foot rolls "
-            "onto its toe, and the demand is simply not met. <b>Read the step "
-            "distance the stat gives you</b> — that is where the foot has to "
-            "land, and it is computed without any controller at "
-            "all.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Lengthen the foot. The band widens and the "
-            "same push becomes survivable. This is why robots that must not "
-            "step have big feet, and why a robot that steps well can afford "
-            "small ones.", dim=True))
+            "<b>Question:</b> can the ideal fixed-foot LIPM stop this push? Left: CoM and capture point, with the foot as a band. "
+            "Right: the applied CoP, clipped at the heel/toe. Start with a small push, increase it, then lengthen the foot. "
+            "The stat tests theoretical no-step feasibility; the plotted LQR controller is one chosen recovery strategy, "
+            "not a proof that every feasible push recovers under these gains. No stepping, finite torque response or angular-momentum strategy is simulated.", dim=True))
         self.s_push = slider(0, 200, 30)         # x0.01 m/s
         self.s_foot = slider(8, 40, 20)          # cm
         self.s_zc2 = slider(40, 120, 75)         # cm
@@ -334,8 +229,8 @@ class BipedSystemsPage(Page):
         self.st_omega = Stat("ω = √(g/z)", "--", theme.CYAN)
         self.st_xi = Stat("capture point ξ", "--", theme.ACCENT)
         self.st_edge = Stat("foot half-length", "--", theme.WARN)
-        self.st_step = Stat("must step?", "--", theme.GOOD)
-        self.st_tau = Stat("max ankle torque", "--", theme.VIOLET)
+        self.st_step = Stat("ideal no-step stop?", "--", theme.GOOD)
+        self.st_tau = Stat("geometry torque bound", "--", theme.VIOLET)
         i2.add_layout(stat_row(self.st_omega, self.st_xi, self.st_edge,
                                self.st_step, self.st_tau))
         self.c2 = MplCanvas(width=7.6, height=2.8, ncols=2)
@@ -347,66 +242,7 @@ class BipedSystemsPage(Page):
             s.valueChanged.connect(self._redraw_lipm)
         self._redraw_lipm()
 
-        # ---- what each earlier page bought ------------------------------
-        self.add(hline())
-        self.add(title("What each earlier idea is actually for, on this "
-                       "robot"))
-        self.add(_tbl(
-            ["Idea", "On the biped", "The number it produces"],
-            [("first order, τ",
-              "the current loop inside each motor, and the low-pass on every "
-              "IMU channel",
-              "τ_elec ≈ 0.2 ms; anything slower than ~10τ is a lie"),
-             ("second order, ζ",
-              "every joint under PD, and the whole body under the ankle "
-              "strategy",
-              "ζ ≈ 0.7 at each joint; below 0.4 the leg visibly wobbles"),
-             ("poles / s-plane",
-              "the six eigenvalues above; three are in the right half plane "
-              "and stay there until feedback moves them",
-              "p_ankle ≈ 8 1/s → 87 ms doubling"),
-             ("phase margin",
-              "the honest measure of how much delay the balance loop can "
-              "absorb before it oscillates",
-              "PM ≥ 45°; each 1 ms of extra latency costs PM at ω_gc"),
-             ("Bode / crossover",
-              "where the loop stops having authority, and therefore where "
-              "the robot stops being controlled",
-              "ω_gc > 5p ≈ 40 rad/s minimum"),
-             ("Nyquist",
-              "the one that matters here, because an unstable plant does not "
-              "obey the naive margin rules — the encirclement count is the "
-              "actual stability test",
-              "N = P: one encirclement required per RHP pole"),
-             ("zeros / non-minimum phase",
-              "the wrong-way step: to move the CoM left, first push the CoP "
-              "right. A genuine RHP zero in the CoM-to-CoP path",
-              "bandwidth capped near the zero, regardless of gain"),
-             ("root locus / PD",
-              "the joint-level servo underneath everything else",
-              "K_p, K_d per joint, and the D term is not optional"),
-             ("lead-lag",
-              "buying phase back at crossover after the delay budget has "
-              "eaten it",
-              "one lead section ≈ +40° at ω_gc, ×6 noise gain"),
-             ("state feedback",
-              "the only formulation in which 'the knee is bending because "
-              "the ankle moved' is expressible",
-              "one 3×6 gain matrix instead of three PD loops"),
-             ("LQR",
-              "how those 18 numbers get chosen: weight ankle angle hard, hip "
-              "angle loosely, and torque by what the motors have",
-              "Q, R from tolerances; poles land where they land")],
-            col0=150, colw=270, height=740))
-
-        self.add(callout(
-            "<b>The through-line.</b> A biped is an unstable MIMO plant with "
-            "a hard input constraint and a non-minimum-phase path from the "
-            "thing you command to the thing you care about. Every one of "
-            "those three words was a page earlier in this tutor, and the "
-            "reason balance is hard is that it is all three at "
-            "once — not because the controller is exotic. The controller is "
-            "usually LQR or PD.", "good"))
+        self.add(learning_chain())
         self.finish()
 
     # ------------------------------------------------------------------
@@ -423,67 +259,43 @@ class BipedSystemsPage(Page):
         leg = PlanarLeg(body_mass=m, z_com=z)
         ss = leg_ss(leg)
         eig = np.linalg.eigvals(np.asarray(ss.A))
-        pos = sorted([v.real for v in eig if v.real > 1e-9], reverse=True)
-        while len(pos) < 3:
-            pos.append(0.0)
-        p_a, p_k, p_h = pos[0], pos[1], pos[2]
-        wgc = 2.0 * math.pi * (fs / 15.0)
-        ratio = wgc / max(p_a, 1e-9)
-
-        self.st_pa.set(f"{p_a:.1f} 1/s")
-        self.st_pk.set(f"{p_k:.1f} 1/s")
-        self.st_ph.set(f"{p_h:.1f} 1/s")
-        self.st_wgc.set(f"{wgc:.0f} rad/s")
-        ok, comfy = ratio >= 2.0, ratio >= 5.0
-        self.st_verdict.set("comfortable" if comfy else
-                            ("marginal" if ok else "IMPOSSIBLE"))
-        self.st_verdict.set_color(theme.GOOD if comfy else
-                                  (theme.WARN if ok else theme.BAD))
+        p_a, p_k, p_h = joint_growth_rates(leg)
+        p_fast = max(p_a, p_k, p_h)
+        fastest = ["ankle", "knee", "hip"][int(np.argmax([p_a,p_k,p_h]))]
+        self.st_pa.set(f"{p_a:.2f} s⁻¹")
+        self.st_pk.set(f"{p_k:.2f} s⁻¹")
+        self.st_ph.set(f"{p_h:.2f} s⁻¹")
+        self.st_wgc.set(f"{fs/15:.1f} Hz")
 
         Q = bryson([0.05, 0.08, 0.15, 0.5, 0.8, 1.5])
         R = bryson([tmax, tmax, tmax])
         res = lqr_design(ss, Q, R, x0=np.array([0.09, 0.0, 0.0, 0, 0, 0]))
-        ts, xs, us, sat = simulate_feedback(
-            ss, res.K, [0.09, 0.0, 0.0, 0, 0, 0], dur=1.5, dt=5e-4,
-            u_max=tmax)
-
-        if sat > 1e-9:
-            self.t1.setText(
-                f"<b>Torque saturating on {sat*100:.0f}% of ticks.</b> LQR "
-                f"placed the poles where its cost said, and the motor cannot "
-                f"deliver the gains those poles require. The trace in the "
-                f"middle panel is not the closed loop you designed — while u "
-                f"is clipped the leg is running open loop against three "
-                f"right-half-plane eigenvalues. Raise the torque limit or "
-                "accept a slower response by making R more expensive.")
-        elif not ok:
-            self.t1.setText(
-                f"<b>No controller exists at {fs:.0f} Hz.</b> The ankle "
-                f"doubles its lean every {math.log(2)/max(p_a,1e-9)*1000:.0f} "
-                f"ms and this loop rate buys {wgc:.0f} rad/s of crossover, "
-                f"under the 2p = {2*p_a:.0f} floor. Nothing inside the "
-                "controller closes that gap — not LQR, not a network, not a "
-                "better gain. Raise f_s, or make the robot slower by adding "
-                "inertia or height.")
-        else:
-            self.t1.setText(
-                f"<b>ω_gc/p = {ratio:.1f} at the ankle</b>, which is the "
-                f"joint that sets the budget: it always diverges fastest, "
-                f"because it carries the whole body. Knee and hip have "
-                f"{p_a/max(p_k,1e-9):.1f}× and {p_a/max(p_h,1e-9):.1f}× more "
-                f"time. Note that raising the mass makes every p grow as √m — "
-                "a heavier robot is not just a stronger-motor problem, it is "
-                "a faster-loop problem.")
+        ts, xs, us, sat, radius = sampled_feedback(
+            ss, res.K, [0.09,0,0,0,0,0], fs, tmax)
+        self.sampled_radius = radius
+        self.st_verdict.set("inside unit circle" if radius < 1 else "UNSTABLE")
+        self.st_verdict.set_color(theme.GOOD if radius < 1 else theme.BAD)
+        self.t1.setText(
+            f"<b>Fastest growing mode in this model: {fastest}, p = {p_fast:.2f} s⁻¹</b> "
+            f"(doubling time {1000*math.log(2)/p_fast:.1f} ms). Updates are {1000/fs:.2f} ms apart. "
+            f"The largest sampled closed-loop pole magnitude is {radius:.5f}; stability of the unsaturated sampled model requires it below 1. "
+            f"Torque clips on {sat*100:.1f}% of samples. During clipping the system is nonlinear: it does not simply become open loop, "
+            "but its trajectory is no longer predicted by the designed linear poles. The trace assumes exact state measurements and zero extra delay. "
+            "Large-angle traces indicate leaving the validity of this local linear model, not a prediction of the full fall.")
 
         c = self.c1
         c.clear()
         a1, a2, a3 = c.axes
-        _splane(a1, [complex(v) for v in eig], lim=max(12.0, p_a * 1.6),
+        _splane(a1, [complex(v) for v in eig], lim=max(12.0, p_fast * 1.6),
                 marker_label="open loop")
         a1.scatter([p.real for p in res.poles], [p.imag for p in res.poles],
                    marker="o", s=32, color=theme.GOOD, zorder=6,
                    label="after LQR")
-        a1.set_title("three poles in the red half", fontsize=8.5)
+        hidden = sum(abs(v.real)>max(12.0,p_fast*1.6) or abs(v.imag)>max(12.0,p_fast*1.6) for v in res.poles)
+        if hidden:
+            a1.text(.03,.08,f"{hidden} faster stable poles outside view",transform=a1.transAxes,
+                    color=theme.GOOD,fontsize=7)
+        a1.set_title("poles near the origin (zoom)", fontsize=8.5)
         c.legend(a1, loc="upper left")
 
         names = ["ankle", "knee", "hip"]
@@ -498,10 +310,10 @@ class BipedSystemsPage(Page):
         c.legend(a2, loc="upper right")
 
         dbl = [math.log(2) / max(p, 1e-9) * 1000 for p in (p_a, p_k, p_h)]
-        loop = 1000.0 / wgc
+        loop = 1000.0 / fs
         a3.barh([0, 1, 2], dbl, height=0.5, color=cols, alpha=0.8)
         a3.axvline(loop, color=theme.ACCENT, lw=1.8,
-                   label=f"loop responds in {loop:.0f} ms")
+                   label=f"sample interval {loop:.1f} ms")
         a3.set_yticks([0, 1, 2])
         a3.set_yticklabels(names, fontsize=8)
         a3.set_xlabel("doubling time (ms)")
@@ -527,8 +339,7 @@ class BipedSystemsPage(Page):
         self.st_omega.set(f"{w:.2f} 1/s")
         self.st_xi.set(f"{xi*100:.1f} cm")
         self.st_edge.set(f"±{half*100:.0f} cm")
-        self.st_step.set(f"yes — step {xi*100:.0f} cm" if must_step
-                         else "no — ankles suffice")
+        self.st_step.set("outside support" if must_step else "feasible in model")
         self.st_step.set_color(theme.BAD if must_step else theme.GOOD)
         self.st_tau.set(f"{m*G*half:.0f} N·m")
 
@@ -546,27 +357,17 @@ class BipedSystemsPage(Page):
 
         if must_step:
             self.t2.setText(
-                f"<b>ξ = {xi*100:.1f} cm, and the foot only reaches "
-                f"{half*100:.0f} cm.</b> The CoP saturates at the toe — look "
-                f"at the flat top on the right panel — and the CoM keeps "
-                f"going, because the ground cannot push from outside the "
-                f"foot. No ankle torque stops this; the foot would have to "
-                f"pull. <b>The robot must step, and the step target is ξ "
-                f"itself: {xi*100:.0f} cm ahead.</b> Notice this was decided "
-                f"by a tape measure and one eigenvalue, with no controller "
-                "involved. A trunkless biped has no arms to throw, so "
-                "stepping is the only other option it has.")
+                f"<b>Initial ξ = {xi*100:.1f} cm lies outside the toe at {half*100:.0f} cm.</b> "
+                "Under the fixed-height, zero angular-momentum assumptions, fixed-foot CoP control cannot stop this state. "
+                "The plot shows that limitation. A real robot needs a changed support or another strategy outside this model. "
+                "This initial ξ is not a commanded step distance: swing time, reach and ξ at landing must be accounted for.")
         else:
             self.t2.setText(
-                f"<b>ξ = {xi*100:.1f} cm, inside the {half*100:.0f} cm "
-                f"foot.</b> The ankle strategy is sufficient: the CoP shifts "
-                f"forward, stays within the support polygon, the CoM "
-                f"decelerates and the robot stands still. Peak ankle torque "
-                f"{m*G*float(np.max(np.abs(us))):.0f} N·m against the "
-                f"{m*G*half:.0f} N·m the geometry allows"
-                f"{' — and the CoP is already pinned at the toe for part of the recovery' if sat > 1e-9 else ''}"
-                ". Push harder and watch the margin close: the failure is "
-                "geometric, and it arrives long before the motor runs out.")
+                f"<b>Initial ξ = {xi*100:.1f} cm lies inside the toe at {half*100:.0f} cm.</b> "
+                "The ideal model admits a stop by holding CoP at this point; the plotted controller instead tries to return the CoM to zero. "
+                f"Its peak implied ankle torque is {m*G*float(np.max(np.abs(us))):.1f} N·m, "
+                f"within the geometry bound {m*G*half:.1f} N·m. "
+                "Motor torque/rate limits are omitted, so this is geometric feasibility, not a guarantee for the real actuator.")
 
         c = self.c2
         c.clear()
@@ -889,113 +690,44 @@ class BipedActuatorsPage(Page):
         self.add(_spec_card("biped"))
 
         self.add(callout(
-            "<b>The single fact that decides everything below.</b> Reflected "
-            "inertia scales as N², so a 100:1 gearbox makes the rotor feel "
-            "10 000 times heavier at the output. That number decides "
-            "backdrivability, which decides whether impedance control is "
-            "available, which decides whether the joint can absorb an impact "
-            "it did not see coming. <b>For a leg, impact is not an edge case "
-            "— it happens twice per step, forever.</b>", "key"))
-
-        # ---- the three demands ------------------------------------------
-        d = Card("what a leg joint is actually asked to do, and it is three "
-                 "different things")
+            "<b>Start with separate demands.</b> Stance sets sustained torque and thermal requirements; "
+            "swing sets speed and acceleration requirements; contact sets impact and compliance requirements. "
+            "Reflected motor inertia N²J_motor matters, but friction, transmission stiffness and motor size also determine how a joint feels.", "key"))
+        d = Card("three operating conditions, three checks")
         d.add(body(
-            "&nbsp;&nbsp;• <b>Stance: hold a large torque with little "
-            "motion.</b> Nearly static, so this is a thermal problem — "
-            "current × time, not power. A gearbox is very good at this and a "
-            "direct drive is very bad at it.<br>"
-            "&nbsp;&nbsp;• <b>Swing: move fast under almost no load.</b> A "
-            "speed problem, and the opposite of the above. Gearboxes trade "
-            "speed for torque, so the gear ratio that made stance easy makes "
-            "swing hard.<br>"
-            "&nbsp;&nbsp;• <b>Impact: survive and absorb, in under 10 ms.</b> "
-            "Heel strike delivers a torque spike faster than any control loop "
-            "can respond to. <b>Whatever happens in those milliseconds is "
-            "decided by mechanics alone</b> — the controller is not in the "
-            "conversation. This is the demand that eliminates most "
-            "candidates."))
-        d.add(callout(
-            "<b>Read the third bullet again, because it is the one people "
-            "skip.</b> Your loop runs at 1 kHz, so one control tick is 1 ms "
-            "and a meaningful correction takes several. A heel strike's peak "
-            "arrives in 2–5 ms. By the time the controller has noticed, the "
-            "event is over. So the impact requirement is a requirement on "
-            "<b>reflected inertia and series compliance</b>, both of which are "
-            "purchase-order decisions, not tuning decisions.", "warn"))
+            "<b>Stance:</b> holding torque can require high current even at zero speed; copper loss is I²R although mechanical power τω may be zero. "
+            "Gearing can reduce motor torque at the cost of speed, losses and reflected inertia. A sufficiently sized direct drive remains an option.<br><br>"
+            "<b>Swing:</b> accelerate a moving leg against its configuration-dependent inertia, then stop it accurately. It is not literally an unloaded joint.<br><br>"
+            "<b>Contact:</b> an impact's early force transient can be faster than effective feedback. A 1 kHz update rate does not guarantee a 1 ms force correction. "
+            "Mechanical compliance shapes the initial transient; feedback also matters as contact continues. Check spring travel, damping and structural limits."))
         self.add(d)
+
+        self.add(actuator_context())
 
         # ---- the options ------------------------------------------------
         self.add(_tbl(
-            ["Topology", "Backdrivable?", "Torque density", "Impact",
-             "Where it belongs on this robot"],
-            [("Direct drive  N = 1",
-              "perfectly — nothing between rotor and load",
-              "poor; needs a large, heavy, hot motor for leg torques",
-              "excellent — nothing to break, and J_eff is just the rotor",
-              "nowhere on a 30 kg biped, on thermal grounds alone. The reason "
-              "it appears here is that everything else is measured against "
-              "it."),
-             ("QDD  N = 6–10",
-              "yes — N² is 36–100, which is still small",
-              "good; this is the modern legged-robot default",
-              "good — low enough J_eff that the impact is absorbed by the "
-              "structure rather than by the gear teeth",
-              "<b>knee and hip.</b> High speed in swing, enough torque in "
-              "stance, and survives heel strike without a spring."),
-             ("SEA  spring in series",
-              "yes, and it also MEASURES torque via deflection",
-              "as good as its gearbox, with a bandwidth ceiling from the "
-              "spring",
-              "excellent — the spring is a mechanical low-pass on impact "
-              "force, working at the speed of physics",
-              "<b>ankle</b>, if impact absorption and torque accuracy matter "
-              "more than bandwidth. Costs you the resonance from the "
-              "state-feedback page."),
-             ("Harmonic drive  N = 100+",
-              "no — N² = 10 000; the joint feels like a wall",
-              "excellent; smallest and lightest for a given torque",
-              "poor — the impact goes into the gear teeth, and the joint "
-              "cannot yield",
-              "acceptable only where nothing hits the joint and nothing "
-              "needs to yield. On a leg, that is nowhere."),
-             ("Hydraulic",
-              "somewhat, with valve control",
-              "outstanding — the highest available",
-              "good, with accumulators",
-              "large or fast machines where the power plant is justified. "
-              "Not a 30 kg biped.")],
-            col0=140, colw=225, height=520))
+            ["Topology", "What it changes", "What still needs verification"],
+            [("Direct drive, N = 1", "No gearbox; rotor inertia is not multiplied by reduction.",
+              "Continuous torque, cooling, motor mass, bearing friction, load inertia and tracking response. No universal bandwidth."),
+             ("QDD, low reduction", "Trades some output speed for torque; reflected rotor inertia grows as N².",
+              "Gear efficiency, friction, backlash, impact rating and motor torque–speed limits. N alone does not prove backdrivability."),
+             ("SEA", "Spring deflection can measure output torque and mechanically shape contact transients.",
+              "Motor/spring/load modes, torque amplitude, load condition, spring travel and damping. Compliance does not guarantee high tracking bandwidth."),
+             ("High reduction", "Can obtain high output torque from a smaller motor, with greater reflected inertia.",
+              "Whether friction, compliance and sensing permit the desired contact behavior. Not automatically forbidden on all bipeds."),
+             ("Hydraulic", "Pressure and flow provide force and speed; accumulators can add compliance.",
+              "Whole-system mass, supply, valve dynamics, efficiency and maintenance, rather than robot mass alone.")],
+            col0=160, colw=390, height=510))
 
         # ---- interactive -------------------------------------------------
         i1 = Card("choose a topology per joint and watch what it costs")
         i1.add(body(
-            "<b>Left:</b> effective inertia against frequency for the chosen "
-            "topology, with the impact band shaded — what matters is "
-            "J<sub>eff</sub> <i>up there</i>, not at DC. <b>Middle:</b> the "
-            "torque a heel strike puts through the joint. <b>Right:</b> the "
-            "three demands scored.<br><br>"
-            "<b>Three things to do:</b><br>"
-            "&nbsp;&nbsp;<b>1.</b> Put a harmonic drive on the ankle and look "
-            "at the impact torque. That spike goes into the gear "
-            "teeth.<br>"
-            "&nbsp;&nbsp;<b>2.</b> Switch to SEA and watch the spike drop by "
-            "an order of magnitude — and watch the bandwidth stat drop with "
-            "it. <b>You bought impact survival with response speed</b>, and "
-            "there is no setting where you get both.<br>"
-            "&nbsp;&nbsp;<b>3.</b> Now shorten the contact time — harder ground, "
-            "a stone instead of carpet. <b>Every rigid topology's spike grows "
-            "as 1/t, without limit. The SEA's does not move at all</b>, "
-            "because a spring's peak torque is set by energy rather than by "
-            "how fast the collision was. That single difference is the whole "
-            "argument for series elasticity, and no controller reproduces "
-            "it.<br>"
-            "&nbsp;&nbsp;<b>4.</b> Soften the SEA spring further. Impact "
-            "keeps improving, bandwidth keeps falling, and at some point the "
-            "bandwidth drops under what the ankle needs to reject a "
-            "disturbance before the capture point leaves the foot. <b>That "
-            "crossing is the actual design constraint</b>, and it comes from "
-            "the previous capstone page rather than from this one.", dim=True))
+            "<b>Purpose:</b> explore trends using explicitly assumed screening values, not select a finished actuator. "
+            "Left: apparent inertia in the ideal transmission model. Middle: an illustrative impact profile. Right: scores against assumed thresholds. "
+            "Try larger gearing, then SEA and a softer spring. Compare reflected inertia, estimated response speed and impact torque. "
+            "The rigid collision estimate scales as 1/contact-time for fixed momentum change; real contact compliance prevents an infinite spike. "
+            "The SEA estimate assumes kinetic energy transfers into a spring with sufficient travel; real contact duration, damping and hard stops also matter. "
+            "Bandwidth values and requirements are explained below the plot. They do not predict capture-point recovery.", dim=True))
         self.cmb_joint = QComboBox()
         for lab in ("ankle", "knee", "hip"):
             self.cmb_joint.addItem(lab)
@@ -1017,7 +749,7 @@ class BipedActuatorsPage(Page):
         i1.add_layout(slider_row("contact time (×0.1 ms)", self.s_tc,
                                  self.l_tc))
         self.st_jeff = Stat("J_eff at impact", "--", theme.BAD)
-        self.st_bw = Stat("torque bandwidth", "--", theme.ACCENT)
+        self.st_bw = Stat("assumed / estimated torque BW", "--", theme.ACCENT)
         self.st_imp = Stat("impact torque", "--", theme.WARN)
         self.st_back = Stat("backdrivable?", "--", theme.GOOD)
         self.st_score = Stat("verdict", "--", theme.VIOLET)
@@ -1035,24 +767,16 @@ class BipedActuatorsPage(Page):
         self._redraw_act()
 
         self.add(callout(
-            "<b>The answer for this robot, stated once.</b><br><br>"
-            "&nbsp;&nbsp;• <b>Ankle — SEA, or QDD with a compliant foot.</b> "
-            "It takes every heel strike, it holds large near-static torque in "
-            "stance, and its bandwidth requirement is set by the capture-point "
-            "argument rather than by a spec sheet. Series compliance is doing "
-            "work no controller can do.<br>"
-            "&nbsp;&nbsp;• <b>Knee — QDD, N ≈ 8.</b> The highest torque "
-            "demand of the three, and it must also move fast in swing. It "
-            "sees impact but through the ankle and shank, already "
-            "filtered.<br>"
-            "&nbsp;&nbsp;• <b>Hip — QDD, N ≈ 6.</b> Lowest inertia, highest "
-            "speed, least impact exposure. This is the joint where you could "
-            "get away with more gearing and should not, because the hip is "
-            "how you place the foot and foot placement is how you "
-            "balance.<br><br>"
-            "Notice that the <i>same</i> topology wins twice for different "
-            "reasons, and that the outlier is at the bottom of the chain. On "
-            "the arm, the outlier is at the top.", "good"))
+            "<b>Candidate choices for this teaching robot, to verify against measured requirements.</b><br><br>"
+            "<b>Ankle — investigate SEA or QDD with a compliant foot.</b> Check sustained torque, impacts, usable CoP range and "
+            "torque tracking under the selected push-recovery scenarios. Capture-point margin motivates a response-time requirement; "
+            "it does not determine a universal ankle bandwidth.<br><br>"
+            "<b>Knee — investigate QDD near N = 8.</b> Check the stated 120 N·m peak and swing speed together, including thermal duty "
+            "and configuration-dependent inertia.<br><br>"
+            "<b>Hip — investigate QDD near N = 6.</b> Check swing-leg acceleration, achievable step placement and landing time. "
+            "Actual gearing must follow the motor torque–speed curve, losses, load and impact tests.<br><br>"
+            "These ratios are starting candidates, not calculated optima. Direct drive is not ruled out by robot mass alone, "
+            "and an SEA is not automatically fast enough or compliant enough for every contact.", "good"))
         self.finish()
 
     # ------------------------------------------------------------------
@@ -1076,9 +800,7 @@ class BipedActuatorsPage(Page):
         ws = np.logspace(0, 3.3, 200)
         if top == "sea":
             jj = [j_eff("sea", j_m, j_load, ks, w) for w in ws]
-            # practical torque bandwidth of a SEA: you can close a torque loop
-            # up to roughly a third of the motor-spring-load resonance, and no
-            # further -- past that the loop is fighting the resonance itself
+            # Illustrative resonance-based screening assumption, not a hard limit.
             bw = sea_resonance_rad_s(ks, j_m, j_load) / (2 * math.pi * 3.0)
             backd = "yes + senses τ"
         else:
@@ -1127,47 +849,17 @@ class BipedActuatorsPage(Page):
 
         need_bw = {"ankle": 12.0, "knee": 20.0, "hip": 25.0}[joint]
         good = (backd != "no") and bw >= need_bw and tau_imp < 400
-        self.st_score.set("suitable" if good else "poor fit")
+        self.st_score.set("passes toy screen" if good else "fails toy screen")
         self.st_score.set_color(theme.GOOD if good else theme.BAD)
 
-        if backd == "no":
-            self.t1.setText(
-                f"<b>N = {N:.0f} gives J_eff = {j_at_impact:.3f} kg·m² at "
-                f"impact frequencies — the joint is a wall.</b> It cannot "
-                f"yield, so the {tau_imp:.0f} N·m of heel strike goes into "
-                f"the gear teeth and the structure. It also cannot do "
-                f"impedance control in any honest sense: commanding a low "
-                f"stiffness does not make the joint feel soft when the "
-                f"mechanics feel hard. On the {joint} of a walking robot this "
-                "is the wrong choice, and no amount of loop rate fixes it.")
-        elif top == "sea" and bw < need_bw:
-            self.t1.setText(
-                f"<b>The spring is too soft for this joint.</b> Torque "
-                f"bandwidth {bw:.0f} Hz against the {need_bw:.0f} Hz the "
-                f"{joint} needs. Impact is beautifully handled — "
-                f"{tau_imp:.0f} N·m — and the joint is now too slow to reject "
-                f"a disturbance before the capture point leaves the foot. "
-                "Stiffen the spring until bandwidth clears the requirement, "
-                "then stop: every extra N·m/rad you add past that is impact "
-                "absorption you threw away for nothing.")
-        elif top == "sea":
-            self.t1.setText(
-                f"<b>SEA at k = {ks:.0f} N·m/rad: {bw:.0f} Hz of torque "
-                f"bandwidth and {tau_imp:.0f} N·m through the joint at heel "
-                f"strike.</b> The spring is doing two jobs at once — it is a "
-                f"mechanical low-pass that works at the speed of physics, and "
-                f"its deflection is your torque sensor. The price is the "
-                f"resonance you met on the state-feedback page, and a "
-                "bandwidth ceiling you cannot control your way out of.")
-        else:
-            self.t1.setText(
-                f"<b>N = {N:.0f}: J_eff = {j_at_impact:.3f} kg·m², "
-                f"{bw:.0f} Hz, {tau_imp:.0f} N·m at impact.</b> This is the "
-                f"quasi-direct-drive bargain and it is why modern legged "
-                f"robots look the way they do: enough reduction to make the "
-                f"motor small, little enough that N² keeps the joint "
-                f"backdrivable and the impact survivable. On the {joint} it "
-                f"{'works' if good else 'falls short — check the bandwidth and impact stats'}.")
+        self.t1.setText(
+            f"<b>Illustrative screen, not a hardware specification:</b> {joint}, N = {N:.0f}, "
+            f"torque bandwidth {bw:.1f} Hz versus an assumed {need_bw:.0f} Hz target. "
+            "For rigid drives this lab assumes 200 Hz at N ≤ 12 and 60 Hz otherwise; it does not derive those values from a motor. "
+            "For SEA it uses one third of the undamped two-inertia resonance as a screening estimate. "
+            "The 12/20/25 Hz ankle/knee/hip targets are illustrative, not computed from the capture point. "
+            f"The simple collision estimate gives {tau_imp:.0f} N·m; its 400 N·m structural threshold and gear-ratio backdrive classification "
+            "are also assumptions. Confirm torque tracking under load, friction, electrical limits, spring travel and actual impact response before selecting hardware.")
 
         c = self.c1
         c.clear()
@@ -1189,7 +881,7 @@ class BipedActuatorsPage(Page):
                    label="what the structure takes")
         a2.set_xlabel("time (ms)")
         a2.set_ylabel("joint torque (N·m)")
-        a2.set_title("heel strike, and the loop is not there", fontsize=8.5)
+        a2.set_title("illustrative heel-strike estimate", fontsize=8.5)
         c.legend(a2, loc="upper right")
 
         scores = [
