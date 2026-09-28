@@ -56,6 +56,9 @@ SECTION_COLORS = {
     "Proprioception":    VIOLET,
     "Force Feedback":    WARN,
     "Bio → Robot":       PINK,
+    # applied projects
+    "Beam Balance":      CYAN,
+    "Fault Tolerance":   ORANGE,
     # reinforcement learning
     "Start Here":      ACCENT,
     "Value Functions": VIOLET,

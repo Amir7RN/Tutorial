@@ -14,7 +14,7 @@ class LessonConnectionsTests(unittest.TestCase):
     def test_every_original_lesson_has_an_earlier_connection(self):
         classes={c.__name__:c for c in LESSON_CLASSES}
         self.assertEqual(set(CONNECTIONS),set(classes))
-        self.assertEqual([c.NUM for c in LESSON_CLASSES],list(range(1,96)))
+        self.assertEqual([c.NUM for c in LESSON_CLASSES],list(range(1,len(LESSON_CLASSES)+1)))
         for key,connection in CONNECTIONS.items():
             self.assertTrue(connection.text)
             if classes[key].NUM>1:self.assertTrue(connection.previous)
@@ -23,7 +23,7 @@ class LessonConnectionsTests(unittest.TestCase):
 
     def test_every_section_ends_with_three_worked_movies(self):
         summaries=[c for c in PAGE_CLASSES if getattr(c,'IS_SUMMARY',False)]
-        self.assertEqual(len(PAGE_CLASSES),115)
+        self.assertEqual(len(PAGE_CLASSES),len(LESSON_CLASSES)+len({c.SECTION for c in LESSON_CLASSES}))
         self.assertEqual({c.SECTION for c in summaries},set(RECAPS))
         for i,c in enumerate(PAGE_CLASSES):
             if getattr(c,'IS_SUMMARY',False):

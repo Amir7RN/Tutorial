@@ -128,6 +128,28 @@ from .linsys import (
 )
 from .zeros import ZerosPage
 from .nonlin import NonlinearControlPage, NonlinearSystemsPage
+from .beambalance import (
+    BeamAdmittancePage,
+    BeamControllerPage,
+    BeamEstimationPage,
+    BeamFrequencyPage,
+    BeamMeasuringPage,
+    BeamPlantPage,
+    BeamRealTimePage,
+    BeamResultsPage,
+    BeamStabilityPage,
+)
+from .faulttol import (
+    FaultCompensationPage,
+    FaultDetectionPage,
+    FaultEstimationPage,
+    FaultFSMPage,
+    FaultLatencyPage,
+    FaultPlantPage,
+    FaultRealTimePage,
+    FaultResultsPage,
+    FaultStabilityPage,
+)
 from .bellman import (
     BellmanExpQPage,
     BellmanExpVPage,
@@ -312,6 +334,30 @@ PAGE_CLASSES = [
     AgentSkeletonPage,     # 92  the shared rulebook, and where PPO breaks it
     KneeRLPage,            # 93  case study: one gait cycle is one timestep
     DeployRLPage,          # 94  1 kHz controller, 20 Hz learner, shared memory
+    # ======================================================================
+    # APPLIED · BEAM BALANCE -- the mediolateral hip exoskeleton
+    # ======================================================================
+    BeamRealTimePage,      # 96  1 kHz admittance, 4 kHz drive, 5 Hz bandwidth
+    BeamPlantPage,         # 97  three links, frontal plane, H about the foot
+    BeamMeasuringPage,     # 98  anthropometry, gearbox, bench identification
+    BeamStabilityPage,     # 99  an unstable pole and a 120 ms human
+    BeamFrequencyPage,     # 100 the sine sweep and the rendered impedance
+    BeamControllerPage,    # 101 the momentum law, term by term
+    BeamEstimationPage,    # 102 three IMUs, a reference generator, drift
+    BeamAdmittancePage,    # 103 why a 100:1 harmonic drive forces admittance
+    BeamResultsPage,       # 104 what the beam said, and what it did not
+    # ======================================================================
+    # APPLIED · FAULT TOLERANCE -- the robotic knee prosthesis FTM
+    # ======================================================================
+    FaultRealTimePage,     # 105 a 200 ms fault and a 10 ms persistence test
+    FaultPlantPage,        # 106 the sensitive signal and the robust one
+    FaultFSMPage,          # 107 FSM impedance, and a wrong parameter set
+    FaultDetectionPage,    # 108 residual, threshold, persistence
+    FaultStabilityPage,    # 109 a supervisory layer on a working loop
+    FaultCompensationPage, # 110 momentum error to additive torque
+    FaultEstimationPage,   # 111 Gaussian processes as observers of normal
+    FaultLatencyPage,      # 112 43 ms or 103 ms
+    FaultResultsPage,      # 113 eight participants, four channels
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read
