@@ -132,6 +132,36 @@ RECAPS = {
     ('Pick a robust input and a sensitive output', 'Axial load is relatively robust to control faults and knee angular velocity is highly sensitive to them, so load and its derivative predict nominal velocity and the residual detects the fault. Load alone is ambiguous because each level occurs twice per stance; the derivative separates loading from unloading.', 20, 'ObserverPage'),
     ('An additive layer that vanishes when nothing is wrong', 'tau_Final = tau_base + tau_FTM, with tau_FTM the difference between the same learned map evaluated at the nominal and the measured state, so model bias cancels. The baseline impedance controller stays engaged throughout, keeping its compliance and its passive stability properties.', 36, 'ImpedanceControlPage'),
 ],
+'C-Space & Rigid Motion': [
+    ('Count before you control', 'A planar 3R arm has dof = 3(4 − 1 − 3) + 3 = 3; a four-bar has 3(4 − 1 − 4) + 4 = 1; a Stewart platform 6(14 − 1 − 18) + 36 = 6. Its two-joint C-space is a torus, so angles wrap and a planner must know it.', 115, 'CSpacePage'),
+    ('Rotations are matrices, not angle triples', 'A turn of 90° about ẑ gives R = [[0,−1,0],[1,0,0],[0,0,1]], RᵀR = I and det R = 1. log R returns (0, 0, π/2). Euler angles lose a freedom at pitch ±90°; R and quaternions do not.', 117, 'RotationsPage'),
+    ('Power does not care about frames', 'A revolute axis through q = (1, 0, 0) along ẑ has S = (0,0,1, 0,−1,0). Twists transform by Ad_T, wrenches by Ad_Tᵀ, so VᵀF is the same number in every frame — the seed of τ = JᵀF.', 118, 'TwistsPage'),
+],
+'Kinematics': [
+    ('Velocity and force use the same matrix', 'For a 2R arm with L₁ = 1, L₂ = 0.8 at q = (30°, 60°), det J = L₁L₂ sin q₂ = 0.69. A 20 N downward hand force needs τ = JᵀF; straighten the elbow and det J → 0 while a radial force needs no torque at all.', 121, 'StaticsPage'),
+    ('Two branches, then iterate', 'The 2R target (0.9, 0.8) with L = (1, 0.7) has an elbow-up and an elbow-down solution. Newton–Raphson from a nearby guess doubles the correct digits each step; from a bad guess it can land on the other branch.', 122, 'IKPage'),
+    ('Use the null space on purpose', 'A planar 3R arm on a 2-D task has a 1-D null space. q̇ = J⁺ẋ + (I − J⁺J)q̇₀ keeps the hand error at numerical zero while the elbow follows q̇₀; adding q̇₀ without the projector drags the hand.', 123, 'NullSpacePage'),
+],
+'Dynamics': [
+    ('Know the 2R equations by structure', 'M = [[a + 2b cos q₂, d + b cos q₂], [d + b cos q₂, d]] with b = m₂L₁r₂; c carries b sin q₂ times velocity products; g is the gradient of potential energy. Recursive Newton–Euler reproduces the same τ to machine precision.', 125, 'LagrangePage'),
+    ('M is positive definite and Ṁ − 2C is skew', 'Kinetic energy ½q̇ᵀMq̇ > 0 makes M invertible at every posture. With Christoffel C, q̇ᵀ(Ṁ − 2C)q̇ = 0, so dE/dt = q̇ᵀτ: the arm returns only the energy it was given.', 126, 'MassMatrixPage'),
+    ('Inverse for control, forward for simulation', 'RNEA gives τ from (q, q̇, q̈) in O(n). Forward dynamics builds M from n RNEA calls and solves M q̈ = τ − h. Explicit Euler pumps energy into a passive pendulum; semi-implicit Euler does not drift.', 129, 'ForwardDynamicsPage'),
+],
+'Trajectories & Planning': [
+    ('Time scaling sets the torque', 'For a move of duration T, a cubic peaks at ṡ = 1.5/T and s̈ = 6/T²; the quintic at 1.875/T and 5.77/T². Halving T quadruples the inertial torque while gravity torque is unchanged.', 132, 'TimeScalingPage'),
+    ('Let the limits choose the speed', 'Along a fixed path τ = m(s)s̈ + c(s)ṡ² + g(s). Torque limits bound s̈; the optimal profile accelerates on the upper bound, brakes on the lower bound and switches where they meet, under the velocity limit curve.', 133, 'TimeOptimalPage'),
+    ('Plan in C-space, then time it', 'Two circular obstacles become irregular forbidden regions in (θ₁, θ₂) on a torus. A* on a 72 × 72 grid or an RRT returns a path; a time scaling then makes it a trajectory.', 134, 'MotionPlanningPage'),
+],
+'Robot Control': [
+    ('Computed torque needs the model', 'τ = M̂(q̈_d + K_dė + K_pe) + ĥ gives ë + K_dė + K_pe = 0 when M̂ = M and ĥ = h. A 30% mass error leaves a disturbance; PD + gravity uses only ĝ and is globally stable for set-points.', 135, 'MotionControlPage'),
+    ('Project posture torques dynamically', 'With J̄ = M⁻¹JᵀΛ, J M⁻¹(I − JᵀJ̄ᵀ) = 0: posture torques cause no hand acceleration. With the kinematic J⁺ the identity fails and the hand error grows while the posture task runs.', 136, 'OperationalSpacePage'),
+    ('Force along the blocked direction', 'Against a wall, control force along the normal and motion along the tangent. Impedance instead renders K and B at the hand; the contact force becomes K times penetration, which stays stable on a stiff passive surface.', 137, 'ForceControlPage'),
+],
+'Manipulation & Mobility': [
+    ('Antipodal within the cone', 'Two fingers on opposite sides of a disc are in force closure when the grasp line makes an angle with each normal below atan μ; with μ = 0.3 that is 16.7°. Frictionless contacts never resist the moment about the centre.', 138, 'GraspingPage'),
+    ('Two inputs, three coordinates', 'A differential drive obeys −sin φ ẋ + cos φ ẏ = 0. It reaches every pose but no smooth static feedback stabilises one; a look-ahead point d ahead of the axle is fully actuated and can track a path.', 139, 'MobileRobotPage'),
+    ('Answer one level lower', 'Spaces first, then kinematics and the Jacobian, then M q̈ + c + g = τ + JᵀF, then the control law. Every controller in the tutor is a statement about that equation.', 140, 'InterviewDrillPage'),
+],
 'Deep RL & Continuous Control': [
     ('Build the DDPG target carefully', 'y = r + γ(1−terminated)Q_target(s′, μ_target(s′)). The critic fits y. The actor follows the critic’s action derivative, while target networks move slowly. τ here is a mixing fraction, not a mechanical time constant.', 89, 'DDPGPage'),
     ('Do not merge independent algorithm choices', 'DDPG is deterministic/off-policy; SAC is stochastic/off-policy; PPO commonly uses stochastic/current-policy rollouts. Policy randomness does not decide whether replay is valid. A critic may be V or Q depending on the update rule.', 92, 'MDPandFamilyPage'),

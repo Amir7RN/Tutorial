@@ -30,6 +30,28 @@ The join between the two halves is not decorative. An RL agent never learns a
 control law in the abstract; it learns one for a specific plant with a specific
 effective inertia, bandwidth and safety envelope. The first half is that plant.
 
+### Robot Mechanics block (pages 114–140)
+
+The control pages assumed `M(q)q̈ + c + g = τ` and a Jacobian someone handed
+you. Pages 114–140 derive them, following the twelve
+[Modern Robotics](https://www.youtube.com/playlist?list=PLggLP4f-rq01z8VLqhDC94W2nWpWpZoMj)
+playlists (Lynch & Park, chapters 2–13) one by one; each page's badge names
+its playlist and links to it.
+
+| Section | Pages | Covers |
+|---|---|---|
+| C-Space & Rigid Motion | 114–118 | roadmap, DOF/Grübler, holonomic vs nonholonomic, task space vs workspace, SO(3), SE(3), twists, adjoint, wrenches |
+| Kinematics | 119–124 | product of exponentials, space/body Jacobian, τ = JᵀF, singularities and ellipses, analytic + Newton IK, null space, closed chains |
+| Dynamics | 125–131 | Lagrange, M(q) properties and Ṁ − 2C skew, recursive Newton–Euler, inverse and forward dynamics, task-space dynamics Λ/J̄/μ/p, constrained dynamics |
+| Trajectories & Planning | 132–134 | cubic/quintic/trapezoid, time-optimal scaling under torque limits, C-space A* and RRT |
+| Robot Control | 135–137 | PD + gravity vs computed torque, operational-space control with dynamically consistent null-space torques, hybrid force and task-space impedance |
+| Manipulation & Mobility | 138–140 | friction cones and force closure, nonholonomic unicycle tracking, interview drill |
+
+The numerics are in `ctrlcore/robokin.py` and `ctrlcore/robodyn.py`; checks
+(RNEA = closed-form Lagrange, M symmetric positive definite, Ṁ − 2C skew,
+null-space torques produce no hand acceleration, energy conservation, IK,
+force closure) are in `tests/test_robotics.py`.
+
 ## Run it
 
 On Windows, run `.\run.bat` or double-click `run.bat`. The window opens before

@@ -59,6 +59,13 @@ SECTION_COLORS = {
     # applied projects
     "Beam Balance":      CYAN,
     "Fault Tolerance":   ORANGE,
+    # robot mechanics
+    "C-Space & Rigid Motion": VIOLET,
+    "Kinematics":        TEAL,
+    "Dynamics":          BAD,
+    "Trajectories & Planning": GOOD,
+    "Robot Control":     ACCENT,
+    "Manipulation & Mobility": PINK,
     # reinforcement learning
     "Start Here":      ACCENT,
     "Value Functions": VIOLET,

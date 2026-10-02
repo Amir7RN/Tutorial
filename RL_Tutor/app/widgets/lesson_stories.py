@@ -830,3 +830,143 @@ STORIES.update({
           equation="Perceived 'Critical' perturbations fell from 87 % to 15 %."),
         seconds=9),
 })
+
+# --------------------------------------------------------------------------
+# ROBOT MECHANICS -- configuration space, kinematics, dynamics and robot
+# control, following the twelve Modern Robotics playlists. Schematic movies;
+# the numbers on the pages come from ctrlcore.robokin / ctrlcore.robodyn.
+# --------------------------------------------------------------------------
+_KIN_CHAIN = ("Joint angles q", "Forward kinematics T(q)", "Jacobian J(q)",
+              "Hand twist V = J q̇")
+_STATICS_CHAIN = ("Hand force F", "Transpose Jᵀ", "Joint torque τ", "Motor current")
+_DYN_CHAIN = ("Trajectory q, q̇, q̈", "Forward pass: ω, α, a", "Backward pass: f, n",
+              "Joint torques τ")
+_FD_CHAIN = ("Torque τ", "h = RNEA(q, q̇, 0)", "Solve M q̈ = τ − h", "Integrate q̇, q")
+_OSC_CHAIN = ("Hand error e, ė", "Λ(ẍ_d + K_d ė + K_p e) + μ + p", "τ = JᵀF",
+              "+ null-space torque", "Robot")
+_PLAN_CHAIN = ("Workspace obstacles", "C-space obstacles", "Planner (A*, RRT)",
+               "Path q(s)", "Time scaling s(t)")
+_SPINE = ("q", "T(q)", "V = J q̇", "τ = JᵀF", "τ = M q̈ + c + g")
+_LAG = ("K = ½q̇ᵀMq̇", "P(q)", "L = K − P", "d/dt ∂L/∂q̇ − ∂L/∂q", "τ")
+_ID = ("q(t), q̇(t), q̈(t)", "M q̈", "c(q, q̇)", "g(q)", "τ(t)")
+_TS = ("Path q(s)", "Time scaling s(t)", "Trajectory q(s(t))")
+_TOPT = ("τ = m s̈ + c ṡ² + g", "L(s, ṡ) ≤ s̈ ≤ U(s, ṡ)", "Velocity limit curve", "Switching")
+_CTC = ("Reference q_d", "M̂ (q̈_d + K_d ė + K_p e)", "+ ĉ + ĝ", "Robot")
+_GRASP = ("Contact points", "Friction cones", "Contact wrenches", "Positive span?")
+_DRILL_CHAIN = ("C-space & task space", "Kinematics & J", "M q̈ + c + g = τ + JᵀF", "Control law")
+
+
+def _rob(title, caption, labels, equation, **kw):
+    return S(title, caption, labels=labels, equation=equation, **kw)
+
+
+STORIES.update({
+    "RoboRoadmapPage": movie("From joint angles to joint torques", "flow",
+        S("Kinematics first", "Joint angles fix the pose of every link. The forward kinematics turns them into the hand pose.", nodes=_SPINE, active=1, equation="Configuration → pose: the first question of every robotics interview."),
+        S("Then velocities and forces", "Differentiate the pose and the Jacobian appears; power balance turns the same matrix around for forces.", nodes=_SPINE, active=3, equation="One matrix, two directions: J for velocity, Jᵀ for force."),
+        S("Then the dynamics", "Newton's law for a chain of bodies gives the torque needed for a motion — the plant every controller in this tutor was assuming.", nodes=_SPINE, active=4, equation="The control pages begin where this block ends."), seconds=8),
+    "CSpacePage": movie("Count freedoms, subtract constraints", "robot",
+        _rob("Each body brings freedoms", "A free planar body has three: x, y and a rotation. A spatial one has six.", ("Planar body: 3", "Spatial body: 6", "Ground: 0"), "Gruebler: dof = m(N − 1 − J) + Σ fᵢ"),
+        _rob("Each joint takes some away", "A revolute joint leaves one relative freedom, so it removes m − 1. Three revolute joints on three links leave three DOF.", ("Revolute: f = 1", "Universal: f = 2", "Spherical: f = 3"), "Planar 3R: 3(4 − 1 − 3) + 3 = 3"),
+        _rob("C-space has a shape", "Two revolute angles wrap around: the C-space is a torus, not a flat square.", ("q₁ ∈ S¹", "q₂ ∈ S¹", "C = T²"), "Dimension says how many numbers; topology says how they connect.")),
+    "ConstraintsPage": movie("Position constraints shrink C-space; rolling does not", "flow",
+        S("A closed loop", "Loop closure g(q) = 0 removes freedoms: four joints but one DOF.", nodes=("g(q) = 0", "A(q) q̇ = 0", "Smaller C-space"), active=0, equation="Holonomic: integrable to a position constraint."),
+        S("A rolling wheel", "No sideways slip constrains velocity only, and it is not the derivative of any position constraint.", nodes=("No slip", "A(q) q̇ = 0", "Same C-space"), active=1, equation="Nonholonomic: fewer velocity freedoms, same reachable set."),
+        S("Task space and workspace", "Task space is the coordinates of the job; workspace is the part of it the robot can reach.", nodes=("C-space", "Task space", "Workspace"), active=2, equation="3 joints for a 2-D task: one redundant freedom."), seconds=8),
+    "RotationsPage": movie("One axis, one angle, one matrix", "flow",
+        S("Pick an axis", "Any rotation is a single turn about a single unit axis.", nodes=("Axis ω̂", "Angle θ", "Rodrigues", "R ∈ SO(3)"), active=0, equation="Euler's rotation theorem."),
+        S("Exponentiate", "Integrate constant angular velocity for θ seconds: R = exp([ω̂]θ).", nodes=("Axis ω̂", "Angle θ", "Rodrigues", "R ∈ SO(3)"), active=2, equation="R = I + sin θ [ω̂] + (1 − cos θ)[ω̂]²"),
+        S("Take the log back", "log R recovers ω̂θ — a three-number orientation error you can feed to a gain.", nodes=("R ∈ SO(3)", "log R", "ω̂θ ∈ ℝ³", "Controller"), active=1, equation="Orientation error: log(R_dᵀ R), never Euler-angle differences."), seconds=8),
+    "TwistsPage": movie("Every motion is a screw", "flow",
+        S("Rotate about a line", "A revolute joint is a screw of zero pitch through a point q.", nodes=("Axis point q", "Direction ŝ", "Pitch h", "Screw S"), active=3, equation="S = (ŝ, −ŝ × q + h ŝ)"),
+        S("Exponentiate the twist", "exp([S]θ) is the rigid motion produced by turning θ about that screw.", nodes=("S", "θ", "exp([S]θ)", "T ∈ SE(3)"), active=2, equation="Exponential coordinates of a pose: Sθ ∈ ℝ⁶."),
+        S("Wrenches are dual", "Moments and forces transform with the adjoint transpose, so twist · wrench is power in any frame.", nodes=("V_b", "F_b", "Ad_T", "V_sᵀF_s = V_bᵀF_b"), active=3, equation="This frame invariance is why τ = JᵀF."), seconds=8),
+    "PoEPage": movie("Apply the joints from the tip inward", "robot",
+        _rob("Home pose", "Every axis is drawn with the robot at home: that is all the space form needs.", ("M: home pose", "S₁, S₂, S₃: home axes", "No link frames"), "T(θ) = e^[S₁]θ₁ e^[S₂]θ₂ e^[S₃]θ₃ M"),
+        _rob("Last joint first", "Moving joint 3 first leaves joints 1 and 2 at home, so their axes are unchanged.", ("e^[S₃]θ₃ first", "then e^[S₂]θ₂", "then e^[S₁]θ₁"), "Read the space form right to left."),
+        _rob("Body form", "The same arm written in the end-effector frame multiplies on the right instead.", ("Bᵢ = Ad_{M⁻¹} Sᵢ", "T = M e^[B₁]θ₁ ⋯", "Same T"), "No D-H frames, six numbers per joint.")),
+    "JacobianPage": movie("Each column is one joint's contribution", "flow",
+        S("Move joint 1 alone", "The hand velocity from joint 1 alone is the first column.", nodes=_KIN_CHAIN, active=2, equation="Planar revolute: column i = ẑ × (p_tip − pᵢ)."),
+        S("Add the others", "Joint rates combine linearly: v = J q̇ at this configuration.", nodes=_KIN_CHAIN, active=3, equation="The unit ball of q̇ maps to the manipulability ellipse."),
+        S("Straighten the arm", "Columns become parallel, the ellipse becomes a line, rank J drops.", nodes=_KIN_CHAIN, active=2, equation="Singular: σ_min = 0, det J = L₁L₂ sin q₂ = 0."), seconds=8),
+    "StaticsPage": movie("Power in equals power out", "flow",
+        S("A force at the hand", "The hand pushes on the world with F.", nodes=_STATICS_CHAIN, active=0, equation="Static: no acceleration, no losses."),
+        S("Transpose the Jacobian", "τᵀq̇ = Fᵀ J q̇ for every q̇, so τ = JᵀF.", nodes=_STATICS_CHAIN, active=1, equation="τ = JᵀF"),
+        S("At a singularity", "Along the lost direction a hand force needs zero joint torque: the structure carries it.", nodes=_STATICS_CHAIN, active=2, equation="Slow direction for velocity = strong direction for force."), seconds=8),
+    "IKPage": movie("Given the hand, find the joints", "robot",
+        _rob("Two analytic branches", "The law of cosines gives the elbow angle up to a sign: elbow up or elbow down.", ("cos q₂ from distance", "q₂ = ±arccos", "q₁ from atan2"), "Outside the annulus: no solution."),
+        _rob("Newton–Raphson", "Linearise the forward kinematics and step by the pseudo-inverse of J.", ("Residual x_d − f(q)", "Step J⁺ e", "Repeat"), "Quadratic convergence near a solution."),
+        _rob("Near a singularity", "Undamped steps explode; damping bounds them at the cost of speed.", ("J⁺ blows up", "Jᵀ(JJᵀ + λ²I)⁻¹", "Bounded step"), "Damped least squares = Levenberg–Marquardt.")),
+    "NullSpacePage": movie("Move the elbow, keep the hand", "robot",
+        _rob("Three joints, two task numbers", "One direction of joint motion produces no hand motion: the null space.", ("Task: (x, y)", "Joints: 3", "Null space: 1-D"), "dim null(J) = n − rank J"),
+        _rob("Project the secondary task", "N = I − J⁺J removes the part of q̇₀ that would move the hand.", ("J⁺ ẋ: the task", "N q̇₀: the posture", "J N = 0"), "q̇ = J⁺ẋ + (I − J⁺J) q̇₀"),
+        _rob("Forget to project", "Adding q̇₀ directly drags the hand off its target.", ("Unprojected q̇₀", "Hand drifts", "Task violated"), "Priority is enforced by the projector, not by hope.")),
+    "ClosedChainPage": movie("Some joints drive, the rest follow", "flow",
+        S("Actuated joints", "Only the crank is driven; the coupler and rocker are dragged along by the loop.", nodes=("Actuated θ_a", "Loop closure g = 0", "Passive θ_p", "Platform pose"), active=0, equation="θ̇_p = −H_p⁻¹ H_a θ̇_a"),
+        S("Inverse is easy", "For a Stewart platform each leg length follows directly from the platform pose.", nodes=("Platform pose", "Leg vectors", "Leg lengths", "Actuators"), active=2, equation="Parallel robot: easy IK, hard FK."),
+        S("Actuator singularity", "When H_p loses rank the platform gains a freedom the motors cannot hold.", nodes=("Actuated θ_a", "Loop closure g = 0", "Passive θ_p", "Platform pose"), active=2, equation="Dangerous: inside the workspace."), seconds=8),
+    "LagrangePage": movie("Energy in, equations out", "flow",
+        S("Kinetic energy", "Sum ½m‖v_c‖² + ½Iω² over links; with v_c = J_v q̇ it is ½q̇ᵀM(q)q̇.", nodes=_LAG, active=0, equation="The mass matrix is built from centre-of-mass Jacobians."),
+        S("Differentiate", "The Euler–Lagrange equation produces inertial, velocity-product and gravity terms.", nodes=_LAG, active=3, equation="τ = M(q)q̈ + c(q, q̇) + g(q)"),
+        S("Read the structure", "Coriolis and centripetal terms carry sin q₂ in a 2R arm: they exist only when the elbow is bent.", nodes=("M q̈", "c(q, q̇)", "g(q)", "τ"), active=1, equation="Structure first, then cost: symbolic Lagrange is O(n⁴)."), seconds=8),
+    "MassMatrixPage": movie("Coupling, posture and passivity", "robot",
+        _rob("Posture changes inertia", "Unfold the elbow and the shoulder sees more inertia; M depends on q₂ only.", ("M₁₁(q₂)", "M₁₂ = coupling", "M₂₂"), "M symmetric, positive definite."),
+        _rob("Gearing decouples", "Reflected rotor inertia adds to the diagonal only, so coupling shrinks.", ("M + diag(N²J_m)", "Less coupling", "Joint PID works"), "High ratio: n nearly independent joints."),
+        _rob("Passivity", "With Christoffel C, Ṁ − 2C is skew and the arm stores only the energy it is given.", ("Ṁ − 2C skew", "dE/dt = q̇ᵀτ", "Lyapunov proofs"), "The property every robot stability proof uses.", mass=True)),
+    "NewtonEulerPage": movie("Out for motion, back for force", "flow",
+        S("Forward pass", "Angular velocities and accelerations accumulate from base to tip; gravity enters as a fake upward base acceleration.", nodes=_DYN_CHAIN, active=1, equation="a₀ = (0, +g)"),
+        S("Backward pass", "Each link needs the force and moment to accelerate itself plus everything beyond it.", nodes=_DYN_CHAIN, active=2, equation="fᵢ = fᵢ₊₁ + mᵢa_ci,  nᵢ = nᵢ₊₁ + lᵢ × fᵢ₊₁ + r_ci × mᵢa_ci + Iᵢαᵢ"),
+        S("Project onto the axis", "The joint torque is the moment component along the joint axis.", nodes=_DYN_CHAIN, active=3, equation="O(n): the real-time inverse-dynamics algorithm."), seconds=8),
+    "InverseDynamicsPage": movie("Motion in, torque out", "flow",
+        S("Plan the motion", "A quintic move gives q, q̇ and q̈ at every instant.", nodes=_ID, active=0, equation="Desired motion is the input."),
+        S("Evaluate each term", "Inertial and velocity terms scale with 1/T²; gravity does not depend on speed.", nodes=_ID, active=1, equation="Halve T: inertial torque ×4, gravity ×1."),
+        S("Use it", "Feedforward, motor sizing, feasibility checks and contact estimation all start here.", nodes=_ID, active=4, equation="τ_meas − τ_ID = JᵀF_ext"), seconds=8),
+    "ForwardDynamicsPage": movie("Torque in, motion out", "flow",
+        S("Bias forces", "One RNEA call with zero acceleration gives everything except M q̈.", nodes=_FD_CHAIN, active=1, equation="h = c + g"),
+        S("Solve for acceleration", "M is positive definite, so the solve always succeeds.", nodes=_FD_CHAIN, active=2, equation="q̈ = M⁻¹(τ − h)"),
+        S("Integrate", "The integrator decides whether energy is conserved, pumped in, or bled out.", nodes=_FD_CHAIN, active=3, equation="Explicit Euler pumps energy; semi-implicit Euler does not drift.", feedback=True), seconds=8),
+    "TaskDynamicsPage": movie("The mass the hand feels", "robot",
+        _rob("Map inertia to the hand", "q̈ = M⁻¹(JᵀF − h), multiplied by J, gives the hand's equation of motion.", ("Λ = (JM⁻¹Jᵀ)⁻¹", "μ: velocity terms", "p: gravity"), "Λ ẍ + μ + p = F"),
+        _rob("It depends on direction", "Push the hand sideways and it feels light; push along the arm and it feels heavy.", ("Light direction", "Heavy direction", "m_u = 1/(uᵀΛ⁻¹u)"), "Collision force grows with √(m_u)."),
+        _rob("At a singularity", "Along the lost direction Λ becomes infinite: the structure, not the motors, takes the impact.", ("Arm straight", "Λ → ∞ radially", "Motors feel nothing"), "Operational space control cancels Λ.", contact=True)),
+    "ConstrainedDynamicsPage": movie("The wall pushes back exactly enough", "robot",
+        _rob("Add the constraint", "The hand must stay on the wall: A(q) q̇ = 0.", ("A q̇ = 0", "Aᵀλ: constraint force", "λ: contact force"), "[M −Aᵀ; A 0][q̈; λ] = [τ − h; −Ȧq̇]", contact=True),
+        _rob("Solve for λ", "The multiplier is the force the wall must supply so the constraint holds.", ("Push in: λ into arm", "Constraint does no work", "n − k equations remain"), "Projected dynamics: only free directions survive.", contact=True),
+        _rob("Unilateral contact", "If the solve asks the wall to pull, the contact would lift off.", ("λ ≥ 0 required", "Sign flips: lift-off", "Complementarity"), "Legged robots: λ inside friction cones, solved as a QP.", contact=True)),
+    "TimeScalingPage": movie("Same path, different clocks", "flow",
+        S("Cubic", "Zero end velocity, but acceleration jumps at start and stop.", nodes=_TS, active=1, equation="s = 3(t/T)² − 2(t/T)³"),
+        S("Quintic", "Zero end acceleration too, so no infinite jerk.", nodes=_TS, active=1, equation="s = 10τ³ − 15τ⁴ + 6τ⁵"),
+        S("Trapezoid", "Accelerate, coast, brake: time-optimal under velocity and acceleration limits.", nodes=_TS, active=2, equation="T = (a + v²)/(v a)"), seconds=8),
+    "TimeOptimalPage": movie("Ride the torque limits", "flow",
+        S("Dynamics on a path", "Along q(s) the torque is linear in s̈ and quadratic in ṡ.", nodes=_TOPT, active=0, equation="Torque limits become acceleration bounds."),
+        S("Accelerate as hard as possible", "Integrate the upper bound forward from rest.", nodes=_TOPT, active=1, equation="Some joint is always at its limit."),
+        S("Brake as hard as possible", "Integrate the lower bound backward from the goal; switch where they meet.", nodes=_TOPT, active=3, equation="Bang-bang in the (s, ṡ) phase plane."), seconds=8),
+    "MotionPlanningPage": movie("Plan for a point in C-space", "flow",
+        S("Map the obstacles", "Every configuration where any link touches an obstacle is forbidden.", nodes=_PLAN_CHAIN, active=1, equation="C_obs = {q : robot(q) ∩ obstacles ≠ ∅}"),
+        S("Search", "A* on a grid for low dimensions, RRT or PRM for many joints.", nodes=_PLAN_CHAIN, active=2, equation="The collision checker dominates run time."),
+        S("Add timing", "A path has no clock; a time scaling turns it into a trajectory.", nodes=_PLAN_CHAIN, active=4, equation="Path → trajectory → torque."), seconds=8),
+    "MotionControlPage": movie("Cancel the model, design the error", "flow",
+        S("Predict the torque", "The RNEA computes M, c and g for the current state.", nodes=_CTC, active=1, equation="Computed torque = inverse dynamics with a corrected acceleration."),
+        S("Linear error dynamics", "With an exact model every joint becomes a designed second-order system.", nodes=_CTC, active=3, equation="ë + K_d ė + K_p e = 0", feedback=True),
+        S("Model error", "Wrong masses leave a residual the feedback must reject; PD + gravity needs only ĝ.", nodes=("Reference q_d", "PD", "+ ĝ(q)", "Robot"), active=2, equation="PD + g: globally stable for set-points, by Ṁ − 2C skew.", feedback=True), seconds=8),
+    "OperationalSpacePage": movie("Hand first, posture second", "flow",
+        S("Task force", "Compute the hand force that makes the hand error decay like a designed system.", nodes=_OSC_CHAIN, active=1, equation="F = Λ(ẍ_d + K_d ė + K_p e) + μ + p"),
+        S("Map to joints", "Joint torques follow from the transpose Jacobian.", nodes=_OSC_CHAIN, active=2, equation="τ = JᵀF"),
+        S("Add posture in the null space", "Project the posture torque so it creates no hand acceleration.", nodes=_OSC_CHAIN, active=3, equation="(I − JᵀJ̄ᵀ) τ₀ with J̄ = M⁻¹JᵀΛ", feedback=True), seconds=8),
+    "ForceControlPage": movie("Force where it is blocked, motion where it is free", "robot",
+        _rob("Natural constraints", "The wall forbids motion into it and allows motion along it.", ("Normal: blocked", "Tangent: free", "Choose complementary"), "Control force along the normal, motion along the tangent.", contact=True),
+        _rob("Hybrid control", "A selection matrix sends each direction to the force loop or the motion loop.", ("P: motion directions", "I − P: force directions", "Never both"), "τ = Jᵀ[Λ P a_cmd + (I − P) F_cmd + μ + p]", contact=True),
+        _rob("Impedance control", "Specify a virtual spring and damper at the hand; force follows from penetration.", ("K: stiffness", "B: damping", "F = K x̃ + B ẋ̃"), "Passive rendered impedance: stable against any passive surface.", contact=True)),
+    "GraspingPage": movie("Cones that span every wrench", "flow",
+        S("Friction cone", "Each contact can push along its normal and, with friction, inside a cone.", nodes=_GRASP, active=1, equation="‖f_t‖ ≤ μ f_n"),
+        S("Contact wrenches", "Each cone edge contributes a wrench (moment, force).", nodes=_GRASP, active=2, equation="Fᵢ = (pᵢ × fᵢ, fᵢ)"),
+        S("Force closure", "If the edge wrenches positively span the wrench space, squeezing can resist anything.", nodes=_GRASP, active=3, equation="Planar antipodal grasp: grasp line inside both cones."), seconds=8),
+    "MobileRobotPage": movie("Two inputs, three coordinates", "flow",
+        S("Drive and spin", "A differential drive can move forward and rotate, but not slide sideways.", nodes=("Wheel speeds", "v, ω", "ẋ, ẏ, φ̇", "Pose"), active=1, equation="v = r(u_R + u_L)/2, ω = r(u_R − u_L)/(2d)"),
+        S("Not integrable", "Wiggling drive and turn produces sideways progress: every pose is reachable.", nodes=("Drive", "Turn", "Lie bracket", "Sideways"), active=2, equation="Controllable, but not smoothly stabilisable to a point."),
+        S("Steer a point ahead", "The point a distance ahead of the axle is fully actuated, so it can track a path.", nodes=("Reference", "Look-ahead point", "A(φ)⁻¹", "v, ω"), active=2, equation="[v, ω] = A(φ)⁻¹(ṗ_ref + k e)", feedback=True), seconds=8),
+    "InterviewDrillPage": movie("Answer one level lower", "flow",
+        S("Spaces", "Name the configuration space and the task space before anything else.", nodes=_DRILL_CHAIN, active=0, equation="What are the numbers that describe the robot and the job?"),
+        S("Kinematics and dynamics", "Write the Jacobian, then the equation of motion.", nodes=_DRILL_CHAIN, active=2, equation="The plant comes from mechanics, not from a block diagram."),
+        S("Then control", "Choose the controller as a statement about that equation.", nodes=_DRILL_CHAIN, active=3, equation="Computed torque, OSC, impedance: all built on M, c, g and J."), seconds=8),
+})

@@ -75,6 +75,20 @@ DEEP RL & CONTINUOUS CONTROL
            one gait cycle is one timestep
     95     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
 
+ROBOT MECHANICS
+   114-118 configuration space, constraints, SO(3), SE(3), twists, wrenches
+   119-124 forward kinematics (PoE), Jacobian, statics, IK, null space,
+           closed chains
+   125-131 dynamics: Lagrange, M(q), Newton-Euler, inverse and forward
+           dynamics, task-space dynamics, constrained dynamics
+   132-134 time scaling, time-optimal scaling, motion planning
+   135-137 computed torque, operational space + null space, force control
+   138-140 grasping, wheeled mobile robots, interview drill
+
+The mechanics block is appended rather than inserted so that every earlier
+page keeps its number. It derives the plant the control half assumed: where
+M(q), c, g and J come from, following the twelve Modern Robotics playlists.
+
 The last block closes the loop the tutor opened. Pages 1-51 built a compliant
 joint and said what its impedance parameters mean; 52-80 built the machinery
 for learning from experience; 81-86 use the second to choose the first, and
@@ -149,6 +163,41 @@ from .faulttol import (
     FaultRealTimePage,
     FaultResultsPage,
     FaultStabilityPage,
+)
+from .robo_space import (
+    ConstraintsPage,
+    CSpacePage,
+    RoboRoadmapPage,
+    RotationsPage,
+    TwistsPage,
+)
+from .robo_kin import (
+    ClosedChainPage,
+    IKPage,
+    JacobianPage,
+    NullSpacePage,
+    PoEPage,
+    StaticsPage,
+)
+from .robo_dyn import (
+    ConstrainedDynamicsPage,
+    ForwardDynamicsPage,
+    InverseDynamicsPage,
+    LagrangePage,
+    MassMatrixPage,
+    NewtonEulerPage,
+    TaskDynamicsPage,
+)
+from .robo_ctrl import (
+    ForceControlPage,
+    GraspingPage,
+    InterviewDrillPage,
+    MobileRobotPage,
+    MotionControlPage,
+    MotionPlanningPage,
+    OperationalSpacePage,
+    TimeOptimalPage,
+    TimeScalingPage,
 )
 from .bellman import (
     BellmanExpQPage,
@@ -358,6 +407,43 @@ PAGE_CLASSES = [
     FaultEstimationPage,   # 111 Gaussian processes as observers of normal
     FaultLatencyPage,      # 112 43 ms or 103 ms
     FaultResultsPage,      # 113 eight participants, four channels
+    # ======================================================================
+    # ROBOT MECHANICS -- configuration space, kinematics, dynamics, robot
+    # control. One block per Modern Robotics playlist (chapters 2-13).
+    # ======================================================================
+    # ---- C-space & rigid motion (playlists 1-2) ---------------------------
+    RoboRoadmapPage,       # 114 the twelve playlists, and what to master
+    CSpacePage,            # 115 dof, Gruebler, the torus
+    ConstraintsPage,       # 116 holonomic vs nonholonomic; task vs workspace
+    RotationsPage,         # 117 SO(3), Rodrigues, the matrix log
+    TwistsPage,            # 118 SE(3), screws, adjoint, wrenches
+    # ---- Kinematics (playlists 3-6) ---------------------------------------
+    PoEPage,               # 119 product of exponentials
+    JacobianPage,          # 120 columns are screw axes; the velocity ellipse
+    StaticsPage,           # 121 tau = J^T F, singularities, force ellipse
+    IKPage,                # 122 analytic branches, Newton-Raphson, DLS
+    NullSpacePage,         # 123 J^+, I - J^+ J, self-motion
+    ClosedChainPage,       # 124 four-bar, Stewart, actuator singularities
+    # ---- Dynamics (playlist 7) --------------------------------------------
+    LagrangePage,          # 125 L = K - P, the 2R equations
+    MassMatrixPage,        # 126 M SPD, Christoffel, Mdot - 2C skew
+    NewtonEulerPage,       # 127 the O(n) recursion, traced
+    InverseDynamicsPage,   # 128 torque from a trajectory, term by term
+    ForwardDynamicsPage,   # 129 qdd = M^-1 (tau - h); integrators
+    TaskDynamicsPage,      # 130 Lambda, mu, p; the mass the hand feels
+    ConstrainedDynamicsPage,  # 131 Lagrange multipliers, contact forces
+    # ---- Trajectories & planning (playlists 8-9) --------------------------
+    TimeScalingPage,       # 132 cubic, quintic, trapezoid
+    TimeOptimalPage,       # 133 the (s, sdot) phase plane
+    MotionPlanningPage,    # 134 C-space obstacles, A*, RRT
+    # ---- Robot control (playlist 10) --------------------------------------
+    MotionControlPage,     # 135 PD + gravity vs computed torque
+    OperationalSpacePage,  # 136 OSC and null-space torques
+    ForceControlPage,      # 137 hybrid motion/force, task-space impedance
+    # ---- Manipulation & mobility (playlists 11-12) ------------------------
+    GraspingPage,          # 138 friction cones, force closure
+    MobileRobotPage,       # 139 nonholonomic unicycle tracking
+    InterviewDrillPage,    # 140 the questions, answered
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read
