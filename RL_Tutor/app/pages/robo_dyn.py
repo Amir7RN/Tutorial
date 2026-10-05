@@ -32,8 +32,10 @@ from .robo_common import (
     interview,
     labelled_slider,
     mat_html,
+    plain,
     playlist_badge,
     square,
+    start_here,
     watch,
 )
 
@@ -61,6 +63,15 @@ class LagrangePage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(7))
+        self.add(start_here(
+            "Kinematics described motion; <b>dynamics</b> asks what torques "
+            "cause it. The answer for any arm has one shape: <b>τ = M(q)q̈ + "
+            "c(q, q̇) + g(q)</b>. Read it as F = ma for robots: motor torque "
+            "= (a mass-like matrix × acceleration) + (forces that appear "
+            "because joints are already moving) + (torque to hold the links "
+            "up against gravity). Lagrange's method gets all three from "
+            "energy alone: write the kinetic and potential energy, "
+            "differentiate, done."))
 
         e = Card("the Euler–Lagrange equations")
         e.add(math_label(r"\mathcal{L}(q,\dot q)=K-P=\frac{1}{2}\dot q^TM(q)\dot q-P(q),\qquad "
@@ -75,6 +86,16 @@ class LagrangePage(Page):
             "I<sub>i</sub>J<sub>ωi</sub>ᵀJ<sub>ωi</sub>]q̇ = ½q̇ᵀM(q)q̇. "
             "That bracket <b>is</b> the mass matrix — built from the same "
             "Jacobians as the kinematics pages, one per centre of mass."))
+        e.add(plain(
+            "L = K − P: kinetic energy minus potential energy. The recipe for "
+            "joint i: take ∂L/∂q̇ᵢ (a kind of momentum), take its time "
+            "derivative, subtract ∂L/∂qᵢ; the result is the torque at joint "
+            "i. Why bother: it applies F = ma to the whole chain without "
+            "drawing the forces links exert on each other — those internal "
+            "forces cancel automatically. K = ½q̇ᵀMq̇ is the multi-joint "
+            "version of ½mv²: M plays the role of mass, but it is a matrix "
+            "and it changes with posture. It is assembled from each link's "
+            "mass and its centre-of-mass Jacobian (page 120)."))
         self.add(e)
 
         r = Card("the 2R arm, in closed form (memorise the structure)")
@@ -90,6 +111,17 @@ class LagrangePage(Page):
             "because the elbow is bent, and they vanish when the arm is "
             "straight or folded. M depends on q₂ only — rotating the whole arm "
             "about the shoulder changes nothing inertially.", dim=True))
+        r.add(plain(
+            "<b>M</b>: the diagonal says how hard each joint is to accelerate "
+            "on its own; the off-diagonal says how much accelerating one "
+            "joint shoves the other (coupling). The shoulder entry a + 2b cos "
+            "q₂ is largest with the arm straight (mass far from the shoulder "
+            "— a skater with arms out) and smallest folded (arms in). "
+            "<b>c</b>: forces that exist only because joints are already "
+            "turning — like the pull you feel swinging a bucket on a rope. "
+            "<b>g</b>: torque to hold the links up. It uses cos because only "
+            "the horizontal distance to each centre of mass makes a lever arm "
+            "for gravity."))
         self.add(r)
 
         lab = Card("evaluate every term at a state")
@@ -105,6 +137,15 @@ class LagrangePage(Page):
         lab.add_layout(stat_row(self.st_chk))
         self.cv = MplCanvas(width=7.6, height=3.6, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Set a state: angles, speeds, accelerations. The bars split each "
+            "joint's torque into M q̈, c and g; the diamond is the total. "
+            "<b>Try:</b> (1) both speeds 0 → the c bar vanishes. (2) Speeds "
+            "and accelerations all 0 → only gravity remains: the torque to "
+            "hold still. (3) Move q₁ only → the printed M does not change, "
+            "because M depends on the elbow alone. The stat compares this "
+            "closed-form answer with the Newton–Euler algorithm of page 127; "
+            "a value near zero means two very different methods agree."))
         self.add(lab)
         self._draw()
 
@@ -173,6 +214,13 @@ class MassMatrixPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(7))
+        self.add(start_here(
+            "The mass matrix M(q) is the centre of robot dynamics. "
+            "Interviewers ask for its properties, so this page lists the four "
+            "that matter, says why each one is true, and shows them live. "
+            "One-line version: M is symmetric, always invertible, never "
+            "infinitely light or heavy, and the Coriolis part paired with it "
+            "can never create energy."))
 
         p = Card("the four properties, and why each holds")
         p.add(body(
@@ -193,6 +241,18 @@ class MassMatrixPage(Page):
             "C is not unique — many matrices satisfy c = Cq̇ — but only the "
             "Christoffel choice gives skew symmetry. Use it whenever you write "
             "a Lyapunov function V = ½ėᵀMė + ….", dim=True))
+        p.add(plain(
+            "<b>1. Symmetric</b>: only the symmetric part of M changes "
+            "½q̇ᵀMq̇, so you may always take M symmetric. <b>2. Positive "
+            "definite</b>: any motion has positive kinetic energy, so M can "
+            "always be inverted, and you can always get acceleration from "
+            "torque — unlike J, which can go singular. <b>3. Bounded</b>: the "
+            "arm is never infinitely light or heavy. <b>4. Ṁ − 2C skew</b>: "
+            "the c forces only pass energy between joints and never create "
+            "it, so the energy change equals the power the motors put in, "
+            "q̇ᵀτ. 'Christoffel symbols' are just the specific recipe for "
+            "building C from derivatives of M; know that it exists and that "
+            "it is the choice that makes property 4 true."))
         self.add(p)
 
         lab = Card("M(q₂), its eigenvalues, and the kinetic-energy ellipse")
@@ -210,6 +270,16 @@ class MassMatrixPage(Page):
         lab.add_layout(stat_row(self.st_l1, self.st_l2, self.st_cp, self.st_sk))
         self.cv = MplCanvas(width=7.6, height=3.6, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Move the elbow and watch the printed M. Left plot: its three "
+            "entries for every elbow angle — the shoulder entry M₁₁ is "
+            "largest at q₂ = 0 (straight). Right plot: all joint-velocity "
+            "combinations with exactly 1 J of kinetic energy; the ellipse is "
+            "long in the 'light' directions. λ<sub>max</sub> and "
+            "λ<sub>min</sub> are the heaviest and lightest directions. "
+            "<b>Try:</b> add payload — everything gets heavier. Add rotor "
+            "inertia — only the diagonal grows, so the coupling number falls. "
+            "The last stat checks property 4 and stays at numerical zero."))
         self.add(lab)
         self._draw()
 
@@ -296,6 +366,14 @@ class NewtonEulerPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(7))
+        self.add(start_here(
+            "Lagrange is good on paper but slow on a computer when there are "
+            "many joints. <b>Recursive Newton–Euler (RNEA)</b> gives the same "
+            "torques fast, in two passes. Pass 1 walks from the base out to "
+            "the tip, working out each link's speed and acceleration. Pass 2 "
+            "walks from the tip back to the base, adding up the force each "
+            "link needs. The torque at joint i is the moment link i needs "
+            "from link i − 1."))
 
         b = Card("one rigid body: the Newton–Euler equations")
         b.add(math_label(r"f=m\,a_c,\qquad m_c=\mathcal{I}_c\dot\omega+"
@@ -308,6 +386,13 @@ class NewtonEulerPage(Page):
             "6×6 spatial inertia G<sub>b</sub> = diag(I<sub>b</sub>, mI) and "
             "the Lie bracket ad<sub>V</sub>, so one line covers a body in any "
             "frame."))
+        b.add(plain(
+            "For one solid body: force = mass × acceleration of its centre (f "
+            "= ma), and moment = inertia × angular acceleration + ω × Iω. The "
+            "last term is the gyroscopic effect — why a spinning top resists "
+            "tipping. In a flat (planar) arm it is always zero. The book's "
+            "6-D form packs both equations into one line; you do not need it "
+            "for a planar arm."))
         self.add(b)
 
         r = Card("the recursion (planar revolute version, as coded)")
@@ -333,6 +418,19 @@ class NewtonEulerPage(Page):
             "M q̈ + c + g (computed torque, gravity compensation, "
             "contact-torque estimation) calls this, usually at 1 kHz.",
             dim=True))
+        r.add(plain(
+            "<b>Outward pass.</b> A link's spin rate = its parent's + its own "
+            "joint rate (in a plane, angles just add). Its acceleration = "
+            "parent's acceleration + a tangential part (α × r) − a "
+            "centripetal part (ω²r, pointing inward). <b>Gravity trick</b>: "
+            "instead of adding weight to every link, pretend the base "
+            "accelerates <i>upward</i> at g. In a lift accelerating up you "
+            "feel heavier — physically identical, and it saves "
+            "work.<br><b>Inward pass.</b> Start at the tip. Each link's force "
+            "= the force it must pass on to the next link + its own m·a. Its "
+            "moment = the next link's moment + the moment of that passed-on "
+            "force about this joint + its own rotational needs. Joint torque "
+            "= that moment."))
         self.add(r)
 
         lab = Card("trace one call: every intermediate quantity")
@@ -349,6 +447,16 @@ class NewtonEulerPage(Page):
         lab.add(self.tbl)
         self.cv = MplCanvas(width=7.4, height=3.6)
         lab.add(self.cv)
+        lab.add(plain(
+            "The table lists every intermediate number of one RNEA call, in "
+            "the order the algorithm produces them. The drawing shows each "
+            "centre-of-mass acceleration (violet, including the fake +g) and "
+            "the joint reaction forces (red). <b>Try:</b> (1) speeds and "
+            "accelerations 0 → only gravity loads, and the torques are "
+            "holding torques. (2) Add a tip force fₓ → watch it appear in "
+            "every joint torque; that is τ = JᵀF from page 121, computed "
+            "without ever building J. (3) Switch to 3 links → one more row, "
+            "the same two loops."))
         self.add(lab)
         self._draw()
 
@@ -421,6 +529,13 @@ class InverseDynamicsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(7))
+        self.add(start_here(
+            "<b>Inverse dynamics</b>: you know the motion you want — angles, "
+            "speeds and accelerations over time — and compute the torque it "
+            "needs. It is a direct calculation, nothing is simulated. You use "
+            "it to give the motors the right torque before any error appears "
+            "(feedforward), to choose motors, to check that a planned motion "
+            "is possible, and to detect collisions."))
 
         u = Card("what inverse dynamics is for")
         u.add(body(
@@ -435,6 +550,15 @@ class InverseDynamicsPage(Page):
         u.add(math_label(r"q(s(t)),\ \dot q=q'(s)\dot s,\ \ddot q=q'\ddot s+q''\dot s^2"
                          r"\ \Rightarrow\ \tau\propto\frac{1}{T^2}\ (\mathrm{inertial,\ Coriolis})"
                          r",\ \ \tau\propto T^0\ (\mathrm{gravity})", 15))
+        u.add(plain(
+            "The formula at the bottom says: run the same path in a time T. "
+            "Speeds scale like 1/T and accelerations like 1/T², so the "
+            "inertial and Coriolis torques scale like 1/T² — <b>do the move "
+            "twice as fast and those torques become four times bigger</b>. "
+            "Gravity does not care how fast you go. Slow moves are dominated "
+            "by gravity, fast ones by inertia. Collision detection: measured "
+            "torque − predicted torque = torque caused by an outside force; "
+            "if it is large, something was hit."))
         self.add(u)
 
         lab = Card("a quintic move from A to B: the torque, term by term")
@@ -452,6 +576,14 @@ class InverseDynamicsPage(Page):
         lab.add_layout(stat_row(self.st_pk, self.st_rms, self.st_g))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "The arm makes a smooth (quintic) move from A (grey) to B (cyan). "
+            "The right plot splits the selected joint's torque into M q̈, c "
+            "and g, and draws the total. <b>Try:</b> shorten T and watch M q̈ "
+            "explode while g(q) does not move; lengthen T until the gravity "
+            "share stat is near 100 %. <b>Peak</b> torque decides the motor's "
+            "maximum rating; <b>RMS</b> (a kind of average) decides how hot "
+            "it gets. Add payload and watch which term grows most."))
         self.add(lab)
         self._draw()
 
@@ -524,6 +656,13 @@ class ForwardDynamicsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(7))
+        self.add(start_here(
+            "The opposite question: given the torques, <b>what motion "
+            "happens</b>? Compute the acceleration q̈ = M⁻¹(τ − c − g), then "
+            "step forward a tiny bit in time, and repeat. That loop is what "
+            "every simulator (MuJoCo, Gazebo, Isaac) runs about a thousand "
+            "times a second. How you take each step matters: some methods "
+            "slowly invent energy that is not there."))
 
         a = Card("three ways to get q̈")
         a.add(math_label(r"M(q)\ddot q=\tau-h(q,\dot q),\quad "
@@ -537,6 +676,15 @@ class ForwardDynamicsPage(Page):
             "<b>Articulated Body Algorithm</b> (Featherstone): O(n) with no "
             "matrix at all, by propagating 'articulated inertias' inward. "
             "MuJoCo, Drake, Pinocchio, RBDL all ship it."))
+        a.add(plain(
+            "A trick to build M with nothing but an inverse-dynamics "
+            "function: call RNEA with zero speed, gravity off and "
+            "acceleration = 1 on joint i only. The torque that comes back is "
+            "M × (unit vector i), i.e. column i of M. Call it once more with "
+            "the real speed and zero acceleration to get h = c + g. Then "
+            "solve M q̈ = τ − h. The faster algorithms (CRBA, ABA) get the "
+            "same answer more cleverly; for an interview know their names and "
+            "costs: O(n²) and O(n)."))
         self.add(a)
 
         lab = Card("a passive double pendulum: chaos, and integrator honesty")
@@ -562,6 +710,20 @@ class ForwardDynamicsPage(Page):
         lab.add_layout(stat_row(self.st_e, self.st_c))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "A double pendulum with no motors and no friction, so total "
+            "energy <i>should</i> stay exactly constant. The right plot is "
+            "the energy error: anything but a flat line at zero is the "
+            "integrator lying. At the default 5 ms step: <b>explicit "
+            "Euler</b> gains energy (about +18 J in 6 s) — the pendulum "
+            "swings higher than it started. <b>Semi-implicit Euler</b> "
+            "(update the speed first, then move with the new speed) loses "
+            "about 14 J here, for the reason in the box below. <b>RK4</b>: "
+            "error ≈ 0, but four times the work per step (see the cost "
+            "stat). <b>Try:</b> dt = 1 ms shrinks every error; dt = 20 ms and "
+            "even RK4 drifts. Add friction and the energy should fall for "
+            "real. The motion itself is chaotic: change the start angle by a "
+            "degree and after a few seconds it is completely different."))
         self.add(lab)
         self.timer = QTimer(self)
         self.timer.setInterval(33)
@@ -571,8 +733,11 @@ class ForwardDynamicsPage(Page):
 
         self.add(callout(
             "Explicit Euler pumps energy in every step; with friction off the "
-            "pendulum swings ever higher. Semi-implicit Euler is symplectic: "
-            "energy wobbles but does not drift. RK4 is accurate per step but "
+            "pendulum swings ever higher. Semi-implicit Euler is symplectic "
+            "when the mass is constant (a single pendulum): energy wobbles "
+            "but does not drift. With a pose-dependent M(q), as here, "
+            "stepping q̇ instead of the momentum p = Mq̇ loses that guarantee, "
+            "and this double pendulum bleeds energy. RK4 is accurate per step but "
             "not symplectic, so over very long runs it drifts too. Physics "
             "engines choose semi-implicit (MuJoCo, Bullet) for robustness; "
             "trajectory optimisers choose RK4 or collocation for accuracy.",
@@ -661,6 +826,13 @@ class TaskDynamicsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(7))
+        self.add(start_here(
+            "The same dynamics, written in <b>hand coordinates</b> instead of "
+            "joint angles: F = Λẍ + μ + p. Λ is the mass the hand seems to "
+            "have: push the hand with a force and it accelerates as if it "
+            "weighed Λ. Unlike a simple point mass, Λ depends on direction "
+            "and posture — the hand is easy to shove sideways and very hard "
+            "to shove along a straight arm."))
 
         d = Card("from joint space to task space")
         d.add(math_label(r"\dot x=J\dot q,\ \ddot x=J\ddot q+\dot J\dot q,\ "
@@ -674,6 +846,16 @@ class TaskDynamicsPage(Page):
             "J̄ is the <b>dynamically consistent generalised inverse</b>: "
             "J J̄ = I, and it is the M-weighted pseudo-inverse, so it yields "
             "the minimum-kinetic-energy joint motion for a given hand motion."))
+        d.add(plain(
+            "The steps: hand acceleration ẍ = J q̈ + J̇q̇ (differentiate ẋ = "
+            "J q̇); the joint dynamics give q̈ from τ; and τ = JᵀF from page "
+            "121. Substitute and solve for F. Reading Λ = (J M⁻¹ Jᵀ)⁻¹ from "
+            "the inside out: M⁻¹ = how easily the joints accelerate; J maps "
+            "that to the hand; invert, and you have a mass. J̄ is the 'right' "
+            "way to invert J when dynamics are involved: it picks the joint "
+            "motion that achieves a hand motion with the least kinetic "
+            "energy. μ and p are the Coriolis and gravity terms as felt at "
+            "the hand."))
         self.add(d)
 
         lab = Card("effective mass at the hand, by direction")
@@ -691,6 +873,15 @@ class TaskDynamicsPage(Page):
         lab.add_layout(stat_row(self.st_mn, self.st_mx))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "The ellipse at the hand shows the mass felt in each direction; "
+            "its long axis is the heavy direction. The right plot shows the "
+            "same effective mass for every direction of hand motion. "
+            "<b>Try:</b> bring q₂ toward 0 (arm straight). The mass along the "
+            "arm shoots up — pushing the hand along the arm means pushing "
+            "against the structure itself — while the sideways mass stays "
+            "small. At exactly straight, the printout says Λ is undefined: "
+            "infinite mass in that direction."))
         self.add(lab)
         self._draw()
 
@@ -762,6 +953,14 @@ class ConstrainedDynamicsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(7))
+        self.add(start_here(
+            "When the robot touches something — hand on a wall, foot on the "
+            "ground — the contact adds a <b>rule</b> (the hand cannot go "
+            "through the wall) and a <b>force</b> (the wall pushes back). The "
+            "Lagrange multiplier λ is exactly the contact force needed to "
+            "keep the rule. Its sign matters: a wall can push but cannot "
+            "pull, so if the calculation asks for a pull, the contact is "
+            "about to break."))
 
         e = Card("equations of motion with k constraints A(q)q̇ = 0")
         e.add(math_label(r"\begin{bmatrix}M&-A^T\\ A&0\end{bmatrix}"
@@ -776,6 +975,16 @@ class ConstrainedDynamicsPage(Page):
             "the Constraints page. A contact is <b>unilateral</b>: λ ≥ 0 into "
             "the surface, and the arm lifts off when the solve asks for a pull. "
             "Simulators turn that into a complementarity problem."))
+        e.add(plain(
+            "Two unknowns are solved together: the acceleration q̈ and the "
+            "contact force λ. Top row: the normal dynamics plus the extra "
+            "constraint force Aᵀλ. Bottom row: the rule still holds at the "
+            "acceleration level (differentiate Aq̇ = 0 to get Aq̈ + Ȧq̇ = 0). "
+            "The constraint does no work: the wall does not move, so pushing "
+            "on it adds no energy. <b>Unilateral</b> means one-sided — the "
+            "force can only push — so a simulator must decide every step "
+            "whether each contact is on or off; that decision is the "
+            "'complementarity problem'."))
         self.add(e)
 
         lab = Card("2R hand on a vertical wall, sliding under gravity")
@@ -795,6 +1004,21 @@ class ConstrainedDynamicsPage(Page):
         lab.add_layout(stat_row(self.st_l, self.st_d, self.st_lift))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "The hand is held on a vertical wall. 'Wall push' is how hard the "
+            "motors press into the wall; 'vertical support' is how much they "
+            "hold the arm up, while gravity pulls it down, so the hand "
+            "slides. Right plot: the wall's push on the hand (−λ) and the "
+            "hand height over time. While the −λ curve is above zero the "
+            "wall is pushing and the contact is real. As the hand slides "
+            "down, the arm's geometry changes and the curve crosses zero: "
+            "from that moment the wall would have to pull, so a real hand "
+            "would come off — the stat flags it. <b>Try:</b> raise the push "
+            "and the crossing comes later (about 0.6 s at 40 N); drag it to "
+            "zero or below and the wall would have to pull from the very "
+            "start. The drift stat shows the numerical correction "
+            "(Baumgarte) keeps the hand within a few millimetres of the "
+            "wall."))
         self.add(lab)
         self._sim()
 

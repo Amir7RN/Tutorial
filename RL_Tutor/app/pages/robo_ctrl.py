@@ -35,8 +35,10 @@ from .robo_common import (
     draw_arm,
     interview,
     labelled_slider,
+    plain,
     playlist_badge,
     square,
+    start_here,
     watch,
 )
 
@@ -59,6 +61,13 @@ class TimeScalingPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(8))
+        self.add(start_here(
+            "Planning a motion has two separate parts. The <b>path</b> is the "
+            "route — the shape of the curve, pure geometry. The <b>time "
+            "scaling</b> is how fast you travel along it at each moment. A "
+            "road trip: the route on the map versus your speedometer. s runs "
+            "from 0 (start) to 1 (end) along the path, and s(t) says how far "
+            "along you are at time t."))
 
         t = Card("three standard time scalings")
         t.add(math_label(r"\mathrm{cubic:}\ s=3\left(\frac{t}{T}\right)^2-2\left(\frac{t}{T}\right)^3"
@@ -79,6 +88,18 @@ class TimeScalingPage(Page):
             "straight line in task space (screw motion in SE(3), or "
             "decoupled p(s) and R(s) = R₀exp(log(R₀ᵀR₁)s)) looks right to a "
             "human but can pass through singularities.", dim=True))
+        t.add(plain(
+            "<b>Cubic</b>: speed starts and ends at zero, but acceleration "
+            "jumps instantly at both ends — a jolt ('infinite jerk') that "
+            "shakes springy parts and gearboxes. <b>Quintic</b>: acceleration "
+            "also starts and ends at zero, so no jolt, at the price of a "
+            "slightly higher top speed (15/8T against 3/2T). "
+            "<b>Trapezoid</b>: full acceleration, cruise at top speed, full "
+            "braking — the fastest possible under a speed limit and an "
+            "acceleration limit, and what industrial controllers use. A "
+            "straight line in joint space keeps joints in range but the hand "
+            "traces a curve; a straight line for the hand looks right but can "
+            "pass through a singularity."))
         self.add(t)
 
         lab = Card("compare the scalings for the same move")
@@ -92,6 +113,14 @@ class TimeScalingPage(Page):
         lab.add_layout(stat_row(self.st_tr))
         self.cv = MplCanvas(width=7.6, height=4.4, nrows=3)
         lab.add(self.cv)
+        lab.add(plain(
+            "Three stacked plots: position s, speed ṡ and acceleration s̈, "
+            "for all three profiles. Look for: the cubic's acceleration "
+            "starting and ending with a vertical jump; the quintic's smooth "
+            "acceleration curve; the trapezoid's flat acceleration blocks and "
+            "flat cruising speed. <b>Try:</b> lower the trapezoid's "
+            "acceleration until the stat says 'triangle — never cruises': it "
+            "runs out of path before reaching the cruise speed."))
         self.add(lab)
         self._draw()
 
@@ -138,6 +167,13 @@ class TimeOptimalPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(8))
+        self.add(start_here(
+            "You know the path and your motors' torque limits. What is the "
+            "<b>fastest</b> way to travel it? Like a lap on a known race "
+            "track: floor it, then brake as late as possible for the corner. "
+            "Along a fixed path the whole robot collapses to one number s, "
+            "and each motor's torque limit becomes a limit on how hard you "
+            "may speed up or slow down at each point."))
 
         d = Card("dynamics restricted to a path")
         d.add(math_label(r"\tau=\underbrace{M(q)q'}_{m(s)}\ddot s+"
@@ -151,6 +187,17 @@ class TimeOptimalPage(Page):
             "integrate U forward from (0, 0), L backward from (1, 0), and "
             "switch where they meet. If the curves touch the VLC there are "
             "more switches; this page uses the single-switch case."))
+        d.add(plain(
+            "Plug the path q(s) into τ = Mq̈ + c + g; by the chain rule "
+            "everything becomes a function of s, ṡ and s̈. Each motor's min "
+            "and max torque then gives a lowest and highest allowed s̈ at "
+            "each (s, ṡ): L and U. The <b>phase plane</b>: horizontal = how "
+            "far along the path, vertical = how fast. The algorithm: from the "
+            "start, accelerate as hard as allowed (follow U); from the end, "
+            "run backwards braking as hard as allowed (follow L); where the "
+            "two curves cross, switch from accelerating to braking. The "
+            "<b>velocity limit curve</b> is the speed above which no torque "
+            "can keep you on the path — like the maximum speed for a corner."))
         self.add(d)
 
         lab = Card("a straight joint-space move of the 2R arm")
@@ -163,6 +210,14 @@ class TimeOptimalPage(Page):
         lab.add_layout(stat_row(self.st_T, self.st_sw))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Left: the phase plane — red velocity limit curve, green "
+            "'accelerate from start', orange 'brake into end', and the cyan "
+            "time-optimal profile that rides them, switching at the marked s. "
+            "Right: joint torques along the path; at every point some joint "
+            "sits at its limit ('bang-bang'). <b>Try:</b> change one torque "
+            "limit at a time and watch the minimum time and the switch point "
+            "move — usually not in proportion."))
         self.add(lab)
         self._draw()
 
@@ -228,6 +283,13 @@ class MotionPlanningPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(9))
+        self.add(start_here(
+            "Get the arm from A to B without hitting anything. The trick: do "
+            "not plan the arm's shape in the real world; plan a <b>single "
+            "point in C-space</b> (page 115). Every arm pose that would "
+            "collide becomes a forbidden region on the C-space map. Planning "
+            "then becomes a maze: find a route for a dot around the forbidden "
+            "blobs."))
 
         m = Card("the planner families")
         m.add(body(
@@ -241,6 +303,17 @@ class MotionPlanningPage(Page):
             "follow −∇U. Fast and reactive, but local minima.<br>"
             "<b>Optimisation:</b> CHOMP, TrajOpt — start from a straight line "
             "and push it out of collision while smoothing it."))
+        m.add(plain(
+            "<b>Grid A*</b>: chop C-space into cells and search like a GPS — "
+            "it finds the shortest route on the grid, but 100 cells per joint "
+            "means 100⁶ cells for a 6-joint arm. <b>RRT</b>: throw random "
+            "darts and grow a tree from the start toward each one; finds "
+            "<i>a</i> route quickly even with many joints, not the shortest. "
+            "<b>PRM</b>: build a road map of the free space once and reuse it "
+            "for many trips. <b>Potential fields</b>: the goal attracts, "
+            "obstacles repel, roll downhill — fast, but you can get stuck in "
+            "a dip. <b>Optimisation</b>: start with a straight line and bend "
+            "it out of the obstacles."))
         self.add(m)
 
         lab = Card("two circles in the workspace become blobs in C-space")
@@ -256,6 +329,15 @@ class MotionPlanningPage(Page):
         lab.add_layout(stat_row(self.st, self.st_free))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Left: the real world, with the arm at start (grey) and goal "
+            "(green) and a round obstacle. Right: the same scene as a C-space "
+            "map; red = every (θ₁, θ₂) where the arm hits the obstacle. A "
+            "simple circle in the world becomes a strange blob on the map. "
+            "The map's edges wrap (torus, page 115), so A* may leave one side "
+            "and come back on the other. <b>Try:</b> drag the obstacle and "
+            "watch the blob reshape; make it big enough to block every route. "
+            "Switch to RRT: a jagged, non-shortest path from a random tree."))
         self.add(lab)
         self._draw()
 
@@ -352,6 +434,15 @@ class MotionControlPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(10))
+        self.add(start_here(
+            "Now make the arm actually follow a desired motion. Two classic "
+            "controllers. <b>PD + gravity compensation</b>: a spring and "
+            "damper on each joint, plus exactly the torque that cancels the "
+            "arm's weight — simple, and provably stable for reaching a fixed "
+            "target. <b>Computed torque</b>: use the full model (M, c, g) to "
+            "cancel all the dynamics, so every joint behaves like an ideal "
+            "spring–damper you design — excellent tracking, but only as good "
+            "as the model."))
 
         c = Card("the laws")
         c.add(math_label(r"\mathrm{PD+g:}\ \tau=K_pe+K_d\dot e+\hat g(q)\qquad"
@@ -365,6 +456,16 @@ class MotionControlPage(Page):
             "per joint and every joint is the second-order system of page 11, "
             "decoupled, at every posture. With model error the residual "
             "(M − M̂)q̈ + (h − ĥ) acts as a disturbance the PD must reject."))
+        c.add(plain(
+            "e = desired angle − actual angle; ė is how fast that error "
+            "changes. <b>PD+g</b>: τ = stiffness × e + damping × ė + weight. "
+            "<b>Computed torque</b>: first decide the acceleration you want "
+            "(the planned one plus corrections from the error), multiply by "
+            "M̂ to turn it into torque, then add ĉ and ĝ. The hat ^ means 'my "
+            "model of it'. With a perfect model the error obeys ë + "
+            "K<sub>d</sub>ė + K<sub>p</sub>e = 0: a damped spring whose speed "
+            "(ω<sub>n</sub>) and damping (ζ) you pick. With a wrong model the "
+            "leftover terms act like a disturbance the PD has to fight."))
         self.add(c)
 
         lab = Card("track a fast sinusoid with a wrong model")
@@ -380,6 +481,17 @@ class MotionControlPage(Page):
         lab.add_layout(stat_row(self.st_ctc, self.st_pd, self.st_pdx))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Three controllers, same gains, track a fast sine on the elbow. "
+            "Left: elbow angle against the reference. Right: total error over "
+            "time. <b>Try:</b> (1) model error 0 → computed torque (CTC) is "
+            "nearly perfect (about 0.03° against 2.6° for PD+g). (2) Model "
+            "error ±50 % → CTC's error grows to several degrees, and at +50 % "
+            "it is even worse than PD+g: a wrong model can be worse than none. "
+            "(3) Raise ω<sub>n</sub> → all errors fall (real robots cap this "
+            "because of noise and flexible parts). (4) Add payload → nobody "
+            "modelled it. PD without gravity compensation always sags, "
+            "because nothing holds the weight."))
         self.add(lab)
         self._sim()
 
@@ -463,6 +575,14 @@ class OperationalSpacePage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(10))
+        self.add(start_here(
+            "Control the <b>hand</b> directly in x and y instead of the joint "
+            "angles. Decide what force the hand needs using the task-space "
+            "dynamics of page 130, then turn it into joint torques with τ = "
+            "JᵀF (page 121). With a spare joint, add a posture goal through "
+            "the null space (page 123) — but for <i>torques</i> the filter "
+            "must use the mass-weighted J̄, not the plain J⁺ of the velocity "
+            "page."))
 
         o = Card("operational space control (Khatib)")
         o.add(math_label(r"\tau=J^T\left[\Lambda(\ddot x_d+K_d\dot e+K_pe)+\mu+p\right]+"
@@ -481,6 +601,18 @@ class OperationalSpacePage(Page):
             "and posture-dependent. <b>Resolved-rate</b>: q̇<sub>d</sub> = "
             "J⁺ẋ<sub>d</sub> sent to stiff joint velocity loops — kinematic "
             "only, standard on position-controlled industrial arms.", dim=True))
+        o.add(plain(
+            "The bracket is the force the hand needs: Λ × the hand "
+            "acceleration you want (plus spring–damper corrections from the "
+            "hand error), plus the Coriolis and gravity effects felt at the "
+            "hand. Jᵀ turns that force into joint torques. The second term is "
+            "the posture torque τ₀ passed through the filter I − JᵀJ̄ᵀ, which "
+            "guarantees it cannot accelerate the hand. Why J̄ and not J⁺: a "
+            "torque turns into motion through M⁻¹, so the filter must know "
+            "how the arm's mass spreads a push around. J⁺ is right for "
+            "velocities, wrong for torques — it leaks. Cheaper options when "
+            "you have no good model: Jᵀ control (a spring pulling the hand) "
+            "or resolved-rate (send joint speeds)."))
         self.add(o)
 
         lab = Card("3R arm: hand traces a circle, elbow chases a posture")
@@ -498,6 +630,15 @@ class OperationalSpacePage(Page):
         lab.add_layout(stat_row(self.st_e, self.st_p))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "The hand traces a circle while a posture task pulls the elbow "
+            "toward the angle you set. Right plot (log scale): hand error and "
+            "posture error over time. <b>Mode 1</b> (correct J̄ filter): hand "
+            "error stays tiny while the elbow moves toward its goal. <b>Mode "
+            "2</b> (J⁺ filter): the hand error jumps — the posture task leaks "
+            "into the hand. <b>Mode 3</b>: no posture task, the elbow goes "
+            "wherever. <b>Try:</b> raise posture stiffness in mode 2 to make "
+            "the leak obvious, then switch to mode 1 at the same stiffness."))
         self.add(lab)
         self._sim()
 
@@ -571,6 +712,14 @@ class ForceControlPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(10))
+        self.add(start_here(
+            "When the hand touches something you cannot choose both position "
+            "<i>and</i> force in the same direction: pressing on a wall, the "
+            "wall decides where the hand is; you only decide how hard to "
+            "push. <b>Hybrid control</b> picks per direction — force into the "
+            "wall, motion along it. <b>Impedance control</b> refuses to pick: "
+            "it makes the hand behave like a spring–damper, so the force "
+            "follows from how far the hand is pushed off its target."))
 
         h = Card("natural and artificial constraints")
         h.add(body(
@@ -593,6 +742,20 @@ class ForceControlPage(Page):
             "when the rendered impedance is passive — which is why it, and "
             "not pure force control, is the default for contact-rich "
             "manipulation.", dim=True))
+        h.add(plain(
+            "<b>Natural constraints</b>: what the world dictates (cannot move "
+            "into the table). <b>Artificial constraints</b>: what you command "
+            "in the remaining directions (a force into the table, motion "
+            "across it). In the hybrid law P is a selector that keeps the "
+            "motion directions and I − P keeps the force directions; the "
+            "force loop adds the integral of the force error so the push "
+            "settles on F<sub>d</sub>. In the impedance law M<sub>d</sub>, "
+            "B<sub>d</sub>, K<sub>d</sub> are a virtual mass, damper and "
+            "spring that you choose, x̃ is how far the hand is from its "
+            "target, and F<sub>ext</sub> is the push from outside. A soft "
+            "K<sub>d</sub> makes contact gentle. 'Passive' = never creates "
+            "energy by itself, so it stays stable touching anything that is "
+            "passive too."))
         self.add(h)
 
         lab = Card("2R hand slides along a wall while pressing on it")
@@ -614,6 +777,17 @@ class ForceControlPage(Page):
         lab.add_layout(stat_row(self.st_f, self.st_ey))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Wall at x = 1.2 m. <b>Hybrid</b>: along x a force loop drives "
+            "the push to F<sub>d</sub>; along y the hand follows a sine. "
+            "<b>Impedance</b>: the hand's target sits 1 cm inside the wall "
+            "and its spring is chosen to give F<sub>d</sub> against a rigid "
+            "wall; the actual force = spring × how far the target is past the "
+            "hand. <b>Try:</b> compare the mean force with F<sub>d</sub> in "
+            "each mode, then lower the wall stiffness: with impedance the "
+            "wall gives way, the spring stretches less and the force drops "
+            "below F<sub>d</sub>, while the hybrid force loop keeps pushing "
+            "until it gets F<sub>d</sub>."))
         self.add(lab)
         self._sim()
 
@@ -709,6 +883,13 @@ class GraspingPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(11))
+        self.add(start_here(
+            "When is an object held securely? Each fingertip can push into "
+            "the surface and, thanks to friction, a little sideways. The set "
+            "of forces a finger can apply without slipping is a <b>cone</b> — "
+            "the friction cone. A grasp has <b>force closure</b> when the "
+            "fingers together can resist any push or twist on the object just "
+            "by squeezing harder."))
 
         c = Card("contacts, cones and closure")
         c.add(math_label(r"\|f_t\|\leq\mu f_n,\qquad \mathcal{F}_i=\begin{bmatrix}p_i\times f_i\\ "
@@ -724,6 +905,16 @@ class GraspingPage(Page):
             "the edge wrenches of all cones must positively span the wrench "
             "space; equivalently the origin is strictly inside their convex "
             "hull."))
+        c.add(plain(
+            "‖f<sub>t</sub>‖ ≤ μf<sub>n</sub>: the sideways force can be at "
+            "most μ times the pressing force, otherwise the finger slips. The "
+            "cone's half-angle is atan μ (μ = 0.3 → about 17°). Each contact "
+            "force also makes a twist on the object, so it is written as a "
+            "wrench (moment, force). Force closure = by adding positive "
+            "amounts of the cone forces you can produce <i>any</i> wrench, so "
+            "any disturbance can be cancelled. Form closure = held by shape "
+            "alone, no friction, which needs more contacts. Two-finger rule: "
+            "the line joining the fingertips must lie inside both cones."))
         self.add(c)
 
         lab = Card("two-finger grasp of a disc-shaped part")
@@ -739,6 +930,17 @@ class GraspingPage(Page):
         lab.add_layout(stat_row(self.st, self.st_ang, self.st_cone))
         self.cv = MplCanvas(width=7.4, height=3.8)
         lab.add(self.cv)
+        lab.add(plain(
+            "Finger 1 is fixed at 0° on the rim; you move finger 2. Orange "
+            "wedges are the friction cones, the dashed line joins the fingers "
+            "(green = closure, red = not). On a disc every surface normal "
+            "points at the centre, so the angle between the grasp line and "
+            "the normal is half of how far finger 2 is from directly "
+            "opposite. <b>Try:</b> (1) at 180° the line runs along both "
+            "normals — closure for any μ > 0. (2) Move finger 2 away until "
+            "that angle passes the cone half-angle — closure is lost. (3) "
+            "Raise μ: wider cones, more positions work. (4) μ = 0: a "
+            "two-finger grasp can never resist a twist."))
         self.add(lab)
         self._draw()
 
@@ -815,6 +1017,14 @@ class MobileRobotPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(12))
+        self.add(start_here(
+            "Wheeled robots. Omni and mecanum wheels can move in any "
+            "direction instantly — easy. A normal two-wheeled robot (a robot "
+            "vacuum) or a car <b>cannot slide sideways</b>: it has 2 controls "
+            "(forward speed, turn rate) for 3 position numbers (x, y, "
+            "heading). It can still reach any spot and heading (parallel "
+            "parking), but steering it there needs more care than a simple "
+            "feedback law."))
 
         k = Card("kinematics of the unicycle / differential drive")
         k.add(math_label(r"\begin{bmatrix}\dot x\\ \dot y\\ \dot\phi\end{bmatrix}="
@@ -835,6 +1045,18 @@ class MobileRobotPage(Page):
             "J<sub>e</sub> = [J<sub>base</sub> J<sub>arm</sub>]; the result "
             "is usually redundant, so the null-space page applies directly.",
             dim=True))
+        k.add(plain(
+            "The matrix says: forward speed v moves you along your heading "
+            "(cos φ, sin φ); turn rate ω changes the heading. With wheel "
+            "speeds u: the average of the two wheels drives forward, their "
+            "difference turns (r = wheel radius, d = half the distance "
+            "between the wheels). <b>Lie bracket</b> in plain words: small "
+            "forward, turn, back, turn-back moves leave you shifted sideways "
+            "— how you wiggle a car out of a tight spot. <b>Brockett</b>: "
+            "because of this, no smooth fixed feedback law can park the robot "
+            "exactly at a point. Mobile manipulation: put the base's allowed "
+            "motions and the arm's Jacobian side by side in one bigger "
+            "Jacobian."))
         self.add(k)
 
         lab = Card("track a figure-eight with the look-ahead point")
@@ -847,6 +1069,16 @@ class MobileRobotPage(Page):
         lab.add_layout(stat_row(self.st_e, self.st_lat))
         self.cv = MplCanvas(width=7.4, height=3.8)
         lab.add(self.cv)
+        lab.add(plain(
+            "The trick: the axle centre cannot move sideways, but a point a "
+            "short distance <i>ahead</i> of it can move in any direction "
+            "(drive and turn together). So control that look-ahead point with "
+            "ordinary feedback toward the moving reference. Dashed = "
+            "reference figure-eight, cyan = axle path, arrows = heading. "
+            "<b>Try:</b> small look-ahead → tight tracking but sharp "
+            "steering; large → smooth but cuts the corners. Gain k = how hard "
+            "it corrects. The sideways-slip stat stays near zero: the no-skid "
+            "rule is never broken."))
         self.add(lab)
         self._draw()
 
@@ -952,6 +1184,13 @@ class InterviewDrillPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.add(start_here(
+            "How to use this page: take one card at a time. Read each "
+            "question, say your answer out loud in two sentences, then tick "
+            "<b>show answers</b> and compare. Any answer you could not give "
+            "points to a page: go back to that page's START HERE and IN PLAIN "
+            "WORDS boxes, rewatch its playlist, and try again tomorrow. "
+            "Finish with the eight whiteboard derivations at the bottom."))
         self.chk = QCheckBox("show answers")
         self.chk.setChecked(False)
         self.chk.stateChanged.connect(self._toggle)

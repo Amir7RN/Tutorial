@@ -76,6 +76,17 @@ def interview(text: str):
     return callout(text, "warn", label="INTERVIEW QUESTION")
 
 
+def start_here(text: str):
+    """What question the page answers, in everyday words, before any symbols."""
+    return callout(text, "key", label="START HERE — WHAT THIS PAGE IS ABOUT")
+
+
+def plain(text: str):
+    """The card it sits in, re-said without jargon: what the symbols mean,
+    the picture to hold in your head, and what to try on the sliders."""
+    return callout(text, "good", label="IN PLAIN WORDS")
+
+
 def draw_arm(ax, L, q, color=None, alpha=1.0, lw=4.0, label=None, joints=True,
              ghost=False):
     pts = rk.planar_points(L, q)

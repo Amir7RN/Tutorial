@@ -29,8 +29,10 @@ from .robo_common import (
     interview,
     labelled_slider,
     mat_html,
+    plain,
     playlist_badge,
     square,
+    start_here,
     watch,
 )
 
@@ -50,6 +52,16 @@ class RoboRoadmapPage(Page):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.add(start_here(
+            "This block answers three questions about any robot arm, in "
+            "order. <b>Where is the hand?</b> (kinematics, pages 115–119). "
+            "<b>How fast and how hard can the hand move when the motors "
+            "turn?</b> (the Jacobian, pages 120–124). <b>What motor torques "
+            "does a given motion need?</b> (dynamics, pages 125–131). The "
+            "last pages use those three answers to plan and control the arm. "
+            "You need no earlier page of the tutor: only that a matrix times "
+            "a vector is a weighted sum of columns, and that a derivative is "
+            "a rate of change."))
 
         c = Card("why the control pages were not enough")
         c.add(body(
@@ -68,6 +80,18 @@ class RoboRoadmapPage(Page):
             r"\mathcal{V}=J(q)\dot q \;\rightarrow\; "
             r"\tau=J^TF \;\rightarrow\; "
             r"\tau=M(q)\ddot q+c(q,\dot q)+g(q)", 15))
+        c.add(plain(
+            "Read the arrow chain like a recipe, left to right. <b>q</b> is "
+            "the list of joint angles, the robot's knob settings. <b>T(q)</b> "
+            "is where the hand is and which way it points for those settings. "
+            "<b>V = J q̇</b>: if the knobs turn at some speeds, J tells how "
+            "fast the hand moves; J is a table of 'how much hand motion per "
+            "unit of each joint's motion'. <b>τ = JᵀF</b>: the same table, "
+            "flipped, tells which motor torques make the hand push with force "
+            "F. The last arrow is Newton's F = ma for a robot: torque = (mass "
+            "× acceleration) + (forces caused by joints already spinning) + "
+            "(holding up the weight). Every page in this block fills in one "
+            "arrow."))
         self.add(c)
 
         t = Card("the twelve playlists, one by one")
@@ -88,6 +112,30 @@ class RoboRoadmapPage(Page):
             "sliders until it stops surprising you.", dim=True))
         self.add(t)
 
+        h = Card("how to study this block: videos first, or pages first?")
+        h.add(body(
+            "Neither on its own. The pages are compressed: they assume you "
+            "have seen the derivation once. The videos are slow and careful "
+            "but give you nothing to touch. Use them together, one page at a "
+            "time:<br><b>1. Read the page's START HERE box and every IN PLAIN "
+            "WORDS box first</b>, about five minutes, skipping every formula. "
+            "Goal: know which question the page answers.<br><b>2. Watch that "
+            "page's playlist</b> (the Watch alongside link). The videos are 3 "
+            "to 8 minutes each; pause on every boxed equation and say what "
+            "each symbol is in words.<br><b>3. Come back and do the lab.</b> "
+            "Move one slider at a time, predict what will happen before you "
+            "look, and compare with the plain-words box under the "
+            "lab.<br><b>4. Say the interview answer out loud</b> without "
+            "reading it. If you cannot, go back to step 1 for that page only."))
+        h.add(body(
+            "If a formula still makes no sense after the video, do not stop "
+            "there: the plain-words box tells you what result to carry "
+            "forward, and later pages only use the result, not the "
+            "derivation. Pages 115–118 (playlists 1–2) are vocabulary; it is "
+            "normal for them to feel abstract until page 120 (the Jacobian) "
+            "uses them.", dim=True))
+        self.add(h)
+
         p = Card("what to master for an interview, ranked")
         p.add(body(
             "<b>1. Jacobian, both directions.</b> ẋ = J q̇ for velocity, "
@@ -105,6 +153,12 @@ class RoboRoadmapPage(Page):
             "I − Jᵀ J̄ᵀ.<br>"
             "<b>6. Control built on all of it.</b> computed torque, operational "
             "space control, impedance and hybrid force control."))
+        p.add(plain(
+            "Do not try to master this list on the first pass. Items 1–2 are "
+            "the Kinematics section (pages 119–124), items 3–5 the Dynamics "
+            "section (125–131), item 6 Robot Control (135–137). If you only "
+            "have time for one idea, take the Jacobian: almost every other "
+            "item is built from it."))
         self.add(p)
 
         self.add(callout(
@@ -155,6 +209,14 @@ class CSpacePage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(1))
+        self.add(start_here(
+            "Question: what is the smallest list of numbers that tells you "
+            "exactly how the whole robot is posed? For a two-motor arm it is "
+            "two angles. The length of that list is the <b>degrees of freedom "
+            "(DOF)</b>. The set of all possible lists is the <b>configuration "
+            "space (C-space)</b>: a map in which one point is one complete "
+            "pose of the robot. Planning, kinematics and dynamics all happen "
+            "on this map."))
 
         d = Card("dof = freedoms of the bodies − constraints of the joints")
         d.add(math_label(
@@ -168,6 +230,17 @@ class CSpacePage(Page):
             "special geometry (parallel links, the Delta robot's "
             "parallelograms) can make it lie, and the true answer is then the "
             "rank of the constraint Jacobian, which is the closed-chains page's subject."))
+        d.add(plain(
+            "Count freedoms like a budget. A loose body sliding on a table "
+            "can move 3 ways (slide x, slide y, spin), so m = 3; a loose body "
+            "in space can move 6 ways, so m = 6. You have N − 1 moving bodies "
+            "(ground never moves), so m(N − 1) freedoms to start with. Each "
+            "joint then takes some away: a hinge in the plane leaves only 1 "
+            "of the 3, so it removes m − f = 2. Freedoms left = m(N − 1) − "
+            "Σ(m − fᵢ), which rearranges to the formula above.<br><b>Check it "
+            "by hand.</b> Planar 3R arm: N = 4 (three links plus ground), J = "
+            "3 hinges, so 3(4 − 1 − 3) + 3 = 3. Four-bar: N = 4, J = 4, so "
+            "3(4 − 1 − 4) + 4 = 1 — closing the loop cost two freedoms."))
         self.add(d)
 
         g = Card("count it: pick a mechanism")
@@ -183,6 +256,13 @@ class CSpacePage(Page):
         self.st_f = Stat("Σ f_i", "--", theme.CYAN)
         self.st_dof = Stat("dof", "--", theme.GOOD)
         g.add_layout(stat_row(self.st_N, self.st_J, self.st_f, self.st_dof))
+        g.add(plain(
+            "Pick each mechanism and work out the dof yourself before you "
+            "read the green number. Pattern to notice: an open chain (an "
+            "ordinary arm) has dof equal to its number of joints, because "
+            "nothing ties the end down. A closed chain (four-bar, Stewart, "
+            "Delta) has fewer, because the loops force joints to agree with "
+            "each other."))
         self.add(g)
         self._mech()
 
@@ -203,6 +283,18 @@ class CSpacePage(Page):
         self.s2 = labelled_slider(t, "q₂", -180, 180, 70, deg, self._draw)
         self.cv = MplCanvas(width=7.6, height=3.6, ncols=2)
         t.add(self.cv)
+        t.add(plain(
+            "The right panel is a map where each point is a whole arm pose: "
+            "horizontal = q₁, vertical = q₂. Turning q₁ by a full 360° gives "
+            "the same arm, so the map's right edge is the same place as its "
+            "left edge, and top equals bottom. Glue both pairs of edges and "
+            "the flat square becomes a donut, a <b>torus</b>. Why it matters: "
+            "a planner can leave the right edge and come back on the left — "
+            "that is a short smooth motion, not a jump. <b>Try:</b> drag q₁ "
+            "past +180° and watch the dot reappear on the left while the arm "
+            "on the left panel barely moves. For a body flying in space the "
+            "map is 6-D and, for orientation, has no flat three-number chart "
+            "without a bad spot — hence the rotation matrices on page 117."))
         self.add(t)
         self._trail = []
         self._draw()
@@ -261,6 +353,16 @@ class ConstraintsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(1))
+        self.add(start_here(
+            "A constraint is a rule the robot must always obey. Two kinds "
+            "matter. <b>Rules about where it can be</b> (holonomic) — e.g. "
+            "'the end of this loop stays bolted to the ground'. They remove "
+            "dimensions from C-space. <b>Rules about which way it can move "
+            "right now</b> (nonholonomic) — e.g. 'a wheel cannot skid "
+            "sideways'. They do not shrink C-space; they only remove "
+            "directions of motion at each instant. The second half of the "
+            "page separates three spaces people mix up: C-space, task space "
+            "and workspace."))
 
         h = Card("holonomic: a constraint on q")
         h.add(math_label(r"g(q)=0\quad\Rightarrow\quad "
@@ -271,6 +373,15 @@ class ConstraintsPage(Page):
             "you get a <b>Pfaffian</b> velocity constraint A(q)q̇ = 0 that came "
             "from a position constraint — so it is integrable, and the "
             "C-space itself is smaller."))
+        h.add(plain(
+            "g(q) = 0 is an equation the joint angles must satisfy, like "
+            "'walking round the loop brings you back to the start'. Each "
+            "independent equation removes one dimension. Take its rate of "
+            "change and you get A(q)q̇ = 0: a rule on joint "
+            "<i>velocities</i>. 'Pfaffian' is only the name for a velocity "
+            "rule written as matrix × q̇ = 0. 'Integrable' means you can go "
+            "backwards from that velocity rule to a position rule — here you "
+            "can, because it came from one."))
         self.add(h)
 
         n = Card("nonholonomic: a constraint on q̇ that is NOT integrable")
@@ -282,6 +393,15 @@ class ConstraintsPage(Page):
             "parking is the proof. The constraint reduces the <b>velocity "
             "freedoms</b> (2 instead of 3) but not the dimension of C-space "
             "(still 3). Playlist 12 spends a whole chapter here."))
+        n.add(plain(
+            "φ is the heading of the wheel or car, and (−sin φ, cos φ) is the "
+            "direction pointing sideways out of its door. The equation says: "
+            "velocity along that sideways direction is zero — no skidding. "
+            "Yet you can still reach a spot directly to your side by parallel "
+            "parking (forward, turn, back, turn). So the car still needs 3 "
+            "numbers (x, y, heading) to describe it — C-space stays 3-D — but "
+            "at any instant it has only 2 velocity choices: drive speed and "
+            "turn rate."))
         self.add(n)
 
         w = Card("task space versus workspace")
@@ -304,6 +424,20 @@ class ConstraintsPage(Page):
         w.add_layout(stat_row(self.st_in, self.st_out, self.st_red))
         self.cv = MplCanvas(width=7.4, height=3.6, ncols=2)
         w.add(self.cv)
+        w.add(plain(
+            "<b>C-space</b> = joint angles. <b>Task space</b> = the numbers "
+            "you care about for the job, e.g. pen tip (x, y). "
+            "<b>Workspace</b> = the part of task space the hand can actually "
+            "reach. <b>Redundant</b> = more joints than task numbers, so "
+            "infinitely many arm poses put the hand on the same point — put a "
+            "fingertip on the desk and move your elbow.<br><b>Try:</b> make "
+            "L₂ longer than L₁: a hole (inner radius) opens because the hand "
+            "cannot fold back to the base. Add L₃ and the third stat shows 1 "
+            "extra (redundant) freedom. The histogram on the right is not "
+            "flat: picking joint angles at random piles the hand up near the "
+            "inner and outer edges (arm nearly folded or straight), so "
+            "'random in joints' is not 'random in task space' — it matters "
+            "for sampling planners on page 134."))
         self.add(w)
         self._draw()
 
@@ -365,6 +499,14 @@ class RotationsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(2))
+        self.add(start_here(
+            "How do you write down which way an object is pointing in 3-D? "
+            "With a 3×3 <b>rotation matrix R</b>. Its three columns are the "
+            "object's own x, y and z axes, written in world coordinates — "
+            "that is all it is. The page then shows the one fact that makes "
+            "the rest easy: any orientation can be reached by a <b>single "
+            "turn θ about a single axis ω̂</b>, and there are formulas to go "
+            "from (axis, angle) to R and back."))
 
         r = Card("three jobs one rotation matrix does")
         r.add(math_label(r"R\in SO(3)=\{R\in\mathbb{R}^{3\times3}:R^TR=I,\ \det R=1\}", 16))
@@ -378,6 +520,19 @@ class RotationsPage(Page):
             "an axis in {s} (premultiply); R<sub>sb</sub>·R rotates about the "
             "same axis expressed in {b} (postmultiply). Order matters because "
             "rotations do not commute."))
+        r.add(plain(
+            "Glue a tiny x-y-z frame {b} to the object; {s} is the fixed "
+            "world frame. R<sub>sb</sub> means 'frame b as seen from s': "
+            "column 1 is where b's x-axis points, and so on. RᵀR = I says the "
+            "three columns are unit length and at right angles (still a "
+            "proper frame); det = +1 says it is right-handed, not a mirror "
+            "image.<br>Job 2 works like unit conversion: in "
+            "R<sub>ab</sub>R<sub>bc</sub> the inner b's cancel and you get "
+            "R<sub>ac</sub>.<br>Job 3: try it with your phone. Turn it 90° "
+            "about the vertical, then 90° about the world's left-right axis. "
+            "Reset and do it in the other order. The phone ends up different: "
+            "rotations do not commute, so left- versus right-multiplication "
+            "matters."))
         self.add(r)
 
         e = Card("angular velocity, so(3), and the matrix exponential")
@@ -392,6 +547,16 @@ class RotationsPage(Page):
             "coordinate</b> of R; the matrix log goes back. Three numbers, "
             "no gimbal lock locally, singular only at θ = π where the axis "
             "sign is ambiguous."))
+        e.add(plain(
+            "[ω] is the cross product written as a matrix: [ω]p = ω × p. "
+            "Nothing more. Angular velocity ω points along the spin axis and "
+            "its length is the spin rate. If you spin about a fixed unit axis "
+            "ω̂ at 1 rad/s for θ seconds you end at R = e<sup>[ω̂]θ</sup>, "
+            "and Rodrigues' formula is the closed form of that exponential — "
+            "you never sum a series. So three numbers, ω̂θ (axis scaled by "
+            "angle), describe any rotation, and 'log R' recovers them. The "
+            "only awkward case is a half-turn (θ = 180°), where turning about "
+            "ω̂ and about −ω̂ give the same R."))
         self.add(e)
 
         lab = Card("build R from axis and angle, then take it back with log")
@@ -408,6 +573,15 @@ class RotationsPage(Page):
         self.ax3 = self.cv.fig.add_subplot(111, projection="3d")
         self.cv.ax.remove()
         lab.add(self.cv)
+        lab.add(plain(
+            "Point the axis with azimuth and elevation (dashed line), then "
+            "choose the turn θ. Faint lines are the world axes, bold lines "
+            "the turned frame, and the dotted arc is the tip of the x-axis "
+            "during the turn. Check the stats: det R stays 1 and the "
+            "orthogonality error is around 10⁻¹⁶ — numerical zero. 'θ from "
+            "log R' always comes back between 0° and 180°: a −110° turn about "
+            "ω̂ is the same rotation as +110° about −ω̂, so the log reports "
+            "the positive one."))
         self.add(lab)
         self._draw()
 
@@ -461,6 +635,14 @@ class TwistsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(2))
+        self.add(start_here(
+            "Page 117 handled orientation only. Now add position. A "
+            "<b>pose</b> = rotation R + position p, packed into one 4×4 "
+            "matrix T. A rigid body's <b>velocity</b> = spin ω + linear speed "
+            "v, packed into a 6-vector called a <b>twist</b>. A <b>force</b> "
+            "on it = moment m + force f, packed into a 6-vector called a "
+            "<b>wrench</b>. This page is vocabulary; the Jacobian and "
+            "dynamics pages use these words on every line."))
 
         h = Card("SE(3): pose as a 4×4 matrix")
         h.add(math_label(r"T=\begin{bmatrix}R&p\\ 0&1\end{bmatrix},\quad "
@@ -473,6 +655,17 @@ class TwistsPage(Page):
             "of the (imaginary) point of the body currently at the {s} origin, "
             "not of the body's own origin. That distinction is the single most "
             "common slip in Jacobian questions."))
+        h.add(plain(
+            "Why 4×4? So that 'rotate, then shift' is a single "
+            "multiplication: T·[p; 1] = Rp + offset. T⁻¹ undoes it — rotate "
+            "back, then remove the shift. A <b>body twist</b> describes the "
+            "motion from the moving body's own point of view ('I am going "
+            "forward and turning left'). A <b>spatial twist</b> describes the "
+            "same motion in the fixed world frame. The trap: in the spatial "
+            "twist, v is not the speed of the body's centre; it is the speed "
+            "of an imaginary point glued to the body that happens to be at "
+            "the world origin right now. Strange, but it makes the algebra "
+            "clean."))
         self.add(h)
 
         s = Card("screw axis and the exponential of a twist")
@@ -488,6 +681,15 @@ class TwistsPage(Page):
             "<b>exponential coordinate</b> of a pose, the same way ω̂θ was of a "
             "rotation. Forward kinematics on the next section's first page is nothing more than a "
             "product of these exponentials, one per joint."))
+        s.add(plain(
+            "Any move from pose A to pose B can be done as one <b>screw "
+            "motion</b>: turn about some line while sliding along it, like a "
+            "screw going into wood. A hinge is a screw with no sliding (pitch "
+            "h = 0); a slider is a screw with no turning. The screw axis S "
+            "stores the line's direction ŝ and, through v = −ŝ × q, where the "
+            "line is (q is any point on it). e<sup>[S]θ</sup> is 'perform "
+            "this screw motion by amount θ' as a 4×4 matrix. Forward "
+            "kinematics (page 119) multiplies one of these per joint."))
         self.add(s)
 
         lab = Card("a planar screw: drag the axis point and the angle")
@@ -504,6 +706,14 @@ class TwistsPage(Page):
         lab.add(self.S_txt)
         self.cv = MplCanvas(width=7.4, height=3.8)
         lab.add(self.cv)
+        lab.add(plain(
+            "The red × is where the hinge axis pierces the page. Slide θ: the "
+            "square swings around that point like a door around its hinge, "
+            "and the dotted arcs are its corners. The violet arrow is v, the "
+            "velocity the motion would give a point sitting at the origin. "
+            "<b>Try:</b> keep θ fixed and move the hinge point — the motion "
+            "is the same kind of turn, but v changes, because v encodes where "
+            "the hinge is. Put the hinge at (0, 0) and v becomes zero."))
         self.add(lab)
         self._draw()
 
@@ -517,6 +727,15 @@ class TwistsPage(Page):
             "V<sub>b</sub>ᵀF<sub>b</sub> = V<sub>s</sub>ᵀF<sub>s</sub> cannot "
             "depend on which frame you write it in. Hold onto that sentence: "
             "it is the entire reason τ = JᵀF on the statics page."))
+        a.add(plain(
+            "Ad<sub>T</sub> is a 6×6 'translator' that re-expresses a twist "
+            "seen from one frame in another frame. The [p]R block is there "
+            "because a spin about a distant axis looks, from here, like a "
+            "spin plus a sliding motion — a rider on a merry-go-round is "
+            "moving even though the centre only turns. Wrenches use the "
+            "transpose because power (velocity · force) is a physical number "
+            "and cannot depend on which frame you write it in. Remember that "
+            "one sentence and τ = JᵀF on page 121 needs no memorising."))
         self.add(a)
 
         self.add(interview(

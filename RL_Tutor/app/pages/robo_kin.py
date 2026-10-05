@@ -29,8 +29,10 @@ from .robo_common import (
     interview,
     labelled_slider,
     mat_html,
+    plain,
     playlist_badge,
     square,
+    start_here,
     watch,
 )
 
@@ -52,6 +54,15 @@ class PoEPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(3))
+        self.add(start_here(
+            "<b>Forward kinematics</b>: given the joint angles, where is the "
+            "hand and which way does it point? The recipe on this page has "
+            "three steps. (1) Put the robot at <b>home</b> (every joint at "
+            "zero) and write the hand's pose there: that is M. (2) For each "
+            "joint, write its screw axis Sᵢ at home: which way the hinge "
+            "points and where it sits. (3) Multiply T = e<sup>[S₁]θ₁</sup> ⋯ "
+            "e<sup>[Sₙ]θₙ</sup> M. Each factor means 'swing everything beyond "
+            "joint i about joint i's hinge by θᵢ'."))
 
         s = Card("space form and body form")
         s.add(math_label(r"T(\theta)=e^{[\mathcal{S}_1]\theta_1}\cdots"
@@ -71,6 +82,18 @@ class PoEPage(Page):
             "For the planar 3R below, every ω̂ = ẑ and the axes pass through "
             "(0,0), (L₁,0), (L₁+L₂,0) at home, so S₂ = (0,0,1, 0,−L₁,0).",
             dim=True))
+        s.add(plain(
+            "Why only home axes are needed: read the product from the right. "
+            "Move the <i>last</i> joint first — every joint before it is "
+            "still at home, so its hinge is exactly where you drew it. Then "
+            "move joint n − 1: it carries joint n and the hand along, and its "
+            "own hinge has not moved either. Continue down to joint 1. So you "
+            "only ever need hinge positions at home, which you read straight "
+            "off a sketch.<br><b>Work the example.</b> Joint 2 points out of "
+            "the page, ω̂ = (0, 0, 1), and passes through q = (L₁, 0, 0). "
+            "Then ω̂ × q = (0, L₁, 0), so v = −ω̂ × q = (0, −L₁, 0) and S₂ = "
+            "(0, 0, 1, 0, −L₁, 0). The body form is the same idea with axes "
+            "written from the hand's point of view."))
         self.add(s)
 
         lab = Card("planar 3R: drag joints, read T from the product")
@@ -80,6 +103,15 @@ class PoEPage(Page):
         lab.add(self.T_txt)
         self.cv = MplCanvas(width=7.4, height=3.8)
         lab.add(self.cv)
+        lab.add(plain(
+            "The ghost is the home pose M. The coloured stages show the "
+            "product being applied right to left: first θ₃ swings the last "
+            "link, then θ₂ swings the last two, then θ₁ swings everything. "
+            "The printed matrix is T: its upper-left block is the hand's "
+            "rotation, its last column the hand's position. <b>Check one "
+            "number yourself:</b> x = L₁cos θ₁ + L₂cos(θ₁+θ₂) + "
+            "L₃cos(θ₁+θ₂+θ₃) with L = (1.0, 0.8, 0.5) should match the top "
+            "entry of the last column."))
         self.add(lab)
         self._draw()
 
@@ -93,6 +125,14 @@ class PoEPage(Page):
             "robot can force a large parameter jump. PoE uses six numbers per "
             "joint, no link frames, and varies smoothly — which is why "
             "calibration and the book prefer it."))
+        dh.add(plain(
+            "D–H is the older recipe: bolt a frame to every link and describe "
+            "each link with four numbers (link length a, twist α, offset d, "
+            "angle θ). You will meet it in textbooks, datasheets and robot "
+            "description files, so know what the four numbers are. PoE is "
+            "easier to set up from a drawing and less fragile. In an "
+            "interview either method is accepted; the 2R formula below is "
+            "what they actually ask you to write."))
         self.add(dh)
 
         self.add(interview(
@@ -151,6 +191,14 @@ class JacobianPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(4))
+        self.add(start_here(
+            "Forward kinematics gave the hand's position. Now its "
+            "<b>speed</b>: if the joints turn at rates θ̇, how fast does the "
+            "hand move? Answer: hand velocity = J(θ) θ̇. J is a matrix that "
+            "changes with the pose. <b>Column i of J</b> = the hand velocity "
+            "you get if only joint i turns, at 1 rad/s. Add up the columns, "
+            "each weighted by its joint's real speed, and you have the hand "
+            "velocity."))
 
         j = Card("space Jacobian, body Jacobian, analytic Jacobian")
         j.add(math_label(r"\mathcal{V}_s=J_s(\theta)\dot\theta,\quad "
@@ -166,6 +214,16 @@ class JacobianPage(Page):
             "position only, the 3×n top rows of the linear-velocity Jacobian "
             "of a point are ∂p/∂θ. For a planar revolute joint: column i is "
             "ẑ × (p<sub>tip</sub> − p<sub>i</sub>) — rotate the lever arm by 90°."))
+        j.add(plain(
+            "For a planar hinge, think of a clock hand: the tip moves at "
+            "right angles to the hand, faster the longer the hand. Column i "
+            "is exactly that — the lever arm from joint i to the hand, turned "
+            "90°. For the 2R arm (s₁ = sin θ₁, c₁₂ = cos(θ₁+θ₂), …):<br>J = [ "
+            "−L₁s₁ − L₂s₁₂ , −L₂s₁₂ ; L₁c₁ + L₂c₁₂ , L₂c₁₂ ].<br>Get it by "
+            "differentiating x(θ) and y(θ) from page 119 with respect to each "
+            "angle. 'Geometric' Jacobians give the true angular velocity ω; "
+            "the 'analytic' one gives rates of whatever angles you chose "
+            "(e.g. Euler angles) and can blow up wherever those angles do."))
         self.add(j)
 
         lab = Card("the velocity ellipse, and what each column is")
@@ -188,6 +246,18 @@ class JacobianPage(Page):
         lab.add_layout(stat_row(self.st_s1, self.st_s2, self.st_mu, self.st_k))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Arrows = the columns: what each joint alone does to the hand. "
+            "Green ellipse = every hand velocity you can get with a "
+            "joint-speed vector of length 1. Long axis σ₁: the direction the "
+            "hand moves easily. Short axis σ₂: the direction it moves slowly. "
+            "μ = σ₁σ₂ is an area-like score of dexterity, and σ₁/σ₂ says how "
+            "lopsided the ellipse is (1 = a circle, equally good in all "
+            "directions).<br><b>Try:</b> bring θ₂ near 0°. The two arrows "
+            "line up, the ellipse flattens into a line, σ₂ → 0: the hand "
+            "cannot move along the arm at any joint speed. The right map "
+            "shows μ for every pose; the red bands at θ₂ = 0° and ±180° are "
+            "those singular poses, and they do not depend on θ₁."))
         self.add(lab)
         self._draw()
 
@@ -258,6 +328,13 @@ class StaticsPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(4))
+        self.add(start_here(
+            "Flip the question. Not 'joint speeds → hand speed', but 'what "
+            "motor torques must I apply so the hand <b>pushes</b> with force "
+            "F?' Answer: <b>τ = JᵀF</b> — the same Jacobian, transposed. You "
+            "use it to push on things, to hold a payload, and to estimate a "
+            "contact force from motor currents. The page also explains "
+            "singularities, the poses where J loses a direction."))
 
         p = Card("one line of derivation you must be able to give")
         p.add(math_label(r"\tau^T\dot\theta=F^T\mathcal{V}=F^TJ\dot\theta\ \ "
@@ -269,6 +346,14 @@ class StaticsPage(Page):
             "J<sub>s</sub>ᵀF<sub>s</sub>. F here is the wrench the robot "
             "<i>applies</i> to the environment; gravity torques are added "
             "separately."))
+        p.add(plain(
+            "An energy argument. Power going into the joints = Σ torque × "
+            "joint speed = τᵀθ̇. Power coming out at the hand = force · hand "
+            "velocity = Fᵀ(Jθ̇). A static, lossless arm gains no energy, so "
+            "the two are equal. That has to be true for any θ̇ you might "
+            "pick, which forces τᵀ = FᵀJ, i.e. τ = JᵀF. Intuition: a joint "
+            "far from the hand has a long lever arm, so it needs more torque "
+            "for the same hand force — like a long wrench."))
         self.add(p)
 
         lab = Card("hold a force at the hand")
@@ -283,6 +368,17 @@ class StaticsPage(Page):
         lab.add_layout(stat_row(self.st_t1, self.st_t2, self.st_det))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Choose a direction and size for the force the hand applies "
+            "(arrow). τ₁ and τ₂ are the motor torques needed to hold it. Left "
+            "panel: the velocity ellipse and the force ellipse share axes but "
+            "swap lengths — where the hand moves fast it is weak, where it "
+            "moves slowly it is strong, like changing gear on a bicycle. "
+            "Right panel: torque per newton for every force "
+            "direction.<br><b>Try:</b> stretch the arm (θ₂ → 0) and point the "
+            "force along the arm. Both torques drop to almost zero and det J "
+            "→ 0: the links carry the load in compression, the motors feel "
+            "nothing."))
         self.add(lab)
         self._draw()
 
@@ -303,6 +399,16 @@ class StaticsPage(Page):
             "workspace, e.g. wrist singularity of a 6R arm when joints 4 and 6 "
             "line up). Interior ones are the dangerous ones: the planner did "
             "not expect them."))
+        k.add(plain(
+            "A <b>singularity</b> is a pose where J loses a direction (det J "
+            "= 0 for a square J). Three faces of the same fact: the hand "
+            "cannot move that way at any joint speed; a force that way costs "
+            "no torque; and a force estimate from motor torques cannot see "
+            "forces that way. <b>Boundary</b> singularities are at the edge "
+            "of reach (arm straight or fully folded) and are easy to spot. "
+            "<b>Interior</b> ones happen when two joint axes line up inside "
+            "the workspace, e.g. joints 4 and 6 of an industrial wrist — "
+            "dangerous because nothing about the pose looks unusual."))
         self.add(k)
 
         self.add(interview(
@@ -370,6 +476,13 @@ class IKPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(5))
+        self.add(start_here(
+            "<b>Inverse kinematics</b>: given where you want the hand, find "
+            "the joint angles. Harder than forward kinematics, because there "
+            "may be <b>no</b> answer (out of reach), <b>two</b> (elbow up or "
+            "down), or <b>infinitely many</b> (redundant arm). Two "
+            "approaches: geometry, giving a formula; or iteration — guess, "
+            "measure the error, correct using the Jacobian, repeat."))
 
         a = Card("analytic 2R: the law of cosines, two branches")
         a.add(math_label(r"\cos\theta_2=\frac{x^2+y^2-L_1^2-L_2^2}{2L_1L_2},\quad "
@@ -383,6 +496,16 @@ class IKPage(Page):
             "joints place the wrist centre) and an orientation problem (last "
             "three), with up to 8 solutions; a general 6R has up to 16. "
             "<b>Always use atan2</b>, never atan or arccos alone."))
+        a.add(plain(
+            "A triangle trick. Shoulder, elbow and hand form a triangle with "
+            "sides L₁, L₂ and r = √(x² + y²), the distance to the target. The "
+            "law of cosines gives the elbow angle θ₂ from those three sides, "
+            "and ± gives the two mirror triangles (elbow up, elbow down). "
+            "Then θ₁ = direction to the target minus the angle the triangle "
+            "adds at the shoulder. <b>atan2(y, x)</b> instead of atan(y/x) "
+            "because atan2 knows the quadrant: atan cannot tell (1, 1) from "
+            "(−1, −1). If the cosine comes out bigger than 1 in size, the "
+            "target is too far or too close."))
         self.add(a)
 
         n = Card("numerical: Newton–Raphson on the residual")
@@ -396,6 +519,15 @@ class IKPage(Page):
             "solution; from a bad guess it can diverge or land on the other "
             "branch. λ > 0 (damped least squares / Levenberg–Marquardt) keeps "
             "steps bounded near singularities at the cost of speed."))
+        n.add(plain(
+            "Like adjusting a shower knob: (1) guess the angles θ; (2) "
+            "compute where the hand really is, f(θ); (3) error = target − "
+            "actual; (4) the Jacobian says how the hand moves per small joint "
+            "change, so J⁺ × error is the joint correction; (5) repeat. Close "
+            "to the answer each step roughly squares the error (10⁻² → 10⁻⁴ → "
+            "10⁻⁸): that is 'quadratic convergence'. λ (damping) makes every "
+            "step more cautious so it cannot leap wildly near a singularity, "
+            "at the price of more steps."))
         self.add(n)
 
         lab = Card("click a target: both analytic branches and the Newton path")
@@ -410,6 +542,17 @@ class IKPage(Page):
         lab.add_layout(stat_row(self.st_br, self.st_it, self.st_err))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         lab.add(self.cv)
+        lab.add(plain(
+            "Move the target (star). The green and violet arms are the two "
+            "analytic answers. Ghost arms are the Newton iterates starting "
+            "from your initial guess; cyan is where Newton ends. The right "
+            "plot is the error per iteration on a log scale.<br><b>Try:</b> "
+            "(1) put the guess near one branch, then near the other — Newton "
+            "lands on whichever is closer. (2) Drag the target outside the "
+            "outer circle: 0 analytic answers, and Newton stalls at the "
+            "nearest reachable point with a red error. (3) Start with θ₂ near "
+            "0 (arm straight) and λ = 0: jumpy steps; raise λ: smooth but "
+            "slower."))
         self.add(lab)
         self._draw()
 
@@ -468,6 +611,14 @@ class NullSpacePage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(5))
+        self.add(start_here(
+            "Put your fingertip on the table and wave your elbow: the "
+            "fingertip does not move. That is <b>redundancy</b> — more joints "
+            "(here 3) than task numbers (2: x and y). The joint motions that "
+            "leave the hand still form the <b>null space</b> of J. This page "
+            "shows how to use them for a second goal — stay away from joint "
+            "limits, keep a comfortable posture — without disturbing the "
+            "hand."))
 
         m = Card("the general solution of ẋ = J θ̇")
         m.add(math_label(r"\dot\theta=J^{+}\dot x_d+(I-J^{+}J)\,\dot\theta_0,\qquad "
@@ -486,6 +637,17 @@ class NullSpacePage(Page):
             "A weighted pseudo-inverse minimises θ̇ᵀWθ̇ instead of ‖θ̇‖²; with "
             "W = M(θ) it minimises kinetic energy and becomes the dynamically "
             "consistent inverse of the task-space dynamics page.", dim=True))
+        m.add(plain(
+            "Two pieces added together. <b>J⁺ẋ<sub>d</sub></b>: the smallest "
+            "joint motion (least total joint speed) that moves the hand as "
+            "wanted. <b>(I − J⁺J)θ̇₀</b>: take any joint motion you like for "
+            "the second goal, θ̇₀, and strip out the part of it that would "
+            "move the hand. N is a filter; J N = 0 is the promise that "
+            "whatever passes through it causes zero hand motion. 'Gradient "
+            "projection' means θ̇₀ = 'walk downhill on a cost H', e.g. H = "
+            "how close you are to the joint limits. A weighted inverse "
+            "measures 'smallest' differently; with W = M it means least "
+            "kinetic energy, which page 130 uses."))
         self.add(m)
 
         lab = Card("self-motion: the hand stays put, the elbow swings")
@@ -520,6 +682,15 @@ class NullSpacePage(Page):
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         self.a2b = self.cv.axes[1].twinx()
         lab.add(self.cv)
+        lab.add(plain(
+            "Press Play. The star (hand target) stays put; the arm reshapes "
+            "itself. The left stat (hand error) stays below a millimetre "
+            "(a feedback term k(x<sub>d</sub> − x) holds it). Switch secondary tasks and watch the joint "
+            "angles on the right change while the hand still does not move. "
+            "Then choose the last option, <b>WRONG: add θ̇₀ without "
+            "projecting</b>: the hand error now grows, because the second "
+            "goal leaks into the hand. That leak is exactly what N exists to "
+            "stop."))
         self.add(lab)
         self.timer = QTimer(self)
         self.timer.setInterval(40)
@@ -639,6 +810,14 @@ class ClosedChainPage(Page):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(watch(6))
+        self.add(start_here(
+            "So far every robot was a single chain from base to hand "
+            "(serial). A <b>parallel</b> robot has several chains meeting at "
+            "the moving platform: Delta pick-and-place robots, Stewart "
+            "flight-simulator platforms, or the humble four-bar linkage. Only "
+            "some joints have motors; the rest are dragged along. Everything "
+            "flips: inverse kinematics becomes easy and forward kinematics "
+            "hard."))
 
         c = Card("loop-closure equations")
         c.add(math_label(r"g(\theta_a,\theta_p)=0\ \Rightarrow\ "
@@ -660,6 +839,21 @@ class ClosedChainPage(Page):
             "mechanism reaches a branch point — e.g. the four-bar's coupler "
             "and rocker align. (3) <i>end-effector</i>: the output loses a "
             "direction, as in an open chain."))
+        c.add(plain(
+            "<b>Loop closure</b>: walking round the loop link by link must "
+            "bring you back to the start. That gives equations g = 0. "
+            "Differentiate them and the motor (actuated) joint speeds fix the "
+            "free (passive) joint speeds: θ̇<sub>p</sub> = "
+            "−H<sub>p</sub>⁻¹H<sub>a</sub>θ̇<sub>a</sub>, as long as "
+            "H<sub>p</sub> can be inverted. Why Stewart IK is easy: given the "
+            "platform pose, each leg length is just the distance between its "
+            "two mounting points — one line per leg. The reverse (given six "
+            "leg lengths, find the pose) is a polynomial puzzle with many "
+            "answers.<br><b>Singularities in plain words.</b> Actuator: "
+            "motors locked, yet the platform can still wobble — it loses "
+            "stiffness. Configuration: the linkage reaches a fork where it "
+            "could flip to another way of being assembled. End-effector: as "
+            "for a serial arm, the output loses a direction."))
         self.add(c)
 
         lab = Card("four-bar: drive the crank, watch the loop close (or fail to)")
@@ -677,6 +871,17 @@ class ClosedChainPage(Page):
         lab.add_layout(stat_row(self.st_g, self.st_ok, self.st_r))
         self.cv = MplCanvas(width=7.6, height=3.8)
         lab.add(self.cv)
+        lab.add(plain(
+            "Crank a is the motor; the coupler b and rocker c follow; the "
+            "ground link d never moves. The violet curve is the path of a "
+            "point on the coupler. <b>Grashof</b>: if shortest + longest ≤ "
+            "the other two added, some link can spin all the way round; "
+            "otherwise every link only rocks back and forth. <b>Loop "
+            "closes?</b> says no when, at this crank angle, the coupler and "
+            "rocker cannot reach each other — try a long crank and a short "
+            "coupler. 'Crossed' is the same four lengths assembled the other "
+            "way. The speed ratio spikes when two links line up: a singular "
+            "pose."))
         self.add(lab)
         self._draw()
 
