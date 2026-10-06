@@ -3,8 +3,10 @@ ROBOT MECHANICS, part 1 -- configuration space and rigid-body motion.
 Modern Robotics playlists 1 and 2 (chapters 2 and 3).
 
     roadmap          the twelve playlists, and which page answers which
-    C-space          degrees of freedom, Gruebler, topology
+    C-space          degrees of freedom, Gruebler, topology, representation
     constraints      holonomic vs nonholonomic; task space vs workspace
+                     (the interactive cards for videos 2.3.1-2.5 live in
+                     robo_space_topo.py)
     rotations        SO(3), so(3), Rodrigues, the matrix log
     twists/wrenches  SE(3), screw axes, the adjoint, and power = V . F
 """
@@ -20,6 +22,15 @@ from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from .base import Page
+from .robo_space_topo import (
+    CarConstraintCard,
+    FourBarCard,
+    JointLimitWorkspaceCard,
+    RepresentationCard,
+    TaskSpaceCard,
+    TopologyExplorer,
+    topology_card,
+)
 from .robo_common import (
     PL,
     PLAYLISTS,
@@ -216,7 +227,10 @@ class CSpacePage(Page):
             "(DOF)</b>. The set of all possible lists is the <b>configuration "
             "space (C-space)</b>: a map in which one point is one complete "
             "pose of the robot. Planning, kinematics and dynamics all happen "
-            "on this map."))
+            "on this map. The second half of the page asks two more "
+            "questions about that map: what <b>shape</b> is it (its "
+            "topology — flat, a sphere, a doughnut?) and what <b>numbers</b> "
+            "do we write a point on it with (its representation)."))
 
         d = Card("dof = freedoms of the bodies − constraints of the joints")
         d.add(math_label(
@@ -298,6 +312,12 @@ class CSpacePage(Page):
         self.add(t)
         self._trail = []
         self._draw()
+
+        self.add(topology_card())
+        self.topo = TopologyExplorer()
+        self.add(self.topo.card)
+        self.rep = RepresentationCard()
+        self.add(self.rep.card)
 
         self.add(interview(
             "<b>“How many DOF does a rigid body in space have, and why can't "
@@ -383,6 +403,8 @@ class ConstraintsPage(Page):
             "backwards from that velocity rule to a position rule — here you "
             "can, because it came from one."))
         self.add(h)
+        self.fourbar = FourBarCard()
+        self.add(self.fourbar.card)
 
         n = Card("nonholonomic: a constraint on q̇ that is NOT integrable")
         n.add(math_label(r"A(q)\dot q=\left[-\sin\phi\;\;\cos\phi\;\;0\right]"
@@ -403,6 +425,10 @@ class ConstraintsPage(Page):
             "at any instant it has only 2 velocity choices: drive speed and "
             "turn rate."))
         self.add(n)
+        self.car = CarConstraintCard()
+        self.add(self.car.card)
+        self.task = TaskSpaceCard()
+        self.add(self.task.card)
 
         w = Card("task space versus workspace")
         w.add(body(
@@ -440,6 +466,8 @@ class ConstraintsPage(Page):
             "for sampling planners on page 134."))
         self.add(w)
         self._draw()
+        self.wslim = JointLimitWorkspaceCard()
+        self.add(self.wslim.card)
 
         self.add(interview(
             "<b>“Is a car's rolling constraint holonomic?”</b> No. "
