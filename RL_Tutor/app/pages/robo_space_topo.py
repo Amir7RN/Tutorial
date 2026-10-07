@@ -663,6 +663,42 @@ def topology_card() -> Card:
         "(3) closed chains can have C-spaces made of separate pieces (the "
         "four-bar's two assembly modes on the next page) that no motion "
         "connects.", dim=True))
+    c.add(body(
+        "<b>The product rule, slowly.</b> 'Independent' means choosing one "
+        "part's value puts no restriction on the others. For the knob: any "
+        "turn angle θ ∈ S¹ can go with any push depth z ∈ E¹, so the set of "
+        "all knob poses is every pair (z, θ). Picture it: take the line of "
+        "depths, and at each depth attach a whole circle of angles. Lines "
+        "stacked with circles make a <b>cylinder</b>, E¹ × S¹. For the 2R "
+        "arm: at each q₁ on a circle attach a whole circle of q₂ — circles "
+        "swept round a circle make a <b>doughnut</b>, S¹ × S¹ = T². The "
+        "practical payoff: <b>every rule about one piece holds for that "
+        "coordinate on its own</b>. On a torus you wrap q₁ and q₂ "
+        "separately, each exactly like a single joint. On E² × S¹ (a "
+        "mobile robot) you subtract x and y normally and wrap only the "
+        "heading. The rule fails as soon as the parts are <i>not</i> "
+        "independent: in a four-bar, choosing the crank angle fixes the "
+        "other three angles, so its C-space is not T⁴ but a 1-D curve "
+        "inside T⁴."))
+    c.add(body(
+        "<b>The three engineering consequences, with an example each.</b><br>"
+        "<b>(1) Distances wrap.</b> A joint at 350° told to go to 10°. On a "
+        "line the gap is −340°; on the circle it is +20°. Any code that "
+        "subtracts angles — a PID error, a planner's distance, a velocity "
+        "estimate (θₖ − θₖ₋₁)/Δt, a linear interpolation between waypoints — "
+        "must use the circle's answer or the arm takes the long way, or the "
+        "velocity estimate spikes to −340°/Δt for one sample. The lab two "
+        "cards down shows it.<br>"
+        "<b>(2) Curved spaces have no perfect coordinates.</b> A circle's "
+        "coordinate θ only has a seam (359° → 0°), which wrapping fixes. A "
+        "sphere's or a 3-D orientation's coordinates are worse: somewhere "
+        "they blow up (latitude–longitude at the pole, Euler angles at "
+        "pitch ±90°), and no amount of wrapping repairs that. That is a "
+        "theorem about the shape, not a weakness of a particular formula.<br>"
+        "<b>(3) Separate pieces.</b> A four-bar assembled 'elbow up' can "
+        "never reach 'elbow down' without taking it apart: its C-space is "
+        "two disconnected loops. A planner asked to go between them must "
+        "report 'impossible', not search forever.", dim=True))
     c.add(plain(
         "Topology is the shape you could feel with your eyes closed: does "
         "it go on forever, does it have edges you bump into, does walking "
@@ -744,7 +780,7 @@ class AngleWrapCard:
             "<b>wrapped</b> error respects the circle:"))
         c.add(math_label(
             r"e_{\mathrm{naive}}=\theta_d-\theta,\qquad "
-            r"e_{\mathrm{wrap}}=\big((\theta_d-\theta+180^\circ)\bmod 360^\circ\big)"
+            r"e_{\mathrm{wrap}}=\left((\theta_d-\theta+180^\circ)\ \mathrm{mod}\ 360^\circ\right)"
             r"-180^\circ\;\in[-180^\circ,180^\circ)", 15))
         self.s_now = labelled_slider(c, "current angle θ", 0, 359, 350, deg, self._draw)
         self.s_goal = labelled_slider(c, "target angle θ_d", 0, 359, 10, deg, self._draw)
@@ -756,8 +792,21 @@ class AngleWrapCard:
         self.cv = MplCanvas(width=8.6, height=3.5, ncols=2)
         c.add(self.cv)
         c.add(plain(
-            "This is what 'the C-space is a circle (or a torus)' buys you in "
-            "practice. At θ = 350° going to 10°, the joint only needs to turn "
+            "<b>Is the torus 'already wrapped'? Yes — that is the point.</b> "
+            "The torus is not a tool you apply; it is a fact about the robot: "
+            "a free joint really does come back to where it started. Your "
+            "numbers do not know that. θ lives in [0°, 360°) and ordinary "
+            "subtraction treats 359° and 0° as far apart. Knowing the C-space "
+            "is a circle tells you <b>which arithmetic is correct</b>: wrap "
+            "differences. Knowing it is a torus S¹ × S¹ tells you more: wrap "
+            "each joint <b>separately</b> (product rule). For a 2R arm at "
+            "(170°, −170°) going to (−170°, 170°), the naive move is "
+            "(−340°, +340°): both joints swing nearly a full turn. Wrapped, it "
+            "is (+20°, −20°): on the flat square picture the short path leaves "
+            "through one corner and comes back in at the opposite corner, "
+            "because the edges are glued. A planner that draws the square "
+            "without the glue never finds that path.<br>"
+            "At θ = 350° going to 10°, the joint only needs to turn "
             "+20°. The naive error says −340°, so the controller swings the "
             "arm almost all the way round the other way: slower, and through "
             "whatever is in the way. Averaging fails the same way: two "
@@ -855,14 +904,35 @@ class RepresentationCard:
               "more numbers to store, and constraints to keep satisfied "
               "(numerical drift must be corrected)")])))
         c.add(body(
-            "Below: walk east at a constant 1 m/s around a circle of constant "
-            "latitude on a 1 m sphere. The implicit coordinates (x, y, z) "
-            "change at a bounded rate — never faster than your walking speed. "
-            "Longitude changes at λ̇ = v / (R cos φ), which grows without "
-            "bound as you approach the pole.", dim=True))
+            "<b>The experiment.</b> This is the textbook's own example "
+            "(Modern Robotics §2.3.2): the sphere is the simplest curved "
+            "C-space, a stand-in for the orientation of a wrist or a camera. "
+            "Walk east at a constant v = 1 m/s around a circle of constant "
+            "latitude φ on a sphere of radius R = 1 m, and ask how fast each "
+            "description of your position changes.", dim=True))
+        c.add(body(
+            "<b>Where λ̇ = v / (R cos φ) comes from.</b> Latitude φ is the "
+            "angle up from the equator. The circle you walk on has radius "
+            "r = R cos φ (the horizontal distance from the sphere's axis): "
+            "r = R at the equator, r = 0 at the pole. Longitude λ is the angle "
+            "you have turned round that axis. Walking at speed v round a "
+            "circle of radius r turns you at v / r radians per second — like a "
+            "wheel: same rim speed, smaller wheel, faster spin. So "
+            "λ̇ = v / r = v / (R cos φ). At φ = 0°, λ̇ = 1 rad/s ≈ 57°/s. At "
+            "φ = 89°, cos φ ≈ 0.017, so λ̇ ≈ 3300°/s for the same gentle walk. "
+            "At 90° it divides by zero.<br>"
+            "<b>Why (x, y, z) stays calm.</b> Write the point implicitly, "
+            "p = (R cos φ cos λ, R cos φ sin λ, R sin φ), and differentiate "
+            "with φ fixed. The speed is R cos φ · λ̇ = v: the large λ̇ is "
+            "cancelled exactly by the small radius. (x, y, z) change only as "
+            "fast as you physically move, everywhere, pole included.",
+            dim=True))
         c.add(math_label(
-            r"\dot\lambda=\frac{v}{R\cos\varphi}\;\xrightarrow{\;\varphi\to 90^\circ\;}"
-            r"\;\infty,\qquad \|(\dot x,\dot y,\dot z)\|=v", 15))
+            r"r=R\cos\varphi,\qquad \dot\lambda=\frac{v}{r}=\frac{v}{R\cos\varphi}"
+            r"\;\to\;\infty\ \mathrm{as}\ \varphi\to 90^\circ", 15))
+        c.add(math_label(
+            r"\dot p=R\cos\varphi\,\dot\lambda\,(-\sin\lambda,\ \cos\lambda,\ 0),\qquad "
+            r"\Vert\dot p\Vert=R\cos\varphi\,\dot\lambda=v", 15))
         self.s, name, self.read = _row(c, 0, 899, 450, self._draw)
         name.setText("latitude φ")
         self.st_lr = Stat("longitude rate λ̇", "--", theme.BAD)
@@ -944,78 +1014,78 @@ class RepresentationCard:
 
 
 def choose_rep_card() -> Card:
-    """A recipe: topology from the joints, the two ways numbers misbehave,
-    and which representation to pick."""
-    c = Card("so which do I use? a recipe, not a list to memorise")
+    """The take-away of page 115: shape vs numbers, the two failure kinds,
+    and the one-sentence rule the rest of the block uses."""
+    c = Card("so which do I use? explicit, implicit, and when wrapping is enough")
     c.add(body(
-        "<b>Step 1. Build the topology from the joints; do not memorise it.</b> "
-        "Each joint or free body contributes one piece, and independent pieces "
-        "multiply (the product rule above). Closed loops then cut the product "
-        "down with g(θ) = 0 (next page)."))
-    c.add(body(_grid_table(
-        ("part of the robot", "its piece of C-space"),
-        [("revolute joint, no limits", "circle S¹"),
-         ("revolute joint with limits", "interval [a, b]"),
-         ("prismatic joint", "line E¹, or [a, b] with stops"),
-         ("a direction (spherical pendulum, a pointing camera)", "sphere S²"),
-         ("a full 3-D orientation (a hand, a drone, a wrist)", "SO(3)"),
-         ("a free body in the plane / in space", "E² × S¹ / E³ × SO(3)")])))
+        "<b>The message of this card in one line:</b> use plain angles "
+        "(explicit) for every joint and wrap their differences; store "
+        "anything that can point in any 3-D direction (a hand's orientation, "
+        "a drone's attitude) as a rotation matrix or quaternion (implicit). "
+        "The rest of the card is why, and how to tell which case you are in."))
     c.add(body(
-        "So a 6R arm without limits is S¹ × … × S¹ = T⁶, the same arm with "
-        "limits is a 6-D box, and a mobile base carrying it is "
-        "E² × S¹ × T⁶. You read this off the robot in seconds."))
+        "<b>1. Two different questions; do not mix them.</b> <b>Topology</b> "
+        "is the shape of the C-space. The robot decides it; you cannot "
+        "choose it. <b>Representation</b> is which numbers you store for a "
+        "point on that shape. You choose it. 'Explicit or implicit' is a "
+        "choice of representation; 'circle, torus, sphere' is a fact of "
+        "topology. The fact decides which choice is safe."))
     c.add(body(
-        "<b>Step 2. Know the two ways numbers misbehave.</b> 'Misbehave' means "
-        "the robot moves smoothly and slowly, but the numbers describing it do "
-        "not. There are exactly two kinds, and they are not equally bad:"))
+        "<b>2. Explicit numbers fail in one of two ways, and only one is "
+        "fixable by wrapping.</b>"))
     c.add(body(_grid_table(
         ("", "a jump (seam)", "a blow-up (singularity)"),
-        [("what you see", "a coordinate teleports, 359° → 0°, while the robot "
-                          "barely moves",
-          "a coordinate's rate races towards infinity while the robot moves "
-          "at a modest speed; at the bad point the coordinate is undefined"),
-         ("where", "every circle: joint angles, longitude at the date line",
-          "latitude–longitude at the poles; Euler angles at pitch ±90° "
-          "(gimbal lock)"),
-         ("what breaks", "differences, averages, numerical derivatives, "
-                         "interpolation (the lab above)",
-          "anything that turns a physical velocity into coordinate rates: "
-          "the controller asks for huge motor speeds, integrators lose "
-          "accuracy, a Jacobian goes singular"),
-         ("fix", "cheap bookkeeping: wrap differences into (−180°, 180°]",
-          "no bookkeeping fixes it: change coordinates, or go implicit")])))
+        [("happens on", "a circle: any joint angle", "a sphere or SO(3): "
+                                                    "latitude–longitude, Euler angles"),
+         ("example", "joint moves 359° → 1°: a 2° turn, but θ reads −358°",
+          "wrist near pitch 89° turns slowly at 10°/s; yaw and roll must "
+          "change at ≈ 10/cos 89° ≈ 570°/s to describe it"),
+         ("is the number wrong?", "no, it is just written in the wrong "
+                                  "place on the line",
+          "yes: the rate really is huge, and at 90° the angles are undefined"),
+         ("fix", "one line of code: wrap the difference to (−180°, 180°]",
+          "none in those coordinates; switch to R or a quaternion")])))
     c.add(body(
-        "Why a circle only ever jumps: one degree of joint motion is always "
-        "one degree of θ, everywhere on the circle. Why a sphere must blow up "
-        "somewhere: there is no way to lay two numbers smoothly over the "
-        "whole sphere (it is a theorem, not a lack of cleverness), and the "
-        "same holds for SO(3) with three numbers."))
+        "So for your question — <i>'explicit has jumps, but if we wrap it is "
+        "okay?'</i> — <b>yes, on a circle or torus</b>: a joint angle never "
+        "blows up, because 1° of motion is always 1° of θ. Wrapping repairs "
+        "every jump, so joint angles q are safe to use as they are. "
+        "<b>No, on a sphere or SO(3)</b>: there the trouble is a blow-up, "
+        "not a seam, and wrapping does nothing. That is the only reason "
+        "implicit exists."))
     c.add(body(
-        "<b>Step 3. Pick the representation from what Step 1 gave you.</b>"))
+        "<b>3. What implicit does and does not buy.</b> It removes "
+        "singularities <i>of the numbers</i> (gimbal lock, the pole). It does "
+        "<b>not</b> make every controller safe: singularities <i>of the "
+        "robot</i> — an arm stretched straight, where no joint speed moves "
+        "the hand outward — exist whatever numbers you use (Jacobian, page "
+        "120). And it has costs: 9 numbers instead of 3, plus rules "
+        "(RᵀR = I, ‖q‖ = 1) that rounding error slowly breaks, so you "
+        "re-normalise R or the quaternion every so often."))
     c.add(body(_grid_table(
-        ("your C-space contains…", "use", "example"),
-        [("only lines, intervals and circles",
-          "<b>explicit</b>: one number per joint, and wrap the angles",
-          "every serial arm's joint vector q; the q in M(q)q̈ + c + g = τ"),
-         ("a sphere S² or an orientation SO(3)",
-          "<b>implicit</b>: unit vector, rotation matrix R or quaternion; "
-          "show Euler angles to humans only",
-          "the hand's orientation, a drone's attitude, an IMU estimate"),
-         ("a closed loop",
-          "<b>implicit</b>: all the joint angles plus the loop equations "
-          "g(θ) = 0",
-          "four-bar, Delta, Stewart platform (next page, page 124)")])))
+        ("your robot has…", "C-space piece", "store as", "in code"),
+        [("a revolute joint", "circle S¹", "<b>explicit</b> angle θ",
+          "wrap every difference: e = (θ_d − θ + 180) % 360 − 180"),
+         ("a joint with stops, or a slider", "interval / line", "<b>explicit</b> θ or d",
+          "plain subtraction; never wrap (the long way is the only way)"),
+         ("a hand, camera, drone or IMU orientation", "SO(3) (or S² for a "
+                                                      "pointing direction)",
+          "<b>implicit</b> R or quaternion",
+          "error from R_dᵀR, not from Euler angles; Euler only for display"),
+         ("a closed loop (four-bar, Delta)", "a curve or surface inside Tⁿ",
+          "<b>implicit</b>: all joint angles + g(θ) = 0",
+          "solve g(θ) = 0 numerically (next page)")])))
     c.add(plain(
-        "Implicit is not 'always better', and it does not apply everywhere by "
-        "default: it costs extra numbers and you must keep the constraints "
-        "true (renormalise R or the quaternion as numerical error creeps in). "
-        "Use it only where the explicit chart would blow up, or where the "
-        "explicit formula is too hard to write. For the arm problems in the "
-        "rest of this block that settles it: <b>joints are described "
-        "explicitly by their angles q; the hand's orientation is described "
-        "implicitly by R</b>. That single sentence is why page 117 is about "
-        "rotation matrices, and why every dynamics page writes M(q) with q "
-        "the plain joint angles."))
+        "A worked example to carry forward. A 6-joint arm holding a cup. "
+        "Its joints: six circles, so C-space T⁶ and q is six plain angles "
+        "— the q in τ = M(q)q̈ + c + g. Its controller computes "
+        "q<sub>d</sub> − q joint by joint, wrapped. The cup's orientation "
+        "is a 3-D orientation, so the hand pose is stored as a rotation "
+        "matrix R, and 'how far is the cup from upright?' is computed from "
+        "R, never by subtracting roll–pitch–yaw. Two representations in "
+        "the same program, each chosen by the shape of its piece. That is "
+        "the whole lesson, and it is why page 117 is about rotation "
+        "matrices while every dynamics page uses plain joint angles."))
     return c
 
 
