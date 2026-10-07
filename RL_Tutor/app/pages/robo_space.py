@@ -23,13 +23,18 @@ from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from .base import Page
 from .robo_space_topo import (
+    AngleWrapCard,
     CarConstraintCard,
     FourBarCard,
+    HoopConstraintCard,
     JointLimitWorkspaceCard,
     RepresentationCard,
     TaskSpaceCard,
     TopologyExplorer,
+    choose_rep_card,
+    constraint_uses_card,
     topology_card,
+    why_card,
 )
 from .robo_common import (
     PL,
@@ -231,6 +236,7 @@ class CSpacePage(Page):
             "questions about that map: what <b>shape</b> is it (its "
             "topology — flat, a sphere, a doughnut?) and what <b>numbers</b> "
             "do we write a point on it with (its representation)."))
+        self.add(why_card())
 
         d = Card("dof = freedoms of the bodies − constraints of the joints")
         d.add(math_label(
@@ -316,8 +322,11 @@ class CSpacePage(Page):
         self.add(topology_card())
         self.topo = TopologyExplorer()
         self.add(self.topo.card)
+        self.wrap = AngleWrapCard()
+        self.add(self.wrap.card)
         self.rep = RepresentationCard()
         self.add(self.rep.card)
+        self.add(choose_rep_card())
 
         self.add(interview(
             "<b>“How many DOF does a rigid body in space have, and why can't "
@@ -403,6 +412,8 @@ class ConstraintsPage(Page):
             "backwards from that velocity rule to a position rule — here you "
             "can, because it came from one."))
         self.add(h)
+        self.hoop = HoopConstraintCard()
+        self.add(self.hoop.card)
         self.fourbar = FourBarCard()
         self.add(self.fourbar.card)
 
@@ -427,6 +438,7 @@ class ConstraintsPage(Page):
         self.add(n)
         self.car = CarConstraintCard()
         self.add(self.car.card)
+        self.add(constraint_uses_card())
         self.task = TaskSpaceCard()
         self.add(self.task.card)
 

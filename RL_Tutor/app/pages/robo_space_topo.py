@@ -2,10 +2,11 @@
 Interactive cards for Modern Robotics chapter 2.3-2.5, the four videos the
 C-space pages compressed into a paragraph each:
 
-    2.3.1  C-space topology        TopologyExplorer
-    2.3.2  C-space representation  RepresentationCard
+    2.3.1  C-space topology        TopologyExplorer, AngleWrapCard, why_card
+    2.3.2  C-space representation  RepresentationCard, choose_rep_card
     2.4    configuration and velocity constraints
-                                   FourBarCard, CarConstraintCard
+                                   HoopConstraintCard, FourBarCard,
+                                   CarConstraintCard, constraint_uses_card
     2.5    task space and workspace
                                    TaskSpaceCard, JointLimitWorkspaceCard
 
@@ -23,7 +24,7 @@ from PySide6.QtWidgets import QComboBox, QLabel
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, math_label, stat_row
 from .motors import slider, slider_row
-from .robo_common import draw_arm, mat_html, plain, square
+from .robo_common import deg, draw_arm, labelled_slider, mat_html, plain, square
 
 TAU = 2 * math.pi
 
@@ -158,6 +159,9 @@ _TOPO = {
              "moving the point a little always changes (x, y) a little. This "
              "is the only system in the list where the representation has the "
              "same topology as the space itself.",
+        use="Nothing special. Subtract coordinates to get an error, average "
+            "them, differentiate them: everything from the control pages works "
+            "unchanged. This is the baseline the other five systems break.",
         extra="Velocity is just (ẋ, ẏ), the time derivative of the coordinates "
               "— which only works this simply because the space is flat. A "
               "planar body that can also turn is E² × S¹ (3-D), not E²."),
@@ -167,9 +171,12 @@ _TOPO = {
         system="A rod pivoting freely about a fixed ball joint at the centre "
                "of a sphere; the bob can be anywhere on the sphere (ignore "
                "spin of the rod about its own axis).",
-        topo="<b>S²</b>, the 2-D surface of a sphere: finite area, no edge, "
-             "and it closes on itself in every direction. Not equivalent to "
-             "the plane — flattening it needs at least one cut.",
+        topo="<b>S²</b>, the 2-D <b>surface</b> of a sphere, not the solid "
+             "ball: the rod has a fixed length, so the bob is always exactly "
+             "L from the pivot. (A telescoping rod would fill the solid ball, "
+             "a 3-D C-space.) Finite area, no edge, and it closes on itself in "
+             "every direction. Not equivalent to the plane — flattening it "
+             "needs at least one cut.",
         rep="<b>Latitude</b> ∈ [−90°, 90°] and <b>longitude</b> ∈ [−180°, "
             "180°), like a world map.",
         seam="(1) Longitude jumps by 360° when you cross the date line "
@@ -178,6 +185,12 @@ _TOPO = {
              "whole bottom edge is the South Pole. Step over a pole and "
              "longitude jumps by 180°. Drag the swing angle past 90° to see "
              "it.",
+        use="Do not control or estimate it in latitude/longitude near a pole: "
+            "a slow, smooth swing there asks for a huge longitude rate (the "
+            "representation lab below). Store the bob direction as a unit "
+            "vector (x, y, z) with x² + y² + z² = 1 instead. A pan–tilt camera "
+            "tracking a bird that flies straight overhead hits the same wall: "
+            "the pan motor has to whip round 180°.",
         extra="These are faults of the <i>map</i>, not the sphere — the "
               "sphere looks the same everywhere. A theorem (the hairy-ball "
               "theorem's cousin) says no single pair of numbers can cover S² "
@@ -200,6 +213,13 @@ _TOPO = {
              "θ₁ = 2π) and top = bottom. As the robot moves smoothly through "
              "0 or 2π, the coordinates jump to the opposite edge — the red "
              "crosses on the right panel.",
+        use="Joint angles are fine as coordinates: they are the q in "
+            "τ = M(q)q̈ + c + g on the dynamics pages. But every angle "
+            "<i>difference</i> must be wrapped into (−180°, 180°]: a PID error, "
+            "a planner's distance, an interpolated path. Otherwise the arm "
+            "turns 340° when 20° would do (the next lab). A grid planner on "
+            "this C-space must link the right column to the left column, or it "
+            "misses short paths through the seam (page 134).",
         extra="Where the zero of each angle is placed is an arbitrary choice; "
               "it moves the seams but cannot remove them. With joint limits "
               "(say ±150°) the C-space is a closed rectangle [−150°, 150°]², "
@@ -218,6 +238,10 @@ _TOPO = {
             "flat strip of the plane.",
         seam="Only the angle seam: θ jumps between 0 and 2π. The slide "
              "coordinate s is continuous everywhere (it was never cut).",
+        use="Treat the two numbers differently: wrap the angle, never wrap the "
+            "slide. Mixed spaces like this one (a mobile base's (x, y, φ) is "
+            "another) are where code most often wraps the wrong variable or "
+            "forgets to wrap one.",
         extra="A real slider has end stops, which makes s a closed interval "
               "and the C-space a finite cylinder [s_min, s_max] × S¹. A "
               "cylindrical joint (f = 2 in Grübler's formula) has exactly "
@@ -232,6 +256,9 @@ _TOPO = {
             "once and straightened.",
         seam="θ = 0 and θ = 2π are the same pendulum, but opposite ends of "
              "the segment. Swinging over the top makes the number jump.",
+        use="The 1-D version of the 2R lesson: wrap every error. A swing-up "
+            "controller must also know that upright reached from the left "
+            "(θ = 180°) and from the right (θ = −180°) is the same pose.",
         extra="Controllers must compute angle errors modulo 2π: the error "
               "between 359° and 1° is 2°, not 358°. Using an unwrapped "
               "angle (a real number that keeps counting turns) turns S¹ into "
@@ -247,6 +274,10 @@ _TOPO = {
         seam="None. The ends of the interval are real physical limits, not "
              "artefacts of the map: the bead stops there instead of "
              "reappearing at the other end. Compare with the pendulum.",
+        use="Here the ends are real walls: the controller must slow down and "
+            "stop before them (saturate, add limit avoidance), not wrap. A "
+            "joint with limits loses the 'go the other way round' option, so "
+            "limits change which paths exist, not just how long they are.",
         extra="Circle, line and closed interval are the three topologically "
               "different 1-D C-spaces. All have dimension 1; you cannot "
               "deform one into another without cutting or gluing."),
@@ -328,6 +359,7 @@ class TopologyExplorer:
             ("System", d["system"]), ("Topology", d["topo"]),
             ("Representation", d["rep"]),
             ("Where the numbers misbehave", d["seam"]),
+            ("So what — what you do with it", d["use"]),
             ("Beyond the video", d["extra"])]))
         phys3d = k == "spherical pendulum"
         topo3d = k not in ("simple pendulum (1-D)", "bead on a bounded rod (1-D)")
@@ -643,6 +675,150 @@ def topology_card() -> Card:
     return c
 
 
+def why_card() -> Card:
+    """The 'so what' of page 115: each idea and the later page that needs it."""
+    c = Card("so what? where each idea on this page gets used")
+    c.add(body(
+        "This page is vocabulary, and vocabulary is hard to care about until "
+        "you see the sentence it is used in. The goal of the block is "
+        "<b>τ = M(q)q̈ + c(q, q̇) + g(q)</b> and the controllers built on it. "
+        "Every idea below answers one question that equation, or the code "
+        "around it, cannot avoid:"))
+    c.add(body(_grid_table(
+        ("idea", "question it answers", "what you actually do with it", "used on"),
+        [("degrees of freedom",
+          "how many numbers in q?",
+          "sets the size of everything: q has n entries, M(q) is n × n, the "
+          "Jacobian has n columns; tells you how many motors fully control "
+          "the robot, and whether it is redundant for a task",
+          "119, 120, 123, 125"),
+         ("topology",
+          "does the space wrap round, have walls, or have holes?",
+          "wrap angle errors (PID, planners, interpolation); treat joint "
+          "limits as walls, not seams; know that a closed chain may have "
+          "separate pieces you cannot move between",
+          "124, 134, 135"),
+         ("explicit representation",
+          "which minimal numbers do I write a pose with?",
+          "joint angles q for an arm: exactly the q in the dynamics. Safe "
+          "because a circle only has jumps, never blow-ups (cards below)",
+          "119–131"),
+         ("implicit representation",
+          "what if every minimal set of numbers breaks somewhere?",
+          "store the hand's orientation as a rotation matrix R (or a "
+          "quaternion), never as Euler angles, so the controller has no "
+          "gimbal lock; describe a closed chain by all its joints plus "
+          "g(θ) = 0",
+          "117, 118, 124, 136"),
+         ("velocity ≠ coordinate rate",
+          "how fast is it moving?",
+          "use angular velocity ω and twists V, not Euler-angle rates; the "
+          "Jacobian maps q̇ to a twist, not to rates of some coordinates",
+          "117, 118, 120")])))
+    c.add(plain(
+        "Think of the whole block as a jigsaw whose finished picture is "
+        "'compute the motor torques for a motion, and control the arm'. "
+        "<b>DOF</b> tells you how many pieces the picture has (the length of "
+        "q). <b>Topology</b> tells you the rules for subtracting and "
+        "averaging those pieces (angles wrap, limits are walls). "
+        "<b>Representation</b> tells you which numbers to store so nothing "
+        "explodes: joint angles for the joints, a rotation matrix for the "
+        "hand's orientation. You do not need to memorise a catalogue of "
+        "shapes: the recipe card further down builds any C-space from its "
+        "joints in one line."))
+    return c
+
+
+class AngleWrapCard:
+    """Why the circle matters: naive vs wrapped angle error, and averaging."""
+
+    def __init__(self):
+        c = self.card = Card("so what? the long-way-round bug that the circle explains")
+        c.add(body(
+            "A revolute joint's C-space is a circle S¹, but its coordinate θ "
+            "is written on a line segment [0°, 360°). The two disagree only "
+            "at the seam, and that is enough to break ordinary arithmetic. "
+            "Below, a joint sits at θ and must go to θ<sub>d</sub>. A P "
+            "controller drives it with the error e. The <b>naive</b> error "
+            "θ<sub>d</sub> − θ treats the coordinate as a line; the "
+            "<b>wrapped</b> error respects the circle:"))
+        c.add(math_label(
+            r"e_{\mathrm{naive}}=\theta_d-\theta,\qquad "
+            r"e_{\mathrm{wrap}}=\big((\theta_d-\theta+180^\circ)\bmod 360^\circ\big)"
+            r"-180^\circ\;\in[-180^\circ,180^\circ)", 15))
+        self.s_now = labelled_slider(c, "current angle θ", 0, 359, 350, deg, self._draw)
+        self.s_goal = labelled_slider(c, "target angle θ_d", 0, 359, 10, deg, self._draw)
+        self.st_naive = Stat("naive error", "--", theme.BAD)
+        self.st_wrap = Stat("wrapped error", "--", theme.GOOD)
+        self.st_waste = Stat("wasted rotation", "--", theme.WARN)
+        self.st_mean = Stat("average: naive / on circle", "--", theme.VIOLET)
+        c.add_layout(stat_row(self.st_naive, self.st_wrap, self.st_waste, self.st_mean))
+        self.cv = MplCanvas(width=8.6, height=3.5, ncols=2)
+        c.add(self.cv)
+        c.add(plain(
+            "This is what 'the C-space is a circle (or a torus)' buys you in "
+            "practice. At θ = 350° going to 10°, the joint only needs to turn "
+            "+20°. The naive error says −340°, so the controller swings the "
+            "arm almost all the way round the other way: slower, and through "
+            "whatever is in the way. Averaging fails the same way: two "
+            "sensor readings of 350° and 10° average to 180° on the number "
+            "line, which points the opposite way, while the true average on "
+            "the circle is 0°. <b>Try:</b> keep the two angles far from the "
+            "seam (say 100° and 140°): both errors agree and the topology "
+            "does not matter. Then put them on either side of 0°: the red "
+            "path goes the long way. Nothing about the joint changed; only "
+            "whether the code knew it was on a circle. A joint <i>with "
+            "limits</i> is an interval, not a circle, and there the long way "
+            "round is the only way, so you must not wrap."))
+        self._draw()
+
+    def _draw(self, *_):
+        th, td = self.s_now.value(), self.s_goal.value()
+        naive = td - th
+        wrap = (td - th + 180) % 360 - 180
+        r = math.radians
+        sx, cx = math.sin(r(th)) + math.sin(r(td)), math.cos(r(th)) + math.cos(r(td))
+        circ = None if math.hypot(sx, cx) < 1e-9 else math.degrees(math.atan2(sx, cx)) % 360
+        mean = (th + td) / 2
+        self.st_naive.set(f"{naive:+d}°")
+        self.st_wrap.set(f"{wrap:+d}°")
+        self.st_waste.set(f"{abs(naive) - abs(wrap)}°")
+        self.st_mean.set(f"{mean:.0f}° / " + ("undefined" if circ is None else f"{circ:.0f}°"))
+        self.cv.clear()
+        a1, a2 = self.cv.axes
+        e = np.linspace(0, TAU, 200)
+        a1.plot(np.cos(e), np.sin(e), color=theme.BORDER, lw=1)
+        a1.plot([0, math.cos(r(th))], [0, math.sin(r(th))], color=theme.CYAN, lw=4,
+                label="joint now")
+        a1.plot([0, math.cos(r(td))], [0, math.sin(r(td))], "--", color=theme.WARN,
+                lw=2, label="target")
+        for err, rad, col in ((naive, 0.8, theme.BAD), (wrap, 0.6, theme.GOOD)):
+            s = np.radians(np.linspace(th, th + err, 120))
+            a1.plot(rad * np.cos(s), rad * np.sin(s), color=col, lw=2.2)
+            a1.plot(rad * math.cos(s[-1]), rad * math.sin(s[-1]), "o", color=col, ms=5)
+        a1.plot(1.15 * math.cos(r(mean)), 1.15 * math.sin(r(mean)), "x", color=theme.BAD,
+                ms=10, mew=2.5, label="naive average")
+        if circ is not None:
+            a1.plot(1.15 * math.cos(r(circ)), 1.15 * math.sin(r(circ)), "o",
+                    color=theme.GOOD, ms=9, label="average on the circle")
+        a1.text(1.02, -0.16, "0°", color=theme.TEXT_DIM, fontsize=8)
+        square(a1, 1.45)
+        a1.set_title("red: naive path   green: wrapped path")
+        self.cv.legend(a1, loc="lower left")
+        t = np.linspace(0, 3, 200)
+        for err, col, lab in ((naive, theme.BAD, "naive error"),
+                              (wrap, theme.GOOD, "wrapped error")):
+            a2.plot(t, th + err * (1 - np.exp(-2 * t)), color=col, lw=2, label=lab)
+        for k in (-1, 0, 1):
+            a2.axhline(td + 360 * k, color=theme.WARN, lw=0.8, ls=":")
+        a2.set_ylim(min(th, th + naive, th + wrap) - 30, max(th, th + naive, th + wrap) + 30)
+        a2.set_xlabel("time (s)")
+        a2.set_ylabel("angle turned through (deg)")
+        a2.set_title("same P gain, same joint (dotted: target, every 360°)")
+        self.cv.legend(a2, loc="best")
+        self.cv.refresh()
+
+
 # ==========================================================================
 # 2.3.2  representation: explicit vs implicit
 # ==========================================================================
@@ -765,6 +941,244 @@ class RepresentationCard:
         a2.set_title("explicit coordinates blow up at the pole")
         self.cv.legend(a2, loc="upper left")
         self.cv.refresh()
+
+
+def choose_rep_card() -> Card:
+    """A recipe: topology from the joints, the two ways numbers misbehave,
+    and which representation to pick."""
+    c = Card("so which do I use? a recipe, not a list to memorise")
+    c.add(body(
+        "<b>Step 1. Build the topology from the joints; do not memorise it.</b> "
+        "Each joint or free body contributes one piece, and independent pieces "
+        "multiply (the product rule above). Closed loops then cut the product "
+        "down with g(θ) = 0 (next page)."))
+    c.add(body(_grid_table(
+        ("part of the robot", "its piece of C-space"),
+        [("revolute joint, no limits", "circle S¹"),
+         ("revolute joint with limits", "interval [a, b]"),
+         ("prismatic joint", "line E¹, or [a, b] with stops"),
+         ("a direction (spherical pendulum, a pointing camera)", "sphere S²"),
+         ("a full 3-D orientation (a hand, a drone, a wrist)", "SO(3)"),
+         ("a free body in the plane / in space", "E² × S¹ / E³ × SO(3)")])))
+    c.add(body(
+        "So a 6R arm without limits is S¹ × … × S¹ = T⁶, the same arm with "
+        "limits is a 6-D box, and a mobile base carrying it is "
+        "E² × S¹ × T⁶. You read this off the robot in seconds."))
+    c.add(body(
+        "<b>Step 2. Know the two ways numbers misbehave.</b> 'Misbehave' means "
+        "the robot moves smoothly and slowly, but the numbers describing it do "
+        "not. There are exactly two kinds, and they are not equally bad:"))
+    c.add(body(_grid_table(
+        ("", "a jump (seam)", "a blow-up (singularity)"),
+        [("what you see", "a coordinate teleports, 359° → 0°, while the robot "
+                          "barely moves",
+          "a coordinate's rate races towards infinity while the robot moves "
+          "at a modest speed; at the bad point the coordinate is undefined"),
+         ("where", "every circle: joint angles, longitude at the date line",
+          "latitude–longitude at the poles; Euler angles at pitch ±90° "
+          "(gimbal lock)"),
+         ("what breaks", "differences, averages, numerical derivatives, "
+                         "interpolation (the lab above)",
+          "anything that turns a physical velocity into coordinate rates: "
+          "the controller asks for huge motor speeds, integrators lose "
+          "accuracy, a Jacobian goes singular"),
+         ("fix", "cheap bookkeeping: wrap differences into (−180°, 180°]",
+          "no bookkeeping fixes it: change coordinates, or go implicit")])))
+    c.add(body(
+        "Why a circle only ever jumps: one degree of joint motion is always "
+        "one degree of θ, everywhere on the circle. Why a sphere must blow up "
+        "somewhere: there is no way to lay two numbers smoothly over the "
+        "whole sphere (it is a theorem, not a lack of cleverness), and the "
+        "same holds for SO(3) with three numbers."))
+    c.add(body(
+        "<b>Step 3. Pick the representation from what Step 1 gave you.</b>"))
+    c.add(body(_grid_table(
+        ("your C-space contains…", "use", "example"),
+        [("only lines, intervals and circles",
+          "<b>explicit</b>: one number per joint, and wrap the angles",
+          "every serial arm's joint vector q; the q in M(q)q̈ + c + g = τ"),
+         ("a sphere S² or an orientation SO(3)",
+          "<b>implicit</b>: unit vector, rotation matrix R or quaternion; "
+          "show Euler angles to humans only",
+          "the hand's orientation, a drone's attitude, an IMU estimate"),
+         ("a closed loop",
+          "<b>implicit</b>: all the joint angles plus the loop equations "
+          "g(θ) = 0",
+          "four-bar, Delta, Stewart platform (next page, page 124)")])))
+    c.add(plain(
+        "Implicit is not 'always better', and it does not apply everywhere by "
+        "default: it costs extra numbers and you must keep the constraints "
+        "true (renormalise R or the quaternion as numerical error creeps in). "
+        "Use it only where the explicit chart would blow up, or where the "
+        "explicit formula is too hard to write. For the arm problems in the "
+        "rest of this block that settles it: <b>joints are described "
+        "explicitly by their angles q; the hand's orientation is described "
+        "implicitly by R</b>. That single sentence is why page 117 is about "
+        "rotation matrices, and why every dynamics page writes M(q) with q "
+        "the plain joint angles."))
+    return c
+
+
+# ==========================================================================
+# 2.4  what a constraint and its derivative mean: the bead on a hoop
+# ==========================================================================
+
+class HoopConstraintCard:
+    """g(q) = 0, A = ∂g/∂q, A q̇ and the null space, for a bead on a circle."""
+
+    def __init__(self):
+        c = self.card = Card("what g(q) = 0 and A(q)q̇ = 0 mean: one constraint you can see")
+        c.add(body(
+            "Before the four-bar's twelve-entry matrix, take the smallest "
+            "example that has every piece. A bead threaded on a circular hoop "
+            "of radius 1. Describe it with n = 2 numbers q = (x, y), and add "
+            "k = 1 rule: stay on the hoop. Then C-space dimension = n − k = 1."))
+        c.add(math_label(
+            r"g(q)=x^2+y^2-1=0,\qquad "
+            r"A(q)=\frac{\partial g}{\partial q}=\begin{bmatrix}2x&2y\end{bmatrix},\qquad "
+            r"A(q)\,\dot q=2x\dot x+2y\dot y=0", 15))
+        c.add(body(
+            "<b>1. g(q) is a gap meter.</b> It measures how badly the rule is "
+            "broken: g &gt; 0 means outside the hoop, g &lt; 0 inside, and "
+            "g = 0 exactly on it. 'g(q) = 0' is just 'the gap is zero'. For "
+            "the four-bar, g has three entries: the x-gap, the y-gap and the "
+            "angle-gap between the end of the loop and its start.<br>"
+            "<b>2. Why differentiate.</b> If the gap is zero at every instant, "
+            "it cannot be changing, so dg/dt = 0. By the chain rule "
+            "dg/dt = (∂g/∂x)ẋ + (∂g/∂y)ẏ. That is all A(q)q̇ = 0 is: the "
+            "rate of change of the gap, set to zero.<br>"
+            "<b>3. What ∂g/∂q means.</b> Entry j of row i is 'how fast gap i "
+            "opens per unit speed of coordinate j, if only j moves'. Here "
+            "row = (2x, 2y): moving straight outward opens the gap fastest. "
+            "So the row of A, drawn as an arrow, points <i>across</i> the "
+            "hoop: it is the forbidden direction.<br>"
+            "<b>4. What A q̇ = 0 means.</b> q̇ has no component along any "
+            "forbidden direction. The velocities that pass are the <b>null "
+            "space</b> of A: all q̇ with A q̇ = 0. Here it is the tangent line "
+            "to the hoop. Its dimension, n − rank A = 2 − 1 = 1, is the DOF."))
+        self.s_pos = labelled_slider(c, "bead position α", -180, 180, 40, deg, self._draw)
+        self.s_dir = labelled_slider(c, "proposed velocity direction β", -180, 180, 160,
+                                     deg, self._draw)
+        self.st_A = Stat("A(q) = [2x  2y]", "--", theme.BAD)
+        self.st_Aq = Stat("A(q) q̇ (gap rate)", "--", theme.WARN)
+        self.st_ok = Stat("allowed?", "--", theme.GOOD)
+        self.st_split = Stat("along / across hoop", "--", theme.VIOLET)
+        c.add_layout(stat_row(self.st_A, self.st_Aq, self.st_ok, self.st_split))
+        self.cv = MplCanvas(width=8.6, height=3.5, ncols=2)
+        c.add(self.cv)
+        c.add(plain(
+            "<b>Left:</b> the red arrow is the row of A at the bead: the "
+            "direction that breaks the rule. The green line is the null space "
+            "of A: every velocity that keeps the rule. The gold arrow is a "
+            "velocity you propose. A q̇ is just 'how much of the gold arrow "
+            "points along the red one' (times |A|).<br><b>Right:</b> move in "
+            "a straight line along the gold arrow and track the gap g. Its "
+            "slope at the start is exactly A q̇: that is what the derivative "
+            "means. <b>Try:</b> turn β until the stat reads 'yes' (gold on "
+            "the green line). The slope at the start becomes zero, but the "
+            "dashed straight path still drifts off the hoop and g still grows "
+            "like s². That is the point: A q̇ = 0 is a rule for <i>this "
+            "instant</i>. The bead must re-choose a tangent velocity at every "
+            "instant, which is how it ends up following the curve.<br>"
+            "<b>Physically</b>, the red direction is also the direction in "
+            "which the hoop pushes on the bead. A push along the red arrow "
+            "can never speed up or slow down a motion along the green line, "
+            "so the hoop does no work. Page 131 uses exactly this: the "
+            "constraint force is Aᵀλ, and its power q̇ᵀAᵀλ = (A q̇)ᵀλ = 0."))
+        self._draw()
+
+    def _draw(self, *_):
+        a = math.radians(self.s_pos.value())
+        b = math.radians(self.s_dir.value())
+        q = np.array([math.cos(a), math.sin(a)])
+        qd = np.array([math.cos(b), math.sin(b)])
+        A = 2 * q
+        Aq = float(A @ qd)
+        n_hat = q
+        t_hat = np.array([-q[1], q[0]])
+        along, across = float(qd @ t_hat), float(qd @ n_hat)
+        self.st_A.set(f"[{A[0]:+.2f}  {A[1]:+.2f}]")
+        self.st_Aq.set(f"{Aq:+.3f}")
+        self.st_ok.set("yes" if abs(Aq) < 0.02 else "no — breaks the rule")
+        self.st_split.set(f"{along:+.2f} / {across:+.2f}")
+        self.cv.clear()
+        a1, a2 = self.cv.axes
+        e = np.linspace(0, TAU, 200)
+        a1.plot(np.cos(e), np.sin(e), color=theme.TEXT_FAINT, lw=3, label="hoop: g = 0")
+        tl = np.array([q - 0.9 * t_hat, q + 0.9 * t_hat])
+        a1.plot(tl[:, 0], tl[:, 1], color=theme.GOOD, lw=2.5,
+                label="null space of A (allowed q̇)")
+        a1.annotate("", xy=q + 0.55 * n_hat, xytext=q,
+                    arrowprops=dict(arrowstyle="-|>", color=theme.BAD, lw=2.5))
+        a1.plot([], [], color=theme.BAD, lw=2.5, label="row of A (forbidden)")
+        a1.annotate("", xy=q + 0.7 * qd, xytext=q,
+                    arrowprops=dict(arrowstyle="-|>", color=theme.WARN, lw=2.5))
+        s = np.linspace(0, 1, 50)
+        path = q + np.outer(s, qd)
+        a1.plot(path[:, 0], path[:, 1], "--", color=theme.WARN, lw=1, label="straight move along q̇")
+        a1.plot(*q, "o", color=theme.TEXT, ms=9)
+        square(a1, 1.9)
+        a1.set_title("bead on a hoop")
+        self.cv.legend(a1, loc="lower left")
+        g = 2 * s * float(q @ qd) + s ** 2
+        a2.plot(s, g, color=theme.WARN, lw=2, label="gap g along the straight move")
+        a2.plot(s, Aq * s, "--", color=theme.BAD, lw=1.4, label="slope at start = A(q) q̇")
+        a2.axhline(0, color=theme.GOOD, lw=1)
+        a2.set_xlim(0, 1)
+        a2.set_ylim(-1.2, 3.1)
+        a2.set_xlabel("distance moved s")
+        a2.set_ylabel("g = x² + y² − 1")
+        a2.set_title("the derivative of the gap is A q̇")
+        self.cv.legend(a2, loc="upper left")
+        self.cv.refresh()
+
+
+def constraint_uses_card() -> Card:
+    """Why turn a position rule into a velocity rule, and where each piece is used."""
+    c = Card("so what? why the velocity form, and where each piece is used later")
+    c.add(body(
+        "<b>Why turn g(q) = 0 into A(q)q̇ = 0 at all?</b> Three reasons.<br>"
+        "<b>1. It is linear.</b> g is full of sines and cosines of q; "
+        "A(q)q̇ = 0 is a plain matrix times a vector. Linear means you can use "
+        "linear algebra: rank, null space, solve, least squares. Every later "
+        "page (Jacobian, dynamics, control) works with velocities and is "
+        "linear in them, so this is the form they can consume.<br>"
+        "<b>2. One form covers both kinds.</b> The car's rule exists "
+        "<i>only</i> as A(q)q̇ = 0; there is no g behind it. Writing the "
+        "four-bar's rule the same way lets one toolkit handle both. "
+        "'Pfaffian' is just the name for that shape: something × q̇ = 0.<br>"
+        "<b>3. Dynamics needs it.</b> A constrained robot obeys "
+        "M(q)q̈ + c + g = τ + A(q)ᵀλ. The rows of A are the directions the "
+        "constraint pushes, λ is how hard, and the push does no work because "
+        "(A q̇)ᵀλ = 0."))
+    c.add(body(_grid_table(
+        ("what you have", "what it tells you", "where you use it"),
+        [("g(q) = 0", "which poses exist at all; n − k numbers are free",
+          "closed-chain inverse kinematics and assembly modes (124); a hand "
+          "held against a wall (131)"),
+         ("A(q) = ∂g/∂q", "row i: how fast gap i opens per unit speed of "
+                          "each joint; also the direction the constraint pushes",
+          "constraint and contact forces Aᵀλ (131)"),
+         ("null space of A", "every velocity the mechanism can actually make; "
+                             "its size is the DOF at this pose",
+          "the speeds of passive joints when the motors turn (124); same idea "
+          "as the Jacobian null space of a redundant arm (123)"),
+         ("rank of A drops", "a singular pose: the mechanism gains a freedom, "
+                             "locks, or can flip to the other assembly mode",
+          "actuator singularities of parallel robots (124)"),
+         ("A(q)q̇ = 0 with no g behind it", "nonholonomic: directions are "
+                                           "forbidden, places are not",
+          "car and differential-drive planning and control (134, 139)")])))
+    c.add(plain(
+        "The puzzle so far, in order. Page 115: q is the list of joint numbers, "
+        "and you know what shape the space of q is. This page: some q's are "
+        "not allowed (g(q) = 0 throws them out), and at each allowed q some "
+        "velocities are not allowed (A q̇ = 0 throws them out). The null space "
+        "of A is what is left: the motions the robot can really make. Later, "
+        "the Jacobian (120) maps the allowed q̇ to hand velocity, and the "
+        "dynamics (125–131) say what torques produce a given q̈, plus the "
+        "constraint force Aᵀλ that keeps the rule true."))
+    return c
 
 
 # ==========================================================================
@@ -904,6 +1318,27 @@ class FourBarCard:
             "turning the crank. Double-rocker: drag θ₁ toward its limit and "
             "watch the smallest singular value of A head to zero and the "
             "speeds θ̇₂..θ̇₄ (for θ̇₁ = 1) blow up."))
+        c.add(body(
+            "<b>What a designer reads off this lab.</b><br>"
+            "<b>The Grashof type decides whether a motor can drive it.</b> A "
+            "crank-rocker turns a motor spinning round and round into a "
+            "back-and-forth swing: windscreen wipers, oil pumpjacks. A "
+            "double-rocker cannot be driven by a spinning motor at joint 1, "
+            "because the crank hits its limits.<br>"
+            "<b>The assembly mode is fixed when you build it.</b> The other "
+            "loop of the C-space is a different machine made of the same "
+            "parts; turning the crank never reaches it.<br>"
+            "<b>θ̇ with θ̇₁ = 1 is the gear ratio.</b> It is the one vector "
+            "that spans the null space of A, so every allowed motion is a "
+            "multiple of it. θ̇₄ is (up to sign) how fast the output rocker "
+            "swings relative to the ground, per 1 rad/s of crank. Power in equals "
+            "power out (τ₁θ̇₁ = τ₄θ̇₄), so the torque ratio is the inverse: "
+            "that is how you size the motor.<br>"
+            "<b>The smallest σ of A is a warning light.</b> As it falls to "
+            "zero the ratio blows up: the crank alone stops deciding the "
+            "motion (a dead point), or the mechanism can flip branch. "
+            "Designers keep the working range away from these poses; page "
+            "124 calls them actuator singularities.", dim=True))
         self._curves = {}
         self.combo.currentIndexChanged.connect(self._draw)
         self.branch.currentIndexChanged.connect(self._draw)
