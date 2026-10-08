@@ -167,6 +167,7 @@ from .faulttol import (
 from .robo_space import (
     ConstraintsPage,
     CSpacePage,
+    CSpaceTopoPage,
     RoboRoadmapPage,
     RotationsPage,
     TwistsPage,
@@ -414,36 +415,37 @@ PAGE_CLASSES = [
     # ---- C-space & rigid motion (playlists 1-2) ---------------------------
     RoboRoadmapPage,       # 114 the twelve playlists, and what to master
     CSpacePage,            # 115 dof, Gruebler, the torus
-    ConstraintsPage,       # 116 holonomic vs nonholonomic; task vs workspace
-    RotationsPage,         # 117 SO(3), Rodrigues, the matrix log
-    TwistsPage,            # 118 SE(3), screws, adjoint, wrenches
+    CSpaceTopoPage,        # 116 topology, angle wrapping, explicit vs implicit
+    ConstraintsPage,       # 117 holonomic vs nonholonomic; task vs workspace
+    RotationsPage,         # 118 SO(3), Rodrigues, the matrix log
+    TwistsPage,            # 119 SE(3), screws, adjoint, wrenches
     # ---- Kinematics (playlists 3-6) ---------------------------------------
-    PoEPage,               # 119 product of exponentials
-    JacobianPage,          # 120 columns are screw axes; the velocity ellipse
-    StaticsPage,           # 121 tau = J^T F, singularities, force ellipse
-    IKPage,                # 122 analytic branches, Newton-Raphson, DLS
-    NullSpacePage,         # 123 J^+, I - J^+ J, self-motion
-    ClosedChainPage,       # 124 four-bar, Stewart, actuator singularities
+    PoEPage,               # 120 product of exponentials
+    JacobianPage,          # 121 columns are screw axes; the velocity ellipse
+    StaticsPage,           # 122 tau = J^T F, singularities, force ellipse
+    IKPage,                # 123 analytic branches, Newton-Raphson, DLS
+    NullSpacePage,         # 124 J^+, I - J^+ J, self-motion
+    ClosedChainPage,       # 125 four-bar, Stewart, actuator singularities
     # ---- Dynamics (playlist 7) --------------------------------------------
-    LagrangePage,          # 125 L = K - P, the 2R equations
-    MassMatrixPage,        # 126 M SPD, Christoffel, Mdot - 2C skew
-    NewtonEulerPage,       # 127 the O(n) recursion, traced
-    InverseDynamicsPage,   # 128 torque from a trajectory, term by term
-    ForwardDynamicsPage,   # 129 qdd = M^-1 (tau - h); integrators
-    TaskDynamicsPage,      # 130 Lambda, mu, p; the mass the hand feels
-    ConstrainedDynamicsPage,  # 131 Lagrange multipliers, contact forces
+    LagrangePage,          # 126 L = K - P, the 2R equations
+    MassMatrixPage,        # 127 M SPD, Christoffel, Mdot - 2C skew
+    NewtonEulerPage,       # 128 the O(n) recursion, traced
+    InverseDynamicsPage,   # 129 torque from a trajectory, term by term
+    ForwardDynamicsPage,   # 130 qdd = M^-1 (tau - h); integrators
+    TaskDynamicsPage,      # 131 Lambda, mu, p; the mass the hand feels
+    ConstrainedDynamicsPage,  # 132 Lagrange multipliers, contact forces
     # ---- Trajectories & planning (playlists 8-9) --------------------------
-    TimeScalingPage,       # 132 cubic, quintic, trapezoid
-    TimeOptimalPage,       # 133 the (s, sdot) phase plane
-    MotionPlanningPage,    # 134 C-space obstacles, A*, RRT
+    TimeScalingPage,       # 133 cubic, quintic, trapezoid
+    TimeOptimalPage,       # 134 the (s, sdot) phase plane
+    MotionPlanningPage,    # 135 C-space obstacles, A*, RRT
     # ---- Robot control (playlist 10) --------------------------------------
-    MotionControlPage,     # 135 PD + gravity vs computed torque
-    OperationalSpacePage,  # 136 OSC and null-space torques
-    ForceControlPage,      # 137 hybrid motion/force, task-space impedance
+    MotionControlPage,     # 136 PD + gravity vs computed torque
+    OperationalSpacePage,  # 137 OSC and null-space torques
+    ForceControlPage,      # 138 hybrid motion/force, task-space impedance
     # ---- Manipulation & mobility (playlists 11-12) ------------------------
-    GraspingPage,          # 138 friction cones, force closure
-    MobileRobotPage,       # 139 nonholonomic unicycle tracking
-    InterviewDrillPage,    # 140 the questions, answered
+    GraspingPage,          # 139 friction cones, force closure
+    MobileRobotPage,       # 140 nonholonomic unicycle tracking
+    InterviewDrillPage,    # 141 the questions, answered
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

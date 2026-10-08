@@ -219,7 +219,7 @@ _TOPO = {
             "a planner's distance, an interpolated path. Otherwise the arm "
             "turns 340° when 20° would do (the next lab). A grid planner on "
             "this C-space must link the right column to the left column, or it "
-            "misses short paths through the seam (page 134).",
+            "misses short paths through the seam (page 135).",
         extra="Where the zero of each angle is placed is an arbitrary choice; "
               "it moves the seams but cannot remove them. With joint limits "
               "(say ±150°) the C-space is a closed rectangle [−150°, 150°]², "
@@ -661,7 +661,7 @@ def topology_card() -> Card:
         "(2) a space that is not flat cannot be covered by one set of "
         "minimal coordinates without a bad spot somewhere (next card); "
         "(3) closed chains can have C-spaces made of separate pieces (the "
-        "four-bar's two assembly modes on the next page) that no motion "
+        "four-bar's two assembly modes on page 117) that no motion "
         "connects.", dim=True))
     c.add(body(
         "<b>The product rule, slowly.</b> 'Independent' means choosing one "
@@ -712,10 +712,10 @@ def topology_card() -> Card:
 
 
 def why_card() -> Card:
-    """The 'so what' of page 115: each idea and the later page that needs it."""
-    c = Card("so what? where each idea on this page gets used")
+    """The 'so what' of pages 115–116: each idea and the later page that needs it."""
+    c = Card("so what? where each idea on pages 115–116 gets used")
     c.add(body(
-        "This page is vocabulary, and vocabulary is hard to care about until "
+        "Pages 115 and 116 are vocabulary, and vocabulary is hard to care about until "
         "you see the sentence it is used in. The goal of the block is "
         "<b>τ = M(q)q̈ + c(q, q̇) + g(q)</b> and the controllers built on it. "
         "Every idea below answers one question that equation, or the code "
@@ -727,30 +727,30 @@ def why_card() -> Card:
           "sets the size of everything: q has n entries, M(q) is n × n, the "
           "Jacobian has n columns; tells you how many motors fully control "
           "the robot, and whether it is redundant for a task",
-          "119, 120, 123, 125"),
+          "120, 121, 124, 126"),
          ("topology",
           "does the space wrap round, have walls, or have holes?",
           "wrap angle errors (PID, planners, interpolation); treat joint "
           "limits as walls, not seams; know that a closed chain may have "
           "separate pieces you cannot move between",
-          "124, 134, 135"),
+          "125, 135, 136"),
          ("explicit representation",
           "which minimal numbers do I write a pose with?",
           "joint angles q for an arm: exactly the q in the dynamics. Safe "
-          "because a circle only has jumps, never blow-ups (cards below)",
-          "119–131"),
+          "because a circle only has jumps, never blow-ups (page 116)",
+          "120–132"),
          ("implicit representation",
           "what if every minimal set of numbers breaks somewhere?",
           "store the hand's orientation as a rotation matrix R (or a "
           "quaternion), never as Euler angles, so the controller has no "
           "gimbal lock; describe a closed chain by all its joints plus "
           "g(θ) = 0",
-          "117, 118, 124, 136"),
+          "118, 119, 125, 137"),
          ("velocity ≠ coordinate rate",
           "how fast is it moving?",
           "use angular velocity ω and twists V, not Euler-angle rates; the "
           "Jacobian maps q̇ to a twist, not to rates of some coordinates",
-          "117, 118, 120")])))
+          "118, 119, 121")])))
     c.add(plain(
         "Think of the whole block as a jigsaw whose finished picture is "
         "'compute the motor torques for a motion, and control the arm'. "
@@ -760,7 +760,7 @@ def why_card() -> Card:
         "<b>Representation</b> tells you which numbers to store so nothing "
         "explodes: joint angles for the joints, a rotation matrix for the "
         "hand's orientation. You do not need to memorise a catalogue of "
-        "shapes: the recipe card further down builds any C-space from its "
+        "shapes: the recipe card on page 116 builds any C-space from its "
         "joints in one line."))
     return c
 
@@ -1014,7 +1014,7 @@ class RepresentationCard:
 
 
 def choose_rep_card() -> Card:
-    """The take-away of page 115: shape vs numbers, the two failure kinds,
+    """The take-away of page 116: shape vs numbers, the two failure kinds,
     and the one-sentence rule the rest of the block uses."""
     c = Card("so which do I use? explicit, implicit, and when wrapping is enough")
     c.add(body(
@@ -1059,7 +1059,7 @@ def choose_rep_card() -> Card:
         "<b>not</b> make every controller safe: singularities <i>of the "
         "robot</i> — an arm stretched straight, where no joint speed moves "
         "the hand outward — exist whatever numbers you use (Jacobian, page "
-        "120). And it has costs: 9 numbers instead of 3, plus rules "
+        "121). And it has costs: 9 numbers instead of 3, plus rules "
         "(RᵀR = I, ‖q‖ = 1) that rounding error slowly breaks, so you "
         "re-normalise R or the quaternion every so often."))
     c.add(body(_grid_table(
@@ -1074,7 +1074,7 @@ def choose_rep_card() -> Card:
           "error from R_dᵀR, not from Euler angles; Euler only for display"),
          ("a closed loop (four-bar, Delta)", "a curve or surface inside Tⁿ",
           "<b>implicit</b>: all joint angles + g(θ) = 0",
-          "solve g(θ) = 0 numerically (next page)")])))
+          "solve g(θ) = 0 numerically (page 117)")])))
     c.add(plain(
         "A worked example to carry forward. A 6-joint arm holding a cup. "
         "Its joints: six circles, so C-space T⁶ and q is six plain angles "
@@ -1084,7 +1084,7 @@ def choose_rep_card() -> Card:
         "matrix R, and 'how far is the cup from upright?' is computed from "
         "R, never by subtracting roll–pitch–yaw. Two representations in "
         "the same program, each chosen by the shape of its piece. That is "
-        "the whole lesson, and it is why page 117 is about rotation "
+        "the whole lesson, and it is why page 118 is about rotation "
         "matrices while every dynamics page uses plain joint angles."))
     return c
 
@@ -1153,7 +1153,7 @@ class HoopConstraintCard:
             "<b>Physically</b>, the red direction is also the direction in "
             "which the hoop pushes on the bead. A push along the red arrow "
             "can never speed up or slow down a motion along the green line, "
-            "so the hoop does no work. Page 131 uses exactly this: the "
+            "so the hoop does no work. Page 132 uses exactly this: the "
             "constraint force is Aᵀλ, and its power q̇ᵀAᵀλ = (A q̇)ᵀλ = 0."))
         self._draw()
 
@@ -1203,6 +1203,207 @@ class HoopConstraintCard:
         self.cv.refresh()
 
 
+def gap_meter_card() -> Card:
+    """Why a partial derivative of g measures rule-breaking, with numbers."""
+    c = Card("why ∂g/∂q means 'how much moving this coordinate breaks the rule'")
+    c.add(body(
+        "<b>Step 1. The value of g is the amount of rule-breaking.</b> 'Stay "
+        "on the hoop' is a sentence. To turn it into maths we <i>build</i> a "
+        "function that reads zero when the rule holds and something else when "
+        "it is broken: g = x² + y² − 1. On the hoop it reads 0; a little "
+        "outside, a small positive number; a little inside, a small negative "
+        "one; the farther off, the bigger. So g is not an abstract quantity. "
+        "It is a violation meter, designed on purpose. That is why every "
+        "constraint is written 'g = 0'.<br>"
+        "<b>Step 2. A partial derivative is a nudge experiment.</b> ∂g/∂x "
+        "means: nudge only x a tiny bit, hold everything else still, and "
+        "divide the change in g by the size of the nudge. The output being "
+        "nudged is the violation meter, so ∂g/∂x is 'how much the rule gets "
+        "broken per unit of x-motion, if x moves alone'. That is the whole "
+        "link between the derivative and rule-breaking."))
+    c.add(body(
+        "<b>Step 3. The same thing with numbers.</b> Put the bead on the hoop "
+        "at (x, y) = (0.6, 0.8): g = 0.36 + 0.64 − 1 = 0."))
+    c.add(body(_grid_table(
+        ("experiment", "new point", "meter g reads", "g change ÷ nudge",
+         "formula"),
+        [("nudge x only by +0.01", "(0.61, 0.80)", "+0.0121", "≈ 1.2",
+          "∂g/∂x = 2x = 1.2"),
+         ("nudge y only by +0.01", "(0.60, 0.81)", "+0.0161", "≈ 1.6",
+          "∂g/∂y = 2y = 1.6"),
+         ("move 0.01 along the hoop: x by −0.008, y by +0.006",
+          "(0.592, 0.806)", "+0.0001", "≈ 0.01, about zero",
+          "1.2·(−0.008) + 1.6·(0.006) = 0")])))
+    c.add(body(
+        "Moving x alone breaks the rule; moving y alone breaks it faster here. "
+        "Moved together in the right ratio, the x-part pushes the meter down "
+        "and the y-part pushes it up by the same amount: they cancel. That "
+        "cancellation <i>is</i> A q̇ = 0. A coordinate does not 'try' to "
+        "break anything; entry j of A is how much coordinate j <i>would</i> "
+        "break the rule if it moved alone. A real motion moves several at "
+        "once, the total rate is the sum (each entry × its speed), and the "
+        "allowed motions are those where the sum is zero.<br>"
+        "<b>The meter's scale is a choice.</b> 'Distance from the centre "
+        "minus one' also reads zero on the hoop. Its slopes differ from "
+        "x² + y² − 1 by a constant factor, so the numbers in A change, but "
+        "the motions that keep the meter at zero (the null space) do not."))
+    c.add(body(
+        "<b>Is A q̇ a vector or a number?</b> A vector with one entry per "
+        "constraint; entry i is how fast gap i is changing right now. With "
+        "one constraint (the bead, a wall) it has one entry, so it looks like "
+        "a number. Each entry is a dot product: row i of A with q̇. Row i "
+        "points in the forbidden direction, straight across constraint i. "
+        "A zero dot product means q̇ is perpendicular to it. So A is not "
+        "zero and q̇ is not zero, yet A q̇ = 0: q̇ is perpendicular to every "
+        "forbidden direction. That is what 'q̇ is in the null space of A' "
+        "means.<br>"
+        "<b>Does A q̇ = 0 guarantee g = 0? Only half of it.</b> If the gap "
+        "never changes, it stays <i>constant</i>; constant is not zero. You "
+        "need both: start on the constraint (g = 0 at t = 0) and never let "
+        "the gap change (A q̇ = 0). Code breaks this: a simulator takes small "
+        "straight steps, and each straight step leaves along the tangent and "
+        "slides slightly off the curve (the dashed line in the lab above). "
+        "Over thousands of steps the gap creeps away from zero, so "
+        "simulators snap back onto g = 0 every so often.", dim=True))
+    c.add(plain(
+        "One sentence to keep: g is a violation meter we built on purpose; "
+        "∂g/∂q is 'nudge one coordinate, see how far the meter moves'; so A "
+        "is a table of how much each coordinate, moving alone, would break "
+        "each rule, and an allowed motion is one where those contributions "
+        "cancel."))
+    return c
+
+
+class WallCard:
+    """One row of A by experiment: a 2R fingertip sliding on a wall."""
+
+    T1, T2 = math.radians(90), math.radians(-60)
+
+    def __init__(self):
+        c = self.card = Card("one row of A, measured: a fingertip pressed on a wall")
+        c.add(body(
+            "A 2R arm, both links 1 m, at shoulder θ₁ = 90° (upper arm straight "
+            "up) and elbow θ₂ = −60°. Its fingertip is at (0.87, 1.5) m, touching a "
+            "vertical wall on its right. The rule: stay on the wall. The gap "
+            "g = x<sub>wall</sub> − x<sub>tip</sub> reads zero now and grows "
+            "if the finger pulls away. The row of A is (∂g/∂θ₁, ∂g/∂θ₂), and "
+            "each entry is one experiment:<br>"
+            "<b>Shoulder entry.</b> Lock the elbow, spin only the shoulder at "
+            "1 rad/s. The whole arm swings; the fingertip leaves the wall at "
+            "1.5 m/s. Entry = 1.5.<br>"
+            "<b>Elbow entry.</b> Lock the shoulder, spin only the elbow at "
+            "1 rad/s. Only the forearm swings; the fingertip leaves at "
+            "0.5 m/s. Entry = 0.5.<br>"
+            "<b>Why those numbers.</b> A joint turning at 1 rad/s moves the "
+            "tip at right angles to the line joining them, and the part "
+            "of that speed straight off the wall equals the tip's height "
+            "above the joint: 1.5 m above the shoulder, 0.5 m above the "
+            "elbow. That is all the formula below says.<br>"
+            "<b>The payoff.</b> To slide along the wall, the two effects "
+            "must cancel: 1.5 θ̇₁ + 0.5 θ̇₂ = 0. Shoulder forward at 1 rad/s "
+            "needs elbow back at 3 rad/s. That one line is what a "
+            "wall-following controller computes."))
+        c.add(math_label(
+            r"A=\left[\frac{\partial g}{\partial\theta_1}\;\;"
+            r"\frac{\partial g}{\partial\theta_2}\right]="
+            r"\left[L_1\sin\theta_1+L_2\sin(\theta_1+\theta_2)\;\;\;"
+            r"L_2\sin(\theta_1+\theta_2)\right]"
+            r"=\left[1.5\;\;\;0.5\right]", 14))
+        self.s = labelled_slider(c, "elbow speed θ̇₂ (shoulder fixed at θ̇₁ = 1 rad/s)",
+                                 -400, 100, -100, lambda v: f"{v/100:+.2f} rad/s",
+                                 self._draw)
+        self.st_gap = Stat("gap rate A q̇", "--", theme.BAD)
+        self.st_slide = Stat("speed up the wall", "--", theme.GOOD)
+        self.st_ok = Stat("stays on the wall?", "--", theme.ACCENT)
+        c.add_layout(stat_row(self.st_gap, self.st_slide, self.st_ok))
+        self.cv = MplCanvas(width=7.4, height=3.6)
+        c.add(self.cv)
+        c.add(plain(
+            "The red arrow is the fingertip velocity. Its sideways part is "
+            "the gap rate A q̇ = 1.5·1 + 0.5·θ̇₂. <b>Try:</b> slide θ̇₂ to "
+            "−3.00: the arrow lies flat along the wall and the gap rate is "
+            "zero. Above −3 the finger pulls off the wall; below, it "
+            "pushes into it, and the wall must push back (that push is the "
+            "constraint force Aᵀλ of page 132). At −3 the tip slides down "
+            "the wall at 1.73 m/s; to slide up, run both joints the other "
+            "way. Same row of A, same cancellation."))
+        self._draw()
+
+    def _draw(self, *_):
+        t1, t2 = self.T1, self.T2
+        d1, d2 = 1.0, self.s.value() / 100
+        xd = -(math.sin(t1) + math.sin(t1 + t2)) * d1 - math.sin(t1 + t2) * d2
+        yd = (math.cos(t1) + math.cos(t1 + t2)) * d1 + math.cos(t1 + t2) * d2
+        rate = round(-xd, 6) + 0.0
+        self.st_gap.set(f"{rate:+.2f} m/s")
+        self.st_slide.set(f"{yd:+.2f} m/s")
+        self.st_ok.set("yes" if abs(rate) < 0.02 else
+                       ("no — pulls away" if rate > 0 else "no — pushes in"))
+        cv = self.cv
+        cv.clear()
+        ax = cv.ax
+        pts = draw_arm(ax, [1.0, 1.0], [t1, t2])
+        tip = pts[-1]
+        ax.plot([tip[0], tip[0]], [-0.3, 2.3], color=theme.TEXT_DIM, lw=4)
+        ax.fill_betweenx([-0.3, 2.3], tip[0] + 0.02, tip[0] + 0.25,
+                         color=theme.BORDER, alpha=0.5)
+        ax.annotate("", xy=tip + 0.5 * np.array([xd, yd]), xytext=tip,
+                    arrowprops=dict(arrowstyle="-|>", color=theme.BAD, lw=2.5))
+        ax.set_xlim(-0.6, 1.6)
+        ax.set_ylim(-0.3, 2.3)
+        ax.set_aspect("equal")
+        ax.set_title("fingertip velocity for θ̇₁ = 1 rad/s")
+        cv.refresh()
+
+
+def fourbar_A_card() -> Card:
+    """Rows and columns of the four-bar's 3 × 4 A, without the algebra."""
+    c = Card("reading the four-bar's 3 × 4 A: pull out the pin")
+    c.add(body(
+        "<b>Rows are gaps; columns are joints.</b> Pull out the pin that "
+        "closes the loop. The four-bar becomes a dangling four-link chain "
+        "whose free end sits right at the hole it came out of. Three things "
+        "must match for the pin to go back in: the end's left–right position, "
+        "its up–down position, and which way the last link faces. "
+        "<b>Row 1</b> is the left–right gap, <b>row 2</b> the up–down gap, "
+        "<b>row 3</b> the facing-angle gap.<br>"
+        "<b>Column j is one experiment:</b> twist only joint j at 1 rad/s and "
+        "watch the free end leave its hole. Everything beyond joint j swings "
+        "rigidly about it, like a door on its hinge, so the end moves at "
+        "(distance from joint j to the end) × 1 rad/s, at right angles to "
+        "that line: the farther the joint, the faster the end. That gives "
+        "the column's first two entries. The third entry is always 1: "
+        "twisting any joint by some angle turns the last link by that same "
+        "angle. So the bottom row is (1, 1, 1, 1).<br>"
+        "<b>A real motion combines all four joints</b> so all three gaps "
+        "cancel at once. Four joints, three rules: exactly one combination "
+        "(up to scale) works. That combination is the null space of A, and "
+        "it is the one DOF."))
+    c.add(body(
+        "<b>A concrete case: a square</b> (all links 1, every joint turned "
+        "90°). Running the four experiments gives"))
+    c.add(math_label(
+        r"A=\begin{bmatrix}0&1&1&0\\0&0&1&1\\1&1&1&1\end{bmatrix},\qquad "
+        r"A\begin{bmatrix}1\\-1\\1\\-1\end{bmatrix}=\begin{bmatrix}0\\0\\0"
+        r"\end{bmatrix}", 15))
+    c.add(body(
+        "Joint 1 is where the loop starts and ends, so twisting it only "
+        "turns the end on the spot: column 1 = (0, 0, 1). Joint 3 sits "
+        "diagonally across and moves the end both ways: column 3 = "
+        "(1, 1, 1). The one allowed motion is the joints alternating "
+        "+1, −1, +1, −1: push the crank forward and the square shears into "
+        "a diamond, two opposite corners opening and the other two closing "
+        "by the same amount. Check it in the lab below: 'parallelogram', "
+        "assembly mode −1, θ₁ = 90° is a rectangle rather than a square, "
+        "but its joint speeds for θ̇₁ = 1 are the same +1, −1, +1, −1.",
+        dim=True))
+    c.add(plain(
+        "One sentence to keep: g says where you are allowed to be; A says "
+        "how each joint, moving alone, would break each rule; the null space "
+        "of A is what is left over — the motions that break nothing."))
+    return c
+
+
 def constraint_uses_card() -> Card:
     """Why turn a position rule into a velocity rule, and where each piece is used."""
     c = Card("so what? why the velocity form, and where each piece is used later")
@@ -1224,29 +1425,29 @@ def constraint_uses_card() -> Card:
     c.add(body(_grid_table(
         ("what you have", "what it tells you", "where you use it"),
         [("g(q) = 0", "which poses exist at all; n − k numbers are free",
-          "closed-chain inverse kinematics and assembly modes (124); a hand "
-          "held against a wall (131)"),
+          "closed-chain inverse kinematics and assembly modes (125); a hand "
+          "held against a wall (132)"),
          ("A(q) = ∂g/∂q", "row i: how fast gap i opens per unit speed of "
                           "each joint; also the direction the constraint pushes",
-          "constraint and contact forces Aᵀλ (131)"),
+          "constraint and contact forces Aᵀλ (132)"),
          ("null space of A", "every velocity the mechanism can actually make; "
                              "its size is the DOF at this pose",
-          "the speeds of passive joints when the motors turn (124); same idea "
-          "as the Jacobian null space of a redundant arm (123)"),
+          "the speeds of passive joints when the motors turn (125); same idea "
+          "as the Jacobian null space of a redundant arm (124)"),
          ("rank of A drops", "a singular pose: the mechanism gains a freedom, "
                              "locks, or can flip to the other assembly mode",
-          "actuator singularities of parallel robots (124)"),
+          "actuator singularities of parallel robots (125)"),
          ("A(q)q̇ = 0 with no g behind it", "nonholonomic: directions are "
                                            "forbidden, places are not",
-          "car and differential-drive planning and control (134, 139)")])))
+          "car and differential-drive planning and control (135, 140)")])))
     c.add(plain(
-        "The puzzle so far, in order. Page 115: q is the list of joint numbers, "
+        "The puzzle so far, in order. Pages 115–116: q is the list of joint numbers, "
         "and you know what shape the space of q is. This page: some q's are "
         "not allowed (g(q) = 0 throws them out), and at each allowed q some "
         "velocities are not allowed (A q̇ = 0 throws them out). The null space "
         "of A is what is left: the motions the robot can really make. Later, "
-        "the Jacobian (120) maps the allowed q̇ to hand velocity, and the "
-        "dynamics (125–131) say what torques produce a given q̈, plus the "
+        "the Jacobian (121) maps the allowed q̇ to hand velocity, and the "
+        "dynamics (126–132) say what torques produce a given q̈, plus the "
         "constraint force Aᵀλ that keeps the rule true."))
     return c
 
@@ -1408,7 +1609,7 @@ class FourBarCard:
             "zero the ratio blows up: the crank alone stops deciding the "
             "motion (a dead point), or the mechanism can flip branch. "
             "Designers keep the working range away from these poses; page "
-            "124 calls them actuator singularities.", dim=True))
+            "125 calls them actuator singularities.", dim=True))
         self._curves = {}
         self.combo.currentIndexChanged.connect(self._draw)
         self.branch.currentIndexChanged.connect(self._draw)

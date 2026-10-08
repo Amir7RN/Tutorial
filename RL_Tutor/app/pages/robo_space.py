@@ -31,8 +31,11 @@ from .robo_space_topo import (
     RepresentationCard,
     TaskSpaceCard,
     TopologyExplorer,
+    WallCard,
     choose_rep_card,
     constraint_uses_card,
+    fourbar_A_card,
+    gap_meter_card,
     topology_card,
     why_card,
 )
@@ -70,10 +73,10 @@ class RoboRoadmapPage(Page):
         super().__init__(parent)
         self.add(start_here(
             "This block answers three questions about any robot arm, in "
-            "order. <b>Where is the hand?</b> (kinematics, pages 115–119). "
+            "order. <b>Where is the hand?</b> (kinematics, pages 115–120). "
             "<b>How fast and how hard can the hand move when the motors "
-            "turn?</b> (the Jacobian, pages 120–124). <b>What motor torques "
-            "does a given motion need?</b> (dynamics, pages 125–131). The "
+            "turn?</b> (the Jacobian, pages 121–125). <b>What motor torques "
+            "does a given motion need?</b> (dynamics, pages 126–132). The "
             "last pages use those three answers to plan and control the arm. "
             "You need no earlier page of the tutor: only that a matrix times "
             "a vector is a weighted sum of columns, and that a derivative is "
@@ -147,8 +150,8 @@ class RoboRoadmapPage(Page):
             "If a formula still makes no sense after the video, do not stop "
             "there: the plain-words box tells you what result to carry "
             "forward, and later pages only use the result, not the "
-            "derivation. Pages 115–118 (playlists 1–2) are vocabulary; it is "
-            "normal for them to feel abstract until page 120 (the Jacobian) "
+            "derivation. Pages 115–119 (playlists 1–2) are vocabulary; it is "
+            "normal for them to feel abstract until page 121 (the Jacobian) "
             "uses them.", dim=True))
         self.add(h)
 
@@ -171,8 +174,8 @@ class RoboRoadmapPage(Page):
             "space control, impedance and hybrid force control."))
         p.add(plain(
             "Do not try to master this list on the first pass. Items 1–2 are "
-            "the Kinematics section (pages 119–124), items 3–5 the Dynamics "
-            "section (125–131), item 6 Robot Control (135–137). If you only "
+            "the Kinematics section (pages 120–125), items 3–5 the Dynamics "
+            "section (126–132), item 6 Robot Control (136–138). If you only "
             "have time for one idea, take the Jacobian: almost every other "
             "item is built from it."))
         self.add(p)
@@ -232,10 +235,11 @@ class CSpacePage(Page):
             "(DOF)</b>. The set of all possible lists is the <b>configuration "
             "space (C-space)</b>: a map in which one point is one complete "
             "pose of the robot. Planning, kinematics and dynamics all happen "
-            "on this map. The second half of the page asks two more "
-            "questions about that map: what <b>shape</b> is it (its "
-            "topology — flat, a sphere, a doughnut?) and what <b>numbers</b> "
-            "do we write a point on it with (its representation)."))
+            "on this map. This page counts the numbers and shows the map for "
+            "a two-joint arm. The next page asks two more questions about "
+            "that map: what <b>shape</b> is it (its topology — flat, a "
+            "sphere, a doughnut?) and what <b>numbers</b> do we write a point "
+            "on it with (its representation)."))
         self.add(why_card())
 
         d = Card("dof = freedoms of the bodies − constraints of the joints")
@@ -314,29 +318,19 @@ class CSpacePage(Page):
             "past +180° and watch the dot reappear on the left while the arm "
             "on the left panel barely moves. For a body flying in space the "
             "map is 6-D and, for orientation, has no flat three-number chart "
-            "without a bad spot — hence the rotation matrices on page 117."))
+            "without a bad spot — hence the rotation matrices on page 118."))
         self.add(t)
         self._trail = []
         self._draw()
 
-        self.add(topology_card())
-        self.topo = TopologyExplorer()
-        self.add(self.topo.card)
-        self.wrap = AngleWrapCard()
-        self.add(self.wrap.card)
-        self.rep = RepresentationCard()
-        self.add(self.rep.card)
-        self.add(choose_rep_card())
-
         self.add(interview(
-            "<b>“How many DOF does a rigid body in space have, and why can't "
-            "you represent its orientation with three numbers everywhere?”</b> "
-            "Six: three for position, three for orientation. SO(3) is a 3-D "
-            "manifold that is not homeomorphic to any open set of ℝ³, so every "
-            "3-parameter chart (ZYX Euler, roll–pitch–yaw) has a singularity "
-            "somewhere — at pitch ±90° for ZYX. Use rotation matrices or unit "
-            "quaternions for computation; use three-number exponential "
-            "coordinates only locally."))
+            "<b>“How many DOF does a planar four-bar have, and when does "
+            "Grübler's formula give the wrong answer?”</b> One: "
+            "3(4 − 1 − 4) + 4 = 1. Grübler assumes every joint constraint is "
+            "independent. Special geometry breaks that — a parallelogram "
+            "linkage with an extra parallel link counts 0 but moves with 1 "
+            "DOF — and then the true DOF is n minus the rank of the "
+            "constraint Jacobian at that pose (page 117)."))
         self.finish()
 
     def _mech(self):
@@ -369,6 +363,48 @@ class CSpacePage(Page):
         a2.set_ylabel("q₂ (deg)")
         a2.set_title("C-space: a torus, edges glued")
         c.refresh()
+
+
+class CSpaceTopoPage(Page):
+    TITLE = "C-Space Topology and Representation"
+    SUBTITLE = ("Two questions about the C-space map: what shape it is "
+                "(the robot decides), and which numbers you store for a point "
+                "on it (you decide). The shape tells you which choice is safe.")
+    SECTION = SEC_CSPACE
+    NOTES = playlist_badge(1)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.add(watch(1))
+        self.add(start_here(
+            "Page 115 gave the C-space a size: how many numbers. This page "
+            "asks two separate questions about it. <b>Shape (topology):</b> "
+            "does the map go on forever, have walls, or wrap round on itself? "
+            "The robot decides this; you cannot change it. <b>Numbers "
+            "(representation):</b> which numbers do you store for one point "
+            "on the map — the fewest possible (explicit), or a few extra tied "
+            "by rules (implicit)? You choose this. The page ends with one "
+            "rule: plain angles for joints, wrapped; a rotation matrix for "
+            "anything that can point in any 3-D direction."))
+        self.add(topology_card())
+        self.topo = TopologyExplorer()
+        self.add(self.topo.card)
+        self.wrap = AngleWrapCard()
+        self.add(self.wrap.card)
+        self.rep = RepresentationCard()
+        self.add(self.rep.card)
+        self.add(choose_rep_card())
+
+        self.add(interview(
+            "<b>“How many DOF does a rigid body in space have, and why can't "
+            "you represent its orientation with three numbers everywhere?”</b> "
+            "Six: three for position, three for orientation. SO(3) is a 3-D "
+            "manifold that is not homeomorphic to any open set of ℝ³, so every "
+            "3-parameter chart (ZYX Euler, roll–pitch–yaw) has a singularity "
+            "somewhere — at pitch ±90° for ZYX. Use rotation matrices or unit "
+            "quaternions for computation; use three-number exponential "
+            "coordinates only locally."))
+        self.finish()
 
 
 class ConstraintsPage(Page):
@@ -414,27 +450,76 @@ class ConstraintsPage(Page):
         self.add(h)
         self.hoop = HoopConstraintCard()
         self.add(self.hoop.card)
+        self.add(gap_meter_card())
+        self.wall = WallCard()
+        self.add(self.wall.card)
+        self.add(fourbar_A_card())
         self.fourbar = FourBarCard()
         self.add(self.fourbar.card)
 
-        n = Card("nonholonomic: a constraint on q̇ that is NOT integrable")
-        n.add(math_label(r"A(q)\dot q=\left[-\sin\phi\;\;\cos\phi\;\;0\right]"
-                         r"\begin{bmatrix}\dot x\\ \dot y\\ \dot\phi\end{bmatrix}=0", 16))
+        n = Card("nonholonomic: the same-looking equation, with no g behind it")
         n.add(body(
-            "A rolling wheel cannot slide sideways. That is one constraint on "
-            "velocity, yet a car can still reach every (x, y, φ) — parallel "
-            "parking is the proof. The constraint reduces the <b>velocity "
-            "freedoms</b> (2 instead of 3) but not the dimension of C-space "
-            "(still 3). Playlist 12 spends a whole chapter here."))
+            "Both kinds of constraint end up written the same way, "
+            "A(q)q̇ = 0. The difference is <b>where the row of A came from</b>, "
+            "and whether you can go back. Holonomic: someone built a "
+            "violation meter g first, and A is its list of slopes, ∂g/∂q. "
+            "Then A q̇ = 0 says 'the meter is not moving', so g keeps its "
+            "starting value forever and the robot is trapped on the surface "
+            "g = 0. Nonholonomic: you are handed the row of A directly, and "
+            "<b>no meter g has it as its slopes</b>. Nothing is conserved, so "
+            "nothing traps you."))
+        n.add(math_label(
+            r"\mathrm{holonomic:}\;\;A=\frac{\partial g}{\partial q}\;\;"
+            r"\Rightarrow\;\;\frac{dg}{dt}=A\dot q=0\;\;\Rightarrow\;\;"
+            r"g(q(t))=g(q(0))=0", 15))
+        n.add(math_label(
+            r"\mathrm{nonholonomic:}\;\;A(q)\dot q=0\;\;\mathrm{but\ no}\;g\;"
+            r"\mathrm{with}\;\frac{\partial g}{\partial q}=A\;"
+            r"(\mathrm{or\ any\ multiple\ of}\;A)", 15))
+        n.add(body(
+            "<b>The test, by hand, on two rolling wheels.</b> Is the row of A "
+            "the slope list of some meter g?<br>"
+            "<b>(a) A coin rolling along a straight rail</b>, q = (x, θ): "
+            "no slip means ẋ = rθ̇, i.e. [1, −r] q̇ = 0. We need ∂g/∂x = 1 and "
+            "∂g/∂θ = −r. Both slopes are constants, so g = x − rθ works. It "
+            "<b>is</b> holonomic, a position rule in disguise: x − rθ never "
+            "changes, and the C-space is a 1-D line in the (x, θ) plane — "
+            "the coin's angle is fixed by how far it has rolled.<br>"
+            "<b>(b) A car (or a wheel that can steer)</b>, q = (φ, x, y): no "
+            "sideways slip means ẋ sin φ − ẏ cos φ = 0, the row "
+            "[0, sin φ, −cos φ]. We would need ∂g/∂φ = 0, ∂g/∂x = sin φ, "
+            "∂g/∂y = −cos φ. The first says g ignores φ. The second says g's "
+            "x-slope changes when φ changes. Both cannot hold: the order of "
+            "differentiation of a smooth function does not matter, and "
+            "here it would:"))
+        n.add(math_label(
+            r"\frac{\partial}{\partial\phi}\left(\frac{\partial g}{\partial x}\right)"
+            r"=\cos\phi\;\neq\;0=\frac{\partial}{\partial x}"
+            r"\left(\frac{\partial g}{\partial\phi}\right)", 15))
+        n.add(body(
+            "So no g exists, and multiplying the row by any factor does not "
+            "fix it either (the general test is the Lie bracket, chapter 13). "
+            "<b>What changes because of it:</b> a holonomic rule with n "
+            "coordinates and k rules leaves n − k dimensions of places "
+            "<i>and</i> n − k velocity choices. A nonholonomic one leaves n − k "
+            "velocity choices but <b>all n dimensions of places</b>. For the "
+            "car: 2 velocity choices (drive, turn) in a 3-D C-space. If the "
+            "rule were holonomic the car would be stuck on one 2-D surface "
+            "g(φ, x, y) = const; parallel parking ends at the same φ and x "
+            "with a different y, which no such surface allows.", dim=True))
         n.add(plain(
-            "φ is the heading of the wheel or car, and (−sin φ, cos φ) is the "
-            "direction pointing sideways out of its door. The equation says: "
-            "velocity along that sideways direction is zero — no skidding. "
-            "Yet you can still reach a spot directly to your side by parallel "
-            "parking (forward, turn, back, turn). So the car still needs 3 "
-            "numbers (x, y, heading) to describe it — C-space stays 3-D — but "
-            "at any instant it has only 2 velocity choices: drive speed and "
-            "turn rate."))
+            "Why can the car get sideways at all? Look at the forbidden "
+            "direction (sin φ, −cos φ): it <b>turns with the heading φ</b>. "
+            "A rail's forbidden direction is fixed in space, so you can never "
+            "leak out of it. The car's turns whenever you steer, so a "
+            "direction forbidden now is allowed after a turn: drive a little "
+            "at one heading, a little at another, and the net step points "
+            "where neither leg was allowed to go. In the coin's row [1, −r] "
+            "nothing depends on q, which is exactly why it integrates. "
+            "Picture: holonomic is a train on rails — the rule says "
+            "<i>where</i> you can be. Nonholonomic is an ice skate — the blade "
+            "only says which way you can glide <i>right now</i>, yet you can "
+            "reach any spot on the rink, facing any way."))
         self.add(n)
         self.car = CarConstraintCard()
         self.add(self.car.card)
@@ -475,7 +560,7 @@ class ConstraintsPage(Page):
             "flat: picking joint angles at random piles the hand up near the "
             "inner and outer edges (arm nearly folded or straight), so "
             "'random in joints' is not 'random in task space' — it matters "
-            "for sampling planners on page 134."))
+            "for sampling planners on page 135."))
         self.add(w)
         self._draw()
         self.wslim = JointLimitWorkspaceCard()
@@ -676,7 +761,7 @@ class TwistsPage(Page):
         super().__init__(parent)
         self.add(watch(2))
         self.add(start_here(
-            "Page 117 handled orientation only. Now add position. A "
+            "Page 118 handled orientation only. Now add position. A "
             "<b>pose</b> = rotation R + position p, packed into one 4×4 "
             "matrix T. A rigid body's <b>velocity</b> = spin ω + linear speed "
             "v, packed into a 6-vector called a <b>twist</b>. A <b>force</b> "
@@ -729,7 +814,7 @@ class TwistsPage(Page):
             "stores the line's direction ŝ and, through v = −ŝ × q, where the "
             "line is (q is any point on it). e<sup>[S]θ</sup> is 'perform "
             "this screw motion by amount θ' as a 4×4 matrix. Forward "
-            "kinematics (page 119) multiplies one of these per joint."))
+            "kinematics (page 120) multiplies one of these per joint."))
         self.add(s)
 
         lab = Card("a planar screw: drag the axis point and the angle")
@@ -775,7 +860,7 @@ class TwistsPage(Page):
             "moving even though the centre only turns. Wrenches use the "
             "transpose because power (velocity · force) is a physical number "
             "and cannot depend on which frame you write it in. Remember that "
-            "one sentence and τ = JᵀF on page 121 needs no memorising."))
+            "one sentence and τ = JᵀF on page 122 needs no memorising."))
         self.add(a)
 
         self.add(interview(
