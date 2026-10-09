@@ -1,13 +1,19 @@
 """
 Interactive cards for Modern Robotics chapter 3, one group per video, in the
-order the videos play. Page 118 (RotationsPage) takes the rotation videos,
-page 119 (TwistsPage) the rigid-body ones:
+order the videos play. Page 118 (RotationsPage) takes videos 3.1-3.2.1,
+page 119 (AngularVelocityPage) 3.2.2-3.2.3, page 120 (TwistsPage) the
+rigid-body ones:
 
     3.1    intro: frames, right-hand rule     bridge_card, intro_card, FrameHandCard
     3.2.1  rotation matrices (1 of 2)         RotationMatrixCard, count_card,
-                                              CommuteCard
+                                              so3_card, SO3BallCard, CommuteCard
     3.2.1  rotation matrices (2 of 2)         SubscriptCard, RotateOperatorCard
-    3.2.2  angular velocities                 angvel_why_card, AngularVelocityCard
+    3.2.2  angular velocities                 check_card, why_rdot_card,
+                                              ConstraintMatrixCard, tangent_card,
+                                              GimbalRatesCard, axis_speed_card,
+                                              ComponentsCard, layers_card,
+                                              AngularVelocityCard, body_space_card,
+                                              BodySpaceCard
     3.2.3  exponential coordinates (1 of 2)   ExpSeriesCard
     3.2.3  exponential coordinates (2 of 2)   IntegrateCard, AxisAngleCard
     3.3.1  homogeneous transformations        transform_card, HomogeneousCard,
@@ -446,6 +452,112 @@ def count_card() -> Card:
     return c
 
 
+def so3_card() -> Card:
+    c = Card("so what IS SO(3)? a picture you can actually hold")
+    c.add(body(
+        "<b>1. The definition, in words.</b> SO(3) is the set of all rotation "
+        "matrices — equivalently, the set of <b>every way a rigid body can be "
+        "oriented</b>. One point of SO(3) = one orientation. It is the "
+        "orientation part of a body's C-space (page 115).<br>"
+        "<b>2. Its size.</b> 3-D: you need 3 numbers to pick an "
+        "orientation (page 115 counted 6 DOF for a free body: 3 position + "
+        "3 orientation).<br>"
+        "<b>3. Why you cannot 'see' it.</b> It is a 3-D <i>curved</i> space. "
+        "We can draw curved 1-D things (the circle of a joint, page 116) and "
+        "curved 2-D things (a sphere's surface) in our 3-D world, but a "
+        "curved 3-D thing does not fit. Mathematically it sits inside the "
+        "9-D space of all 3×3 matrices, cut out by the 6 rules — just as the "
+        "hoop sits inside the 2-D plane, cut out by 1 rule. The video's "
+        "sphere is a <b>cartoon</b> meaning 'curved and closed', not the "
+        "real shape.<br>"
+        "<b>4. The picture that works: a ball with its skin glued.</b> Every "
+        "orientation is one turn θ about one axis ω̂ (video 3.2.3 proves "
+        "it). Draw it as the point ω̂θ: <i>direction</i> from the centre = "
+        "the axis, <i>distance</i> from the centre = the angle. The centre "
+        "is 'no rotation'. Angles only go up to 180° (a 200° turn is a 160° "
+        "turn the other way), so all orientations fill a <b>solid ball of "
+        "radius 180°</b>. One catch: on the skin, 180° about ω̂ and 180° "
+        "about −ω̂ are the same orientation, so <b>opposite points of the "
+        "skin are the same point</b>. Walk out through the skin and you "
+        "re-enter from the opposite side."))
+    c.add(link_back("116", (
+        "That is the 3-D version of the joint circle on page 116. A joint "
+        "angle lives on a segment [0°, 360°) whose two ends are glued "
+        "(359° → 0°). SO(3) lives in a ball whose opposite skin points are "
+        "glued. Gluing is what makes the space closed with no edge, and it "
+        "is also why no single set of 3 numbers covers it smoothly: "
+        "somewhere the numbers must jump (axis-angle at 180°) or blow up "
+        "(Euler angles at pitch ±90°). So R (implicit) is used for "
+        "computing, and 3 numbers only locally.")))
+    return c
+
+
+class SO3BallCard:
+    """Orientations as points of a radius-pi ball; antipodal skin glued."""
+
+    def __init__(self):
+        c = self.card = Card("lab: walk through SO(3) — the ball of radius 180°")
+        c.add(body(
+            "Choose a spin axis and turn the body from 0° to 360° about it. "
+            "Left: the orientation's point in the ball (orange), with the "
+            "path it has travelled. Right: the body itself.", dim=True))
+        self.s_az = labelled_slider(c, "axis azimuth", -180, 180, 30, deg, self._draw)
+        self.s_el = labelled_slider(c, "axis elevation", -90, 90, 30, deg, self._draw)
+        self.s_th = labelled_slider(c, "turn so far", 0, 360, 120, deg, self._draw)
+        self.st_p = Stat("point ω̂θ (θ in degrees)", "--", theme.WARN)
+        self.st_d = Stat("distance from centre", "--", theme.ACCENT)
+        c.add_layout(stat_row(self.st_p, self.st_d))
+        self.cv = MplCanvas(width=8.6, height=3.8)
+        _layout(self.cv, ["3d", "3d"])
+        c.add(self.cv)
+        c.add(plain(
+            "<b>Try:</b> drag the turn slowly from 0°. The point leaves the "
+            "centre along the axis; at 180° it touches the skin; just past "
+            "180° it reappears at the <b>opposite</b> side of the skin and "
+            "travels back to the centre, arriving at 360° — the body is back "
+            "where it started. The body on the right moved smoothly the "
+            "whole time: the 'jump' is only in the drawing, like 359° → 0° "
+            "for a joint. Every orientation you can make with the sliders is "
+            "somewhere in that ball, which is SO(3)."))
+        self._draw()
+
+    @staticmethod
+    def _pt(w, th):
+        th = th % (2 * math.pi)
+        return w * th if th <= math.pi else -w * (2 * math.pi - th)
+
+    def _draw(self, *_):
+        w = _unit(math.radians(self.s_az.value()), math.radians(self.s_el.value()))
+        th = math.radians(self.s_th.value())
+        P = np.degrees(self._pt(w, th))
+        self.st_p.set(_vec(P, 0))
+        self.st_d.set(f"{np.linalg.norm(P):.0f}° (= angle turned)")
+        _clear(self.cv)
+        a1, a2 = self.cv.axes
+        u, v = np.meshgrid(np.linspace(0, 2 * math.pi, 24), np.linspace(0, math.pi, 12))
+        a1.plot_wireframe(180 * np.cos(u) * np.sin(v), 180 * np.sin(u) * np.sin(v),
+                          180 * np.cos(v), color=theme.BORDER, lw=0.4, alpha=0.5)
+        a1.plot([0], [0], [0], "o", color=theme.TEXT, ms=4)
+        ts = np.linspace(0, th, 200)
+        pts = np.degrees(np.array([self._pt(w, t) for t in ts]))
+        jump = np.where(np.linalg.norm(np.diff(pts, axis=0), axis=1) > 90)[0]
+        for seg in np.split(pts, jump + 1):
+            a1.plot(seg[:, 0], seg[:, 1], seg[:, 2], color=theme.CYAN, lw=2)
+        if len(jump):
+            for e in (pts[jump[0]], pts[jump[0] + 1]):
+                a1.plot(*[[x] for x in e], "x", color=theme.BAD, ms=9, mew=2)
+        a1.plot(*[[x] for x in P], "o", color=theme.WARN, ms=9)
+        _cube(a1, 190)
+        a1.set_title("SO(3) as a ball: red × = the glued pair it jumped between")
+        R = rk.rot_exp(w * th)
+        _frame3d(a2, np.eye(3), alpha=0.2, lw=1.2)
+        _frame3d(a2, R, lw=3, name="")
+        a2.plot(*[[-1.2 * w[i], 1.2 * w[i]] for i in range(3)], "--", color=theme.WARN, lw=2)
+        _cube(a2)
+        a2.set_title("the body: smooth the whole way")
+        self.cv.refresh()
+
+
 class CommuteCard:
     """Same two turns, two orders, two different results."""
 
@@ -646,7 +758,7 @@ class RotateOperatorCard:
             "spins about the flat axis. Set θ = 0: both agree, nothing "
             "turned. Rule to keep: <b>left = about a fixed (space) axis, "
             "right = about the body's own axis.</b> The same rule returns for "
-            "4×4 transforms (page 119) and for forward kinematics (page 120)."))
+            "4×4 transforms (page 120) and for forward kinematics (page 121)."))
         self._draw()
 
     def _draw(self, *_):
@@ -675,73 +787,558 @@ class RotateOperatorCard:
 # 3.2.2  angular velocities
 # ==========================================================================
 
-def angvel_why_card() -> Card:
-    c = Card("why Ṙ is not the angular velocity, and what is")
+def check_card() -> Card:
+    """The bead-on-a-hoop story retold for R, one claim at a time, checked."""
+    c = Card("check your understanding: the bead-on-a-hoop story, retold for R")
     c.add(body(
-        "<b>1. The obvious idea fails on count.</b> R changes in time, so why "
-        "not call Ṙ the angular velocity? Ṙ has 9 numbers, but a spinning "
-        "body only has 3 independent ways to spin. 6 of Ṙ's numbers are "
-        "redundant.<br>"
-        "<b>2. Where the 3 come from.</b> R(t) must obey RᵀR = I at every "
-        "instant. Differentiate both sides (product rule):"))
+        "Page 117's story had four steps: a position rule g = 0 → "
+        "differentiate it → a velocity rule A q̇ = 0 → the allowed "
+        "velocities are the null space of A. Here is the same story for a "
+        "rotation, written the way a student first tells it, with each claim "
+        "marked. ✓ = right as stated; ◐ = right idea, one detail to fix."))
+    ok = f"<b style='color:{theme.GOOD}'>✓</b>"
+    half = f"<b style='color:{theme.WARN}'>◐</b>"
+    c.add(body(_grid_table(
+        ("the claim", "", "what to keep / what to fix"),
+        [("'The hand's orientation C-space is 3-D, like a sphere, so an "
+          "explicit 3-number representation (Euler angles) fails somewhere.'",
+          half,
+          "3-D ✓, curved and closed ✓, every 3-number chart fails somewhere ✓. "
+          "Two fixes. (1) It is not literally a sphere: a sphere is 2-D. The "
+          "video's sphere is a cartoon for 'curved and closed'. The honest "
+          "picture is the ball on page 118. (2) Euler angles (ZYX) fail at "
+          "<b>pitch ±90°</b> (gimbal lock), not at 180°. 180° is where a "
+          "<i>different</i> 3-number chart, axis-angle ω̂θ, gets awkward."),
+         ("'So we use an implicit representation: 9 numbers in R, with the "
+          "rule RᵀR = I, which says each column has length 1 and each pair "
+          "of columns is perpendicular.'",
+          ok,
+          "Exactly. Add the last rule: det R = +1 (right-handed). The 6 "
+          "independent entries of RᵀR − I are the 6 holonomic rules g(R) = 0, "
+          "and 9 − 6 = 3 DOF."),
+         ("'Differentiate: RṘᵀ + ṘRᵀ = 0, so ṘRᵀ = −(ṘRᵀ)ᵀ is "
+          "skew-symmetric: zero diagonal, below = minus above, only 3 "
+          "numbers matter — probably the 3 velocities.'",
+          ok,
+          "Right, and you used RRᵀ = I, which is also true (Rᵀ is R's "
+          "inverse, so it works from either side). Differentiating RRᵀ = I "
+          "gives ṘRᵀ skew; its 3 numbers are ω written in <b>{s}</b> "
+          "components: ṘRᵀ = [ω<sub>s</sub>]. Differentiating RᵀR = I "
+          "gives RᵀṘ skew; its 3 numbers are the <i>same</i> spin written in "
+          "<b>{b}</b> components: RᵀṘ = [ω<sub>b</sub>]. 'Probably the 3 "
+          "velocities' → yes, exactly the angular velocity."),
+         ("'The allowed velocities are the null space of some matrix. What "
+          "matrix?'",
+          half,
+          "A good question the video skips. It is a 6×9 matrix A(R), one row "
+          "per rule, acting on Ṙ stacked into 9 numbers. Its null space is "
+          "3-D and is exactly {[ω]R}. Built and tested in the lab two cards "
+          "below.")])))
+    return c
+
+
+def _constraint_A(R):
+    """6x9 Jacobian of the six rules of R^T R = I, acting on vec(Rdot)
+    (Rdot's columns stacked). Rows: |x|^2, |y|^2, |z|^2, x.y, y.z, z.x."""
+    x, y, z = R[:, 0], R[:, 1], R[:, 2]
+    Z = np.zeros(3)
+    rows = ((2 * x, Z, Z), (Z, 2 * y, Z), (Z, Z, 2 * z),
+            (y, x, Z), (Z, z, y), (z, Z, x))
+    return np.array([np.r_[a, b, cc] for a, b, cc in rows])
+
+
+def why_rdot_card() -> Card:
+    c = Card("step by step: from the 6 rules to the 3 numbers ω")
+    c.add(body(
+        "<b>Step 1. The rules.</b> Name R's columns x̂<sub>b</sub>, "
+        "ŷ<sub>b</sub>, ẑ<sub>b</sub> (the body's axes in {s} numbers). "
+        "RᵀR = I is six violation meters, each reading 0:"))
+    c.add(body(_grid_table(
+        ("meter", "reads zero when…", "its rate (differentiate)"),
+        [("g₁ = x̂·x̂ − 1", "x-axis has length 1", "2 x̂·ẋ"),
+         ("g₂ = ŷ·ŷ − 1", "y-axis has length 1", "2 ŷ·ẏ"),
+         ("g₃ = ẑ·ẑ − 1", "z-axis has length 1", "2 ẑ·ż"),
+         ("g₄ = x̂·ŷ", "x ⟂ y", "ŷ·ẋ + x̂·ẏ"),
+         ("g₅ = ŷ·ẑ", "y ⟂ z", "ẑ·ẏ + ŷ·ż"),
+         ("g₆ = ẑ·x̂", "z ⟂ x", "x̂·ż + ẑ·ẋ")])))
+    c.add(body(
+        "<b>Step 2. The velocity rule.</b> Each rate is linear in the 9 "
+        "numbers of Ṙ = [ẋ ẏ ż]. Stack Ṙ into one 9-vector and the six rates "
+        "become one matrix product: A(R)·vec(Ṙ) = 0, with A a 6×9 matrix "
+        "whose rows are the coefficient lists in the right-hand column. "
+        "That is the A you asked about — page 117's A(q)q̇ = 0 with "
+        "q̇ = vec(Ṙ).<br>"
+        "<b>Step 3. Its null space.</b> 9 unknowns − 6 independent rows = "
+        "3 free directions. Which ones? Try ẋ = ω × x̂, ẏ = ω × ŷ, ż = ω × ẑ "
+        "for any 3-vector ω. Then every meter rate is zero: e.g. "
+        "2x̂·(ω × x̂) = 0 because ω × x̂ is perpendicular to x̂. So "
+        "Ṙ = [ω × x̂  ω × ŷ  ω × ẑ] is allowed, it has exactly 3 free numbers "
+        "(ω's components), and it fills the whole 3-D null space. "
+        "<b>The 3 numbers that survive are ω.</b><br>"
+        "<b>Step 4. The short way.</b> All six rules in one line: "
+        "differentiate RᵀR = I (product rule)."))
     c.add(math_label(
-        r"\frac{d}{dt}(R^TR)=\dot R^TR+R^T\dot R=0\quad\Rightarrow\quad"
-        r"R^T\dot R=-(R^T\dot R)^T", 16))
+        r"\dot R^TR+R^T\dot R=0\ \Rightarrow\ R^T\dot R=-(R^T\dot R)^T\ "
+        r"(\mathrm{skew}),\qquad \dot RR^T=-(\dot RR^T)^T\ (\mathrm{skew})", 15))
     c.add(body(
-        "A matrix equal to minus its own transpose is <b>skew-symmetric</b>: "
-        "zeros on the diagonal, and each entry below the diagonal is minus "
-        "the one above. Only 3 free numbers. So Ṙ is forced into a 3-D set "
-        "at each R. Those 3 numbers are the angular velocity.<br>"
-        "<b>3. The picture.</b> SO(3) is curved (the video draws it as a "
-        "sphere). At any point of it, the allowed velocities form a "
-        "<b>flat</b> 3-D space touching it there, the <b>tangent space</b>. "
-        "A flat space can be described everywhere by 3 ordinary numbers "
-        "with no bad spot. That is why velocities are easy (a plain "
-        "3-vector ω) even though orientations are not (no 3-number chart "
-        "works everywhere).<br>"
-        "<b>4. Axis and speed.</b> Any angular velocity is a spin about some "
-        "axis at some rate: unit axis ω̂ (the hat means length 1) and rate "
-        "θ̇. Their product ω = ω̂θ̇ is the angular velocity vector: "
-        "direction = axis, length = speed, sign by the right-hand rule.<br>"
-        "<b>5. How the axes move.</b> As {b} spins, the tip of x̂<sub>b</sub> "
-        "runs round a circle about the axis; its velocity is tangent to that "
-        "circle: ẋ<sub>b</sub> = ω<sub>s</sub> × x̂<sub>b</sub>, and the same "
-        "for ŷ<sub>b</sub>, ẑ<sub>b</sub>. Stack the three columns and you "
-        "get Ṙ."))
-    c.add(math_label(
-        r"\dot R=\left[\omega_s\times\hat x_b\ \ \omega_s\times\hat y_b\ \ "
-        r"\omega_s\times\hat z_b\right]=[\omega_s]\,R", 16))
-    c.add(body(
-        "<b>6. The bracket.</b> Crossing with ω is a linear operation, so it "
-        "is a matrix: [ω] is the 3×3 matrix with [ω]y = ω × y. It is "
-        "skew-symmetric, [ω] = −[ω]ᵀ, and the set of all 3×3 skew-symmetric "
-        "matrices is called <b>so(3)</b> (little so), named after SO(3) "
-        "because it is exactly the set of 'velocity matrices' RᵀṘ "
-        "above."))
-    c.add(math_label(
-        r"\omega=(\omega_1,\omega_2,\omega_3)\ \Rightarrow\ [\omega]:\ "
-        r"\mathrm{row}_1=(0,-\omega_3,\omega_2),\ \mathrm{row}_2=(\omega_3,0,-\omega_1),\ "
-        r"\mathrm{row}_3=(-\omega_2,\omega_1,0)", 14))
-    c.add(body(
-        "<b>7. Body or space numbers.</b> ω is one physical arrow; it can be "
-        "written in {s} numbers (ω<sub>s</sub>) or in {b} numbers "
-        "(ω<sub>b</sub>). Subscript cancellation from the last video: "
-        "ω<sub>b</sub> = R<sub>bs</sub>ω<sub>s</sub> = R⁻¹ω<sub>s</sub>, and "
-        "ω<sub>s</sub> = Rω<sub>b</sub>. In matrix form, [ω<sub>s</sub>] = "
-        "ṘR⁻¹ and [ω<sub>b</sub>] = R⁻¹Ṙ."))
+        "A skew-symmetric 3×3 matrix has zeros on the diagonal (3 of the "
+        "rules) and each lower entry equal to minus the upper one (the other "
+        "3). Only 3 numbers are left: the same 3 as step 3, packed as a "
+        "matrix."))
     c.add(link_back("117", (
-        "Step 2 is page 117 line for line. The rule g(R) = RᵀR − I = 0 is "
-        "holonomic. Differentiating it gives a velocity rule on Ṙ, linear "
-        "in Ṙ, of the form 'something × Ṙ = 0': a <b>Pfaffian</b> "
-        "constraint. On the hoop, 2 numbers − 1 rule left a 1-D tangent "
-        "line of allowed velocities; here 9 numbers − 6 rules leave a 3-D "
-        "tangent space. 'The allowed velocities are the null space of A' "
-        "became 'the allowed Ṙ are [ω]R for some ω'. And the drift warning "
-        "applies too: step R by a straight Ṙ·Δt and you leave SO(3) slightly, "
-        "exactly like the dashed tangent line leaving the hoop. The "
-        "exponential (two videos ahead) is the way to step without "
+        "Side by side with the bead. <b>Numbers:</b> (x, y) → the 9 entries "
+        "of R. <b>Rules g = 0:</b> x² + y² − 1 → the 6 meters above. "
+        "<b>Space:</b> a 1-D circle → 3-D SO(3). <b>A:</b> the 1×2 row "
+        "[2x 2y] → the 6×9 A(R). <b>Allowed velocities = null(A):</b> "
+        "(−y, x)·(rate along the hoop), 1 number → [ω]R, 3 numbers. "
+        "<b>The surviving numbers:</b> 'how fast along the hoop' → "
+        "ω<sub>x</sub>, ω<sub>y</sub>, ω<sub>z</sub>, 'how fast spinning "
+        "about each axis'. The drift warning carries over too: step R by a "
+        "straight Ṙ·Δt and you leave SO(3), like the dashed tangent line "
+        "leaving the hoop. The exponential (video 3.2.3) steps without "
         "leaving.")))
     return c
+
+
+class ConstraintMatrixCard:
+    """Build A(R), find its null space, and test candidate Rdot's against it."""
+
+    def __init__(self):
+        c = self.card = Card("lab: the 6×9 matrix A(R) and its 3-D null space")
+        c.add(body(
+            "Pick an orientation R and a candidate velocity "
+            "Ṙ = [ω]R + εR. The [ω]R part is a real spin. The εR part "
+            "<i>stretches</i> every axis — something no rotation can do. "
+            "The six meter rates A·vec(Ṙ) say which rules the candidate "
+            "breaks.", dim=True))
+        self.s_o = labelled_slider(c, "orientation (turn about (1,1,0))", -180, 180, 40,
+                                   deg, self._draw)
+        self.s_w = [labelled_slider(c, f"ω_{a}", -20, 20, v,
+                                    lambda v: f"{v/10:+.1f} rad/s", self._draw)
+                    for a, v in (("x", 5), ("y", 0), ("z", 10))]
+        self.s_e = labelled_slider(c, "stretch ε (not a rotation)", -50, 50, 0,
+                                   lambda v: f"{v/100:+.2f}", self._draw)
+        self.txt = body("")
+        c.add(self.txt)
+        self.st_rank = Stat("rank A", "--", theme.ACCENT)
+        self.st_null = Stat("dim null(A) = 9 − rank", "--", theme.VIOLET)
+        self.st_rate = Stat("meter rates A·vec(Ṙ)", "--", theme.BAD)
+        self.st_basis = Stat("‖A·vec([ê_i]R)‖, i = x, y, z", "--", theme.GOOD)
+        c.add_layout(stat_row(self.st_rank, self.st_null, self.st_rate, self.st_basis))
+        c.add(plain(
+            "Rank 6 at every orientation (try the slider): the six rules are "
+            "independent, so 9 − 6 = 3 velocity directions survive. The last "
+            "stat checks three special candidates, a spin about x̂<sub>s</sub>, "
+            "about ŷ<sub>s</sub>, about ẑ<sub>s</sub>: all give zero, so they "
+            "are the null space's three directions, and any ω is a mix of "
+            "them. <b>Try:</b> move the ω sliders anywhere — the meter rates "
+            "stay 0. Now add a little stretch ε: the first three rates (the "
+            "length meters) light up at 2ε each and the angle meters stay 0. "
+            "That Ṙ is not in the null space, so it is not a velocity any "
+            "rotation can have. This is page 117's wall lab in 9 dimensions."))
+        self._draw()
+
+    def _draw(self, *_):
+        R = rk.rot_exp(np.array([1, 1, 0]) / math.sqrt(2) * math.radians(self.s_o.value()))
+        w = np.array([s.value() / 10 for s in self.s_w])
+        eps = self.s_e.value() / 100
+        Rdot = rk.skew(w) @ R + eps * R
+        A = _constraint_A(R)
+        vec = lambda M: M.flatten(order="F")
+        rates = A @ vec(Rdot)
+        basis = [np.linalg.norm(A @ vec(rk.skew(e) @ R)) for e in np.eye(3)]
+        rank = np.linalg.matrix_rank(A)
+        self.st_rank.set(str(rank))
+        self.st_null.set(str(9 - rank))
+        self.st_rate.set(_vec(rates, 2))
+        self.st_basis.set(", ".join(f"{b:.0e}" for b in basis))
+        head = ("<span style='color:" + theme.TEXT_DIM + "'>columns: ẋ (3) | ẏ (3) "
+                "| ż (3); rows: g₁ … g₆ as in the table above</span>")
+        self.txt.setText("A(R) = " + mat_html(A, 2) + head)
+
+
+def tangent_card() -> Card:
+    c = Card("the tangent space, and why 3 numbers work for velocity but not for orientation")
+    c.add(body(
+        "<b>1. Count the cartoon correctly.</b> The video draws SO(3) as a "
+        "sphere only to say 'curved and closed'. A real sphere is 2-D, so "
+        "its tangent plane needs 2 numbers. SO(3) is 3-D, so its tangent "
+        "space is a flat <b>3-D</b> space and needs 3 numbers. (The x, y, "
+        "heading of a car is a different thing: the 3 numbers of a planar "
+        "<i>position</i>, page 117.)<br>"
+        "<b>2. Which 3 numbers?</b> Not three angles. The tangent space is "
+        "the space of <i>velocities</i>, and the three numbers are three "
+        "<b>spin rates</b>: how fast the body spins about x̂<sub>s</sub>, "
+        "about ŷ<sub>s</sub>, about ẑ<sub>s</sub>. That is ω = (ω<sub>x</sub>, "
+        "ω<sub>y</sub>, ω<sub>z</sub>), in rad/s. A gyroscope measures exactly "
+        "these.<br>"
+        "<b>3. '3-vector' vs '3 numbers'.</b> Same thing, with one promise "
+        "added: a 3-vector is 3 numbers that describe an <i>arrow</i>, so "
+        "they rotate like an arrow when you change frame (ω<sub>b</sub> = "
+        "Rᵀω<sub>s</sub>, later on this page), and you can add two of them "
+        "tip to tail. Euler angles are 3 numbers but not a vector: you "
+        "cannot add two sets of Euler angles to compose two rotations.<br>"
+        "<b>4. Why velocity has no bad spot but orientation does.</b> Two "
+        "different things are both called 'velocity':"))
+    c.add(body(_grid_table(
+        ("", "what it is", "bad spots?"),
+        [("coordinate rates", "time derivatives of the numbers you used for "
+          "position: longitude rate, roll/pitch/yaw rates",
+          "<b>yes</b> — wherever the position chart is bad. Walking east at "
+          "1 m/s near the pole, the longitude rate → ∞; near pitch 90° the "
+          "yaw rate → ∞"),
+         ("physical velocity", "the motion itself, measured along fixed axes: "
+          "m/s in x, y, z; or ω, the gyro's three spin rates",
+          "<b>none</b> — it never goes through the position chart")])))
+    c.add(body(
+        "Orientation lives on curved SO(3): any 3 labels for it are a chart "
+        "of a curved closed space, so one bad spot is unavoidable, and the "
+        "only escape is implicit (R: 9 numbers + 6 rules). Velocity lives on "
+        "the flat tangent space: 3 spin rates along fixed axes label it "
+        "everywhere, so velocity does <b>not</b> need the implicit trick — "
+        "as long as you never compute it as Euler-angle rates."))
+    c.add(body(_grid_table(
+        ("representation", "numbers", "bad spots"),
+        [("orientation, explicit (Euler, axis-angle)", "3", "always somewhere (theorem)"),
+         ("orientation, implicit (R, + 6 rules)", "9", "none"),
+         ("velocity as Euler-angle rates", "3", "wherever the Euler chart is bad"),
+         ("velocity as Ṙ (+ 6 rules)", "9", "none, but wasteful"),
+         ("velocity as ω (spin rates on fixed axes)", "3", "<b>none</b> ← the payoff")])))
+    c.add(plain(
+        "Rule for code: store orientation as R (or a quaternion), store "
+        "velocity as ω. Never store velocity as Euler-angle rates. The lab "
+        "below shows why with one steady spin."))
+    return c
+
+
+class GimbalRatesCard:
+    """One steady spin; its Euler-angle rates blow up near pitch 90 deg."""
+
+    def __init__(self):
+        c = self.card = Card("lab: one steady spin, two descriptions — ω stays calm, Euler rates explode")
+        c.add(body(
+            "The body starts at {s} and spins at a constant 1 rad/s about an "
+            "axis that is ŷ<sub>s</sub> tilted by δ toward x̂<sub>s</sub>. Its "
+            "ZYX pitch rises to 90° − δ and comes back. Left: the gyro's "
+            "three body spin rates ω<sub>b</sub>. Right: the same motion "
+            "described as roll, pitch and yaw rates.", dim=True))
+        self.s_d = labelled_slider(c, "δ: how far the path misses pitch 90°", 1, 40, 8, deg,
+                                   self._draw)
+        self.st_p = Stat("highest pitch reached", "--", theme.ACCENT)
+        self.st_w = Stat("|ω| the whole time", "--", theme.GOOD)
+        self.st_y = Stat("peak |yaw rate|", "--", theme.BAD)
+        c.add_layout(stat_row(self.st_p, self.st_w, self.st_y))
+        self.cv = MplCanvas(width=8.4, height=3.4, ncols=2)
+        c.add(self.cv)
+        c.add(plain(
+            "Nothing dramatic happens to the body: |ω| = 1 rad/s throughout "
+            "and the left panel is smooth. On the right, roll and yaw rates "
+            "spike when pitch nears 90°, because the yaw-rate formula divides "
+            "by cos(pitch). <b>Try:</b> δ = 20° — mild bumps. δ = 2° — "
+            "spikes near 30 rad/s. δ = 1°: about 56. Exactly through 90° they "
+            "are undefined. The explosion lives in the chart, not in the "
+            "motion."))
+        self._draw()
+
+    def _draw(self, *_):
+        d = math.radians(self.s_d.value())
+        ws = np.array([math.sin(d), math.cos(d), 0.0])
+        ts = np.linspace(0, math.pi, 600)
+        wb_all, rates, pitch = [], [], []
+        for t in ts:
+            R = rk.rot_exp(ws * t)
+            wb = R.T @ ws
+            th = math.asin(max(-1.0, min(1.0, -R[2, 0])))
+            ph = math.atan2(R[2, 1], R[2, 2])
+            p, q, r = wb
+            yd = (q * math.sin(ph) + r * math.cos(ph)) / math.cos(th)
+            rates.append((p + yd * math.sin(th), q * math.cos(ph) - r * math.sin(ph), yd))
+            wb_all.append(wb)
+            pitch.append(th)
+        wb_all, rates = np.array(wb_all), np.array(rates)
+        self.st_p.set(f"{math.degrees(max(pitch)):.1f}°")
+        self.st_w.set("1.00 rad/s")
+        self.st_y.set(f"{np.abs(rates[:, 2]).max():.1f} rad/s")
+        self.cv.clear()
+        a1, a2 = self.cv.axes
+        for i, nm in enumerate(("ω_x (body)", "ω_y (body)", "ω_z (body)")):
+            a1.plot(ts, wb_all[:, i], color=AX_COLS[i], lw=2, label=nm)
+        a1.plot(ts, np.linalg.norm(wb_all, axis=1), "--", color=theme.TEXT, lw=1, label="|ω|")
+        a1.set_ylim(-1.5, 1.5)
+        a1.set_xlabel("time (s)")
+        a1.set_title("gyro: ω (physical velocity)")
+        self.cv.legend(a1, loc="lower left")
+        for i, (nm, col) in enumerate((("roll rate", AX_COLS[0]), ("pitch rate", AX_COLS[1]),
+                                       ("yaw rate", AX_COLS[2]))):
+            a2.plot(ts, rates[:, i], color=col, lw=2, label=nm)
+        lim = max(3.0, min(70.0, 1.1 * np.abs(rates).max()))
+        a2.set_ylim(-lim, lim)
+        a2.set_xlabel("time (s)")
+        a2.set_title("Euler-angle rates (coordinate rates)")
+        self.cv.legend(a2, loc="lower left")
+        self.cv.refresh()
+
+
+def axis_speed_card() -> Card:
+    c = Card("ω = ω̂θ̇ is the same (ω_x, ω_y, ω_z) you grew up with")
+    c.add(body(
+        "<b>1. Nothing new is being defined.</b> You know angular velocity "
+        "as a column (ω<sub>x</sub>; ω<sub>y</sub>; ω<sub>z</sub>). Writing "
+        "ω = ω̂θ̇ is the same column, split as <i>direction × size</i>, the "
+        "way any vector v = (unit direction) × (length):<br>"
+        "&nbsp;&nbsp;ω̂ = ω / |ω|, the spin axis as a unit arrow;<br>"
+        "&nbsp;&nbsp;θ̇ = |ω|, how fast the body turns about it, in rad/s.<br>"
+        "Example: spin about z at 3 rad/s. ω̂ = (0, 0, 1), θ̇ = 3, so "
+        "ω̂θ̇ = (0, 0, 3) = (ω<sub>x</sub>, ω<sub>y</sub>, ω<sub>z</sub>). "
+        "Spin at 2 rad/s about an axis halfway between x and z: ω̂ = (0.707, "
+        "0, 0.707), so ω = (1.414, 0, 1.414).<br>"
+        "<b>2. Why split it at all?</b> Because the next video needs the "
+        "two parts separately: 'spin about ω̂ for θ seconds'. θ̇ becomes θ, "
+        "the angle, and ω̂θ becomes the exponential coordinates.<br>"
+        "<b>3. What the components mean.</b> The body spins about <i>one</i> "
+        "axis. ω<sub>x</sub>, ω<sub>y</sub>, ω<sub>z</sub> are that one "
+        "arrow's shadows on the s-axes: ω<sub>x</sub> = θ̇ (ω̂ · x̂<sub>s</sub>) = "
+        "θ̇ cos(angle between spin axis and x<sub>s</sub>), and so on. If the "
+        "axis is along z<sub>s</sub>, all the spin is ω<sub>z</sub>; tilt it "
+        "and the spin is shared out.<br>"
+        "<b>4. Three spins at once.</b> For one instant, one spin about a "
+        "tilted axis does exactly what three simultaneous spins do: "
+        "ω<sub>x</sub> about x<sub>s</sub>, ω<sub>y</sub> about y<sub>s</sub>, "
+        "ω<sub>z</sub> about z<sub>s</sub>. Tiny turns add like vectors; only "
+        "<i>finite</i> turns care about order (the commute lab on page 118)."))
+    return c
+
+
+class ComponentsCard:
+    """An arrow glued along x_s: its tip velocity, spin by spin."""
+
+    def __init__(self):
+        c = self.card = Card("lab: split the spin into ω_x, ω_y, ω_z and watch one glued arrow")
+        c.add(body(
+            "An arrow is glued to the body, pointing along x̂<sub>s</sub> right "
+            "now. Each of the three component spins pushes its tip a "
+            "different way. Defaults: θ̇ = 2 rad/s, axis tilted 45° from "
+            "z<sub>s</sub> toward x<sub>s</sub>.", dim=True))
+        self.s_t = labelled_slider(c, "axis tilt from z_s", 0, 180, 45, deg, self._draw)
+        self.s_a = labelled_slider(c, "axis azimuth (about z_s)", -180, 180, 0, deg, self._draw)
+        self.s_r = labelled_slider(c, "spin rate θ̇", 0, 30, 20, lambda v: f"{v/10:.1f} rad/s",
+                                   self._draw)
+        self.st_w = Stat("ω_s = θ̇ ω̂", "--", theme.WARN)
+        self.st_v = Stat("tip velocity (0, ω_z, −ω_y)", "--", theme.VIOLET)
+        self.st_c = Stat("|tip v| vs θ̇·sin(angle to x_s)", "--", theme.GOOD)
+        c.add_layout(stat_row(self.st_w, self.st_v, self.st_c))
+        self.cv = MplCanvas(width=8.4, height=3.6)
+        _layout(self.cv, ["2d", "3d"])
+        c.add(self.cv)
+        c.add(plain(
+            "Add the three spins' effects on the arrow along x̂<sub>s</sub>: "
+            "the spin about x<sub>s</sub> does <b>nothing</b> (the arrow lies "
+            "on that axis); the spin about y<sub>s</sub> swings the tip toward "
+            "−z (ŷ × x̂ = −ẑ), giving (0, 0, −ω<sub>y</sub>); the spin about "
+            "z<sub>s</sub> swings it toward +y (ẑ × x̂ = ŷ), giving (0, ω<sub>z</sub>, "
+            "0). Total (0, ω<sub>z</sub>, −ω<sub>y</sub>): column 1 of "
+            "[ω<sub>s</sub>]. <b>Check with defaults:</b> ω<sub>s</sub> = "
+            "(1.414, 0, 1.414); tip velocity (0, 1.414, 0). Physically the tip "
+            "is 0.707 from the spin axis, so its speed is 2 × 0.707 = 1.414 ✓, "
+            "and it moves sideways, perpendicular to both the arrow and the "
+            "axis ✓. <b>Try:</b> tilt 90° (axis along x<sub>s</sub>): the tip "
+            "velocity is zero. Tilt 0° (axis along z<sub>s</sub>): all of "
+            "θ̇ is ω<sub>z</sub> and the tip runs in +y at full speed."))
+        self._draw()
+
+    def _draw(self, *_):
+        t, a = math.radians(self.s_t.value()), math.radians(self.s_a.value())
+        rate = self.s_r.value() / 10
+        wh = np.array([math.sin(t) * math.cos(a), math.sin(t) * math.sin(a), math.cos(t)])
+        w = rate * wh
+        ex = np.array([1.0, 0, 0])
+        v = np.cross(w, ex)
+        ang = math.acos(max(-1, min(1, wh @ ex)))
+        self.st_w.set(_vec(w, 3))
+        self.st_v.set(_vec(v, 3))
+        self.st_c.set(f"{np.linalg.norm(v):.3f} = {rate * math.sin(ang):.3f}")
+        _clear(self.cv)
+        a1, a2 = self.cv.axes
+        a1.bar(["ω_x", "ω_y", "ω_z"], w, color=AX_COLS)
+        a1.axhline(0, color=theme.BORDER, lw=1)
+        a1.set_ylim(-3.2, 3.2)
+        a1.set_title("one spin, shared over s-axes")
+        _frame3d(a2, np.eye(3), alpha=0.25, lw=1.2, name="_s")
+        a2.plot(*[[-1.3 * wh[i], 1.3 * wh[i]] for i in range(3)], "--", color=theme.WARN, lw=2)
+        a2.plot([0, 1], [0, 0], [0, 0], color=theme.TEXT, lw=4)
+        sc = 0.35
+        a2.quiver(1, 0, 0, 0, 0, -sc * w[1], color=AX_COLS[1], lw=1.5, arrow_length_ratio=0.2)
+        a2.quiver(1, 0, 0, 0, sc * w[2], 0, color=AX_COLS[2], lw=1.5, arrow_length_ratio=0.2)
+        a2.quiver(1, 0, 0, *(sc * v), color=theme.VIOLET, lw=2.5, arrow_length_ratio=0.2)
+        _cube(a2, 1.0)
+        a2.set_title("white: arrow · violet: tip velocity")
+        self.cv.refresh()
+
+
+def layers_card() -> Card:
+    c = Card("three layers: the spin (3 numbers) → the machine [ω] → Ṙ (9 numbers)")
+    c.add(body(
+        "ω<sub>x</sub>, ω<sub>y</sub>, ω<sub>z</sub> and "
+        "ω<sub>s</sub> × x̂<sub>b</sub>, ω<sub>s</sub> × ŷ<sub>b</sub>, "
+        "ω<sub>s</sub> × ẑ<sub>b</sub> are <b>different things</b>. The "
+        "first is the cause (the spin, 3 numbers). The second is the effect "
+        "(what the spin does to the body's three axes, 3 arrows = 9 numbers). "
+        "The × is the cross product, not multiplication.<br>"
+        "<b>Layer 1, the spin.</b> ω<sub>s</sub> = (ω<sub>x</sub>, "
+        "ω<sub>y</sub>, ω<sub>z</sub>): the one arrow along the spin axis, "
+        "in {s} components.<br>"
+        "<b>Layer 2, what it does to the axes.</b> A point at position r on "
+        "a spinning body moves at ω × r (school physics). The body's axes "
+        "are R's columns, so their tips move at ω<sub>s</sub> × x̂<sub>b</sub>, "
+        "ω<sub>s</sub> × ŷ<sub>b</sub>, ω<sub>s</sub> × ẑ<sub>b</sub>. R's "
+        "columns are the axes, so Ṙ's columns are how fast the axes move:"))
+    c.add(math_label(
+        r"\dot R=\left[\ \omega_s\times\hat x_b\ \ \ \omega_s\times\hat y_b\ \ \ "
+        r"\omega_s\times\hat z_b\ \right]", 16))
+    c.add(body(
+        "9 numbers, all made from the same 3 — that is '9 numbers, only 3 "
+        "free' once more.<br>"
+        "<b>Layer 3, one product does it all.</b> 'Cross with ω' is linear, "
+        "so it is a matrix, [ω] (the bracket). It holds no new information, "
+        "just ω's three numbers rearranged so that [ω]v = ω × v:"))
+    c.add(body(f"<table style='font-family:Consolas'>"
+               f"<tr><td style='padding:2px 12px'>0</td><td style='padding:2px 12px'>−ω<sub>z</sub></td>"
+               f"<td style='padding:2px 12px'>ω<sub>y</sub></td></tr>"
+               f"<tr><td style='padding:2px 12px'>ω<sub>z</sub></td><td style='padding:2px 12px'>0</td>"
+               f"<td style='padding:2px 12px'>−ω<sub>x</sub></td></tr>"
+               f"<tr><td style='padding:2px 12px'>−ω<sub>y</sub></td><td style='padding:2px 12px'>ω<sub>x</sub></td>"
+               f"<td style='padding:2px 12px'>0</td></tr></table>"
+               f"<span style='color:{theme.TEXT_DIM}'>[ω]: skew-symmetric "
+               f"([ω]ᵀ = −[ω]). The set of all such matrices is so(3).</span>"))
+    c.add(body(
+        "A matrix times a matrix acts on each column separately, so "
+        "[ω<sub>s</sub>]R = [ [ω<sub>s</sub>]x̂<sub>b</sub>  [ω<sub>s</sub>]ŷ<sub>b</sub>  "
+        "[ω<sub>s</sub>]ẑ<sub>b</sub> ] = the three tip velocities = Ṙ. "
+        "<b>Ṙ = [ω<sub>s</sub>]R</b> is shorthand for 'cross each body axis "
+        "with the spin'."))
+    c.add(math_label(
+        r"\omega_s\ (3\ \mathrm{numbers})\ \longrightarrow\ [\omega_s]\ "
+        r"(\mathrm{cross\ machine})\ \longrightarrow\ [\omega_s]R=\dot R\ "
+        r"(\mathrm{tip\ velocities})", 15))
+    c.add(body(
+        "<b>Rows or columns?</b> You compute any matrix product row by row "
+        "(that is just how the arithmetic goes), but you <i>read</i> it by "
+        "columns, as always on these pages. Column j of [ω] is [ω]ê<sub>j</sub> "
+        "= ω × ê<sub>j</sub>: what the spin does to the s-axis j. Column 1 is "
+        "(0, ω<sub>z</sub>, −ω<sub>y</sub>), exactly the glued-arrow tip "
+        "velocity in the lab above. Column j of [ω]R is what the spin does "
+        "to <i>body</i> axis j. When R = I the two are the same arrows."))
+    c.add(body(_grid_table(
+        ("body axis (R = I)", "tip velocity ω<sub>s</sub> × axis", "physical check"),
+        [("x̂<sub>b</sub> = (1, 0, 0)", "(0, 1.414, 0)",
+          "45° from the axis: radius 0.707, speed 2 × 0.707, moves +y"),
+         ("ŷ<sub>b</sub> = (0, 1, 0)", "(−1.414, 0, 1.414)",
+          "90° from the axis: radius 1, the fastest, speed 2"),
+         ("ẑ<sub>b</sub> = (0, 0, 1)", "(0, −1.414, 0)",
+          "45° from the axis, on the other side: moves −y")])
+        + f"<span style='color:{theme.TEXT_DIM}'>ω<sub>s</sub> = (1.414, 0, 1.414). "
+          "Stack the three as columns: that is Ṙ, and it equals [ω<sub>s</sub>]·I. "
+          "Tilt the body (R ≠ I) and the columns are different arrows, but the "
+          "recipe is the same — the next lab.</span>"))
+    return c
+
+
+def body_space_card() -> Card:
+    c = Card("ω_b = Rᵀω_s and [ω_b] = RᵀṘ, one step at a time")
+    c.add(body(
+        "<b>Step 1. One arrow, two sets of shadows.</b> The spin is one "
+        "physical arrow ω. ω<sub>s</sub> lists its shadows on the s-axes; "
+        "ω<sub>b</sub> lists its shadows on the body's axes. Same arrow, "
+        "different rulers.<br>"
+        "<b>Step 2. A shadow is a dot product.</b> The body-x component is "
+        "x̂<sub>b</sub> · ω<sub>s</sub> (both written in {s} numbers). "
+        "Likewise ŷ<sub>b</sub> · ω<sub>s</sub> and ẑ<sub>b</sub> · "
+        "ω<sub>s</sub>.<br>"
+        "<b>Step 3. Three dot products = one matrix.</b> x̂<sub>b</sub>, "
+        "ŷ<sub>b</sub>, ẑ<sub>b</sub> are R's columns, so they are Rᵀ's "
+        "<i>rows</i>. Rᵀω<sub>s</sub> computes exactly those three dot "
+        "products. Hence ω<sub>b</sub> = Rᵀω<sub>s</sub>. Since Rᵀ = R⁻¹ = "
+        "R<sub>bs</sub>, this is also subscript cancellation: "
+        "ω<sub>b</sub> = R<sub>bs</sub>ω<sub>s</sub>.<br>"
+        "<b>Step 4. Going back, read by columns.</b> ω<sub>s</sub> = "
+        "Rω<sub>b</sub> = ω<sub>b,x</sub>x̂<sub>b</sub> + "
+        "ω<sub>b,y</sub>ŷ<sub>b</sub> + ω<sub>b,z</sub>ẑ<sub>b</sub>: rebuild "
+        "the arrow from its body shadows, each times its body axis.<br>"
+        "<b>Example.</b> R = Rot(ẑ, 90°): x̂<sub>b</sub> = (0, 1, 0), "
+        "ŷ<sub>b</sub> = (−1, 0, 0), ẑ<sub>b</sub> = (0, 0, 1). Spin about "
+        "x<sub>s</sub>: ω<sub>s</sub> = (1, 0, 0). Shadows: x̂<sub>b</sub>·ω = 0, "
+        "ŷ<sub>b</sub>·ω = −1, ẑ<sub>b</sub>·ω = 0, so ω<sub>b</sub> = "
+        "(0, −1, 0). Sanity: x<sub>s</sub> points along −y<sub>b</sub>, so a "
+        "spin about x<sub>s</sub> is a spin about −y<sub>b</sub> ✓.<br>"
+        "<b>Step 5. The matrix forms.</b> Start from Ṙ = [ω<sub>s</sub>]R:"))
+    c.add(math_label(
+        r"\dot R=[\omega_s]R\quad(\mathrm{multiply\ by}\ R^T\ \mathrm{on\ the\ right})"
+        r"\quad\Rightarrow\quad\dot RR^T=[\omega_s]", 15))
+    c.add(math_label(
+        r"R^T\dot R=R^T[\omega_s]R=[R^T\omega_s]=[\omega_b]"
+        r"\qquad\Rightarrow\qquad \dot R=R\,[\omega_b]", 15))
+    c.add(body(
+        "The middle step uses one fact: Rᵀ[ω]R = [Rᵀω]. In words: 'cross with "
+        "ω, but with everything turned into body numbers' is the same as "
+        "'cross with ω written in body numbers', because rotating two "
+        "arrows rotates their cross product too. So ṘRᵀ gives the spin in "
+        "{s} numbers and RᵀṘ the spin in {b} numbers — the two skew matrices "
+        "from differentiating RRᵀ = I and RᵀR = I. Ṙ = [ω<sub>s</sub>]R "
+        "(spin on the left = space axes) and Ṙ = R[ω<sub>b</sub>] (spin on "
+        "the right = body axes): page 118's pre/post-multiply rule again."))
+    return c
+
+
+class BodySpaceCard:
+    """Same spin arrow: shadows on the s-axes vs shadows on the b-axes."""
+
+    def __init__(self):
+        c = self.card = Card("lab: one spin arrow, measured with {s} rulers and with {b} rulers")
+        self.s_y = labelled_slider(c, "body turned about z_s", -180, 180, 90, deg, self._draw)
+        self.s_p = labelled_slider(c, "then about its own y", -90, 90, 0, deg, self._draw)
+        self.s_az = labelled_slider(c, "spin axis azimuth", -180, 180, 0, deg, self._draw)
+        self.s_el = labelled_slider(c, "spin axis elevation", -90, 90, 0, deg, self._draw)
+        self.txt = body("")
+        c.add(self.txt)
+        self.st_s = Stat("ω_s", "--", theme.WARN)
+        self.st_b = Stat("ω_b = Rᵀω_s", "--", theme.VIOLET)
+        self.st_back = Stat("‖R ω_b − ω_s‖", "--", theme.GOOD)
+        self.st_m = Stat("‖RᵀṘ − [ω_b]‖", "--", theme.GOOD)
+        c.add_layout(stat_row(self.st_s, self.st_b, self.st_back, self.st_m))
+        self.cv = MplCanvas(width=7.4, height=3.6)
+        _layout(self.cv, ["3d"])
+        c.add(self.cv)
+        c.add(plain(
+            "Defaults are the worked example: body turned 90° about z, spin "
+            "about x<sub>s</sub> at 1 rad/s → ω<sub>b</sub> = (0, −1, 0). "
+            "<b>Try:</b> set the body turn to 0: the two lists agree, "
+            "because the rulers agree. Point the spin axis along one body "
+            "axis: ω<sub>b</sub> has a single nonzero entry while ω<sub>s</sub> "
+            "may have several. The arrow (orange) never changes when you turn "
+            "the body — only its body shadows do."))
+        self._draw()
+
+    def _draw(self, *_):
+        R = rotz(math.radians(self.s_y.value())) @ roty(math.radians(self.s_p.value()))
+        ws = _unit(math.radians(self.s_az.value()), math.radians(self.s_el.value()))
+        wb = R.T @ ws
+        Rdot = rk.skew(ws) @ R
+        self.st_s.set(_vec(ws))
+        self.st_b.set(_vec(wb))
+        self.st_back.set(f"{np.linalg.norm(R @ wb - ws):.0e}")
+        self.st_m.set(f"{np.linalg.norm(R.T @ Rdot - rk.skew(wb)):.0e}")
+        lines = "".join(
+            f"{nm}·ω<sub>s</sub> = {_vec(R[:, i])}·{_vec(ws)} = <b>{wb[i]:+.2f}</b><br>"
+            for i, nm in enumerate(("x̂<sub>b</sub>", "ŷ<sub>b</sub>", "ẑ<sub>b</sub>")))
+        self.txt.setText("Body shadows, one dot product each:<br>" + lines)
+        _clear(self.cv)
+        ax = self.cv.ax
+        _frame3d(ax, np.eye(3), alpha=0.3, lw=1.2, name="_s")
+        _frame3d(ax, R, lw=3, name="_b")
+        ax.quiver(0, 0, 0, *(1.2 * ws), color=theme.WARN, lw=3, arrow_length_ratio=0.15)
+        _cube(ax, 1.3)
+        ax.set_title("faint: {s}   bold: {b}   orange: the spin arrow ω")
+        self.cv.refresh()
 
 
 class AngularVelocityCard:
@@ -1224,7 +1821,7 @@ class LeftRightCard:
             "spins in place about its own z, which came along for the ride. "
             "Same T, two different end frames {b′} and {b″}. Remember it "
             "once: <b>left = space-frame recipe, right = body-frame "
-            "recipe</b>. Forward kinematics (page 120) uses both forms."))
+            "recipe</b>. Forward kinematics (page 121) uses both forms."))
         self._draw()
 
     def _path(self, s, left):
@@ -1465,7 +2062,7 @@ def analogy_card() -> Card:
         "table across: every right-hand entry is the left-hand idea with "
         "position added."))
     c.add(body(_grid_table(
-        ("", "rotations (page 118)", "rigid-body motions (this page)"),
+        ("", "rotations (pages 118–119)", "rigid-body motions (this page)"),
         [("configuration", "R ∈ SO(3), 3×3", "T ∈ SE(3), 4×4"),
          ("unit velocity", "unit axis ω̂", "screw axis S: ‖S<sub>ω</sub>‖ = 1, "
                                           "or S<sub>ω</sub> = 0 and ‖S<sub>v</sub>‖ = 1"),
@@ -1624,7 +2221,7 @@ class ScrewTwoFramesCard:
             "but read in {s}). <b>Try:</b> move q onto {b}'s origin "
             "(1.6, 0.6): S<sub>b</sub>'s linear part becomes 0 and {b} "
             "spins in place. The red one still flies off, round {s}'s origin. "
-            "This is the space-form vs body-form choice of page 120."))
+            "This is the space-form vs body-form choice of page 121."))
         self._draw()
 
     def _draw(self, *_):
@@ -1708,7 +2305,7 @@ def wrench_card() -> Card:
         "allowed motions satisfy A q̇ = 0: power = q̇ᵀAᵀλ = (A q̇)ᵀλ = 0. "
         "That was this card's argument in joint coordinates — a force paired "
         "with a velocity through a dot product, and the dot product (power) "
-        "as the thing that is physical. On page 122 the same argument, with "
+        "as the thing that is physical. On page 123 the same argument, with "
         "the Jacobian in place of Ad, gives τ = JᵀF.")))
     return c
 

@@ -219,7 +219,7 @@ _TOPO = {
             "a planner's distance, an interpolated path. Otherwise the arm "
             "turns 340° when 20° would do (the next lab). A grid planner on "
             "this C-space must link the right column to the left column, or it "
-            "misses short paths through the seam (page 135).",
+            "misses short paths through the seam (page 136).",
         extra="Where the zero of each angle is placed is an arbitrary choice; "
               "it moves the seams but cannot remove them. With joint limits "
               "(say ±150°) the C-space is a closed rectangle [−150°, 150°]², "
@@ -727,30 +727,30 @@ def why_card() -> Card:
           "sets the size of everything: q has n entries, M(q) is n × n, the "
           "Jacobian has n columns; tells you how many motors fully control "
           "the robot, and whether it is redundant for a task",
-          "120, 121, 124, 126"),
+          "121, 122, 125, 127"),
          ("topology",
           "does the space wrap round, have walls, or have holes?",
           "wrap angle errors (PID, planners, interpolation); treat joint "
           "limits as walls, not seams; know that a closed chain may have "
           "separate pieces you cannot move between",
-          "125, 135, 136"),
+          "126, 136, 137"),
          ("explicit representation",
           "which minimal numbers do I write a pose with?",
           "joint angles q for an arm: exactly the q in the dynamics. Safe "
           "because a circle only has jumps, never blow-ups (page 116)",
-          "120–132"),
+          "121–133"),
          ("implicit representation",
           "what if every minimal set of numbers breaks somewhere?",
           "store the hand's orientation as a rotation matrix R (or a "
           "quaternion), never as Euler angles, so the controller has no "
           "gimbal lock; describe a closed chain by all its joints plus "
           "g(θ) = 0",
-          "118, 119, 125, 137"),
+          "118–120, 126, 138"),
          ("velocity ≠ coordinate rate",
           "how fast is it moving?",
           "use angular velocity ω and twists V, not Euler-angle rates; the "
           "Jacobian maps q̇ to a twist, not to rates of some coordinates",
-          "118, 119, 121")])))
+          "119, 120, 122")])))
     c.add(plain(
         "Think of the whole block as a jigsaw whose finished picture is "
         "'compute the motor torques for a motion, and control the arm'. "
@@ -1059,7 +1059,7 @@ def choose_rep_card() -> Card:
         "<b>not</b> make every controller safe: singularities <i>of the "
         "robot</i> — an arm stretched straight, where no joint speed moves "
         "the hand outward — exist whatever numbers you use (Jacobian, page "
-        "121). And it has costs: 9 numbers instead of 3, plus rules "
+        "122). And it has costs: 9 numbers instead of 3, plus rules "
         "(RᵀR = I, ‖q‖ = 1) that rounding error slowly breaks, so you "
         "re-normalise R or the quaternion every so often."))
     c.add(body(_grid_table(
@@ -1153,7 +1153,7 @@ class HoopConstraintCard:
             "<b>Physically</b>, the red direction is also the direction in "
             "which the hoop pushes on the bead. A push along the red arrow "
             "can never speed up or slow down a motion along the green line, "
-            "so the hoop does no work. Page 132 uses exactly this: the "
+            "so the hoop does no work. Page 133 uses exactly this: the "
             "constraint force is Aᵀλ, and its power q̇ᵀAᵀλ = (A q̇)ᵀλ = 0."))
         self._draw()
 
@@ -1324,7 +1324,7 @@ class WallCard:
             "−3.00: the arrow lies flat along the wall and the gap rate is "
             "zero. Above −3 the finger pulls off the wall; below, it "
             "pushes into it, and the wall must push back (that push is the "
-            "constraint force Aᵀλ of page 132). At −3 the tip slides down "
+            "constraint force Aᵀλ of page 133). At −3 the tip slides down "
             "the wall at 1.73 m/s; to slide up, run both joints the other "
             "way. Same row of A, same cancellation."))
         self._draw()
@@ -1425,29 +1425,30 @@ def constraint_uses_card() -> Card:
     c.add(body(_grid_table(
         ("what you have", "what it tells you", "where you use it"),
         [("g(q) = 0", "which poses exist at all; n − k numbers are free",
-          "closed-chain inverse kinematics and assembly modes (125); a hand "
-          "held against a wall (132)"),
+          "closed-chain inverse kinematics and assembly modes (126); a hand "
+          "held against a wall (133)"),
          ("A(q) = ∂g/∂q", "row i: how fast gap i opens per unit speed of "
                           "each joint; also the direction the constraint pushes",
-          "constraint and contact forces Aᵀλ (132)"),
+          "constraint and contact forces Aᵀλ (133)"),
          ("null space of A", "every velocity the mechanism can actually make; "
                              "its size is the DOF at this pose",
-          "the speeds of passive joints when the motors turn (125); same idea "
-          "as the Jacobian null space of a redundant arm (124)"),
+          "the speeds of passive joints when the motors turn (126); same idea "
+          "as the Jacobian null space of a redundant arm (125); angular "
+          "velocity as the null space of RᵀR = I's rules (119)"),
          ("rank of A drops", "a singular pose: the mechanism gains a freedom, "
                              "locks, or can flip to the other assembly mode",
-          "actuator singularities of parallel robots (125)"),
+          "actuator singularities of parallel robots (126)"),
          ("A(q)q̇ = 0 with no g behind it", "nonholonomic: directions are "
                                            "forbidden, places are not",
-          "car and differential-drive planning and control (135, 140)")])))
+          "car and differential-drive planning and control (136, 141)")])))
     c.add(plain(
         "The puzzle so far, in order. Pages 115–116: q is the list of joint numbers, "
         "and you know what shape the space of q is. This page: some q's are "
         "not allowed (g(q) = 0 throws them out), and at each allowed q some "
         "velocities are not allowed (A q̇ = 0 throws them out). The null space "
         "of A is what is left: the motions the robot can really make. Later, "
-        "the Jacobian (121) maps the allowed q̇ to hand velocity, and the "
-        "dynamics (126–132) say what torques produce a given q̈, plus the "
+        "the Jacobian (122) maps the allowed q̇ to hand velocity, and the "
+        "dynamics (127–133) say what torques produce a given q̈, plus the "
         "constraint force Aᵀλ that keeps the rule true."))
     return c
 
@@ -1609,7 +1610,7 @@ class FourBarCard:
             "zero the ratio blows up: the crank alone stops deciding the "
             "motion (a dead point), or the mechanism can flip branch. "
             "Designers keep the working range away from these poses; page "
-            "125 calls them actuator singularities.", dim=True))
+            "126 calls them actuator singularities.", dim=True))
         self._curves = {}
         self.combo.currentIndexChanged.connect(self._draw)
         self.branch.currentIndexChanged.connect(self._draw)
