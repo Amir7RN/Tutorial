@@ -7,8 +7,10 @@ Modern Robotics playlists 1 and 2 (chapters 2 and 3).
     constraints      holonomic vs nonholonomic; task space vs workspace
                      (the interactive cards for videos 2.3.1-2.5 live in
                      robo_space_topo.py)
-    rotations        SO(3), so(3), Rodrigues, the matrix log
+    rotations        SO(3), angular velocity, so(3), Rodrigues, the matrix log
     twists/wrenches  SE(3), screw axes, the adjoint, and power = V . F
+                     (one card group per chapter-3 video lives in
+                     robo_space_rigid.py)
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from .base import Page
+from . import robo_space_rigid as rr
 from .robo_space_topo import (
     AngleWrapCard,
     CarConstraintCard,
@@ -614,10 +617,11 @@ class ConstraintsPage(Page):
 # ==========================================================================
 
 class RotationsPage(Page):
-    TITLE = "Rotations: SO(3) and Exponential Coordinates"
-    SUBTITLE = ("A rotation is a 3×3 orthonormal matrix with det +1. Every one "
-                "of them is a single turn θ about a single axis ω̂, and "
-                "Rodrigues' formula turns that axis–angle pair into the matrix.")
+    TITLE = "Rotations: SO(3), Angular Velocity, Exponential Coordinates"
+    SUBTITLE = ("A rotation is a 3×3 matrix whose columns are a frame's axes: "
+                "9 numbers held to 3 freedoms by 6 rules. Differentiate the "
+                "rules and angular velocity appears; integrate it and "
+                "Rodrigues' formula appears.")
     SECTION = SEC_CSPACE
     NOTES = playlist_badge(2)
 
@@ -625,90 +629,73 @@ class RotationsPage(Page):
         super().__init__(parent)
         self.add(watch(2))
         self.add(start_here(
-            "How do you write down which way an object is pointing in 3-D? "
-            "With a 3×3 <b>rotation matrix R</b>. Its three columns are the "
-            "object's own x, y and z axes, written in world coordinates — "
-            "that is all it is. The page then shows the one fact that makes "
-            "the rest easy: any orientation can be reached by a <b>single "
-            "turn θ about a single axis ω̂</b>, and there are formulas to go "
-            "from (axis, angle) to R and back."))
+            "How do you write down which way an object is pointing in 3-D, "
+            "how fast it is turning, and where a steady turn takes it? This "
+            "page follows the first six videos of chapter 3, in order, one "
+            "blue <b>VIDEO</b> box per video:<br>"
+            "<b>3.1</b> frames and the right-hand rule → <b>3.2.1 (1)</b> the "
+            "rotation matrix R and its 6 rules → <b>3.2.1 (2)</b> the three "
+            "jobs R does → <b>3.2.2</b> angular velocity ω → <b>3.2.3 (1)</b> "
+            "the matrix exponential → <b>3.2.3 (2)</b> Rodrigues' formula and "
+            "the matrix log.<br>"
+            "Almost nothing here is new in idea: it is pages 115–117 (DOF, "
+            "implicit representation, holonomic and Pfaffian constraints) "
+            "applied to orientation. The orange <b>CONNECTS TO PAGE</b> boxes "
+            "say exactly which old word each new word renames. Start with the "
+            "dictionary card, then take one video at a time: watch it, read "
+            "its cards, play its lab."))
+        self.add(rr.bridge_card())
 
-        r = Card("three jobs one rotation matrix does")
-        r.add(math_label(r"R\in SO(3)=\{R\in\mathbb{R}^{3\times3}:R^TR=I,\ \det R=1\}", 16))
-        r.add(body(
-            "<b>1. Represent an orientation.</b> R<sub>sb</sub> has the axes of "
-            "frame {b} written in {s} as its columns.<br>"
-            "<b>2. Change reference frame.</b> p<sub>s</sub> = R<sub>sb</sub> "
-            "p<sub>b</sub>; subscripts cancel: R<sub>ab</sub>R<sub>bc</sub> = "
-            "R<sub>ac</sub>.<br>"
-            "<b>3. Rotate a vector or frame.</b> R·R<sub>sb</sub> rotates about "
-            "an axis in {s} (premultiply); R<sub>sb</sub>·R rotates about the "
-            "same axis expressed in {b} (postmultiply). Order matters because "
-            "rotations do not commute."))
-        r.add(plain(
-            "Glue a tiny x-y-z frame {b} to the object; {s} is the fixed "
-            "world frame. R<sub>sb</sub> means 'frame b as seen from s': "
-            "column 1 is where b's x-axis points, and so on. RᵀR = I says the "
-            "three columns are unit length and at right angles (still a "
-            "proper frame); det = +1 says it is right-handed, not a mirror "
-            "image.<br>Job 2 works like unit conversion: in "
-            "R<sub>ab</sub>R<sub>bc</sub> the inner b's cancel and you get "
-            "R<sub>ac</sub>.<br>Job 3: try it with your phone. Turn it 90° "
-            "about the vertical, then 90° about the world's left-right axis. "
-            "Reset and do it in the other order. The phone ends up different: "
-            "rotations do not commute, so left- versus right-multiplication "
-            "matters."))
-        self.add(r)
+        self.add(rr.video_tag("3.1", "Introduction to rigid-body motions", (
+            "Frames, right-handedness, stationary frames, and the right-hand "
+            "rule for positive rotation — plus the promise that orientation "
+            "will be stored implicitly and velocity will not be a derivative "
+            "of coordinates.")))
+        self.add(rr.intro_card())
+        self.hand = rr.FrameHandCard()
+        self.add(self.hand.card)
 
-        e = Card("angular velocity, so(3), and the matrix exponential")
-        e.add(math_label(r"\dot R R^{-1}=[\omega_s],\qquad R^{-1}\dot R=[\omega_b],"
-                         r"\qquad [\omega]=\begin{bmatrix}0&-\omega_3&\omega_2\\ "
-                         r"\omega_3&0&-\omega_1\\ -\omega_2&\omega_1&0\end{bmatrix}", 15))
-        e.add(math_label(r"\mathrm{Rot}(\hat\omega,\theta)=e^{[\hat\omega]\theta}"
-                         r"=I+\sin\theta\,[\hat\omega]+(1-\cos\theta)[\hat\omega]^2", 16))
-        e.add(body(
-            "Integrate a constant angular velocity ω̂ for θ seconds and you get "
-            "e<sup>[ω̂]θ</sup>. The vector ω̂θ ∈ ℝ³ is the <b>exponential "
-            "coordinate</b> of R; the matrix log goes back. Three numbers, "
-            "no gimbal lock locally, singular only at θ = π where the axis "
-            "sign is ambiguous."))
-        e.add(plain(
-            "[ω] is the cross product written as a matrix: [ω]p = ω × p. "
-            "Nothing more. Angular velocity ω points along the spin axis and "
-            "its length is the spin rate. If you spin about a fixed unit axis "
-            "ω̂ at 1 rad/s for θ seconds you end at R = e<sup>[ω̂]θ</sup>, "
-            "and Rodrigues' formula is the closed form of that exponential — "
-            "you never sum a series. So three numbers, ω̂θ (axis scaled by "
-            "angle), describe any rotation, and 'log R' recovers them. The "
-            "only awkward case is a half-turn (θ = 180°), where turning about "
-            "ω̂ and about −ω̂ give the same R."))
-        self.add(e)
+        self.add(rr.video_tag("3.2.1", "Rotation matrices, part 1 of 2", (
+            "R<sub>sb</sub> = {b}'s axes written in {s}; 9 numbers, 6 rules "
+            "(RᵀR = I), det = +1; the group SO(3) and its properties.")))
+        self.rmat = rr.RotationMatrixCard()
+        self.add(self.rmat.card)
+        self.add(rr.count_card())
+        self.comm = rr.CommuteCard()
+        self.add(self.comm.card)
 
-        lab = Card("build R from axis and angle, then take it back with log")
-        self.sa = labelled_slider(lab, "axis azimuth", -180, 180, 30, deg, self._draw)
-        self.se = labelled_slider(lab, "axis elevation", -90, 90, 50, deg, self._draw)
-        self.st = labelled_slider(lab, "angle θ", -180, 180, 110, deg, self._draw)
-        self.R_txt = body("")
-        lab.add(self.R_txt)
-        self.st_det = Stat("det R", "--", theme.GOOD)
-        self.st_orth = Stat("‖RᵀR − I‖", "--", theme.GOOD)
-        self.st_log = Stat("θ from log R", "--", theme.ACCENT)
-        lab.add_layout(stat_row(self.st_det, self.st_orth, self.st_log))
-        self.cv = MplCanvas(width=7.4, height=3.6)
-        self.ax3 = self.cv.fig.add_subplot(111, projection="3d")
-        self.cv.ax.remove()
-        lab.add(self.cv)
-        lab.add(plain(
-            "Point the axis with azimuth and elevation (dashed line), then "
-            "choose the turn θ. Faint lines are the world axes, bold lines "
-            "the turned frame, and the dotted arc is the tip of the x-axis "
-            "during the turn. Check the stats: det R stays 1 and the "
-            "orthogonality error is around 10⁻¹⁶ — numerical zero. 'θ from "
-            "log R' always comes back between 0° and 180°: a −110° turn about "
-            "ω̂ is the same rotation as +110° about −ω̂, so the log reports "
-            "the positive one."))
-        self.add(lab)
-        self._draw()
+        self.add(rr.video_tag("3.2.1", "Rotation matrices, part 2 of 2", (
+            "Three uses of one matrix: represent an orientation, change the "
+            "frame of reference (subscript cancellation), rotate a vector or "
+            "frame (premultiply = space axis, postmultiply = body axis).")))
+        self.subs = rr.SubscriptCard()
+        self.add(self.subs.card)
+        self.rop = rr.RotateOperatorCard()
+        self.add(self.rop.card)
+
+        self.add(rr.video_tag("3.2.2", "Angular velocities", (
+            "Why Ṙ (9 numbers) is not the angular velocity; ω = ω̂θ̇; "
+            "Ṙ = [ω<sub>s</sub>]R; the bracket [ω] and so(3); "
+            "ω<sub>b</sub> = Rᵀω<sub>s</sub>.")))
+        self.add(rr.angvel_why_card())
+        self.angv = rr.AngularVelocityCard()
+        self.add(self.angv.card)
+
+        self.add(rr.video_tag("3.2.3", "Exponential coordinates of rotation, part 1 of 2", (
+            "Three numbers ω̂θ for an orientation, and why they are called "
+            "exponential: ẋ = ax gives e<sup>at</sup>, ẋ = Ax gives the "
+            "matrix exponential e<sup>At</sup>.")))
+        self.series = rr.ExpSeriesCard()
+        self.add(self.series.card)
+
+        self.add(rr.video_tag("3.2.3", "Exponential coordinates of rotation, part 2 of 2", (
+            "Integrate ṗ = [ω̂]p for θ seconds: R = e<sup>[ω̂]θ</sup>, "
+            "Rodrigues' closed form; the matrix log goes back; preview: a "
+            "revolute joint is ω̂ = its axis, θ = its angle.")))
+        self.integ = rr.IntegrateCard()
+        self.add(self.integ.card)
+        self.axang = rr.AxisAngleCard()
+        self.add(self.axang.card)
 
         self.add(interview(
             "<b>“Why not Euler angles in a controller?”</b> They have a "
@@ -720,40 +707,13 @@ class RotationsPage(Page):
             "multiply by a gain."))
         self.finish()
 
-    def _draw(self):
-        az, el = math.radians(self.sa.value()), math.radians(self.se.value())
-        w = np.array([math.cos(el) * math.cos(az), math.cos(el) * math.sin(az), math.sin(el)])
-        th = math.radians(self.st.value())
-        R = rk.rot_exp(w * th)
-        self.R_txt.setText("R = e<sup>[ω̂]θ</sup> =" + mat_html(R))
-        self.st_det.set(f"{np.linalg.det(R):.6f}")
-        self.st_orth.set(f"{np.linalg.norm(R.T @ R - np.eye(3)):.1e}")
-        self.st_log.set(f"{math.degrees(np.linalg.norm(rk.rot_log(R))):.1f}°")
-        ax = self.ax3
-        ax.clear()
-        ax.set_facecolor(theme.BG_INPUT)
-        cols = (theme.BAD, theme.GOOD, theme.ACCENT)
-        for i in range(3):
-            e = np.eye(3)[:, i]
-            ax.plot([0, e[0]], [0, e[1]], [0, e[2]], color=cols[i], alpha=0.25, lw=1.5)
-            v = R[:, i]
-            ax.plot([0, v[0]], [0, v[1]], [0, v[2]], color=cols[i], lw=3)
-        ax.plot([-w[0], w[0]], [-w[1], w[1]], [-w[2], w[2]], color=theme.WARN, lw=2, ls="--")
-        ts = np.linspace(0, th, 40)
-        arc = np.array([rk.rot_exp(w * t) @ np.array([1.0, 0, 0]) for t in ts])
-        ax.plot(arc[:, 0], arc[:, 1], arc[:, 2], color=theme.BAD, lw=1, ls=":")
-        for s in ("x", "y", "z"):
-            getattr(ax, f"set_{s}lim")(-1, 1)
-        ax.set_title("faint: {s}   bold: {b} = R·{s}   dashed: ω̂", color=theme.TEXT, fontsize=9)
-        ax.tick_params(colors=theme.TEXT_DIM, labelsize=7)
-        self.cv.refresh()
-
 
 class TwistsPage(Page):
-    TITLE = "Twists, Screws, the Adjoint and Wrenches"
-    SUBTITLE = ("Every rigid-body motion is a screw: rotate about an axis while "
-                "translating along it. The twist V = (ω, v) is its velocity, "
-                "the wrench F = (m, f) its dual, and V·F is power in any frame.")
+    TITLE = "Transforms, Twists, Screws and Wrenches"
+    SUBTITLE = ("Page 118 again with position added: T = (R, p) for where a "
+                "body is, a twist V = (ω, v) for how it moves (always a "
+                "screw), a wrench F = (m, f) for what pushes it, and V·F is "
+                "power in any frame.")
     SECTION = SEC_CSPACE
     NOTES = playlist_badge(2)
 
@@ -761,145 +721,71 @@ class TwistsPage(Page):
         super().__init__(parent)
         self.add(watch(2))
         self.add(start_here(
-            "Page 118 handled orientation only. Now add position. A "
-            "<b>pose</b> = rotation R + position p, packed into one 4×4 "
-            "matrix T. A rigid body's <b>velocity</b> = spin ω + linear speed "
-            "v, packed into a 6-vector called a <b>twist</b>. A <b>force</b> "
-            "on it = moment m + force f, packed into a 6-vector called a "
-            "<b>wrench</b>. This page is vocabulary; the Jacobian and "
-            "dynamics pages use these words on every line."))
+            "Page 118 handled orientation only. Now add position. This page "
+            "follows the last five videos of chapter 3, one blue <b>VIDEO</b> "
+            "box each:<br>"
+            "<b>3.3.1</b> the 4×4 transform T = (R, p) and its three uses → "
+            "<b>3.3.2 (1)</b> the twist: every velocity is a screw → "
+            "<b>3.3.2 (2)</b> moving a twist between frames (the adjoint) and "
+            "its 4×4 form → <b>3.3.3</b> following a screw for θ: the "
+            "exponential of a twist → <b>3.4</b> forces and torques as one "
+            "6-vector, the wrench.<br>"
+            "Each step copies a step of page 118: R → T, ω → V, "
+            "so(3) → se(3), Rodrigues → its 4×4 version. If a step feels "
+            "new, find its twin on page 118 first. In C-space words (page "
+            "115): this page is about the 6-D C-space of one free body and "
+            "its 6-D velocities and forces."))
 
-        h = Card("SE(3): pose as a 4×4 matrix")
-        h.add(math_label(r"T=\begin{bmatrix}R&p\\ 0&1\end{bmatrix},\quad "
-                         r"T^{-1}=\begin{bmatrix}R^T&-R^Tp\\ 0&1\end{bmatrix},\quad "
-                         r"T^{-1}\dot T=[\mathcal{V}_b],\ \ \dot TT^{-1}=[\mathcal{V}_s]", 15))
-        h.add(body(
-            "The <b>body twist</b> V<sub>b</sub> is the velocity of the body "
-            "frame expressed in itself; the <b>spatial twist</b> V<sub>s</sub> "
-            "is the same motion seen in {s} — its linear part is the velocity "
-            "of the (imaginary) point of the body currently at the {s} origin, "
-            "not of the body's own origin. That distinction is the single most "
-            "common slip in Jacobian questions."))
-        h.add(plain(
-            "Why 4×4? So that 'rotate, then shift' is a single "
-            "multiplication: T·[p; 1] = Rp + offset. T⁻¹ undoes it — rotate "
-            "back, then remove the shift. A <b>body twist</b> describes the "
-            "motion from the moving body's own point of view ('I am going "
-            "forward and turning left'). A <b>spatial twist</b> describes the "
-            "same motion in the fixed world frame. The trap: in the spatial "
-            "twist, v is not the speed of the body's centre; it is the speed "
-            "of an imaginary point glued to the body that happens to be at "
-            "the world origin right now. Strange, but it makes the algebra "
-            "clean."))
-        self.add(h)
+        self.add(rr.video_tag("3.3.1", "Homogeneous transformation matrices", (
+            "Pack (R, p) into T ∈ SE(3); inverse = swap subscripts; "
+            "homogeneous coordinates (append a 1); T on the left uses space "
+            "axes, T on the right uses body axes.")))
+        self.add(rr.transform_card())
+        self.homog = rr.HomogeneousCard()
+        self.add(self.homog.card)
+        self.lr = rr.LeftRightCard()
+        self.add(self.lr.card)
 
-        s = Card("screw axis and the exponential of a twist")
-        s.add(math_label(r"\mathcal{S}=\begin{bmatrix}\hat s\\ -\hat s\times q+h\hat s\end{bmatrix}"
-                         r"\ \ (\mathrm{revolute}: h=0),\qquad "
-                         r"\mathcal{S}=\begin{bmatrix}0\\ \hat v\end{bmatrix}\ (\mathrm{prismatic})", 15))
-        s.add(math_label(r"e^{[\mathcal{S}]\theta}=\begin{bmatrix}e^{[\hat\omega]\theta}&"
-                         r"(I\theta+(1-\cos\theta)[\hat\omega]+(\theta-\sin\theta)[\hat\omega]^2)v"
-                         r"\\ 0&1\end{bmatrix}", 15))
-        s.add(body(
-            "Chasles–Mozzi: any displacement is a rotation θ about some line "
-            "plus a translation hθ along it. The 6-vector Sθ is the "
-            "<b>exponential coordinate</b> of a pose, the same way ω̂θ was of a "
-            "rotation. Forward kinematics on the next section's first page is nothing more than a "
-            "product of these exponentials, one per joint."))
-        s.add(plain(
-            "Any move from pose A to pose B can be done as one <b>screw "
-            "motion</b>: turn about some line while sliding along it, like a "
-            "screw going into wood. A hinge is a screw with no sliding (pitch "
-            "h = 0); a slider is a screw with no turning. The screw axis S "
-            "stores the line's direction ŝ and, through v = −ŝ × q, where the "
-            "line is (q is any point on it). e<sup>[S]θ</sup> is 'perform "
-            "this screw motion by amount θ' as a 4×4 matrix. Forward "
-            "kinematics (page 120) multiplies one of these per joint."))
-        self.add(s)
+        self.add(rr.video_tag("3.3.2", "Twists, part 1 of 2", (
+            "Any velocity is a turn about a screw axis (q, ŝ, h) at rate θ̇; "
+            "store it as S = (S<sub>ω</sub>, S<sub>v</sub>) in some frame; "
+            "twist V = Sθ̇; infinite pitch = pure slide; body vs spatial twist.")))
+        self.add(rr.twist_card())
+        self.turn = rr.TurntableCard()
+        self.add(self.turn.card)
 
-        lab = Card("a planar screw: drag the axis point and the angle")
-        lab.add(body(
-            "In the plane a screw is a rotation about a point q (h = 0). The "
-            "square is carried along the exponential path; its corners trace "
-            "circular arcs about q, and the twist's linear part v = −ω × q "
-            "is the velocity of whatever body point sits at the origin.",
-            dim=True))
-        self.sx = labelled_slider(lab, "axis point q_x", -20, 20, 10, lambda v: f"{v/10:.1f}", self._draw)
-        self.sy = labelled_slider(lab, "axis point q_y", -20, 20, 5, lambda v: f"{v/10:.1f}", self._draw)
-        self.st = labelled_slider(lab, "θ", -180, 180, 90, deg, self._draw)
-        self.S_txt = body("")
-        lab.add(self.S_txt)
-        self.cv = MplCanvas(width=7.4, height=3.8)
-        lab.add(self.cv)
-        lab.add(plain(
-            "The red × is where the hinge axis pierces the page. Slide θ: the "
-            "square swings around that point like a door around its hinge, "
-            "and the dotted arcs are its corners. The violet arrow is v, the "
-            "velocity the motion would give a point sitting at the origin. "
-            "<b>Try:</b> keep θ fixed and move the hinge point — the motion "
-            "is the same kind of turn, but v changes, because v encodes where "
-            "the hinge is. Put the hinge at (0, 0) and v becomes zero."))
-        self.add(lab)
-        self._draw()
+        self.add(rr.video_tag("3.3.2", "Twists, part 2 of 2", (
+            "The 6×6 adjoint moves twists between frames; [V<sub>b</sub>] = "
+            "T⁻¹Ṫ and [V<sub>s</sub>] = ṪT⁻¹ are 4×4 matrices in se(3).")))
+        self.add(rr.adjoint_card())
 
-        a = Card("the adjoint: moving twists and wrenches between frames")
-        a.add(math_label(r"[\mathrm{Ad}_{T}]=\begin{bmatrix}R&0\\ [p]R&R\end{bmatrix},\qquad "
-                         r"\mathcal{V}_s=[\mathrm{Ad}_{T_{sb}}]\mathcal{V}_b,\qquad "
-                         r"\mathcal{F}_b=[\mathrm{Ad}_{T_{sb}}]^T\mathcal{F}_s", 15))
-        a.add(body(
-            "A wrench F = (m, f) — moment then force, matching (ω, v) — "
-            "transforms with the transpose because <b>power</b> "
-            "V<sub>b</sub>ᵀF<sub>b</sub> = V<sub>s</sub>ᵀF<sub>s</sub> cannot "
-            "depend on which frame you write it in. Hold onto that sentence: "
-            "it is the entire reason τ = JᵀF on the statics page."))
-        a.add(plain(
-            "Ad<sub>T</sub> is a 6×6 'translator' that re-expresses a twist "
-            "seen from one frame in another frame. The [p]R block is there "
-            "because a spin about a distant axis looks, from here, like a "
-            "spin plus a sliding motion — a rider on a merry-go-round is "
-            "moving even though the centre only turns. Wrenches use the "
-            "transpose because power (velocity · force) is a physical number "
-            "and cannot depend on which frame you write it in. Remember that "
-            "one sentence and τ = JᵀF on page 122 needs no memorising."))
-        self.add(a)
+        self.add(rr.video_tag("3.3.3", "Exponential coordinates of rigid-body motion", (
+            "Follow a screw S for θ: T = e<sup>[S]θ</sup>, 6 exponential "
+            "coordinates Sθ; exp and log between se(3) and SE(3); S in {b} "
+            "multiplies on the right, S in {s} on the left; every joint is a "
+            "screw.")))
+        self.add(rr.analogy_card())
+        self.screw = rr.ScrewCard()
+        self.add(self.screw.card)
+        self.two = rr.ScrewTwoFramesCard()
+        self.add(self.two.card)
+
+        self.add(rr.video_tag("3.4", "Wrenches", (
+            "Moment and force packed as F = (m, f); power VᵀF is the same in "
+            "every frame, which forces F<sub>s</sub> = "
+            "[Ad<sub>T<sub>bs</sub></sub>]ᵀF<sub>b</sub>; the apple and the "
+            "wrist force sensor.")))
+        self.add(rr.wrench_card())
+        self.apple = rr.AppleCard()
+        self.add(self.apple.card)
 
         self.add(interview(
             "<b>“A force sensor at the wrist reads F<sub>b</sub>. What torque "
             "does that force produce about the base?”</b> Transform it: "
-            "F<sub>s</sub> = Ad<sub>T<sub>bs</sub></sub>ᵀ F<sub>b</sub>; the "
+            "F<sub>s</sub> = [Ad<sub>T<sub>bs</sub></sub>]ᵀ F<sub>b</sub>; the "
             "moment part picks up p × f. Then joint torques are "
             "τ = J<sub>b</sub>ᵀ F<sub>b</sub> = J<sub>s</sub>ᵀ F<sub>s</sub> — "
             "same answer, because both are power balances."))
         self.finish()
 
-    def _draw(self):
-        qx, qy = self.sx.value() / 10, self.sy.value() / 10
-        th = math.radians(self.st.value())
-        S = rk.screw_axis([qx, qy, 0], [0, 0, 1])
-        self.S_txt.setText(
-            f"S = (ω; v) = ({S[0]:.0f}, {S[1]:.0f}, {S[2]:.0f}; "
-            f"{S[3]:+.2f}, {S[4]:+.2f}, {S[5]:.0f})  —  v = −ω̂ × q")
-        sq = np.array([[-0.3, -0.3], [0.3, -0.3], [0.3, 0.3], [-0.3, 0.3], [-0.3, -0.3]])
-        c = self.cv
-        c.clear()
-        ax = c.ax
-        ax.plot(sq[:, 0], sq[:, 1], color=theme.TEXT_FAINT, lw=1.5, label="start pose")
-        for t in np.linspace(0, th, 7)[1:-1]:
-            T = rk.exp6(S, t)
-            P = (T[:2, :2] @ sq.T).T + T[:2, 3]
-            ax.plot(P[:, 0], P[:, 1], color=theme.ACCENT, lw=0.8, alpha=0.4)
-        T = rk.exp6(S, th)
-        P = (T[:2, :2] @ sq.T).T + T[:2, 3]
-        ax.plot(P[:, 0], P[:, 1], color=theme.CYAN, lw=2.5, label="e^[S]θ · start")
-        for corner in sq[:4]:
-            arc = np.array([(rk.exp6(S, t)[:2, :2] @ corner) + rk.exp6(S, t)[:2, 3]
-                            for t in np.linspace(0, th, 30)])
-            ax.plot(arc[:, 0], arc[:, 1], ":", color=theme.WARN, lw=1)
-        ax.plot(qx, qy, "x", color=theme.BAD, ms=12, mew=3, label="screw axis q")
-        ax.quiver(0, 0, S[3], S[4], color=theme.VIOLET, angles="xy", scale_units="xy",
-                  scale=1, width=0.006, label="v (velocity of point at origin)")
-        ax.set_xlim(-3, 3)
-        ax.set_ylim(-2.2, 2.2)
-        ax.set_aspect("equal", adjustable="box")
-        c.legend(ax, loc="lower left")
-        c.refresh()
+
