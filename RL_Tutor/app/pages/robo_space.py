@@ -76,10 +76,10 @@ class RoboRoadmapPage(Page):
         super().__init__(parent)
         self.add(start_here(
             "This block answers three questions about any robot arm, in "
-            "order. <b>Where is the hand?</b> (kinematics, pages 115–121). "
+            "order. <b>Where is the hand?</b> (kinematics, pages 115–122). "
             "<b>How fast and how hard can the hand move when the motors "
-            "turn?</b> (the Jacobian, pages 122–126). <b>What motor torques "
-            "does a given motion need?</b> (dynamics, pages 127–133). The "
+            "turn?</b> (the Jacobian, pages 123–127). <b>What motor torques "
+            "does a given motion need?</b> (dynamics, pages 128–134). The "
             "last pages use those three answers to plan and control the arm. "
             "You need no earlier page of the tutor: only that a matrix times "
             "a vector is a weighted sum of columns, and that a derivative is "
@@ -153,8 +153,8 @@ class RoboRoadmapPage(Page):
             "If a formula still makes no sense after the video, do not stop "
             "there: the plain-words box tells you what result to carry "
             "forward, and later pages only use the result, not the "
-            "derivation. Pages 115–120 (playlists 1–2) are vocabulary; it is "
-            "normal for them to feel abstract until page 122 (the Jacobian) "
+            "derivation. Pages 115–121 (playlists 1–2) are vocabulary; it is "
+            "normal for them to feel abstract until page 123 (the Jacobian) "
             "uses them.", dim=True))
         self.add(h)
 
@@ -177,8 +177,8 @@ class RoboRoadmapPage(Page):
             "space control, impedance and hybrid force control."))
         p.add(plain(
             "Do not try to master this list on the first pass. Items 1–2 are "
-            "the Kinematics section (pages 121–126), items 3–5 the Dynamics "
-            "section (127–133), item 6 Robot Control (137–139). If you only "
+            "the Kinematics section (pages 122–127), items 3–5 the Dynamics "
+            "section (128–134), item 6 Robot Control (138–140). If you only "
             "have time for one idea, take the Jacobian: almost every other "
             "item is built from it."))
         self.add(p)
@@ -563,7 +563,7 @@ class ConstraintsPage(Page):
             "flat: picking joint angles at random piles the hand up near the "
             "inner and outer edges (arm nearly folded or straight), so "
             "'random in joints' is not 'random in task space' — it matters "
-            "for sampling planners on page 136."))
+            "for sampling planners on page 137."))
         self.add(w)
         self._draw()
         self.wslim = JointLimitWorkspaceCard()
@@ -634,7 +634,7 @@ class RotationsPage(Page):
             "<b>3.1</b> frames and the right-hand rule → <b>3.2.1 (1)</b> the "
             "rotation matrix R, its 6 rules, and what SO(3) is → "
             "<b>3.2.1 (2)</b> the three jobs R does.<br>"
-            "Page 119 then asks how fast an orientation changes (angular "
+            "Pages 119–120 then ask how fast an orientation changes (angular "
             "velocity) and where a steady spin takes it (exponential "
             "coordinates).<br>"
             "Almost nothing here is new in idea: it is pages 115–117 (DOF, "
@@ -687,10 +687,9 @@ class RotationsPage(Page):
 
 
 class AngularVelocityPage(Page):
-    TITLE = "Angular Velocity and Exponential Coordinates"
+    TITLE = "Angular Velocity from RᵀR = I"
     SUBTITLE = ("Differentiate RᵀR = I and only 3 numbers survive: the "
-                "angular velocity ω. Follow a constant ω for θ seconds and "
-                "you get R = e^[ω̂]θ, Rodrigues' formula.")
+                "angular velocity ω. Ṙ = [ω_s]R = R[ω_b], with ω_b = Rᵀω_s.")
     SECTION = SEC_CSPACE
     NOTES = playlist_badge(2)
 
@@ -698,33 +697,32 @@ class AngularVelocityPage(Page):
         super().__init__(parent)
         self.add(watch(2))
         self.add(start_here(
-            "Page 118 wrote an orientation down. This page asks two things: "
-            "<b>how fast is it changing</b> (video 3.2.2, angular velocity) "
-            "and <b>where does a steady spin take it</b> (video 3.2.3, "
-            "exponential coordinates).<br>"
+            "Page 118 wrote an orientation down. This page asks <b>how fast "
+            "is it changing</b> (video 3.2.2, angular velocity). Page 120 "
+            "then asks why we store that speed as ω and not as Ṙ or "
+            "Euler-angle rates, and where a steady spin takes the body "
+            "(video 3.2.3).<br>"
             "Video 3.2.2 is short but packs in many steps, so it is unpacked "
             "here as separate cards, each answering one question: "
             "(1) is my bead-on-a-hoop translation right? → (2) how do 6 rules "
             "leave 3 numbers, and <b>what is the matrix A</b> whose null space "
-            "they are? → (3) why can velocity use 3 numbers when orientation "
-            "cannot, and why not Euler-angle rates? → (4) what ω = ω̂θ̇ and "
-            "ω<sub>x</sub>, ω<sub>y</sub>, ω<sub>z</sub> mean → (5) how ω, "
-            "[ω] and Ṙ = [ω]R relate (cause, machine, effect) → (6) "
-            "ω<sub>b</sub> = Rᵀω<sub>s</sub>, step by step.<br>"
-            "Each card has a lab right after it. Go in order; every card "
-            "only uses the ones above it."))
+            "they are? → (3) step 3 slowly: why ẋ = ω × x̂ is the guess, why "
+            "it zeroes every rule, and why nothing else is allowed → (4) what "
+            "ω = ω̂θ̇ and ω<sub>x</sub>, ω<sub>y</sub>, ω<sub>z</sub> mean → "
+            "(5) how ω, [ω] and Ṙ = [ω]R relate (cause, machine, effect) → "
+            "(6) ω<sub>b</sub> = Rᵀω<sub>s</sub>, step by step.<br>"
+            "Labs sit between the cards. Go in order; every card only uses "
+            "the ones above it."))
 
-        self.add(rr.video_tag("3.2.2", "Angular velocities", (
+        self.add(rr.video_tag("3.2.2", "Angular velocities, part 1 of 2", (
             "Why Ṙ (9 numbers) is not the angular velocity; ω = ω̂θ̇; "
             "Ṙ = [ω<sub>s</sub>]R; the bracket [ω] and so(3); "
             "ω<sub>b</sub> = Rᵀω<sub>s</sub>.")))
         self.add(rr.check_card())
         self.add(rr.why_rdot_card())
+        self.add(rr.step3_card())
         self.amat = rr.ConstraintMatrixCard()
         self.add(self.amat.card)
-        self.add(rr.tangent_card())
-        self.gimbal = rr.GimbalRatesCard()
-        self.add(self.gimbal.card)
         self.add(rr.axis_speed_card())
         self.comp = rr.ComponentsCard()
         self.add(self.comp.card)
@@ -734,6 +732,54 @@ class AngularVelocityPage(Page):
         self.add(rr.body_space_card())
         self.bs = rr.BodySpaceCard()
         self.add(self.bs.card)
+
+        self.add(interview(
+            "<b>“Where does Ṙ = [ω]R come from?”</b> RᵀR = I is six rules on "
+            "R's nine numbers (unit columns, perpendicular pairs). Their "
+            "rates give a 6×9 constraint A(R)vec(Ṙ) = 0 of rank 6, so the "
+            "allowed Ṙ form a 3-D space. A rigid spin moves each axis tip at "
+            "ω × axis, which keeps every rule, and different ω give different "
+            "Ṙ, so Ṙ = [ω<sub>s</sub>]R covers all of it. Equivalently RᵀṘ "
+            "is skew: RᵀṘ = [ω<sub>b</sub>], ω<sub>b</sub> = Rᵀω<sub>s</sub>."))
+        self.finish()
+
+
+class ExpCoordsPage(Page):
+    TITLE = "Why ω, Gyros vs Euler Rates, Exponential Coordinates"
+    SUBTITLE = ("Store velocity as ω: Ṙ wastes 6 numbers and Euler-angle "
+                "rates blow up at gimbal lock. Follow a constant ω for θ "
+                "seconds and you get R = e^[ω̂]θ, Rodrigues' formula.")
+    SECTION = SEC_CSPACE
+    NOTES = playlist_badge(2)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.add(watch(2))
+        self.add(start_here(
+            "Page 119 found that a turning body's speed is 3 numbers, ω. "
+            "This page has two halves.<br>"
+            "<b>First half (end of video 3.2.2): why ω and not something "
+            "else?</b> (1) ω vs Ṙ: the same spin in 3 numbers and in 9, and "
+            "what the extra 6 cost → (2) why 3 numbers work for velocity but "
+            "not for orientation → (3) how a gyroscope measures ω, how "
+            "Euler-angle rates are computed from it, and why they blow up at "
+            "pitch 90°.<br>"
+            "<b>Second half (video 3.2.3): where does a steady spin take "
+            "the body?</b> The matrix exponential, Rodrigues' formula and the "
+            "matrix log.<br>"
+            "Each card has a lab right after it."))
+
+        self.add(rr.video_tag("3.2.2", "Angular velocities, part 2 of 2", (
+            "Why store velocity as ω: Ṙ carries 6 redundant numbers, and "
+            "Euler-angle rates are coordinate rates that blow up at gimbal "
+            "lock. A gyroscope measures ω<sub>b</sub> directly.")))
+        self.add(rr.waste_card())
+        self.drift = rr.RdotDriftCard()
+        self.add(self.drift.card)
+        self.add(rr.tangent_card())
+        self.add(rr.gyro_euler_card())
+        self.gimbal = rr.GimbalRatesCard()
+        self.add(self.gimbal.card)
 
         self.add(rr.video_tag("3.2.3", "Exponential coordinates of rotation, part 1 of 2", (
             "Three numbers ω̂θ for an orientation, and why they are called "
@@ -765,7 +811,7 @@ class AngularVelocityPage(Page):
 
 class TwistsPage(Page):
     TITLE = "Transforms, Twists, Screws and Wrenches"
-    SUBTITLE = ("Pages 118–119 again with position added: T = (R, p) for where a "
+    SUBTITLE = ("Pages 118–120 again with position added: T = (R, p) for where a "
                 "body is, a twist V = (ω, v) for how it moves (always a "
                 "screw), a wrench F = (m, f) for what pushes it, and V·F is "
                 "power in any frame.")
@@ -776,7 +822,7 @@ class TwistsPage(Page):
         super().__init__(parent)
         self.add(watch(2))
         self.add(start_here(
-            "Pages 118–119 handled orientation only. Now add position. This page "
+            "Pages 118–120 handled orientation only. Now add position. This page "
             "follows the last five videos of chapter 3, one blue <b>VIDEO</b> "
             "box each:<br>"
             "<b>3.3.1</b> the 4×4 transform T = (R, p) and its three uses → "
@@ -785,9 +831,9 @@ class TwistsPage(Page):
             "its 4×4 form → <b>3.3.3</b> following a screw for θ: the "
             "exponential of a twist → <b>3.4</b> forces and torques as one "
             "6-vector, the wrench.<br>"
-            "Each step copies a step of pages 118–119: R → T, ω → V, "
+            "Each step copies a step of pages 118–120: R → T, ω → V, "
             "so(3) → se(3), Rodrigues → its 4×4 version. If a step feels "
-            "new, find its twin on page 118 or 119 first. In C-space words (page "
+            "new, find its twin on pages 118–120 first. In C-space words (page "
             "115): this page is about the 6-D C-space of one free body and "
             "its 6-D velocities and forces."))
 

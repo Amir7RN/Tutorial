@@ -578,9 +578,9 @@ class OperationalSpacePage(Page):
         self.add(start_here(
             "Control the <b>hand</b> directly in x and y instead of the joint "
             "angles. Decide what force the hand needs using the task-space "
-            "dynamics of page 132, then turn it into joint torques with τ = "
-            "JᵀF (page 123). With a spare joint, add a posture goal through "
-            "the null space (page 125) — but for <i>torques</i> the filter "
+            "dynamics of page 133, then turn it into joint torques with τ = "
+            "JᵀF (page 124). With a spare joint, add a posture goal through "
+            "the null space (page 126) — but for <i>torques</i> the filter "
             "must use the mass-weighted J̄, not the plain J⁺ of the velocity "
             "page."))
 

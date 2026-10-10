@@ -220,7 +220,7 @@ class JacobianPage(Page):
             "is exactly that — the lever arm from joint i to the hand, turned "
             "90°. For the 2R arm (s₁ = sin θ₁, c₁₂ = cos(θ₁+θ₂), …):<br>J = [ "
             "−L₁s₁ − L₂s₁₂ , −L₂s₁₂ ; L₁c₁ + L₂c₁₂ , L₂c₁₂ ].<br>Get it by "
-            "differentiating x(θ) and y(θ) from page 121 with respect to each "
+            "differentiating x(θ) and y(θ) from page 122 with respect to each "
             "angle. 'Geometric' Jacobians give the true angular velocity ω; "
             "the 'analytic' one gives rates of whatever angles you chose "
             "(e.g. Euler angles) and can blow up wherever those angles do."))
@@ -647,7 +647,7 @@ class NullSpacePage(Page):
             "projection' means θ̇₀ = 'walk downhill on a cost H', e.g. H = "
             "how close you are to the joint limits. A weighted inverse "
             "measures 'smallest' differently; with W = M it means least "
-            "kinetic energy, which page 132 uses."))
+            "kinetic energy, which page 133 uses."))
         self.add(m)
 
         lab = Card("self-motion: the hand stays put, the elbow swings")

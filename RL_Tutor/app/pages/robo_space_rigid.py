@@ -1,19 +1,22 @@
 """
 Interactive cards for Modern Robotics chapter 3, one group per video, in the
 order the videos play. Page 118 (RotationsPage) takes videos 3.1-3.2.1,
-page 119 (AngularVelocityPage) 3.2.2-3.2.3, page 120 (TwistsPage) the
+page 119 (AngularVelocityPage) the first half of 3.2.2, page 120
+(ExpCoordsPage) its second half and 3.2.3, page 121 (TwistsPage) the
 rigid-body ones:
 
     3.1    intro: frames, right-hand rule     bridge_card, intro_card, FrameHandCard
     3.2.1  rotation matrices (1 of 2)         RotationMatrixCard, count_card,
                                               so3_card, SO3BallCard, CommuteCard
     3.2.1  rotation matrices (2 of 2)         SubscriptCard, RotateOperatorCard
-    3.2.2  angular velocities                 check_card, why_rdot_card,
-                                              ConstraintMatrixCard, tangent_card,
-                                              GimbalRatesCard, axis_speed_card,
-                                              ComponentsCard, layers_card,
-                                              AngularVelocityCard, body_space_card,
-                                              BodySpaceCard
+    3.2.2  angular velocities (page 119)      check_card, why_rdot_card,
+                                              step3_card, ConstraintMatrixCard,
+                                              axis_speed_card, ComponentsCard,
+                                              layers_card, AngularVelocityCard,
+                                              body_space_card, BodySpaceCard
+    3.2.2  why store ω (page 120)             waste_card, RdotDriftCard,
+                                              tangent_card, gyro_euler_card,
+                                              GimbalRatesCard
     3.2.3  exponential coordinates (1 of 2)   ExpSeriesCard
     3.2.3  exponential coordinates (2 of 2)   IntegrateCard, AxisAngleCard
     3.3.1  homogeneous transformations        transform_card, HomogeneousCard,
@@ -758,7 +761,7 @@ class RotateOperatorCard:
             "spins about the flat axis. Set θ = 0: both agree, nothing "
             "turned. Rule to keep: <b>left = about a fixed (space) axis, "
             "right = about the body's own axis.</b> The same rule returns for "
-            "4×4 transforms (page 120) and for forward kinematics (page 121)."))
+            "4×4 transforms (page 121) and for forward kinematics (page 122)."))
         self._draw()
 
     def _draw(self, *_):
@@ -874,7 +877,8 @@ def why_rdot_card() -> Card:
         "2x̂·(ω × x̂) = 0 because ω × x̂ is perpendicular to x̂. So "
         "Ṙ = [ω × x̂  ω × ŷ  ω × ẑ] is allowed, it has exactly 3 free numbers "
         "(ω's components), and it fills the whole 3-D null space. "
-        "<b>The 3 numbers that survive are ω.</b><br>"
+        "<b>The 3 numbers that survive are ω.</b> (If this step feels like "
+        "a jump, the next card walks through it slowly.)<br>"
         "<b>Step 4. The short way.</b> All six rules in one line: "
         "differentiate RᵀR = I (product rule)."))
     c.add(math_label(
@@ -897,6 +901,112 @@ def why_rdot_card() -> Card:
         "straight Ṙ·Δt and you leave SO(3), like the dashed tangent line "
         "leaving the hoop. The exponential (video 3.2.3) steps without "
         "leaving.")))
+    return c
+
+
+def step3_card() -> Card:
+    """Step 3 of the card above, slowly: what R and Rdot are, why the guess
+    w x axis, why it zeroes every meter, and why it is the whole null space."""
+    c = Card("step 3, slowly: why ẋ = ω × x̂, and why it makes every meter read zero")
+    c.add(body(
+        "<b>0. What R is on this page.</b> Page 118 gave R three jobs, and "
+        "both readings you have met are right. 'R turns {s} onto {b}' reads R "
+        "as an <i>operation</i>. Here read it as a <i>snapshot</i>: R is the "
+        "hand's three axis arrows x̂<sub>b</sub>, ŷ<sub>b</sub>, "
+        "ẑ<sub>b</sub>, each of length 1, written in {s} numbers and stood "
+        "side by side as columns. It says only which way the hand points; "
+        "where the hand is (position p) comes on page 121. Same matrix, but "
+        "for velocity the snapshot reading is the one that helps.<br>"
+        "<b>1. What Ṙ is.</b> As the hand turns, each axis arrow swings and "
+        "its tip moves. ẋ is the velocity of x̂<sub>b</sub>'s tip (3 numbers), "
+        "ẏ of ŷ<sub>b</sub>'s tip, ż of ẑ<sub>b</sub>'s tip. So Ṙ = [ẋ ẏ ż] "
+        "is three tip velocities, 9 numbers. The arrows always start at the "
+        "origin; only their tips move. That is why these are 'translational' "
+        "velocities of tips even though the hand only turns.<br>"
+        "<b>2. The six rules, read as rules about tips.</b>"))
+    c.add(body(_grid_table(
+        ("rule (position)", "rule (velocity)", "in words"),
+        [("|x̂| = 1 (also ŷ, ẑ)", "x̂·ẋ = 0",
+          "x's tip moves perpendicular to x: along the unit sphere, never in "
+          "or out, so the length cannot change"),
+         ("x̂ ⟂ ŷ (also y⟂z, z⟂x)", "ŷ·ẋ + x̂·ẏ = 0",
+          "if x's tip leans toward y at some rate, y's tip must lean away "
+          "from x at the same rate; otherwise the right angle opens or "
+          "closes")])))
+    c.add(body(
+        "<b>3. Your A matrix is right.</b> Rows, with columns in blocks "
+        "(ẋ | ẏ | ż): (2x̂ᵀ, 0, 0), (0, 2ŷᵀ, 0), (0, 0, 2ẑᵀ), (ŷᵀ, x̂ᵀ, 0), "
+        "(0, ẑᵀ, ŷᵀ), (ẑᵀ, 0, x̂ᵀ). Stacking Ṙ into one 9-row column "
+        "(ẋ; ẏ; ż) is pure bookkeeping: 'A times q̇' needs q̇ as one column, "
+        "and this order matches A's three column blocks. Rank 6, so the "
+        "null space is a <b>3-dimensional</b> flat slice of the 9-D space of "
+        "all Ṙ. Not 'a vector of three': a 3-D family of 9-vectors, and "
+        "3 numbers are enough to say which member you mean.<br>"
+        "<b>4. Why guess instead of solve?</b> You could row-reduce "
+        "A·vec(Ṙ) = 0 and get 3 free parameters, but they would be ugly and "
+        "change with R. Physics hands you a better guess. The hand is "
+        "rigid, so at any instant it spins about <i>one</i> axis at "
+        "<i>one</i> rate. Pack both into one arrow ω: its direction is the "
+        "spin axis, its length the rate in rad/s. So ω is a 3-vector, not a "
+        "scalar (ω = ω̂θ̇, two cards down). From school physics, a point at "
+        "r on a body spinning with ω moves at v = ω × r. The axis tips are "
+        "points of the hand at r = x̂, ŷ, ẑ. Hence:"))
+    c.add(math_label(
+        r"\dot x=\omega\times\hat x,\qquad \dot y=\omega\times\hat y,\qquad "
+        r"\dot z=\omega\times\hat z\qquad(\mathrm{the\ same}\ \omega\ "
+        r"\mathrm{for\ all\ three})", 15))
+    c.add(body(
+        "The same ω in all three because it is one rigid hand: one spin "
+        "moves all three arrows.<br>"
+        "<b>5. Check the length meters.</b> A cross product is perpendicular "
+        "to both of its inputs, so ω × x̂ ⟂ x̂ and x̂·ẋ = 0. Same for ŷ and ẑ. "
+        "Three meters stay at zero.<br>"
+        "<b>6. Check the angle meters.</b> Use the cyclic rule "
+        "a·(b × c) = b·(c × a) (both are the volume of the same box):"))
+    c.add(math_label(
+        r"\hat y\cdot(\omega\times\hat x)=\omega\cdot(\hat x\times\hat y)="
+        r"\omega\cdot\hat z,\qquad \hat x\cdot(\omega\times\hat y)="
+        r"\omega\cdot(\hat y\times\hat x)=-\,\omega\cdot\hat z", 15))
+    c.add(body(
+        "They add to zero. In words: the part of the spin along z tips x "
+        "toward y at rate ω·ẑ and tips y away from x at exactly the same "
+        "rate, so the right angle survives. The other two angle meters work "
+        "the same way.<br>"
+        "<b>7. With numbers.</b> R = I, spin about z at 2 rad/s: "
+        "ω = (0, 0, 2). Then ẋ = ω × x̂ = (0, 2, 0), ẏ = ω × ŷ = (−2, 0, 0), "
+        "ż = ω × ẑ = 0."))
+    c.add(body(_grid_table(
+        ("meter rate", "good guess ẋ = (0,2,0), ẏ = (−2,0,0), ż = 0",
+         "bad guess: only x moves, ẏ = 0"),
+        [("2 x̂·ẋ", "2·(1,0,0)·(0,2,0) = 0 ✓", "0 ✓"),
+         ("ŷ·ẋ + x̂·ẏ", "2 + (−2) = 0 ✓", "2 + 0 = <b>2</b> ✗ — the angle "
+          "closes from 90°"),
+         ("ẑ·ẏ + ŷ·ż", "0 ✓", "0 ✓"),
+         ("x̂·ż + ẑ·ẋ", "0 ✓", "0 ✓")])))
+    c.add(body(
+        "<b>8. Why there are no other allowed Ṙ.</b> The recipe ω → "
+        "[ω × x̂  ω × ŷ  ω × ẑ] is linear, and different ω give different Ṙ "
+        "(if ω × x̂ = 0 and ω × ŷ = 0, ω is parallel to both x̂ and ŷ, so "
+        "ω = 0). So it produces a 3-D family of allowed Ṙ. The null space is "
+        "only 3-D. A 3-D family inside a 3-D space is all of it: "
+        "<b>every allowed Ṙ is [ω]R for exactly one ω.</b><br>"
+        "<b>9. So what is ω?</b> The hand's spin axis times its spin rate, "
+        "in {s} components. Ṙ (9 numbers) is the <i>effect</i> on the three "
+        "tips; ω (3 numbers) is the <i>cause</i>. 'The 3 numbers that "
+        "survive' are the cause.<br>"
+        "<b>10. Step 4 is steps 1–3 in matrix clothes.</b> Entry (i, j) of "
+        "RᵀR is (column i)·(column j). So RᵀR = I <i>is</i> the six meters: "
+        "the diagonal holds the lengths, the off-diagonal the angles, and it "
+        "is symmetric, so 6 rules, not 9. Entry (i, j) of ṘᵀR + RᵀṘ is the "
+        "meter's rate: entry (1,1) = 2x̂·ẋ, entry (1,2) = ẋ·ŷ + x̂·ẏ, exactly "
+        "the table. So 'RᵀṘ is skew' just means 'all six rates are zero'. "
+        "Put the guess in: entry (2,1) of RᵀṘ is ŷ·(ω × x̂) = ω·ẑ<sub>b</sub>, "
+        "the spin's component along the body z-axis. That is why "
+        "RᵀṘ = [ω<sub>b</sub>] (proved again, a different way, at the "
+        "bottom of this page)."))
+    c.add(plain(
+        "The lab below does steps 3 and 8 by computer: it builds A(R), "
+        "finds rank 6, and shows the meter rates stay zero for any ω."))
     return c
 
 
@@ -975,7 +1085,7 @@ def tangent_card() -> Card:
         "<b>3. '3-vector' vs '3 numbers'.</b> Same thing, with one promise "
         "added: a 3-vector is 3 numbers that describe an <i>arrow</i>, so "
         "they rotate like an arrow when you change frame (ω<sub>b</sub> = "
-        "Rᵀω<sub>s</sub>, later on this page), and you can add two of them "
+        "Rᵀω<sub>s</sub>, page 119), and you can add two of them "
         "tip to tail. Euler angles are 3 numbers but not a vector: you "
         "cannot add two sets of Euler angles to compose two rotations.<br>"
         "<b>4. Why velocity has no bad spot but orientation does.</b> Two "
@@ -1006,8 +1116,8 @@ def tangent_card() -> Card:
          ("velocity as ω (spin rates on fixed axes)", "3", "<b>none</b> ← the payoff")])))
     c.add(plain(
         "Rule for code: store orientation as R (or a quaternion), store "
-        "velocity as ω. Never store velocity as Euler-angle rates. The lab "
-        "below shows why with one steady spin."))
+        "velocity as ω. Never store velocity as Euler-angle rates. The gyro "
+        "card and the lab below show why."))
     return c
 
 
@@ -1408,6 +1518,235 @@ class AngularVelocityCard:
         _cube(ax, 1.3)
         ax.set_title("bold: {b}   arrows: tip velocities (½ scale)   dashed: ω̂")
         self.cv.refresh()
+
+
+# ==========================================================================
+# 3.2.2  (page 120) why store ω: not Ṙ, not Euler-angle rates
+# ==========================================================================
+
+# The worked example of this group: {b} turned 90 deg about z_s, spinning
+# at 1 rad/s about x_s.
+EX_R = rotz(math.pi / 2)
+EX_W = np.array([1.0, 0, 0])
+
+
+def waste_card() -> Card:
+    """Same spin as w (3 numbers) and as Rdot (9 numbers); what the 9 cost."""
+    c = Card("ω vs Ṙ: the same spin in 3 numbers and in 9 — what the extra 6 cost")
+    rdot = rk.skew(EX_W) @ EX_R
+    c.add(body(
+        "<b>The example.</b> Frame {b} is turned 90° about z<sub>s</sub>, and "
+        "it spins at 1 rad/s about the space x-axis. Left: R. Middle: the "
+        "spin as ω<sub>s</sub>, 3 numbers. Right: the same spin as "
+        "Ṙ = [ω<sub>s</sub>]R, 9 numbers: the tip velocities ω<sub>s</sub> × "
+        "each axis from page 119."))
+    c.add(body(
+        "<table><tr><td>R =</td><td>" + _cols_html(EX_R, 0) +
+        "</td><td style='padding-left:24px'>ω<sub>s</sub> = (1, 0, 0)</td>"
+        "<td style='padding-left:24px'>Ṙ =</td><td>" + _cols_html(rdot, 0) +
+        "</td></tr></table>"))
+    c.add(body(
+        "Both describe exactly the same motion. The 3 numbers of ω are all "
+        "free. The 9 numbers of Ṙ are not: 6 of them are pinned by the rules "
+        "A·vec(Ṙ) = 0. Storage (3× the floats) is the smallest cost. The "
+        "real costs are these four:<br>"
+        "<b>1. Most 9-tuples are illegal.</b> Any 3 numbers make a valid ω, "
+        "but only a thin 3-D slice of the 9-D space of Ṙ is legal. Add "
+        "sensor noise 0.01 to entry (2, 1) of Ṙ above. Row 1 of A is "
+        "2x̂<sub>b</sub>ᵀ on ẋ, with x̂<sub>b</sub> = (0, 1, 0), so it now reads "
+        "2·0.01 = 0.02 ≠ 0: the x-axis is 'stretching'. So every Ṙ you "
+        "measure, filter or command must be checked and projected back onto "
+        "the null space. Noise on ω only gives a slightly different spin, "
+        "still a legal one. (Noise on entry (1, 1) would happen to be "
+        "harmless here, because x̂<sub>b</sub> has no x-component. Which "
+        "entries hurt depends on R: one more chore.)<br>"
+        "<b>2. A constant Ṙ is not a rotation.</b> A steady spin has a "
+        "constant ω: a natural thing to command or hold. Hold Ṙ constant "
+        "instead and step forward one second:"))
+    c.add(body(
+        "<table><tr><td>R + Ṙ·1 =</td><td>" + _cols_html(EX_R + rdot, 0) +
+        "</td></tr></table>"
+        f"<span style='color:{theme.TEXT_DIM}'>Column 1 is now (0, 1, 1), "
+        "length √2 ≈ 1.41: no longer a rotation. This is the bead's tangent "
+        "line leaving the hoop (page 117). Ṙ is only valid at the instant it "
+        "was computed.</span>"))
+    c.add(body(
+        "<b>3. Ṙ changes even when the motion does not.</b> During that steady "
+        "spin, ω<sub>s</sub> stays (1, 0, 0) forever. But Ṙ = [ω<sub>s</sub>]R "
+        "changes every instant, because R changes. So you cannot put a speed "
+        "limit, a gain or a set-point on Ṙ's entries: there is no steady "
+        "number to hold.<br>"
+        "<b>4. Ṙ's entries mean little on their own.</b> 'ω<sub>x</sub> = 1 "
+        "rad/s' means a spin about x. 'Entry (3, 1) of Ṙ is 1' means 'the "
+        "z-component of the x-axis tip changes at 1 per second': true, but "
+        "no controller or sensor uses it. Everything physical is written in "
+        "ω: gyroscopes measure ω; kinetic energy is ½ωᵀIω (I the inertia matrix); "
+        "Euler's equations are τ = Iω̇ + ω × Iω; the Jacobian (page 123) outputs twists built "
+        "from ω."))
+    c.add(body(_grid_table(
+        ("", "ω", "Ṙ"),
+        [("numbers", "3", "9"),
+         ("every value legal?", "yes", "no, must satisfy 6 rules"),
+         ("a constant value means", "a steady spin", "invalid after one step"),
+         ("same spin, a moment later", "same numbers", "different numbers"),
+         ("entries physically meaningful", "yes", "no"),
+         ("used by gyros, dynamics, Jacobian", "yes", "no — you convert back to ω")])))
+    c.add(plain(
+        "So Ṙ is not wrong, and it has no bad spots. It is 9 numbers carrying "
+        "3 numbers' worth of information, and it needs constant policing. "
+        "ω carries the same information with nothing to police."))
+    return c
+
+
+class RdotDriftCard:
+    """Hold w constant vs hold Rdot constant; add noise to one entry of Rdot."""
+
+    def __init__(self):
+        c = self.card = Card("lab: hold ω steady vs hold Ṙ steady, and add noise to Ṙ")
+        c.add(body(
+            "Start at the example: {b} turned 90° about z<sub>s</sub>, spinning "
+            "at 1 rad/s about x<sub>s</sub>. Two ways to move forward for t "
+            "seconds. <b>Hold ω:</b> R(t) = e<sup>[ω<sub>s</sub>]t</sup>R "
+            "(the exact turn, built later on this page). <b>Hold Ṙ:</b> "
+            "R + Ṙ(0)·t, the straight line.", dim=True))
+        self.s_t = labelled_slider(c, "time step t", 0, 200, 100,
+                                   lambda v: f"{v/100:.2f} s", self._draw)
+        self.s_n = labelled_slider(c, "noise on Ṙ entry (2,1)", -5, 5, 0,
+                                   lambda v: f"{v/100:+.2f}", self._draw)
+        self.st_w = Stat("ω_s at time t (hold ω)", "--", theme.GOOD)
+        self.st_d = Stat("‖Ṙ(t) − Ṙ(0)‖ (same spin!)", "--", theme.WARN)
+        self.st_l = Stat("|column 1|, hold Ṙ", "--", theme.BAD)
+        self.st_n = Stat("meter rates A·vec(Ṙ + noise)", "--", theme.VIOLET)
+        c.add_layout(stat_row(self.st_w, self.st_d, self.st_l, self.st_n))
+        self.cv = MplCanvas(width=8.4, height=3.4, ncols=2)
+        c.add(self.cv)
+        c.add(plain(
+            "Left: how far each version is from being a rotation, ‖RᵀR − I‖. "
+            "Holding ω stays at zero for any t; holding Ṙ grows like t² "
+            "(cost 2). Right: Ṙ's nine entries along the steady spin, against "
+            "ω's three flat lines (cost 3). <b>Try:</b> t = 1 s — column 1 has "
+            "length 1.41, the number in the card above. Then move the noise "
+            "slider: only the first meter rate (x-axis length) lights up, at "
+            "2 × noise (cost 1)."))
+        self._draw()
+
+    def _draw(self, *_):
+        t = self.s_t.value() / 100
+        n = self.s_n.value() / 100
+        R0, w = EX_R, EX_W
+        rdot0 = rk.skew(w) @ R0
+        Rt = rk.rot_exp(w * t) @ R0
+        self.st_w.set(_vec(w))
+        self.st_d.set(f"{np.linalg.norm(rk.skew(w) @ Rt - rdot0):.2f}")
+        self.st_l.set(f"{np.linalg.norm((R0 + rdot0 * t)[:, 0]):.3f}")
+        noisy = rdot0.copy()
+        noisy[1, 0] += n
+        self.st_n.set(_vec(_constraint_A(R0) @ noisy.flatten(order="F"), 2))
+        ts = np.linspace(0, 2, 200)
+        err_exp, err_lin, entries = [], [], []
+        for s in ts:
+            Re = rk.rot_exp(w * s) @ R0
+            Rl = R0 + rdot0 * s
+            err_exp.append(np.linalg.norm(Re.T @ Re - np.eye(3)))
+            err_lin.append(np.linalg.norm(Rl.T @ Rl - np.eye(3)))
+            entries.append((rk.skew(w) @ Re).flatten(order="F"))
+        entries = np.array(entries)
+        self.cv.clear()
+        a1, a2 = self.cv.axes
+        a1.plot(ts, err_lin, color=theme.BAD, lw=2, label="hold Ṙ (straight line)")
+        a1.plot(ts, err_exp, color=theme.GOOD, lw=2, label="hold ω (exact turn)")
+        a1.axvline(t, color=theme.TEXT_DIM, lw=1, ls=":")
+        a1.set_xlabel("t (s)")
+        a1.set_title("‖RᵀR − I‖: distance from a rotation")
+        self.cv.legend(a1, loc="upper left")
+        for k in range(9):
+            a2.plot(ts, entries[:, k], color=AX_COLS[k // 3], lw=1.2, alpha=0.8)
+        for i in range(3):
+            a2.plot(ts, np.full_like(ts, w[i]), "--", color=AX_COLS[i], lw=2.2)
+        a2.axvline(t, color=theme.TEXT_DIM, lw=1, ls=":")
+        a2.set_ylim(-1.3, 1.3)
+        a2.set_xlabel("t (s)")
+        a2.set_title("thin: Ṙ's 9 entries · dashed: ω's 3")
+        self.cv.refresh()
+
+
+def gyro_euler_card() -> Card:
+    """How a gyro gets w directly, and how Euler-angle rates relate to it."""
+    c = Card("where ω comes from: a gyroscope measures it, Euler-angle rates are computed from it")
+    c.add(body(
+        "A gyroscope measures angular velocity <i>directly</i>, as ω along "
+        "its own three axes. Euler-angle rates are <i>derived</i>: they are "
+        "the same spin described through the roll/pitch/yaw chart. The first "
+        "has no bad spots; the second inherits the chart's bad spot.<br>"
+        "<b>1. How a gyroscope gets ω.</b> A MEMS gyro (the one in your IMU) "
+        "holds a tiny proof mass that is kept vibrating. When the chip "
+        "turns, the Coriolis effect pushes that mass sideways by an amount "
+        "proportional to the turn rate about one sensor axis. Three such "
+        "sensors, one per axis, give ω<sub>b</sub> = (p, q, r): spin rates "
+        "about the sensor's own x, y, z axes, so <b>body</b> components. The "
+        "gyro never knows the orientation and never touches a chart: any "
+        "reading is legal, readings add, and nothing blows up at any "
+        "attitude. Its real flaws are bias and noise, not singularities.<br>"
+        "<b>2. Euler rates → ω.</b> Take ZYX angles, yaw ψ, pitch θ, roll φ: "
+        "R = R<sub>z</sub>(ψ) R<sub>y</sub>(θ) R<sub>x</sub>(φ). Each angle's "
+        "rate is a spin about a <i>different</i> axis: roll rate φ̇ about the "
+        "body's own x-axis; pitch rate θ̇ about the in-between y-axis (after "
+        "yaw, before roll); yaw rate ψ̇ about the space z-axis. The total ω "
+        "is the sum of the three spins. To add them, write all three in body "
+        "numbers, rotating each back through the turns that come after it:"))
+    c.add(math_label(
+        r"\omega_b=\dot\phi\,\hat e_x+R_x(\phi)^T\dot\theta\,\hat e_y+"
+        r"R_x(\phi)^TR_y(\theta)^T\dot\psi\,\hat e_z", 15))
+    c.add(body(
+        "The two rotated axes are R<sub>x</sub>(φ)ᵀê<sub>y</sub> = "
+        "(0, cos φ, −sin φ) and R<sub>x</sub>(φ)ᵀR<sub>y</sub>(θ)ᵀê<sub>z</sub> "
+        "= (−sin θ, sin φ cos θ, cos φ cos θ). Add up:"))
+    c.add(math_label(
+        r"p=\dot\phi-\dot\psi\sin\theta,\quad "
+        r"q=\dot\theta\cos\phi+\dot\psi\sin\phi\cos\theta,\quad "
+        r"r=-\dot\theta\sin\phi+\dot\psi\cos\phi\cos\theta", 14))
+    c.add(body(
+        "This direction (Euler rates → ω) is always finite. But IMU code "
+        "needs the other one, <b>gyro → Euler rates</b>. Invert:"))
+    c.add(math_label(
+        r"\dot\phi=p+(q\sin\phi+r\cos\phi)\tan\theta,\quad "
+        r"\dot\theta=q\cos\phi-r\sin\phi,\quad "
+        r"\dot\psi=\frac{q\sin\phi+r\cos\phi}{\cos\theta}", 14))
+    c.add(body(
+        "Note the division by cos θ. At pitch ±90°, cos θ = 0, and the roll "
+        "and yaw rates go to infinity.<br>"
+        "<b>3. Why it blows up, physically.</b> The three Euler-rate axes are "
+        "not perpendicular, and they move as the body moves. At pitch 90° "
+        "the body's x-axis (the roll axis) swings onto the space z-axis (the "
+        "yaw axis). Roll and yaw now spin about the same line: two knobs for "
+        "one direction and no knob at all for the missing one. A spin about "
+        "that missing direction can only be described by huge roll and yaw "
+        "rates that nearly cancel. That is gimbal lock.<br>"
+        "<b>Numbers.</b> Pitch θ = 89°, roll φ = 0. The gyro reads a gentle "
+        "ω<sub>b</sub> = (0, 0, 0.1) rad/s. Then ψ̇ = 0.1 / cos 89° = "
+        "0.1 / 0.0175 ≈ 5.7 rad/s, φ̇ = 0.1 · tan 89° ≈ 5.7 rad/s, θ̇ = 0. "
+        "The body turns at 0.1 rad/s, yet two angles race at 5.7 rad/s each, "
+        "nearly cancelling. At exactly 90° they are infinite. The motion is "
+        "gentle; only the labels are in trouble.<br>"
+        "<b>4. What good IMU code does.</b> Integrate the gyro straight into "
+        "a rotation matrix (or a quaternion), with no chart in between:"))
+    c.add(math_label(r"R_{k+1}=R_k\,e^{[\omega_b]\Delta t}", 16))
+    c.add(body(
+        "The exponential (second half of this page) is on the <b>right</b> "
+        "because ω<sub>b</sub> is in body numbers: page 118's left/right "
+        "rule. Each step is an exact turn, so R stays a valid rotation and "
+        "nothing is ever singular. Convert to Euler angles only for display "
+        "or logging."))
+    c.add(body(_grid_table(
+        ("", "gyro ω<sub>b</sub>", "Euler-angle rates"),
+        [("where it comes from", "measured directly (Coriolis)",
+          "computed from ω through the chart"),
+         ("axes", "three perpendicular body axes", "three axes that move and can line up"),
+         ("bad spots", "none", "pitch ±90° (gimbal lock)"),
+         ("use for integration", "yes, via R or a quaternion", "no"),
+         ("use for display", "—", "yes")])))
+    c.add(plain("The lab below runs one steady spin past pitch 90° and plots both."))
+    return c
 
 
 # ==========================================================================
@@ -1821,7 +2160,7 @@ class LeftRightCard:
             "spins in place about its own z, which came along for the ride. "
             "Same T, two different end frames {b′} and {b″}. Remember it "
             "once: <b>left = space-frame recipe, right = body-frame "
-            "recipe</b>. Forward kinematics (page 121) uses both forms."))
+            "recipe</b>. Forward kinematics (page 122) uses both forms."))
         self._draw()
 
     def _path(self, s, left):
@@ -2062,7 +2401,7 @@ def analogy_card() -> Card:
         "table across: every right-hand entry is the left-hand idea with "
         "position added."))
     c.add(body(_grid_table(
-        ("", "rotations (pages 118–119)", "rigid-body motions (this page)"),
+        ("", "rotations (pages 118–120)", "rigid-body motions (this page)"),
         [("configuration", "R ∈ SO(3), 3×3", "T ∈ SE(3), 4×4"),
          ("unit velocity", "unit axis ω̂", "screw axis S: ‖S<sub>ω</sub>‖ = 1, "
                                           "or S<sub>ω</sub> = 0 and ‖S<sub>v</sub>‖ = 1"),
@@ -2221,7 +2560,7 @@ class ScrewTwoFramesCard:
             "but read in {s}). <b>Try:</b> move q onto {b}'s origin "
             "(1.6, 0.6): S<sub>b</sub>'s linear part becomes 0 and {b} "
             "spins in place. The red one still flies off, round {s}'s origin. "
-            "This is the space-form vs body-form choice of page 121."))
+            "This is the space-form vs body-form choice of page 122."))
         self._draw()
 
     def _draw(self, *_):
@@ -2305,7 +2644,7 @@ def wrench_card() -> Card:
         "allowed motions satisfy A q̇ = 0: power = q̇ᵀAᵀλ = (A q̇)ᵀλ = 0. "
         "That was this card's argument in joint coordinates — a force paired "
         "with a velocity through a dot product, and the dot product (power) "
-        "as the thing that is physical. On page 123 the same argument, with "
+        "as the thing that is physical. On page 124 the same argument, with "
         "the Jacobian in place of Ad, gives τ = JᵀF.")))
     return c
 

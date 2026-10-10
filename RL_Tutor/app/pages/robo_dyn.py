@@ -95,7 +95,7 @@ class LagrangePage(Page):
             "forces cancel automatically. K = ½q̇ᵀMq̇ is the multi-joint "
             "version of ½mv²: M plays the role of mass, but it is a matrix "
             "and it changes with posture. It is assembled from each link's "
-            "mass and its centre-of-mass Jacobian (page 122)."))
+            "mass and its centre-of-mass Jacobian (page 123)."))
         self.add(e)
 
         r = Card("the 2R arm, in closed form (memorise the structure)")
@@ -144,7 +144,7 @@ class LagrangePage(Page):
             "and accelerations all 0 → only gravity remains: the torque to "
             "hold still. (3) Move q₁ only → the printed M does not change, "
             "because M depends on the elbow alone. The stat compares this "
-            "closed-form answer with the Newton–Euler algorithm of page 129; "
+            "closed-form answer with the Newton–Euler algorithm of page 130; "
             "a value near zero means two very different methods agree."))
         self.add(lab)
         self._draw()
@@ -454,7 +454,7 @@ class NewtonEulerPage(Page):
             "the joint reaction forces (red). <b>Try:</b> (1) speeds and "
             "accelerations 0 → only gravity loads, and the torques are "
             "holding torques. (2) Add a tip force fₓ → watch it appear in "
-            "every joint torque; that is τ = JᵀF from page 123, computed "
+            "every joint torque; that is τ = JᵀF from page 124, computed "
             "without ever building J. (3) Switch to 3 links → one more row, "
             "the same two loops."))
         self.add(lab)
