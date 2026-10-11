@@ -852,6 +852,9 @@ class TwistsPage(Page):
             "store it as S = (S<sub>ω</sub>, S<sub>v</sub>) in some frame; "
             "twist V = Sθ̇; infinite pitch = pure slide; body vs spatial twist.")))
         self.add(rr.twist_card())
+        self.add(rr.meriam_card())
+        self.screwlab = rr.ScrewLabCard()
+        self.add(self.screwlab.card)
         self.turn = rr.TurntableCard()
         self.add(self.turn.card)
 

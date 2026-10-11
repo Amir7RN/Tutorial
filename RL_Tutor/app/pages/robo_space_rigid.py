@@ -21,7 +21,8 @@ rigid-body ones:
     3.2.3  exponential coordinates (2 of 2)   IntegrateCard, AxisAngleCard
     3.3.1  homogeneous transformations        transform_card, HomogeneousCard,
                                               LeftRightCard
-    3.3.2  twists (1 of 2)                    twist_card, TurntableCard
+    3.3.2  twists (1 of 2)                    twist_card, meriam_card,
+                                              ScrewLabCard, TurntableCard
     3.3.2  twists (2 of 2)                    adjoint_card
     3.3.3  exponential coordinates of motion  analogy_card, ScrewCard,
                                               ScrewTwoFramesCard
@@ -36,7 +37,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
-from PySide6.QtWidgets import QCheckBox, QComboBox
+from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QPushButton
 
 from ctrlcore import robokin as rk
 from .. import theme
@@ -45,6 +46,7 @@ from .robo_common import deg, labelled_slider, mat_html, plain
 from .robo_space_topo import _clear, _grid_table, _layout
 
 AX_COLS = (theme.BAD, theme.GOOD, theme.ACCENT)   # x red, y green, z blue
+PINK = theme.PINK                                  # screw axes
 
 
 # --------------------------------------------------------------------------
@@ -2256,6 +2258,295 @@ def twist_card() -> Card:
         "exactly as ω was the 3-vector in the tangent space of SO(3). "
         "6 = 12 numbers − 6 differentiated rules.")))
     return c
+
+
+def meriam_card() -> Card:
+    """The twist is Meriam's v_P = v_A + w x r_P/A; Chasles gives one screw."""
+    c = Card("the twist is Meriam's formula in disguise — and why it is one screw, not three")
+    c.add(body(
+        "<b>Step 1. Meriam's rigid-body formula already uses 6 numbers.</b> "
+        "The polar formula (ṙ along r, rθ̇ along θ) is the velocity of "
+        "<i>one</i> point. For a whole rigid body, Meriam uses relative "
+        "velocity:"))
+    c.add(math_label(r"v_P=v_A+\omega\times r_{P/A}", 17))
+    c.add(body(
+        "Pick one reference point A. Two vectors, ω (3 numbers) and "
+        "v<sub>A</sub> (3 numbers), then give the velocity of every point P "
+        "of the body. That pair <i>is</i> the twist, V = (ω, v<sub>A</sub>). "
+        "The book only fixes which point A is:<br>"
+        "&nbsp;&nbsp;<b>spatial twist V<sub>s</sub>:</b> A is the body point "
+        "currently at the world origin (often an imaginary point, off the "
+        "real body), numbers in {s} axes;<br>"
+        "&nbsp;&nbsp;<b>body twist V<sub>b</sub>:</b> A is the body frame's "
+        "origin, numbers in {b} axes.<br>"
+        "<b>Step 2. Why not Ṫ?</b> Ṫ = [[Ṙ, ṗ], [0, 0]]. ṗ (3 numbers) is the "
+        "velocity of the body origin: Meriam's v<sub>A</sub>, nothing wrong "
+        "there. Ṙ (9 numbers) is the rotation part, and Ṙ = [ω]R holds only "
+        "3 real numbers (page 119). So Ṫ has 12 entries but only 6 are free, "
+        "3 from ω and 3 from ṗ. The twist keeps exactly those 6, for the "
+        "same reason ω replaced Ṙ (page 120).<br>"
+        "<b>Step 3. Where the single screw comes from (Chasles' "
+        "theorem).</b> In plane motion there is an instant centre of zero "
+        "velocity, and the body is purely spinning about it. The screw is "
+        "the 3-D version. In 3-D you usually cannot find a point with zero "
+        "velocity, but you can always find points whose velocity is "
+        "<i>parallel to ω</i>. Split v<sub>A</sub> into a part along ω, "
+        "v<sub>∥</sub>, and a part across it. Then step away from A by"))
+    c.add(math_label(
+        r"r=\frac{\omega\times v_A}{|\omega|^2}\quad\Rightarrow\quad"
+        r"\omega\times r=v_\parallel-v_A\quad\Rightarrow\quad"
+        r"v_A+\omega\times r=v_\parallel", 15))
+    c.add(body(
+        "(The middle step is the triple-product rule ω × (ω × v) = "
+        "ω(ω·v) − v|ω|², divided by |ω|².) The new point moves along ω, and "
+        "so does every point on the line through it in direction ω. That "
+        "line is the <b>screw axis</b>. At this instant the whole body spins "
+        "about that one line at rate |ω| while sliding along it at speed "
+        "h|ω|, with pitch"))
+    c.add(math_label(r"h=\frac{\omega\cdot v_A}{|\omega|^2}", 16))
+    c.add(body(
+        "<b>Step 4. Why it is not three screws.</b> ω<sub>x</sub>, "
+        "ω<sub>y</sub>, ω<sub>z</sub> are the components of <i>one</i> arrow: "
+        "three spins about x, y, z add up to one spin about a tilted axis "
+        "(page 119). Adding v<sub>A</sub> does not create more screws either. "
+        "It only moves that one axis sideways (the ω × v<sub>A</sub> / |ω|² "
+        "part) and adds a slide along it (the pitch).<br>"
+        "<b>Numeric check (the lab's 'general screw').</b> ω = (0, 0, 2) "
+        "rad/s, and the body point at the origin (the box centre at t = 0) "
+        "moves at v = (1, 0, 0.5) m/s."))
+    c.add(body(_grid_table(
+        ("quantity", "computation", "result"),
+        [("axis point q", "(0, 0, 2) × (1, 0, 0.5) / 4", "(0, 0.5, 0)"),
+         ("pitch h", "(0, 0, 2)·(1, 0, 0.5) / 4", "0.25 m/rad"),
+         ("velocity at q", "(1, 0, 0.5) + (0, 0, 2) × (0, 0.5, 0) = "
+          "(1, 0, 0.5) + (−1, 0, 0)", "(0, 0, 0.5): parallel to ω ✓"),
+         ("slide speed", "h|ω| = 0.25 × 2", "0.5 m/s ✓")])))
+    c.add(body(
+        "So the centre's velocity (1, 0, 0.5) is just this one screw seen "
+        "from a point 0.5 m off the axis: 0.5 m/s of slide, plus "
+        "2 × 0.5 = 1 m/s of being carried around the axis."))
+    c.add(link_back("119", (
+        "Same move as ω × x̂ for the axis tips: every point of a rigid body "
+        "moves by one rule, v<sub>P</sub> = v<sub>A</sub> + ω × r. Page 119 "
+        "used it with v<sub>A</sub> = 0 (turning only); here v<sub>A</sub> "
+        "is free, and the result is a screw instead of a pure spin.")))
+    return c
+
+
+def _fmt3(v) -> str:
+    return "(" + ", ".join(f"{x + 0.0:.2f}" for x in v) + ")"
+
+
+class ScrewLabCard:
+    """Set a twist Meriam-style (w and the velocity at the origin), pick a
+    reference point A, and watch the one screw it produces in 3-D."""
+
+    PRESETS = {
+        "general screw": ((0, 0, 2), (1, 0, 0.5), (1.5, 0, 0)),
+        "door hinge": ((0, 0, 1.5), (0, -1.5, 0), (0, 0, 0)),
+        "rolling wheel": ((0, 2, 0), (1, 0, 0), (0, 0, 0)),
+        "spin in place": ((1, 1, 1), (0, 0, 0), (1, 0, 0)),
+        "pure slide": ((0, 0, 0), (1, 0.5, 0.3), (0, 0, 0)),
+    }
+    HALF = np.array([0.6, 0.4, 0.25])          # box half-sizes (m)
+    EPS = 1e-3
+
+    def __init__(self):
+        self._busy = False
+        c = self.card = Card("lab (3-D): set a twist, see the one screw — Meriam's v_A, Chasles' axis")
+        c.add(body(
+            "A box moves in 3-D. Set ω and the velocity v<sub>0</sub> of the "
+            "body point at the world origin (the box centre at t = 0): "
+            "Meriam's v<sub>A</sub> with A at the origin, i.e. the spatial "
+            "twist. Then put a reference point A anywhere and read the twist "
+            "at A. The screw axis (pink) comes out of the numbers. Orange "
+            "arrows: corner velocities. At A: v<sub>A</sub> (orange), its "
+            "slide along the axis (cyan) and its 'carried around' part "
+            "(violet).", dim=True))
+        self.preset = QComboBox()
+        self.preset.addItems(list(self.PRESETS) + ["(custom)"])
+        self.preset.currentIndexChanged.connect(self._load_preset)
+        c.add(self.preset)
+        tenth = lambda v: f"{v/10:+.1f}"
+        self.s_w = [labelled_slider(c, f"ω_{a} (rad/s)", -30, 30, 0, tenth, self._custom)
+                    for a in "xyz"]
+        self.s_v = [labelled_slider(c, f"v0_{a} (m/s)", -30, 30, 0, tenth, self._custom)
+                    for a in "xyz"]
+        self.s_a = [labelled_slider(c, f"A_{a} (m)", -30, 30, 0, tenth, self._draw)
+                    for a in "xyz"]
+        btns = QHBoxLayout()
+        b1 = QPushButton("Put A on the screw axis")
+        b1.clicked.connect(self._snap_axis)
+        b2 = QPushButton("Put A at the world origin")
+        b2.clicked.connect(lambda: self._set_A((0, 0, 0)))
+        btns.addWidget(b1)
+        btns.addWidget(b2)
+        btns.addStretch(1)
+        c.add_layout(btns)
+        self.s_t = labelled_slider(c, "time t (share of one turn)", 0, 100, 15,
+                                   lambda v: f"{v}%", self._draw)
+        self.st_tw = Stat("twist at A: (ω | v_A)", "--", theme.WARN)
+        self.st_sc = Stat("the one screw: ŝ, q", "--", PINK)
+        self.st_h = Stat("pitch h · slide speed", "--", theme.ACCENT)
+        self.st_sp = Stat("v_A = along + around · distance", "--", theme.VIOLET)
+        c.add_layout(stat_row(self.st_tw, self.st_sc))
+        c.add_layout(stat_row(self.st_h, self.st_sp))
+        self.cv = MplCanvas(width=7.6, height=5.6)
+        _layout(self.cv, ["3d"])
+        c.add(self.cv)
+        c.add(plain(
+            "<b>Try, in order.</b> (1) <b>General screw</b>, then drag t: each "
+            "corner traces a helix (grey) around the same pink line, all "
+            "climbing at the same rate. One screw, though ω has three "
+            "components. (2) Move A: ω stays, v<sub>A</sub> changes, but the "
+            "axis and pitch stay put. The six twist numbers depend on where "
+            "you stand; the screw does not. (3) <b>Put A on the screw "
+            "axis</b>: the violet 'around' arrow vanishes and v<sub>A</sub> "
+            "points straight along the axis. The axis is exactly the set of "
+            "points whose velocity is parallel to ω. (4) <b>Rolling wheel</b>: "
+            "pitch 0, axis along y, 0.5 m under the centre: Meriam's instant "
+            "centre of zero velocity, stretched into a line. (5) <b>Door "
+            "hinge</b>: pitch 0, axis off to the side; nudge v0_z up and the "
+            "hinge becomes a screw going into wood. (6) Set all ω to 0: the "
+            "pitch is infinite, every point has the same velocity, and there "
+            "is no axis to draw: a prismatic joint."))
+        self._load_preset(0)
+
+    # ---- the math -------------------------------------------------------
+
+    def _screw(self, w, v0):
+        """(s_hat, axis point q, pitch h, |w|), or None for a pure slide."""
+        wn = np.linalg.norm(w)
+        if wn < self.EPS:
+            return None
+        return w / wn, np.cross(w, v0) / wn ** 2, w @ v0 / wn ** 2, wn
+
+    def _move(self, x, v0, scr, t):
+        """Where body point x (at t = 0) is after following the twist for t s."""
+        if scr is None:
+            return x + v0 * t
+        s, q, h, wn = scr
+        return q + rk.rot_exp(s * wn * t) @ (x - q) + s * h * wn * t
+
+    # ---- controls -------------------------------------------------------
+
+    @staticmethod
+    def _vals(sl):
+        return np.array([x.value() / 10 for x in sl])
+
+    def _set(self, sl, vec):
+        for x, v in zip(sl, vec):
+            x.setValue(int(round(max(-3, min(3, v)) * 10)))
+
+    def _load_preset(self, i):
+        name = self.preset.itemText(i)
+        if self._busy or name not in self.PRESETS:
+            return
+        w, v, a = self.PRESETS[name]
+        self._busy = True
+        self._set(self.s_w, w)
+        self._set(self.s_v, v)
+        self._set(self.s_a, a)
+        self._busy = False
+        self._draw()
+
+    def _custom(self, *_):
+        if self._busy:
+            return
+        self._busy = True
+        self.preset.setCurrentIndex(self.preset.count() - 1)
+        self._busy = False
+        self._draw()
+
+    def _set_A(self, a):
+        self._busy = True
+        self._set(self.s_a, a)
+        self._busy = False
+        self._draw()
+
+    def _snap_axis(self):
+        scr = self._screw(self._vals(self.s_w), self._vals(self.s_v))
+        if scr is not None:
+            self._set_A(scr[1])
+
+    # ---- drawing --------------------------------------------------------
+
+    def _draw(self, *_):
+        if self._busy:
+            return
+        w, v0, A = self._vals(self.s_w), self._vals(self.s_v), self._vals(self.s_a)
+        scr = self._screw(w, v0)
+        vel = lambda P: v0 + np.cross(w, P)       # the spatial twist is constant
+        T = min(2 * math.pi / scr[3], 8.0) if scr else 3.0
+        t = T * self.s_t.value() / 100
+        vA = vel(A)
+        self.st_tw.set(f"({_fmt3(w)} | {_fmt3(vA)})")
+        if scr:
+            s, q, h, wn = scr
+            along = s * (s @ vA)
+            around = vA - along
+            off = A - q
+            dist = np.linalg.norm(off - s * (off @ s))
+            kind = "pure spin" if abs(h) < 0.005 else "screw"
+            self.st_sc.set(f"{kind}: ŝ {_fmt3(s)}, q {_fmt3(q)}")
+            self.st_h.set(f"h = {h:+.2f} m/rad · {h * wn:+.2f} m/s")
+            self.st_sp.set(f"{_fmt3(along)} + {_fmt3(around)} · {dist:.2f} m")
+        else:
+            along, around = vA, np.zeros(3)
+            vn = np.linalg.norm(v0)
+            self.st_sc.set("pure slide: no axis" if vn > self.EPS else "at rest")
+            self.st_h.set(f"h = ∞ · {vn:.2f} m/s" if vn > self.EPS else "undefined")
+            self.st_sp.set(f"{_fmt3(vA)} + (0.00, 0.00, 0.00) · no axis")
+
+        _clear(self.cv)
+        ax = self.cv.ax
+        _frame3d(ax, np.eye(3), alpha=0.35, lw=1.2, name="_s", scale=1.2)
+        H = self.HALF
+        corners = np.array([[sx * H[0], sy * H[1], sz * H[2]]
+                            for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)])
+        now = np.array([self._move(c0, v0, scr, t) for c0 in corners])
+        for i in range(8):
+            for j in range(i + 1, 8):
+                if np.sum(np.abs(corners[i] - corners[j]) > 1e-9) == 1:
+                    ax.plot(*zip(now[i], now[j]), color=theme.TEXT, lw=1.4)
+        centre = self._move(np.zeros(3), v0, scr, t)
+        Rb = np.array([self._move(e, v0, scr, t) - centre for e in np.eye(3)]).T
+        _frame3d(ax, Rb, p=centre, scale=0.7, lw=2)
+        ts = np.linspace(0, T, 160)
+        for k in (0, 3, 5, 6):
+            path = np.array([self._move(corners[k], v0, scr, u) for u in ts])
+            ax.plot(*path.T, color=theme.TEXT_FAINT, lw=0.9)
+        K = 0.4                                   # metres of arrow per m/s
+        for P in now:
+            ax.quiver(*P, *(K * vel(P)), color=theme.WARN, lw=1.2, arrow_length_ratio=0.2)
+        ax.scatter(*A, color=theme.TEXT, s=30)
+        ax.text(*(A + 0.12), "A", color=theme.TEXT, fontsize=9)
+        for vec, col, lw in ((vA, theme.WARN, 2.6), (along, theme.CYAN, 2.2),
+                             (around, theme.VIOLET, 2.2)):
+            if np.linalg.norm(vec) * K > 0.02:
+                ax.quiver(*A, *(K * vec), color=col, lw=lw, arrow_length_ratio=0.18)
+        r = 2.2                                   # half-size of the drawn cube
+        if scr:
+            s, q = scr[0], scr[1]
+            # 3-D lines are not clipped: keep only the part inside the cube
+            lo, hi = -1e9, 1e9
+            for i in range(3):
+                if abs(s[i]) > 1e-9:
+                    a1, a2 = sorted(((-r - q[i]) / s[i], (r - q[i]) / s[i]))
+                    lo, hi = max(lo, a1), min(hi, a2)
+                elif abs(q[i]) > r:
+                    lo, hi = 1, 0
+            if lo < hi:
+                ax.plot(*zip(q + lo * s, q + hi * s), color=PINK, lw=2.5)
+            ax.scatter(*q, color=PINK, s=30)
+            ax.text(*(q + 0.12), "q", color=PINK, fontsize=9)
+        elif np.linalg.norm(v0) > self.EPS:
+            d = v0 / np.linalg.norm(v0)
+            ax.quiver(0, 0, 0, *(1.6 * d), color=PINK, lw=2.5, arrow_length_ratio=0.15)
+        _cube(ax, r)
+        ax.set_box_aspect((1, 1, 1), zoom=1.4)
+        ax.set_title("pink: screw axis · orange: velocities · cyan/violet: v_A along/around")
+        self.cv.refresh()
 
 
 class TurntableCard:
