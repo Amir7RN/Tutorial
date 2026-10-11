@@ -66,7 +66,8 @@ class Page(QWidget):
         # unchanged. Stable class keys survive future sidebar reordering.
         from ..widgets.lesson_stories import STORIES
         story = STORIES.get(type(self).__name__)
-        if story is not None:
+        from ..widgets.rigid_arm_lab import LAB_PAGES
+        if story is not None and type(self).__name__ not in LAB_PAGES:
             from ..widgets.lesson_animation import LessonAnimation
             self.lesson_animation = LessonAnimation(story)
             self.content.addWidget(self.lesson_animation)
@@ -123,6 +124,10 @@ class Page(QWidget):
         return lay
 
     def finish(self):
+        from ..widgets.rigid_arm_lab import LAB_PAGES, RigidArmLab
+        if type(self).__name__ in LAB_PAGES:
+            self.rigid_arm_lab = RigidArmLab(LAB_PAGES.index(type(self).__name__))
+            self.add(self.rigid_arm_lab)
         self.content.addStretch(1)
 
     # ------------------------------------------------------------------

@@ -205,6 +205,10 @@ class SectionSummary(Page):
             link.linkActivated.connect(self.navigate_requested.emit)
             card.add(link)
             self.add(card)
+        if self.SECTION == 'C-Space & Rigid Motion':
+            from ..widgets.rigid_arm_lab import RigidArmLab
+            self.arm_capstone = RigidArmLab(capstone=True)
+            self.add(self.arm_capstone)
         self.finish()
 
 
