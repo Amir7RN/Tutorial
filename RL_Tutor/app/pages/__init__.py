@@ -76,15 +76,16 @@ DEEP RL & CONTINUOUS CONTROL
     95     shipping it: a 1 kHz controller and a 20 Hz learner sharing memory
 
 ROBOT MECHANICS
-   114-121 configuration space, constraints, SO(3), angular velocity,
-           why omega (gyros, Euler rates), SE(3), twists, wrenches
-   122-127 forward kinematics (PoE), Jacobian, statics, IK, null space,
+   114-122 configuration space, constraints, SO(3), angular velocity,
+           why omega (gyros, Euler rates), SE(3), twists, screw motion,
+           wrenches
+   123-128 forward kinematics (PoE), Jacobian, statics, IK, null space,
            closed chains
-   128-134 dynamics: Lagrange, M(q), Newton-Euler, inverse and forward
+   129-135 dynamics: Lagrange, M(q), Newton-Euler, inverse and forward
            dynamics, task-space dynamics, constrained dynamics
-   135-137 time scaling, time-optimal scaling, motion planning
-   138-140 computed torque, operational space + null space, force control
-   141-143 grasping, wheeled mobile robots, interview drill
+   136-138 time scaling, time-optimal scaling, motion planning
+   139-141 computed torque, operational space + null space, force control
+   142-144 grasping, wheeled mobile robots, interview drill
 
 The mechanics block is appended rather than inserted so that every earlier
 page keeps its number. It derives the plant the control half assumed: where
@@ -173,6 +174,7 @@ from .robo_space import (
     ExpCoordsPage,
     RoboRoadmapPage,
     RotationsPage,
+    ScrewMotionPage,
     TwistsPage,
 )
 from .robo_kin import (
@@ -423,34 +425,35 @@ PAGE_CLASSES = [
     RotationsPage,         # 118 frames, R, SO(3) as a glued ball, 3 uses
     AngularVelocityPage,   # 119 omega from R^T R = I, so(3), omega_b = R^T omega_s
     ExpCoordsPage,         # 120 omega vs Rdot, gyro vs Euler rates, Rodrigues, log
-    TwistsPage,            # 121 SE(3), screws, adjoint, wrenches
+    TwistsPage,            # 121 big picture, symbol map, SE(3), twists, adjoint
+    ScrewMotionPage,       # 122 e^[S]theta, G(theta), left vs right, wrenches
     # ---- Kinematics (playlists 3-6) ---------------------------------------
-    PoEPage,               # 122 product of exponentials
-    JacobianPage,          # 123 columns are screw axes; the velocity ellipse
-    StaticsPage,           # 124 tau = J^T F, singularities, force ellipse
-    IKPage,                # 125 analytic branches, Newton-Raphson, DLS
-    NullSpacePage,         # 126 J^+, I - J^+ J, self-motion
-    ClosedChainPage,       # 127 four-bar, Stewart, actuator singularities
+    PoEPage,               # 123 product of exponentials
+    JacobianPage,          # 124 columns are screw axes; the velocity ellipse
+    StaticsPage,           # 125 tau = J^T F, singularities, force ellipse
+    IKPage,                # 126 analytic branches, Newton-Raphson, DLS
+    NullSpacePage,         # 127 J^+, I - J^+ J, self-motion
+    ClosedChainPage,       # 128 four-bar, Stewart, actuator singularities
     # ---- Dynamics (playlist 7) --------------------------------------------
-    LagrangePage,          # 128 L = K - P, the 2R equations
-    MassMatrixPage,        # 129 M SPD, Christoffel, Mdot - 2C skew
-    NewtonEulerPage,       # 130 the O(n) recursion, traced
-    InverseDynamicsPage,   # 131 torque from a trajectory, term by term
-    ForwardDynamicsPage,   # 132 qdd = M^-1 (tau - h); integrators
-    TaskDynamicsPage,      # 133 Lambda, mu, p; the mass the hand feels
-    ConstrainedDynamicsPage,  # 134 Lagrange multipliers, contact forces
+    LagrangePage,          # 129 L = K - P, the 2R equations
+    MassMatrixPage,        # 130 M SPD, Christoffel, Mdot - 2C skew
+    NewtonEulerPage,       # 131 the O(n) recursion, traced
+    InverseDynamicsPage,   # 132 torque from a trajectory, term by term
+    ForwardDynamicsPage,   # 133 qdd = M^-1 (tau - h); integrators
+    TaskDynamicsPage,      # 134 Lambda, mu, p; the mass the hand feels
+    ConstrainedDynamicsPage,  # 135 Lagrange multipliers, contact forces
     # ---- Trajectories & planning (playlists 8-9) --------------------------
-    TimeScalingPage,       # 135 cubic, quintic, trapezoid
-    TimeOptimalPage,       # 136 the (s, sdot) phase plane
-    MotionPlanningPage,    # 137 C-space obstacles, A*, RRT
+    TimeScalingPage,       # 136 cubic, quintic, trapezoid
+    TimeOptimalPage,       # 137 the (s, sdot) phase plane
+    MotionPlanningPage,    # 138 C-space obstacles, A*, RRT
     # ---- Robot control (playlist 10) --------------------------------------
-    MotionControlPage,     # 138 PD + gravity vs computed torque
-    OperationalSpacePage,  # 139 OSC and null-space torques
-    ForceControlPage,      # 140 hybrid motion/force, task-space impedance
+    MotionControlPage,     # 139 PD + gravity vs computed torque
+    OperationalSpacePage,  # 140 OSC and null-space torques
+    ForceControlPage,      # 141 hybrid motion/force, task-space impedance
     # ---- Manipulation & mobility (playlists 11-12) ------------------------
-    GraspingPage,          # 141 friction cones, force closure
-    MobileRobotPage,       # 142 nonholonomic unicycle tracking
-    InterviewDrillPage,    # 143 the questions, answered
+    GraspingPage,          # 142 friction cones, force closure
+    MobileRobotPage,       # 143 nonholonomic unicycle tracking
+    InterviewDrillPage,    # 144 the questions, answered
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

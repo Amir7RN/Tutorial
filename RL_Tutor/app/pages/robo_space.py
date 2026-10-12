@@ -76,10 +76,10 @@ class RoboRoadmapPage(Page):
         super().__init__(parent)
         self.add(start_here(
             "This block answers three questions about any robot arm, in "
-            "order. <b>Where is the hand?</b> (kinematics, pages 115–122). "
+            "order. <b>Where is the hand?</b> (kinematics, pages 115–123). "
             "<b>How fast and how hard can the hand move when the motors "
-            "turn?</b> (the Jacobian, pages 123–127). <b>What motor torques "
-            "does a given motion need?</b> (dynamics, pages 128–134). The "
+            "turn?</b> (the Jacobian, pages 124–128). <b>What motor torques "
+            "does a given motion need?</b> (dynamics, pages 129–135). The "
             "last pages use those three answers to plan and control the arm. "
             "You need no earlier page of the tutor: only that a matrix times "
             "a vector is a weighted sum of columns, and that a derivative is "
@@ -153,8 +153,8 @@ class RoboRoadmapPage(Page):
             "If a formula still makes no sense after the video, do not stop "
             "there: the plain-words box tells you what result to carry "
             "forward, and later pages only use the result, not the "
-            "derivation. Pages 115–121 (playlists 1–2) are vocabulary; it is "
-            "normal for them to feel abstract until page 123 (the Jacobian) "
+            "derivation. Pages 115–122 (playlists 1–2) are vocabulary; it is "
+            "normal for them to feel abstract until page 124 (the Jacobian) "
             "uses them.", dim=True))
         self.add(h)
 
@@ -177,8 +177,8 @@ class RoboRoadmapPage(Page):
             "space control, impedance and hybrid force control."))
         p.add(plain(
             "Do not try to master this list on the first pass. Items 1–2 are "
-            "the Kinematics section (pages 122–127), items 3–5 the Dynamics "
-            "section (128–134), item 6 Robot Control (138–140). If you only "
+            "the Kinematics section (pages 123–128), items 3–5 the Dynamics "
+            "section (129–135), item 6 Robot Control (139–141). If you only "
             "have time for one idea, take the Jacobian: almost every other "
             "item is built from it."))
         self.add(p)
@@ -563,7 +563,7 @@ class ConstraintsPage(Page):
             "flat: picking joint angles at random piles the hand up near the "
             "inner and outer edges (arm nearly folded or straight), so "
             "'random in joints' is not 'random in task space' — it matters "
-            "for sampling planners on page 137."))
+            "for sampling planners on page 138."))
         self.add(w)
         self._draw()
         self.wslim = JointLimitWorkspaceCard()
@@ -810,11 +810,10 @@ class ExpCoordsPage(Page):
 
 
 class TwistsPage(Page):
-    TITLE = "Transforms, Twists, Screws and Wrenches"
+    TITLE = "Transforms and Twists: Where a Body Is and How It Moves"
     SUBTITLE = ("Pages 118–120 again with position added: T = (R, p) for where a "
-                "body is, a twist V = (ω, v) for how it moves (always a "
-                "screw), a wrench F = (m, f) for what pushes it, and V·F is "
-                "power in any frame.")
+                "body is, and a twist V = (ω, v) for how it moves — always one "
+                "spin about a line plus a slide along it, a screw.")
     SECTION = SEC_CSPACE
     NOTES = playlist_badge(2)
 
@@ -822,20 +821,25 @@ class TwistsPage(Page):
         super().__init__(parent)
         self.add(watch(2))
         self.add(start_here(
-            "Pages 118–120 handled orientation only. Now add position. This page "
-            "follows the last five videos of chapter 3, one blue <b>VIDEO</b> "
-            "box each:<br>"
-            "<b>3.3.1</b> the 4×4 transform T = (R, p) and its three uses → "
-            "<b>3.3.2 (1)</b> the twist: every velocity is a screw → "
-            "<b>3.3.2 (2)</b> moving a twist between frames (the adjoint) and "
-            "its 4×4 form → <b>3.3.3</b> following a screw for θ: the "
-            "exponential of a twist → <b>3.4</b> forces and torques as one "
-            "6-vector, the wrench.<br>"
-            "Each step copies a step of pages 118–120: R → T, ω → V, "
-            "so(3) → se(3), Rodrigues → its 4×4 version. If a step feels "
-            "new, find its twin on pages 118–120 first. In C-space words (page "
-            "115): this page is about the 6-D C-space of one free body and "
-            "its 6-D velocities and forces."))
+            "Pages 118–120 handled orientation only. Now add position. This "
+            "page answers two questions: <b>where is the body</b> (one 4×4 "
+            "matrix T) and <b>how is it moving right now</b> (one 6-vector, "
+            "the twist V). Page 122 then asks where a steady twist takes the "
+            "body, and adds forces.<br>"
+            "Start with the two orientation cards: <b>the big picture</b> "
+            "(why this machinery at all, when v<sub>B</sub> = v<sub>A</sub> + "
+            "ω × r already works) and <b>the symbol map</b> (ω̂, θ̇, ω, ŝ, q, "
+            "h, S, V in one table with one running example). Keep the symbol "
+            "map open while you read the rest.<br>"
+            "Then one blue <b>VIDEO</b> box per video: <b>3.3.1</b> the "
+            "transform T = (R, p) and its three uses → <b>3.3.2 (1)</b> the "
+            "twist: every velocity is a screw → <b>3.3.2 (2)</b> moving a "
+            "twist between frames (the adjoint), and the two routes to a "
+            "twist. Every card opens with a green <b>WHAT IS GOING ON</b> box "
+            "that says the idea in plain words before any symbol."))
+
+        self.add(rr.big_picture_card())
+        self.add(rr.symbols_card())
 
         self.add(rr.video_tag("3.3.1", "Homogeneous transformation matrices", (
             "Pack (R, p) into T ∈ SE(3); inverse = swap subscripts; "
@@ -852,7 +856,7 @@ class TwistsPage(Page):
             "store it as S = (S<sub>ω</sub>, S<sub>v</sub>) in some frame; "
             "twist V = Sθ̇; infinite pitch = pure slide; body vs spatial twist.")))
         self.add(rr.twist_card())
-        self.add(rr.meriam_card())
+        self.add(rr.rigid_rule_card())
         self.screwlab = rr.ScrewLabCard()
         self.add(self.screwlab.card)
         self.turn = rr.TurntableCard()
@@ -862,17 +866,65 @@ class TwistsPage(Page):
             "The 6×6 adjoint moves twists between frames; [V<sub>b</sub>] = "
             "T⁻¹Ṫ and [V<sub>s</sub>] = ṪT⁻¹ are 4×4 matrices in se(3).")))
         self.add(rr.adjoint_card())
+        self.add(rr.two_routes_card())
+
+        self.add(interview(
+            "<b>“What is a twist, and why not just use Ṫ?”</b> Ṫ has 12 "
+            "entries but a rigid body has only 6 velocity freedoms: Ṙ = [ω]R "
+            "carries 3, ṗ carries 3. The twist keeps exactly those: "
+            "V = (ω, v), the spin plus the velocity of the body point at the "
+            "frame's origin, so v<sub>P</sub> = v + ω × r for every point. By "
+            "Chasles it is always one screw: a spin about a line through "
+            "q = ω × v / |ω|² plus a slide of pitch h = ω·v / |ω|². Get it "
+            "from hardware as Sθ̇, or from motion as [V<sub>s</sub>] = ṪT⁻¹."))
+        self.finish()
+
+
+class ScrewMotionPage(Page):
+    TITLE = "Screw Motion: e^[S]θ, Left vs Right, and Wrenches"
+    SUBTITLE = ("Ride a screw S for θ and land at T = e^[S]θ T₀: Rodrigues for "
+                "the turn, G(θ)S_v for the position. World-axis screws go on "
+                "the left, body-axis screws on the right. Forces pack the same "
+                "way, as wrenches.")
+    SECTION = SEC_CSPACE
+    NOTES = playlist_badge(2)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.add(watch(2))
+        self.add(start_here(
+            "Page 121 said how a body moves <i>right now</i> (the twist). This "
+            "page asks <b>where a steady twist takes it</b>, and then adds "
+            "forces. If a symbol is unclear, the symbol map on page 121 has "
+            "it in one table.<br>"
+            "Video <b>3.3.3</b> is unpacked as one card per question: "
+            "(1) from 'how fast' to 'where it lands': why the answer is an "
+            "exponential, and what gets exponentiated → (2) the rotations ↔ "
+            "rigid motions table → (3) what e<sup>[S]θ</sup> actually equals: "
+            "Rodrigues for the turn, G(θ)S<sub>v</sub> for the position, built "
+            "by hand in a lab → (4) riding a screw in 3-D → (5) which side "
+            "e<sup>[S]θ</sup> goes on, and the classic bug → (6) why it "
+            "matters: every joint is a screw.<br>"
+            "Then video <b>3.4</b>: forces and torques as one 6-vector, the "
+            "wrench. Every card opens with a green <b>WHAT IS GOING ON</b> "
+            "box."))
 
         self.add(rr.video_tag("3.3.3", "Exponential coordinates of rigid-body motion", (
             "Follow a screw S for θ: T = e<sup>[S]θ</sup>, 6 exponential "
             "coordinates Sθ; exp and log between se(3) and SE(3); S in {b} "
             "multiplies on the right, S in {s} on the left; every joint is a "
             "screw.")))
+        self.add(rr.land_card())
         self.add(rr.analogy_card())
+        self.add(rr.closed_form_card())
+        self.gpath = rr.GPathCard()
+        self.add(self.gpath.card)
         self.screw = rr.ScrewCard()
         self.add(self.screw.card)
+        self.add(rr.which_side_card())
         self.two = rr.ScrewTwoFramesCard()
         self.add(self.two.card)
+        self.add(rr.joints_card())
 
         self.add(rr.video_tag("3.4", "Wrenches", (
             "Moment and force packed as F = (m, f); power VᵀF is the same in "
@@ -891,5 +943,3 @@ class TwistsPage(Page):
             "τ = J<sub>b</sub>ᵀ F<sub>b</sub> = J<sub>s</sub>ᵀ F<sub>s</sub> — "
             "same answer, because both are power balances."))
         self.finish()
-
-

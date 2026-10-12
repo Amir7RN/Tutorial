@@ -2,8 +2,8 @@
 Interactive cards for Modern Robotics chapter 3, one group per video, in the
 order the videos play. Page 118 (RotationsPage) takes videos 3.1-3.2.1,
 page 119 (AngularVelocityPage) the first half of 3.2.2, page 120
-(ExpCoordsPage) its second half and 3.2.3, page 121 (TwistsPage) the
-rigid-body ones:
+(ExpCoordsPage) its second half and 3.2.3, page 121 (TwistsPage)
+3.3.1-3.3.2, page 122 (ScrewMotionPage) 3.3.3-3.4:
 
     3.1    intro: frames, right-hand rule     bridge_card, intro_card, FrameHandCard
     3.2.1  rotation matrices (1 of 2)         RotationMatrixCard, count_card,
@@ -19,17 +19,22 @@ rigid-body ones:
                                               GimbalRatesCard
     3.2.3  exponential coordinates (1 of 2)   ExpSeriesCard
     3.2.3  exponential coordinates (2 of 2)   IntegrateCard, AxisAngleCard
+    (121)  big picture, symbol map            big_picture_card, symbols_card
     3.3.1  homogeneous transformations        transform_card, HomogeneousCard,
                                               LeftRightCard
-    3.3.2  twists (1 of 2)                    twist_card, meriam_card,
+    3.3.2  twists (1 of 2)                    twist_card, rigid_rule_card,
                                               ScrewLabCard, TurntableCard
-    3.3.2  twists (2 of 2)                    adjoint_card
-    3.3.3  exponential coordinates of motion  analogy_card, ScrewCard,
-                                              ScrewTwoFramesCard
+    3.3.2  twists (2 of 2)                    adjoint_card, two_routes_card
+    3.3.3  exponential coordinates of motion  land_card, analogy_card,
+                                              closed_form_card, GPathCard,
+                                              ScrewCard, which_side_card,
+                                              ScrewTwoFramesCard, joints_card
     3.4    wrenches                           wrench_card, AppleCard
 
 Every group opens with a video_tag() and most cards carry a link_back() box
 that says which word from pages 115-117 the new idea is a new name for.
+Cards on pages 121-122 open with an in_words() box: what is going on, in
+plain words, before any symbol.
 """
 
 from __future__ import annotations
@@ -763,7 +768,7 @@ class RotateOperatorCard:
             "spins about the flat axis. Set θ = 0: both agree, nothing "
             "turned. Rule to keep: <b>left = about a fixed (space) axis, "
             "right = about the body's own axis.</b> The same rule returns for "
-            "4×4 transforms (page 121) and for forward kinematics (page 122)."))
+            "4×4 transforms (page 121) and for forward kinematics (page 123)."))
         self._draw()
 
     def _draw(self, *_):
@@ -1583,7 +1588,7 @@ def waste_card() -> Card:
         "z-component of the x-axis tip changes at 1 per second': true, but "
         "no controller or sensor uses it. Everything physical is written in "
         "ω: gyroscopes measure ω; kinetic energy is ½ωᵀIω (I the inertia matrix); "
-        "Euler's equations are τ = Iω̇ + ω × Iω; the Jacobian (page 123) outputs twists built "
+        "Euler's equations are τ = Iω̇ + ω × Iω; the Jacobian (page 124) outputs twists built "
         "from ω."))
     c.add(body(_grid_table(
         ("", "ω", "Ṙ"),
@@ -2001,12 +2006,164 @@ class AxisAngleCard:
         self.cv.refresh()
 
 
+def in_words(text: str):
+    """A plain-words summary at the top of a card: what is going on, no symbols needed."""
+    return callout(text, "good", label="WHAT IS GOING ON")
+
+
+def big_picture_card() -> Card:
+    """Why R, omega, the twist and the exponential at all: the whole story in one card."""
+    c = Card("the big picture: why all this machinery, when v_B = v_A + ω × r already works?")
+    c.add(in_words(
+        "There is no new physics on pages 118–122. A twist is still 'one spin "
+        "for the whole body plus the velocity of one point'. What changes is "
+        "the bookkeeping: it is chosen so that it never breaks (no gimbal "
+        "lock), chains link by link by plain multiplication, and runs as the "
+        "same code on any robot. Doing one body by hand is easy; a chain of "
+        "6–7 bodies solved by a computer thousands of times a second is not."))
+    c.add(body("<b>1. The story so far, in one pass.</b>"))
+    c.add(body(_grid_table(
+        ("step", "what we did", "why"),
+        [("orientation", "store it as R (9 numbers + 6 rules), not three angles",
+          "every 3-angle chart has a bad spot (gimbal lock); R has none (p. 118)"),
+         ("its velocity", "Ṙ has 9 numbers but only 3 free; call them ω",
+          "Ṙ = [ω]R; ω is a plain 3-vector: legal everywhere, adds, what gyros "
+          "measure (p. 119–120)"),
+         ("where a steady spin goes", "R = e<sup>[ω̂]θ</sup>, by Rodrigues",
+          "exact, always lands on a real rotation, no drift (p. 120)"),
+         ("add position", "T = (R, p), one 4×4 matrix",
+          "one object for a whole pose; chaining frames = multiplying (this page)"),
+         ("its velocity", "the twist V = (ω, v), 6 numbers",
+          "Ṫ has 12 numbers but only 6 free: the spin and one point's velocity "
+          "(this page)"),
+         ("where a steady twist goes", "T = e<sup>[S]θ</sup>T₀",
+          "exact motion along a screw; every joint is a screw (page 122)")])))
+    c.add(body(
+        "Every step does the same two things: <b>choose a representation with "
+        "no bad spots, then pull out the smallest honest velocity from "
+        "it.</b><br>"
+        "<b>2. Where doing it by hand stops scaling.</b> Picture a six-joint "
+        "arm with axes pointing in odd directions. By hand: pick coordinates "
+        "for each link, write v<sub>B</sub> = v<sub>A</sub> + ω × r from link "
+        "to link, choose angles for each orientation, and differentiate "
+        "everything. Every new robot is a fresh derivation, the angles bring "
+        "singularities, and one sign error ruins it.<br>"
+        "The chapter 3 way: from the robot drawing write down <b>one thing per "
+        "joint</b>, its screw axis S<sub>i</sub> at the home pose (which way "
+        "the hinge points and one point on it). That is the whole input. "
+        "Everything below falls out mechanically:"))
+    c.add(body(_grid_table(
+        ("question", "answer built from screws", "page"),
+        [("where is the hand? (forward kinematics)",
+          "T(θ) = e<sup>[S₁]θ₁</sup> ⋯ e<sup>[Sₙ]θₙ</sup> M: one exponential "
+          "(one Rodrigues) per joint, times the home pose M", "123"),
+         ("how fast is the hand moving? (Jacobian)",
+          "V<sub>s</sub> = J<sub>s</sub>(θ)θ̇; column i = joint i's screw at "
+          "the current pose. The link-by-link velocity sum, as one matrix", "124"),
+         ("what torques hold a force? (statics)",
+          "τ = JᵀF, from power: twist · wrench = joint speeds · torques. A "
+          "load-cell reading becomes joint torques with no new free-body "
+          "diagram per pose", "125"),
+         ("which angles reach a target? (inverse kinematics)",
+          "Δθ = J⁺ log(T(θ)⁻¹T<sub>d</sub>): the log gives the pose error as "
+          "one twist, the screw that would carry you there; it wraps and takes "
+          "the short way", "126"),
+         ("what torques give this motion? (dynamics)",
+          "recursive Newton–Euler: twists passed outward, wrenches inward, one "
+          "frame-change rule (the adjoint) per link, same code for any robot", "131"),
+         ("control", "orientation error = log(R<sub>d</sub>ᵀR), a 3-vector you "
+          "can multiply by a gain; forces moved between frames with the same "
+          "rules as twists", "139–141")])))
+    c.add(body(
+        "<b>3. When is the hand method still right?</b> For one body, a "
+        "planar mechanism or a quick check it is perfect, and it is the same "
+        "physics; use it to sanity-check the matrix results.<br>"
+        "<b>The one sentence to keep:</b> v<sub>B</sub> = v<sub>A</sub> + ω × r "
+        "says what the physics is; R, the twist and the exponential are a way "
+        "to write that physics that never breaks, chains link by link through "
+        "multiplication, and runs as the same code on any robot."))
+    return c
+
+
+def symbols_card() -> Card:
+    """One table for every symbol of chapter 3 so far, with one running example."""
+    c = Card("the symbol map: ω̂, θ̇, ω, θ, ŝ, q, h, S, V, [V], Sθ — what each one is")
+    c.add(in_words(
+        "These symbols piled up one video at a time. They are really only "
+        "three ideas: a <b>unit direction</b> (which way, how a motion is "
+        "shaped), a <b>speed</b> (how fast you go along it) and a "
+        "<b>distance</b> (how far you went). Unit thing × speed = a velocity. "
+        "Unit thing × distance = a displacement. A bracket [ ] is the same "
+        "numbers rearranged as a matrix. The exponential turns a displacement "
+        "into a pose."))
+    c.add(body(
+        "<b>Running example</b> (the 'general screw' of the 3-D lab below): a "
+        "nut on a vertical threaded rod. The rod's axis points along z and "
+        "passes through q = (0, 0.5, 0); the thread climbs h = 0.25 m per "
+        "radian; the nut turns at θ̇ = 2 rad/s. Everything in {s} numbers."))
+    c.add(body("<b>Rotation only (pages 119–120)</b>"))
+    c.add(body(_grid_table(
+        ("symbol", "in words", "units", "built from", "example"),
+        [("ω̂", "unit arrow along the spin axis: which way it turns", "—",
+          "given", "(0, 0, 1)"),
+         ("θ̇", "how fast it turns about ω̂", "rad/s", "θ̇ = |ω|", "2"),
+         ("ω", "spin velocity: direction and speed in one arrow", "rad/s",
+          "ω = ω̂ θ̇", "(0, 0, 2)"),
+         ("θ", "how far it has turned in total", "rad", "add up θ̇ over time",
+          "π (after π/2 s)"),
+         ("ω̂θ", "exponential coordinates: 'turn θ about ω̂'", "rad", "ω̂ · θ",
+          "(0, 0, π)"),
+         ("[ω], [ω̂]", "ω (or ω̂) as a 3×3 skew matrix: [ω]v = ω × v", "",
+          "rearranged ω", "rows (0, −2, 0), (2, 0, 0), (0, 0, 0)")])))
+    c.add(body("<b>Rigid body: rotation + position (this page and the next)</b>"))
+    c.add(body(_grid_table(
+        ("symbol", "in words", "units", "built from", "example"),
+        [("ŝ", "unit direction of the screw axis: the same arrow as ω̂, renamed "
+          "because the axis now also has a location", "—", "given", "(0, 0, 1)"),
+         ("q", "any point on the screw axis: <i>where</i> the axis is", "m",
+          "given", "(0, 0.5, 0)"),
+         ("h", "pitch: metres slid along the axis per radian turned", "m/rad",
+          "given (0 for a hinge, ∞ for a slider)", "0.25"),
+         ("S = (S<sub>ω</sub>, S<sub>v</sub>)",
+          "the screw axis as 6 numbers = the twist for unit speed θ̇ = 1: the "
+          "<i>shape</i> of the motion", "per unit θ̇",
+          "S<sub>ω</sub> = ŝ; S<sub>v</sub> = −ŝ × q + hŝ", "(0, 0, 1 | 0.5, 0, 0.25)"),
+         ("S<sub>v</sub>", "at θ̇ = 1, velocity of the body point at the frame "
+          "origin: −ŝ × q = carried around the axis, hŝ = slide along it", "m/rad",
+          "", "(0.5, 0, 0) + (0, 0, 0.25)"),
+         ("V = (ω, v)", "the twist: how the body moves <i>right now</i>",
+          "rad/s | m/s", "V = S θ̇, so ω = S<sub>ω</sub>θ̇, v = S<sub>v</sub>θ̇",
+          "(0, 0, 2 | 1, 0, 0.5)"),
+         ("v", "velocity of the body point that is at the frame's origin "
+          "right now (often an imaginary point off the real body)", "m/s",
+          "v = S<sub>v</sub> θ̇", "(1, 0, 0.5)"),
+         ("Sθ", "exponential coordinates of a rigid motion: 'ride screw S for "
+          "θ'", "rad | m", "S · θ", "(0, 0, π | 1.57, 0, 0.79)"),
+         ("[V], [S]", "the 6 numbers as a 4×4 matrix: [ω] top-left, v "
+          "top-right, zeros below", "", "rearranged V or S", "used in "
+          "Ṫ = [V<sub>s</sub>]T and e<sup>[S]θ</sup>"),
+         ("V<sub>s</sub>, V<sub>b</sub>", "the same motion written in {s} "
+          "numbers or in {b} numbers (and with that frame's origin as the "
+          "reference point)", "", "V<sub>s</sub> = [Ad<sub>T<sub>sb</sub></sub>]"
+          "V<sub>b</sub>", "")])))
+    c.add(body(
+        "<b>The pattern, side by side.</b> Rotation: ω̂ × θ̇ = ω, ω̂ × θ = ω̂θ, "
+        "e<sup>[ω̂]θ</sup> = R. Rigid body: S × θ̇ = V, S × θ = Sθ, "
+        "e<sup>[S]θ</sup> = T. <b>S is to V exactly what ω̂ is to ω:</b> the "
+        "unit-speed version. The only new parts are q and h, because a rigid "
+        "motion's axis has a place in space and the body may also slide "
+        "along it."))
+    return c
+
+
 # ==========================================================================
 # 3.3.1  homogeneous transformation matrices
 # ==========================================================================
 
 def transform_card() -> Card:
     c = Card("T = (R, p) in one 4×4 matrix: SE(3), its properties, its three uses")
+    c.add(in_words(
+        "One 4×4 matrix holds both 'which way the body points' (R) and 'where its origin is' (p). The extra row is only bookkeeping, so that 'turn, then shift' is a single multiplication and chaining frames is just multiplying matrices."))
     c.add(body(
         "<b>1. Packing.</b> To place {b} in {s} you need two things, both "
         "in {s} numbers: p, where {b}'s origin is, and R, which way its "
@@ -2054,6 +2211,8 @@ class HomogeneousCard:
 
     def __init__(self):
         c = self.card = Card("lab: one point, two frames, and the 1 at the end")
+        c.add(in_words(
+            "One place in space, two descriptions: numbers measured from {b} go in, numbers measured from {s} come out. The appended 1 means 'this is a location, apply the shift'; a 0 means 'this is a direction, ignore the shift'."))
         c.add(body(
             "Seen from above (z out of the screen). The first three sliders "
             "place {b}: turn ψ about z, origin at (x, y). The next two set a "
@@ -2125,6 +2284,8 @@ class LeftRightCard:
 
     def __init__(self):
         c = self.card = Card("use 3: displace a frame — T on the left vs T on the right")
+        c.add(in_words(
+            "One displacement T can be read two ways: as a move described in the world's axes (put it on the left) or as a move described in the body's own axes (put it on the right). Different readings, different end poses."))
         c.add(body(
             "Any configuration can be reached from the start by first "
             "rotating, then translating. The video's T: rotate 90° about ẑ, "
@@ -2162,7 +2323,7 @@ class LeftRightCard:
             "spins in place about its own z, which came along for the ride. "
             "Same T, two different end frames {b′} and {b″}. Remember it "
             "once: <b>left = space-frame recipe, right = body-frame "
-            "recipe</b>. Forward kinematics (page 122) uses both forms."))
+            "recipe</b>. Forward kinematics (page 123) uses both forms."))
         self._draw()
 
     def _path(self, s, left):
@@ -2213,6 +2374,8 @@ class LeftRightCard:
 
 def twist_card() -> Card:
     c = Card("a rigid body's velocity is a screw: S = (S_ω, S_v), twist V = S θ̇")
+    c.add(in_words(
+        "At any instant a rigid body's motion is one spin about some line plus a slide along that same line. S describes that line and its pitch for unit speed; the twist V = Sθ̇ is the actual motion: how fast it spins (ω) and how fast the body point at the frame origin moves (v)."))
     c.add(body(
         "<b>1. Same trick as for ω.</b> Ṫ has 12 moving numbers but a body "
         "has 6 velocity freedoms, so Ṫ is not the representation; just as "
@@ -2260,14 +2423,20 @@ def twist_card() -> Card:
     return c
 
 
-def meriam_card() -> Card:
-    """The twist is Meriam's v_P = v_A + w x r_P/A; Chasles gives one screw."""
-    c = Card("the twist is Meriam's formula in disguise — and why it is one screw, not three")
+def rigid_rule_card() -> Card:
+    """The twist is v_P = v_A + w x r_P/A packed as 6 numbers; Chasles gives one screw."""
+    c = Card("the twist is the rigid-body velocity rule in disguise — and why it is one screw, not three")
+    c.add(in_words(
+        "If you know how fast the body spins (ω) and how fast one chosen "
+        "point moves (v<sub>A</sub>), you know how fast every point moves: "
+        "add the 'carried round by the spin' part ω × r. Those two arrows, "
+        "6 numbers, are the twist. Looking for the points whose velocity has "
+        "no 'carried round' part at all finds one special line: the screw "
+        "axis. The body spins about it and slides along it."))
     c.add(body(
-        "<b>Step 1. Meriam's rigid-body formula already uses 6 numbers.</b> "
+        "<b>Step 1. The rigid-body velocity rule already uses 6 numbers.</b> "
         "The polar formula (ṙ along r, rθ̇ along θ) is the velocity of "
-        "<i>one</i> point. For a whole rigid body, Meriam uses relative "
-        "velocity:"))
+        "<i>one</i> point. For a whole rigid body, use relative velocity:"))
     c.add(math_label(r"v_P=v_A+\omega\times r_{P/A}", 17))
     c.add(body(
         "Pick one reference point A. Two vectors, ω (3 numbers) and "
@@ -2280,7 +2449,7 @@ def meriam_card() -> Card:
         "&nbsp;&nbsp;<b>body twist V<sub>b</sub>:</b> A is the body frame's "
         "origin, numbers in {b} axes.<br>"
         "<b>Step 2. Why not Ṫ?</b> Ṫ = [[Ṙ, ṗ], [0, 0]]. ṗ (3 numbers) is the "
-        "velocity of the body origin: Meriam's v<sub>A</sub>, nothing wrong "
+        "velocity of the body origin: the rule's v<sub>A</sub>, nothing wrong "
         "there. Ṙ (9 numbers) is the rotation part, and Ṙ = [ω]R holds only "
         "3 real numbers (page 119). So Ṫ has 12 entries but only 6 are free, "
         "3 from ω and 3 from ṗ. The twist keeps exactly those 6, for the "
@@ -2338,7 +2507,7 @@ def _fmt3(v) -> str:
 
 
 class ScrewLabCard:
-    """Set a twist Meriam-style (w and the velocity at the origin), pick a
+    """Set a twist as (w, velocity at the origin), pick a
     reference point A, and watch the one screw it produces in 3-D."""
 
     PRESETS = {
@@ -2353,12 +2522,17 @@ class ScrewLabCard:
 
     def __init__(self):
         self._busy = False
-        c = self.card = Card("lab (3-D): set a twist, see the one screw — Meriam's v_A, Chasles' axis")
+        c = self.card = Card("lab (3-D): set a twist, see the one screw it makes")
+        c.add(in_words(
+            "You type in the 6 numbers of a twist. The lab finds the one line "
+            "the body is screwing along, and shows every corner of the box "
+            "turning round that line and climbing along it at the same rate. "
+            "Moving the reference point A changes the 6 numbers you read, but "
+            "never the line."))
         c.add(body(
             "A box moves in 3-D. Set ω and the velocity v<sub>0</sub> of the "
             "body point at the world origin (the box centre at t = 0): "
-            "Meriam's v<sub>A</sub> with A at the origin, i.e. the spatial "
-            "twist. Then put a reference point A anywhere and read the twist "
+            "v<sub>A</sub> with A at the origin, i.e. the spatial twist. Then put a reference point A anywhere and read the twist "
             "at A. The screw axis (pink) comes out of the numbers. Orange "
             "arrows: corner velocities. At A: v<sub>A</sub> (orange), its "
             "slide along the axis (cyan) and its 'carried around' part "
@@ -2404,7 +2578,7 @@ class ScrewLabCard:
             "axis</b>: the violet 'around' arrow vanishes and v<sub>A</sub> "
             "points straight along the axis. The axis is exactly the set of "
             "points whose velocity is parallel to ω. (4) <b>Rolling wheel</b>: "
-            "pitch 0, axis along y, 0.5 m under the centre: Meriam's instant "
+            "pitch 0, axis along y, 0.5 m under the centre: the 2-D instant "
             "centre of zero velocity, stretched into a line. (5) <b>Door "
             "hinge</b>: pitch 0, axis off to the side; nudge v0_z up and the "
             "hinge becomes a screw going into wood. (6) Set all ω to 0: the "
@@ -2554,6 +2728,8 @@ class TurntableCard:
 
     def __init__(self):
         c = self.card = Card("lab: the turntable — one motion, S in three different frames")
+        c.add(in_words(
+            "One physical motion, written down by observers standing in different places and facing different ways. The spin part only changes when the observer turns; the 'velocity of the disc point under me' part changes with where the observer stands."))
         c.add(body(
             "A turntable spins about a vertical axis through the world "
             "origin, coming out of the screen; pitch 0 (pure turning). Place "
@@ -2639,6 +2815,8 @@ class TurntableCard:
 
 def adjoint_card() -> Card:
     c = Card("changing a twist's frame (the adjoint), and twists as 4×4 matrices (se(3))")
+    c.add(in_words(
+        "Moving a twist to another observer: turn both arrows into the new axes, and add the extra sideways speed the new observer sees because their origin sits at another place on the spinning body. The 4×4 form [V] is the same 6 numbers arranged so they can multiply T."))
     c.add(body(
         "<b>1. The cancellation rule almost works.</b> We want "
         "V<sub>a</sub> from V<sub>b</sub>. 'T<sub>ab</sub>V<sub>b</sub>' fails: "
@@ -2681,12 +2859,227 @@ def adjoint_card() -> Card:
     return c
 
 
+def two_routes_card() -> Card:
+    """V from the hardware (s, q, h, theta-dot) or from the motion (T and Tdot)."""
+    c = Card("two routes to the same twist: from the hardware, or from the measured motion")
+    c.add(in_words(
+        "The 6 numbers of a twist can be found two ways. Look at the "
+        "mechanism: which way the axis points, where it is, its pitch and how "
+        "fast it turns. Or watch the pose T change over time and compute the "
+        "twist from T and Ṫ. Both give the same numbers."))
+    c.add(math_label(
+        r"\mathcal{V}=\mathcal{S}\,\dot\theta,\quad \mathcal{S}=(\hat s,\ "
+        r"-\hat s\times q+h\hat s)\qquad\Longleftrightarrow\qquad "
+        r"[\mathcal{V}_s]=\dot T\,T^{-1},\quad [\mathcal{V}_b]=T^{-1}\dot T", 15))
+    c.add(body(
+        "Left: the twist from the hardware. Right: the same twist from the "
+        "motion; use ṪT⁻¹ when ŝ and q are written in {s} numbers "
+        "(V<sub>s</sub>), T⁻¹Ṫ when they are in {b} numbers (V<sub>b</sub>)."))
+    c.add(body(
+        "<b>Three details that are easy to get wrong.</b><br>"
+        "(1) <b>T⁻¹, not Tᵀ.</b> For R the inverse happened to equal the "
+        "transpose. T is not orthogonal (it holds a shift p), so Tᵀ is wrong. "
+        "T⁻¹ = [[Rᵀ, −Rᵀp], [0, 1]]: turn back, then undo the shift.<br>"
+        "(2) <b>q, not p.</b> In the screw formula, q is a point <i>on the "
+        "screw axis</i>; p is where the body frame's origin is. Different "
+        "things. And the order is −ŝ × q (= q × ŝ).<br>"
+        "(3) <b>The outer bracket.</b> ṪT⁻¹ is the 4×4 matrix form [V], not "
+        "the 6-vector. Read ω from its top-left skew block and v from its "
+        "top-right column.<br>"
+        "<b>Route 1, from geometry:</b> you know the screw (ŝ, q, h) and the "
+        "speed θ̇. Use the formula on the left. That is how a joint's twist is "
+        "written: read it off the hardware.<br>"
+        "<b>Route 2, from measured motion:</b> you know the pose over time, "
+        "T(t), from sensors or from forward kinematics. Compute ṪT⁻¹ (or "
+        "T⁻¹Ṫ) and read off ω and v.<br>"
+        "This is the rotation pattern again: [ω<sub>s</sub>] = ṘR⁻¹ and "
+        "[ω<sub>b</sub>] = R⁻¹Ṙ, now with position included. The 3-D screw lab "
+        "above does route 2 backwards: you set (ω, v) and it recovers ŝ, q "
+        "and h."))
+    return c
+
+
 # ==========================================================================
-# 3.3.3  exponential coordinates of rigid-body motion
+# 3.3.3  exponential coordinates of rigid-body motion (page 122)
 # ==========================================================================
+
+def land_card() -> Card:
+    """From the velocity rule Tdot = [V]T to the landing pose e^[S]theta T0."""
+    c = Card("from 'how fast' to 'where it lands': integrate Ṫ = [V]T and you get an exponential")
+    c.add(in_words(
+        "The twist only says how fast the pose is changing right now. To "
+        "know where the body ends up you must add up all the tiny moves. For "
+        "a steady twist that adding-up has an exact answer, the matrix "
+        "exponential, just as a steady spin gave R = e<sup>[ω̂]θ</sup>. You "
+        "exponentiate the <i>screw times the angle</i>, not T; the start "
+        "pose T₀ just sits on the matching side."))
+    c.add(body(
+        "<b>1. The velocity rule, two ways.</b> The twist acts on the pose "
+        "like ω acted on R: written in {s} numbers it goes on the left, in "
+        "{b} numbers on the right:"))
+    c.add(math_label(r"\dot T=[\mathcal{V}_s]\,T\qquad\mathrm{or}\qquad "
+                     r"\dot T=T\,[\mathcal{V}_b]", 16))
+    c.add(body(
+        "<b>2. Steady twist → exponential.</b> With V constant, both look like "
+        "ẋ = ax, whose answer is x(t) = e<sup>at</sup>x(0). Same here, with "
+        "4×4 matrices:"))
+    c.add(math_label(r"T(t)=e^{[\mathcal{V}_s]t}\,T_0\qquad\mathrm{or}\qquad "
+                     r"T(t)=T_0\,e^{[\mathcal{V}_b]t}", 16))
+    c.add(body(
+        "<b>3. Swap time for angle.</b> V = Sθ̇, so [V]t = [S]θ̇t = [S]θ, with "
+        "θ the total angle turned (or distance slid). The speed drops out: "
+        "only the shape of the motion (S) and how far you went (θ) matter."))
+    c.add(math_label(r"T=e^{[\mathcal{S}_s]\theta}\,T_0\qquad\mathrm{or}\qquad "
+                     r"T=T_0\,e^{[\mathcal{S}_b]\theta}", 16))
+    c.add(body(
+        "In words: <b>start at T₀, ride the screw S a distance θ, and you "
+        "land at T.</b> The common slip is to write 'e<sup>[T]</sup>' or to "
+        "exponentiate the twist with T inside. T is never exponentiated; it "
+        "is the starting pose that the exponential multiplies. Next two "
+        "cards: what e<sup>[S]θ</sup> equals (closed form), and which side "
+        "it goes on."))
+    return c
+
+
+def closed_form_card() -> Card:
+    """e^[S]theta = [[Rodrigues, G(theta) S_v], [0, 1]], and why G looks as it does."""
+    c = Card("what e^[S]θ actually is: Rodrigues for the turn, G(θ)S_v for where the origin lands")
+    c.add(in_words(
+        "e<sup>[S]θ</sup> is itself a pose (a 4×4 T): where the frame {s} "
+        "would land if it rode the screw for θ. Like every pose it has two "
+        "parts. The <b>rotation part</b> says which way the body points after "
+        "turning θ about ŝ: that is plain Rodrigues, nothing new. The "
+        "<b>position part</b> says where the body point that started at the "
+        "origin ends up. That point moves with velocity S<sub>v</sub> at the "
+        "start, and its velocity arrow turns along with the body as it goes "
+        "round the axis. Adding up all those turned arrows is what the matrix "
+        "G(θ) does."))
+    c.add(body(_block_html("e<sup>[ω̂]θ</sup> (Rodrigues)", "G(θ) S<sub>v</sub>",
+                           "0 0 0", "1")
+               + "<span style='color:" + theme.TEXT_DIM + "'>e<sup>[S]θ</sup> with "
+               "S = (ω̂, S<sub>v</sub>), ‖ω̂‖ = 1.</span>"))
+    c.add(body(
+        "<b>Case 1, pure slide</b> (S<sub>ω</sub> = 0, a prismatic joint). "
+        "Nothing turns, so the rotation part is I and the velocity arrow never "
+        "turns: the origin moves in a straight line, position = "
+        "S<sub>v</sub>θ (θ in metres).<br>"
+        "<b>Case 2, with turning</b> (‖S<sub>ω</sub>‖ = 1). Follow the point "
+        "that starts at the origin. At angle 0 its velocity is S<sub>v</sub> "
+        "(per unit θ). By angle φ the body has turned by φ about the axis, and "
+        "the point's velocity arrow has turned with it: e<sup>[ω̂]φ</sup>"
+        "S<sub>v</sub>. (The slide part hŝ lies along the axis, so turning "
+        "leaves it alone.) Where it lands is the sum of all those arrows:"))
+    c.add(math_label(
+        r"p(\theta)=\int_0^\theta e^{[\hat\omega]\phi}\,\mathcal{S}_v\,d\phi"
+        r"=G(\theta)\,\mathcal{S}_v,\qquad G(\theta)=I\theta+(1-\cos\theta)"
+        r"[\hat\omega]+(\theta-\sin\theta)[\hat\omega]^2", 15))
+    c.add(body(
+        "The second step integrates Rodrigues term by term "
+        "(e<sup>[ω̂]φ</sup> = I + sin φ[ω̂] + (1 − cos φ)[ω̂]²). Reading G's "
+        "three terms: <b>Iθ</b> alone would be 'keep going straight at "
+        "S<sub>v</sub>', the straight-line guess; the <b>[ω̂]</b> and "
+        "<b>[ω̂]²</b> terms bend that line into the arc round the axis. G is "
+        "to position what Rodrigues is to rotation: an exact closed form, so "
+        "you never sum a series or take small steps.<br>"
+        "<b>Check with numbers.</b> A hinge along z through q = (0, 0.5, 0), "
+        "pitch 0, turned θ = 180°. S = (0, 0, 1 | 0.5, 0, 0), since "
+        "−ŝ × q = (0.5, 0, 0). Physically the origin is 0.5 m from the hinge, "
+        "so a half-turn should put it on the far side, at (0, 1, 0). With G: "
+        "[ω̂]S<sub>v</sub> = (0, 0.5, 0), [ω̂]²S<sub>v</sub> = (−0.5, 0, 0), so"))
+    c.add(math_label(
+        r"G\mathcal{S}_v=\pi(0.5,0,0)+2\,(0,0.5,0)+\pi(-0.5,0,0)=(0,\ 1,\ 0)"
+        r"\ \checkmark", 15))
+    c.add(body(
+        "Add pitch h = 0.25: S<sub>v</sub> = (0.5, 0, 0.25). The extra "
+        "(0, 0, 0.25) lies along the axis, so [ω̂] kills it and only Iθ "
+        "acts: the answer becomes (0, 1, 0.785), the same swing plus a climb "
+        "of hθ = 0.25π = 0.785 m. A screw going into wood ✓. The lab below "
+        "builds this sum arrow by arrow."))
+    return c
+
+
+class GPathCard:
+    """Build G(theta) S_v by chaining turned velocity arrows, top view."""
+
+    def __init__(self):
+        c = self.card = Card("lab: build G(θ)S_v by hand — a chain of velocity arrows, each turned a bit more")
+        c.add(in_words(
+            "Split the ride into N small steps. In each step the origin point "
+            "moves a little in the direction of its current velocity, and that "
+            "direction has turned with the body. Chain the little arrows head "
+            "to tail: they bend round into the arc, and with enough steps they "
+            "land exactly where G(θ)S<sub>v</sub> says. The red dashed line is "
+            "what you would get if the arrow never turned (only the Iθ term)."))
+        c.add(body(
+            "Seen from above. A vertical hinge (screw axis, along z) passes "
+            "through q = (0, d, 0); the frame origin starts at (0, 0, 0). "
+            "Defaults: the 'check with numbers' example, turned 180°.", dim=True))
+        self.s_d = labelled_slider(c, "d: distance from origin to the axis", 1, 15, 5,
+                                   lambda v: f"{v/10:.1f} m", self._draw)
+        self.s_h = labelled_slider(c, "pitch h", 0, 50, 25,
+                                   lambda v: f"{v/100:.2f} m/rad", self._draw)
+        self.s_th = labelled_slider(c, "θ", 0, 360, 180, deg, self._draw)
+        self.s_n = labelled_slider(c, "N steps in the chain", 1, 40, 6, str, self._draw)
+        self.st_g = Stat("G(θ)S_v (closed form)", "--", theme.GOOD)
+        self.st_c = Stat("chain of N turned arrows", "--", theme.CYAN)
+        self.st_s = Stat("straight guess S_v θ", "--", theme.BAD)
+        self.st_e = Stat("e^[S]θ position (check)", "--", theme.ACCENT)
+        c.add_layout(stat_row(self.st_g, self.st_c, self.st_s, self.st_e))
+        self.cv = MplCanvas(width=7.0, height=4.4)
+        c.add(self.cv)
+        c.add(plain(
+            "<b>Try:</b> N = 1: one arrow, S<sub>v</sub>θ, the straight "
+            "guess. N = 2, 3, 6: the chain bends round the hinge (orange ×) "
+            "and its tip closes in on the green dot. N = 40: almost on top of it (more steps, smaller gap). "
+            "Raise h: the top view does not change (the climb hθ is along z, "
+            "out of the screen) but the third number of every stat grows by "
+            "hθ. Set θ = 360°: the chain comes back to the start and only the "
+            "climb is left, 2πh."))
+        self._draw()
+
+    def _draw(self, *_):
+        d, h = self.s_d.value() / 10, self.s_h.value() / 100
+        th, n = math.radians(self.s_th.value()), self.s_n.value()
+        w = np.array([0, 0, 1.0])
+        q = np.array([0, d, 0])
+        Sv = -np.cross(w, q) + h * w
+        W = rk.skew(w)
+        G = np.eye(3) * th + (1 - math.cos(th)) * W + (th - math.sin(th)) * W @ W
+        pg = G @ Sv
+        step = th / n
+        pts = [np.zeros(3)]
+        for k in range(n):
+            pts.append(pts[-1] + rk.rot_exp(w * k * step) @ Sv * step)
+        pts = np.array(pts)
+        pe = rk.exp6(np.r_[w, Sv], th)[:3, 3]
+        self.st_g.set(_vec(pg))
+        self.st_c.set(_vec(pts[-1]))
+        self.st_s.set(_vec(Sv * th))
+        self.st_e.set(_vec(pe))
+        self.cv.clear()
+        ax = self.cv.ax
+        phi = np.linspace(0, th, 200)
+        arc = np.array([(np.eye(3) * u + (1 - math.cos(u)) * W
+                         + (u - math.sin(u)) * W @ W) @ Sv for u in phi])
+        ax.plot(arc[:, 0], arc[:, 1], color=theme.GOOD, lw=2.5, alpha=0.7)
+        for a, b in zip(pts[:-1], pts[1:]):
+            ax.annotate("", xy=b[:2], xytext=a[:2],
+                        arrowprops=dict(arrowstyle="-|>", color=theme.CYAN, lw=1.8))
+        ax.plot([0, Sv[0] * th], [0, Sv[1] * th], "--", color=theme.BAD, lw=1.5)
+        ax.plot(q[0], q[1], "x", color=theme.WARN, ms=12, mew=3)
+        ax.plot(0, 0, "o", color=theme.TEXT, ms=6)
+        ax.plot(pg[0], pg[1], "o", color=theme.GOOD, ms=10)
+        lim = max(2.2 * d, 1.0, 1.1 * np.linalg.norm(Sv[:2]) * th)
+        _square2d(ax, (-lim, lim), (-0.6 * lim, 1.4 * lim))
+        ax.set_title("green: exact path · cyan: N turned arrows · red: straight guess · ×: hinge")
+        self.cv.refresh()
+
+
 
 def analogy_card() -> Card:
     c = Card("rotations → rigid-body motions: the same story with one more row")
+    c.add(in_words(
+        "Everything pages 118–120 did for rotations has a twin here; this table lines them up so each new symbol has an old one to lean on."))
     c.add(body(
         "Video 3.3.3 is video 3.2.3 again, with S in place of ω̂. Read the "
         "table across: every right-hand entry is the left-hand idea with "
@@ -2706,22 +3099,9 @@ def analogy_card() -> Card:
          ("change frame", "ω<sub>s</sub> = Rω<sub>b</sub>",
           "V<sub>s</sub> = [Ad<sub>T</sub>]V<sub>b</sub>")])))
     c.add(body(
-        "<b>Closed forms.</b> Pure slide (S<sub>ω</sub> = 0): orientation "
-        "unchanged, position = S<sub>v</sub>·θ. With turning "
-        "(‖S<sub>ω</sub>‖ = 1): rotation part is plain Rodrigues; position "
-        "part is a matrix G(θ) times S<sub>v</sub>:"))
-    c.add(math_label(
-        r"e^{[\mathcal{S}]\theta}:\quad R=e^{[\omega]\theta},\qquad "
-        r"p=\left(I\theta+(1-\cos\theta)[\omega]+(\theta-\sin\theta)[\omega]^2\right)v", 15))
-    c.add(body(
-        "<b>Which side?</b> To move {b} (at T<sub>sb</sub>) by θ along a "
-        "screw: if S is written in {b} numbers, multiply on the "
-        "<b>right</b>, T<sub>sb</sub>e<sup>[S<sub>b</sub>]θ</sup>; if in {s} "
-        "numbers, on the <b>left</b>, e<sup>[S<sub>s</sub>]θ</sup>T<sub>sb</sub>. "
-        "The same left/right rule as for T and R. <b>Why it matters:</b> every "
-        "1-DOF joint is a screw — revolute h = 0, prismatic h = ∞, helical "
-        "finite h — so chapter 4's forward kinematics is one exponential per "
-        "joint, multiplied together."))
+        "Read down the right-hand column and you have this page: the "
+        "exponential and its closed form (next two cards), which side it "
+        "goes on, and the log that runs it backwards."))
     return c
 
 
@@ -2730,6 +3110,8 @@ class ScrewCard:
 
     def __init__(self):
         c = self.card = Card("lab: ride a screw — pitch, exponential, log, and V_b = T⁻¹Ṫ")
+        c.add(in_words(
+            "Ride a screw and watch the frame: it turns about the axis and climbs along it, tracing a helix. e<sup>[S]θ</sup> gives the frame at any θ; the log runs the movie backwards and recovers the (shortest) screw."))
         c.add(body(
             "The frame starts at {s} (T = I) and twists about the orange "
             "screw axis at θ̇ = 1. The cyan curve is its origin's path. "
@@ -2813,6 +3195,76 @@ class ScrewCard:
         self.cv.refresh()
 
 
+def which_side_card() -> Card:
+    """Left vs right: whose axes the screw's numbers were written in."""
+    c = Card("which side does e^[S]θ go on? It depends only on whose axes S is written in")
+    c.add(in_words(
+        "The screw is one line in space. To use it you write it down as 6 "
+        "numbers, and those numbers depend on whose axes you measured it "
+        "with: the world's {s}, or the body's own {b}. World numbers: the "
+        "motion is a move of space itself, so it acts from the left on "
+        "whatever pose the body has. Body numbers: the motion is described "
+        "by someone riding on the body, so it attaches on the right, after "
+        "'here is where the body is'."))
+    c.add(body(
+        "<b>1. Read it with subscripts.</b> Riding the screw takes the body "
+        "from pose {b} to a new pose {b′}.<br>"
+        "• <b>Body numbers:</b> e<sup>[S<sub>b</sub>]θ</sup> is the new pose "
+        "as seen from the old body pose: it is T<sub>bb′</sub>. Then "
+        "T<sub>sb</sub>T<sub>bb′</sub> = T<sub>sb′</sub>, and the inner "
+        "subscripts cancel exactly as on page 118. So it goes on the "
+        "<b>right</b>: T<sub>sb′</sub> = T<sub>sb</sub>e<sup>[S<sub>b</sub>]θ</sup>.<br>"
+        "• <b>World numbers:</b> e<sup>[S<sub>s</sub>]θ</sup> moves everything "
+        "in {s}: every point of space is carried round the fixed line. Apply "
+        "it to the body wherever the body is: <b>left</b>, "
+        "T<sub>sb′</sub> = e<sup>[S<sub>s</sub>]θ</sup>T<sub>sb</sub>.<br>"
+        "<b>2. Physical pictures.</b> A door hinge bolted to the wall: you "
+        "know its axis in room (world) numbers, so left. A drill spinning "
+        "about its own bit: you know the axis relative to the drill, so "
+        "right.<br>"
+        "<b>3. Both give the same answer.</b> S<sub>b</sub> and S<sub>s</sub> "
+        "are the same line, translated by the adjoint: S<sub>s</sub> = "
+        "[Ad<sub>T<sub>sb</sub></sub>]S<sub>b</sub>. Used on the matching "
+        "side they land on the same {b′}.<br>"
+        "<b>4. The classic bug.</b> Body numbers on the left: the numbers "
+        "describe a line relative to {b}, but the left side reads them as if "
+        "measured from {s}, so the body swings about the wrong line. The "
+        "same rule as for R (page 118) and T (page 121): left = fixed space "
+        "axes, right = the body's own axes. The lab below shows all "
+        "three, the two right ones and the bug."))
+    return c
+
+
+def joints_card() -> Card:
+    """Every 1-DOF joint is a screw, so forward kinematics is a product of exponentials."""
+    c = Card("why it matters: every joint is a screw, so the hand's pose is a product of exponentials")
+    c.add(in_words(
+        "A robot joint lets its child link move one way only: turn about a "
+        "fixed line, slide along it, or both at a fixed ratio. That is a "
+        "screw. So each joint's motion is one exponential, e<sup>[S<sub>i</sub>]θ<sub>i</sub></sup>, "
+        "with S<sub>i</sub> read off the hardware and θ<sub>i</sub> from the "
+        "encoder. Multiply them together and you have where the hand is."))
+    c.add(body(_grid_table(
+        ("joint", "pitch h", "S = (S<sub>ω</sub>, S<sub>v</sub>)", "θ means"),
+        [("revolute (hinge)", "0", "(ŝ, −ŝ × q)", "angle, rad"),
+         ("prismatic (slider)", "∞", "(0, ŝ)", "distance, m"),
+         ("helical (lead screw)", "finite", "(ŝ, −ŝ × q + hŝ)", "angle, rad; "
+          "it also slides hθ")])))
+    c.add(math_label(
+        r"T(\theta)=e^{[\mathcal{S}_1]\theta_1}\,e^{[\mathcal{S}_2]\theta_2}"
+        r"\cdots e^{[\mathcal{S}_n]\theta_n}\,M", 17))
+    c.add(body(
+        "<b>Why this order works.</b> M is the hand's pose with every joint "
+        "at zero, and every S<sub>i</sub> is written in {s} numbers at that "
+        "home pose. Move the <i>last</i> joint first, with all the others "
+        "still at home: its axis is exactly where the drawing says, so "
+        "e<sup>[Sₙ]θₙ</sup>M is right (world numbers → left). Now move joint "
+        "n − 1: it carries joint n and the hand with it, but its own axis has "
+        "not moved (it sits closer to the base), so again multiply on the "
+        "left. Repeat down to the base. Every factor uses the home-pose "
+        "screw, and nothing has to be re-derived for a new robot. Page 123 "
+        "builds this for real arms."))
+    return c
 class ScrewTwoFramesCard:
     """Same screw in {s} and {b} numbers: right-multiply S_b, left-multiply S_s."""
 
@@ -2820,6 +3272,8 @@ class ScrewTwoFramesCard:
 
     def __init__(self):
         c = self.card = Card("lab: one screw, two sets of numbers, two sides of T_sb")
+        c.add(in_words(
+            "One hinge written twice, with world numbers and with body numbers. Each version is right only on its own side of T<sub>sb</sub>; mixing them up swings the body about the wrong line."))
         c.add(body(
             "A hinge (vertical screw axis, pitch 0) through point q swings "
             "{b}. Write the axis in {s} numbers, S<sub>s</sub>, and in {b} "
@@ -2851,7 +3305,7 @@ class ScrewTwoFramesCard:
             "but read in {s}). <b>Try:</b> move q onto {b}'s origin "
             "(1.6, 0.6): S<sub>b</sub>'s linear part becomes 0 and {b} "
             "spins in place. The red one still flies off, round {s}'s origin. "
-            "This is the space-form vs body-form choice of page 122."))
+            "This is the space-form vs body-form choice of page 123."))
         self._draw()
 
     def _draw(self, *_):
@@ -2895,6 +3349,8 @@ class ScrewTwoFramesCard:
 
 def wrench_card() -> Card:
     c = Card("a wrench F = (m, f), and why it changes frame with the adjoint transpose")
+    c.add(in_words(
+        "Forces and torques get the same 6-number packing as velocities. Power (velocity · force) cannot depend on who measures it, and that one fact forces the rule for moving a wrench between frames."))
     c.add(body(
         "<b>1. The question.</b> A robot hand holds an apple; a force-torque "
         "sensor at the wrist reads in its own frame {f}. Knowing the apple's "
@@ -2935,7 +3391,7 @@ def wrench_card() -> Card:
         "allowed motions satisfy A q̇ = 0: power = q̇ᵀAᵀλ = (A q̇)ᵀλ = 0. "
         "That was this card's argument in joint coordinates — a force paired "
         "with a velocity through a dot product, and the dot product (power) "
-        "as the thing that is physical. On page 124 the same argument, with "
+        "as the thing that is physical. On page 125 the same argument, with "
         "the Jacobian in place of Ad, gives τ = JᵀF.")))
     return c
 
@@ -2945,6 +3401,8 @@ class AppleCard:
 
     def __init__(self):
         c = self.card = Card("lab: what does the wrist sensor read when the hand holds an apple?")
+        c.add(in_words(
+            "A worked case: what a wrist force sensor reads when the hand holds an apple. Write the apple's weight as a wrench in the apple's frame, then move it into the sensor's frame with the adjoint transpose."))
         c.add(body(
             "Frame {a} sits at the apple's centre of mass with y<sub>a</sub> "
             "up. There gravity is simply F<sub>a</sub> = (0, 0, 0, 0, −mg, 0): "
