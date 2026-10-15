@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
+from . import robo_kin_jac as jac
 from . import robo_kin_poe as poe
 from .base import Page
 from .robo_common import (
@@ -212,7 +213,17 @@ class JacobianPage(Page):
             "each weighted by its joint's real speed, and you have the hand "
             "velocity."))
 
-        j = Card("space Jacobian, body Jacobian, analytic Jacobian")
+        # video 5 overview, then 5.1.1 / 5.1.2 space and body Jacobians
+        self.add(jac.dots_card())
+        self.add(jac.overview_card())
+        self.vel_lab = jac.VelocitySetLab()
+        self.add(self.vel_lab.card)
+        self.add(jac.space_card())
+        self.add(jac.body_card())
+        self.builder_lab = jac.JacobianBuilderLab()
+        self.add(self.builder_lab.card)
+
+        j = Card("summary: space, body and analytic Jacobian")
         j.add(math_label(r"\mathcal{V}_s=J_s(\theta)\dot\theta,\quad "
                          r"J_{si}=[\mathrm{Ad}_{e^{[\mathcal{S}_1]\theta_1}\cdots "
                          r"e^{[\mathcal{S}_{i-1}]\theta_{i-1}}}]\mathcal{S}_i,\qquad "
@@ -368,6 +379,11 @@ class StaticsPage(Page):
             "for the same hand force — like a long wrench."))
         self.add(p)
 
+        # video 5.2: statics, with a 3R arm pushed at the hand
+        self.add(jac.statics_card())
+        self.statics_lab = jac.StaticsLab()
+        self.add(self.statics_lab.card)
+
         lab = Card("hold a force at the hand")
         self.q = [labelled_slider(lab, f"θ{i+1}", -180, 180, v, deg, self._draw)
                   for i, v in enumerate((30, 60))]
@@ -393,6 +409,11 @@ class StaticsPage(Page):
             "nothing."))
         self.add(lab)
         self._draw()
+
+        # video 5.3: singularities and the shape of J
+        self.add(jac.singularity_card())
+        self.sing_lab = jac.SingularityLab()
+        self.add(self.sing_lab.card)
 
         k = Card("singularities, read three ways")
         k.add(body(
@@ -422,6 +443,13 @@ class StaticsPage(Page):
             "the workspace, e.g. joints 4 and 6 of an industrial wrist — "
             "dangerous because nothing about the pose looks unusual."))
         self.add(k)
+
+        # video 5.4: manipulability, planar then spatial
+        self.add(jac.manip_card())
+        self.manip_lab = jac.ManipulabilityLab()
+        self.add(self.manip_lab.card)
+        self.ellipsoid_lab = jac.EllipsoidLab()
+        self.add(self.ellipsoid_lab.card)
 
         self.add(interview(
             "<b>“Your Cartesian controller commands huge joint velocities "
