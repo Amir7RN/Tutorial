@@ -21,6 +21,7 @@ from PySide6.QtWidgets import QCheckBox, QComboBox, QPushButton
 from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
+from . import robo_kin_poe as poe
 from .base import Page
 from .robo_common import (
     SEC_KIN,
@@ -64,7 +65,13 @@ class PoEPage(Page):
             "e<sup>[Sₙ]θₙ</sup> M. Each factor means 'swing everything beyond "
             "joint i about joint i's hinge by θᵢ'."))
 
-        s = Card("space form and body form")
+        # videos 4.1.1 and 4.1.2: the RPR arm, space form then body form
+        self.add(poe.space_card())
+        self.rpr_lab = poe.RPRLab()
+        self.add(self.rpr_lab.card)
+        self.add(poe.body_card())
+
+        s = Card("summary: space form and body form")
         s.add(math_label(r"T(\theta)=e^{[\mathcal{S}_1]\theta_1}\cdots"
                          r" e^{[\mathcal{S}_n]\theta_n}M"
                          r"\qquad\qquad T(\theta)=M e^{[\mathcal{B}_1]\theta_1}\cdots"
@@ -114,6 +121,11 @@ class PoEPage(Page):
             "entry of the last column."))
         self.add(lab)
         self._draw()
+
+        # video 4: the RRRP worked example
+        self.add(poe.rrrp_card())
+        self.rrrp_lab = poe.RRRPLab()
+        self.add(self.rrrp_lab.card)
 
         dh = Card("why not Denavit–Hartenberg?")
         dh.add(body(
