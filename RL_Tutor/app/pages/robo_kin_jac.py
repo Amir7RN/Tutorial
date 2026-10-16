@@ -23,7 +23,8 @@ from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, math_label, stat_row
 from .robo_common import deg, draw_arm, labelled_slider, mat_html, plain, square
-from .robo_space_rigid import PINK, _block_html, _frame3d, _vec, in_words, video_tag
+from .robo_space_rigid import (PINK, _block_html, _frame3d, _vec, in_words, link_back,
+                               video_tag)
 from .robo_space_topo import _clear, _layout
 
 COLS = (theme.BAD, theme.VIOLET, theme.PINK, theme.GOOD, theme.ACCENT)
@@ -114,13 +115,49 @@ def overview_card() -> Card:
                      r"{\partial\theta}\dot\theta=J(\theta)\dot\theta"
                      r"=J_1\dot\theta_1+J_2\dot\theta_2", 16))
     c.add(body(
-        "<b>2R arm.</b> x₁ = L₁c₁ + L₂c₁₂, x₂ = L₁s₁ + L₂s₁₂. Differentiate and "
-        "group by joint speed: the tip velocity is a vector J₁ times θ̇₁ plus "
-        "a vector J₂ times θ̇₂. J₁ is the tip velocity when joint 1 turns at 1 "
-        "rad/s and joint 2 is frozen: perpendicular to the line from joint 1 "
-        "to the tip, as long as that line. J₂ is the same for joint 2. "
-        "Together they span the tip velocities, and every tip velocity is a "
-        "mix of the two with the joint speeds as the weights."))
+        "<b>The 2R arm, one step at a time.</b> Write c₁ = cos θ₁, s₁ = sin θ₁, "
+        "c₁₂ = cos(θ₁+θ₂), s₁₂ = sin(θ₁+θ₂).<br>"
+        "<b>Step 1, forward kinematics</b> (where the tip is): "
+        "x₁ = L₁c₁ + L₂c₁₂,&nbsp; x₂ = L₁s₁ + L₂s₁₂.<br>"
+        "<b>Step 2, differentiate in time.</b> Both θ₁ and θ₂ change, so by "
+        "the chain rule each coordinate picks up one term per joint:"))
+    c.add(math_label(r"\dot x_1=\frac{\partial x_1}{\partial\theta_1}\dot\theta_1"
+                     r"+\frac{\partial x_1}{\partial\theta_2}\dot\theta_2,\qquad"
+                     r"\dot x_2=\frac{\partial x_2}{\partial\theta_1}\dot\theta_1"
+                     r"+\frac{\partial x_2}{\partial\theta_2}\dot\theta_2", 15))
+    c.add(body(
+        "<b>Step 3, collect the four partial derivatives into a matrix.</b> "
+        "Row = which tip coordinate, column = which joint. That matrix is J:"))
+    c.add(body(_block_html(
+        "∂x₁/∂θ₁ = −L₁s₁ − L₂s₁₂", "∂x₁/∂θ₂ = −L₂s₁₂",
+        "∂x₂/∂θ₁ = L₁c₁ + L₂c₁₂", "∂x₂/∂θ₂ = L₂c₁₂")))
+    c.add(body(
+        "<b>Step 4, read the columns as arrows.</b> Column 1 is "
+        "J₁ = (−(L₁s₁ + L₂s₁₂), L₁c₁ + L₂c₁₂) = (−x₂, x₁): the tip position "
+        "turned 90°. So J₁ is perpendicular to the line from joint 1 to the "
+        "tip and exactly as long as it: the tip swinging on a circle about "
+        "joint 1. Column 2 is J₂ = (−L₂s₁₂, L₂c₁₂): link 2 turned 90°, the tip "
+        "swinging about the elbow. The derivative and the picture are the "
+        "same thing.<br>"
+        "<b>Step 5, put it back together:</b> v<sub>tip</sub> = J θ̇ = "
+        "J₁θ̇₁ + J₂θ̇₂. Each joint contributes its own arrow, scaled by its "
+        "speed, and the arrows add tip-to-tail.<br>"
+        "<b>Numbers.</b> L = (1, 0.8), θ = (0°, 90°): tip = (1, 0.8), "
+        "J₁ = (−0.8, 1), J₂ = (−0.8, 0). With θ̇ = (1, 1) rad/s the tip moves "
+        "at (−1.6, 1.0)."))
+    c.add(body(
+        "<b>How J₁ and J₂ are related: the angle between them.</b> The "
+        "determinant of a 2 × 2 matrix is the signed area of the parallelogram "
+        "its columns span, |J₁||J₂| sin α, where α is the angle from J₁ to J₂. "
+        "Multiply out the matrix above and the θ₁ terms cancel:"))
+    c.add(math_label(r"\det J=|J_1|\,|J_2|\sin\alpha=L_1L_2\sin\theta_2", 15))
+    c.add(body(
+        "Both columns are lines in the arm turned by 90°, so α is also the "
+        "angle between 'base → tip' and 'elbow → tip'. Only the elbow angle "
+        "matters, never θ₁ (turning the whole arm turns both arrows together). "
+        "At θ₂ = 90° the arrows are as far apart as they can get; at θ₂ = 0° "
+        "or 180° sin θ₂ = 0, the arrows are parallel, det J = 0 and the "
+        "rank drops from 2 to 1."))
     c.add(body(_block_html(
         "<b>limits on joint speed</b><br>square |θ̇ᵢ| ≤ 1 → <b>parallelogram</b> "
         "of tip speeds<br>circle ‖θ̇‖ ≤ 1 → <b>ellipse</b> (manipulability)",
@@ -130,6 +167,25 @@ def overview_card() -> Card:
         "only along one line;<br>the ellipse is a line segment",
         "<b>power</b>: θ̇ᵀτ = v<sub>tip</sub>ᵀf<sub>tip</sub> = θ̇ᵀJᵀf for "
         "every θ̇<br>⇒ <b>τ = Jᵀ f<sub>tip</sub></b>")))
+    c.add(plain(
+        "<b>Why draw these shapes at all?</b> Each motor has a top speed. The "
+        "shape answers one practical question: <b>with every motor inside its "
+        "limit, how fast can the tip go in each direction?</b> Push the "
+        "whole square (or circle) of allowed joint speeds through J and you "
+        "get every tip velocity the arm can reach right now.<br>"
+        "• A <b>long</b> direction of the shape: the tip moves fast that way "
+        "with little motor effort.<br>"
+        "• A <b>short</b> direction: the tip is slow that way.<br>"
+        "• A <b>flat</b> shape (zero width): the tip cannot move that way at "
+        "all. That is a singularity.<br>"
+        "<b>The chain to remember:</b> J₁ ∥ J₂ ⇔ sin α = 0 ⇔ det J = "
+        "L₁L₂ sin θ₂ = 0 ⇔ rank J = 1 ⇔ the shape is flat ⇔ one tip "
+        "direction is lost. Sizes, in numbers: the parallelogram's area is "
+        "4|det J| and the ellipse's is π|det J|; the ellipse's half-axes are "
+        "the singular values σ₁ ≥ σ₂ of J, and σ₂ = 0 exactly at a "
+        "singularity. Those same numbers drive page 125 (how close to "
+        "singular, video 5.4) and page 126 (inverse kinematics blows up as "
+        "σ₂ → 0, because a tiny tip step needs huge joint steps)."))
     c.add(plain(
         "<b>Easy to move = hard to push, and the other way round.</b> A force "
         "whose line passes close to the joints needs little torque, so the arm "
@@ -168,7 +224,8 @@ class VelocitySetLab:
         self.st_v = Stat("v_tip = J θ̇", "--", theme.CYAN)
         self.st_r = Stat("rank J", "--", theme.WARN)
         self.st_a = Stat("angle between J₁ and J₂", "--", theme.VIOLET)
-        c.add_layout(stat_row(self.st_v, self.st_r, self.st_a))
+        self.st_d = Stat("det J = L₁L₂ sin θ₂", "--", theme.GOOD)
+        c.add_layout(stat_row(self.st_v, self.st_r, self.st_a, self.st_d))
         self.cv = MplCanvas(width=7.6, height=3.8, ncols=2)
         c.add(self.cv)
         c.add(plain(
@@ -180,7 +237,9 @@ class VelocitySetLab:
             "parallelogram and ellipse squash flat, and rank J drops to 1: "
             "a singularity. (4) Switch to circle limits and turn θ₂ around: "
             "the ellipse changes shape with the pose; this is the "
-            "manipulability ellipse of video 5.4."))
+            "manipulability ellipse of video 5.4. (5) Move θ₁ alone: the "
+            "angle and det J do not change. Move θ₂: det J follows "
+            "L₁L₂ sin θ₂ = 0.8 sin θ₂, largest at θ₂ = ±90°, zero at 0° and 180°."))
         self._draw()
 
     def _draw(self, *_):
@@ -194,6 +253,7 @@ class VelocitySetLab:
         self.st_r.set(f"{r}" + ("  (singular)" if r < 2 else ""))
         self.st_r.set_color(theme.BAD if r < 2 else theme.WARN)
         self.st_a.set(f"{math.degrees(math.acos(np.clip(cosang, -1, 1))):.1f}°")
+        self.st_d.set(f"{np.linalg.det(J):+.3f}")
         circ = self.limit.currentIndex() == 1
         c = self.cv
         c.clear()
@@ -287,16 +347,27 @@ def space_card() -> Card:
         "Now the hand velocity is a twist V_s in {s}, so J_s is 6 × n. Build "
         "column i by asking which joints can move joint i's axis relative to "
         "{s}: only the ones between it and the base."))
+    c.add(link_back("124, VIDEO 5",
+        "On the 2R arm, column i was 'the tip velocity when only joint i "
+        "turns, at 1 rad/s', and it came out as a line in the arm turned 90°: "
+        "ω × r. Two things change in 3-D. (1) The hand also rotates, so a "
+        "column must carry an angular part ω as well. (2) Different points of "
+        "the hand move at different speeds, so we must say which point. The "
+        "twist answers both: V = (ω, v), with v the velocity of the point at "
+        "the {s} origin. For a revolute joint with unit axis ω through a point "
+        "q, turning at 1 rad/s, that twist is (ω, −ω × q): the screw axis Sᵢ "
+        "of page 123."))
     c.add(in_words(
-        "Column i is the twist the hand would have if joint i turned at 1 "
-        "rad/s and every other joint stood still. That twist is just joint "
-        "i's screw axis, written in {s}, wherever the axis happens to be "
-        "right now. At home it is Sᵢ from page 123. Away from home, the "
-        "joints before it have carried the axis somewhere else, and you "
-        "transform Sᵢ by exactly that motion."))
+        "So column i of J<sub>s</sub> is joint i's screw axis (ωᵢ, −ωᵢ × qᵢ), "
+        "computed from where the axis is <b>right now</b>. At home that is "
+        "the Sᵢ you wrote down on page 123. When the arm moves, joints 1 … i−1 "
+        "(the ones between joint i and the base) pick axis i up and carry it "
+        "to a new place and direction. To get the new column, apply that "
+        "same rigid motion to Sᵢ; the adjoint is the tool that moves a twist "
+        "by a rigid motion. Joints i … n sit beyond axis i and cannot move it."))
     c.add(math_label(r"\mathcal{V}_s=J_s(\theta)\dot\theta,\quad J_{s1}=\mathcal{S}_1,"
                      r"\quad J_{si}=[\mathrm{Ad}_{e^{[\mathcal{S}_1]\theta_1}\cdots"
-                     r"e^{[\mathcal{S}_{i-1}]\theta_{i-1}}}]\,\mathcal{S}_i", 15))
+                     r" e^{[\mathcal{S}_{i-1}]\theta_{i-1}}}]\,\mathcal{S}_i", 15))
     c.add(body(
         "<b>The argument, for column 3 of a 5R arm.</b> Start at home: "
         "J<sub>s3</sub> = S₃. Turn joint 5, then 4, then 3 itself: none of "
@@ -308,6 +379,15 @@ def space_card() -> Card:
         "e<sup>[S₁]θ₁</sup>e<sup>[S₂]θ₂</sup>. In {s″} the axis is still S₃, "
         "so change frames with the adjoint: J<sub>s3</sub> = "
         "[Ad<sub>T<sub>ss″</sub></sub>]S₃."))
+    c.add(body(
+        "<b>Check it on the 2R arm.</b> Both axes point along z, so ω = (0, 0, 1). "
+        "Joint 1 sits at the origin, q₁ = 0: J<sub>s1</sub> = (0, 0, 1, 0, 0, 0), "
+        "constant. Joint 2 sits at the elbow, which joint 1 has carried to "
+        "q₂ = (L₁c₁, L₁s₁, 0): J<sub>s2</sub> = (0, 0, 1, L₁s₁, −L₁c₁, 0), "
+        "depending on θ₁ only. To get the tip velocity from a twist, add the "
+        "spin times the tip's lever arm: v<sub>tip</sub> = v + ω × p<sub>tip</sub>. "
+        "For column 2 that gives (L₁s₁ − x₂, −L₁c₁ + x₁) = (−L₂s₁₂, L₂c₁₂), "
+        "exactly J₂ from video 5. Same column, now stored as a twist."))
     c.add(plain(
         "Three things to notice. (1) <b>No derivatives</b>: each column is a "
         "matrix product of things you already have. (2) J<sub>s1</sub> never "
@@ -325,6 +405,18 @@ def body_card() -> Card:
         "The hand twist in {b}, V_b = J_b θ̇. Mirror image of the space case: "
         "only joints between joint i and the hand can move joint i's axis "
         "relative to {b}."))
+    c.add(link_back("124, VIDEO 5.1.1",
+        "Same physical column as in J<sub>s</sub>: the hand's twist when only "
+        "joint i turns. Only the observer changes. In {s} the question was "
+        "'which joints can move axis i relative to the base?' (those before "
+        "it). From the hand the question flips: 'which joints can move axis i "
+        "relative to the hand?' (those after it, between axis i and the hand). "
+        "Any column converts between the two with one adjoint: "
+        "J<sub>bi</sub> = [Ad<sub>T<sub>bs</sub></sub>] J<sub>si</sub>. On the "
+        "2R arm with {b} at the tip, the last column J<sub>b2</sub> is joint "
+        "2's spin seen from the tip, 'lever arm L₂', and it never changes; "
+        "J<sub>b1</sub> depends only on θ₂: the mirror of J<sub>s1</sub> "
+        "constant and J<sub>s2</sub> depending only on θ₁."))
     c.add(in_words(
         "Stand on the hand. Joint i's axis looks like Bᵢ from there at home. "
         "Moving joints 1 … i does not change how joint i looks from the hand "
@@ -332,7 +424,7 @@ def body_card() -> Card:
         "i+1 … n do change it, so column i is Bᵢ carried back through them."))
     c.add(math_label(r"\mathcal{V}_b=J_b(\theta)\dot\theta,\quad J_{bn}=\mathcal{B}_n,"
                      r"\quad J_{bi}=[\mathrm{Ad}_{e^{-[\mathcal{B}_n]\theta_n}\cdots"
-                     r"e^{-[\mathcal{B}_{i+1}]\theta_{i+1}}}]\,\mathcal{B}_i", 15))
+                     r" e^{-[\mathcal{B}_{i+1}]\theta_{i+1}}}]\,\mathcal{B}_i", 15))
     c.add(body(
         "<b>Why the minus signs and the reversed order.</b> Call {b″} where "
         "the hand would be if joints i+1 … n were still at zero; in {b″} the "
