@@ -33,7 +33,7 @@ effective inertia, bandwidth and safety envelope. The first half is that plant.
 ### Robot Mechanics block (pages 114–144)
 
 The control pages assumed `M(q)q̈ + c + g = τ` and a Jacobian someone handed
-you. Pages 114–144 derive them, following the twelve
+you. Pages 114–145 derive them, following the twelve
 [Modern Robotics](https://www.youtube.com/playlist?list=PLggLP4f-rq01z8VLqhDC94W2nWpWpZoMj)
 playlists (Lynch & Park, chapters 2–13) one by one; each page's badge names
 its playlist and links to it.
@@ -41,11 +41,11 @@ its playlist and links to it.
 | Section | Pages | Covers |
 |---|---|---|
 | C-Space & Rigid Motion | 114–122 | roadmap, DOF/Grübler, C-space topology and representation, holonomic vs nonholonomic, task space vs workspace, SO(3), angular velocity, ω vs Ṙ vs Euler rates (gyros, gimbal lock), exponential coordinates, SE(3), twists, adjoint, screw motion e^[S]θ and G(θ), wrenches |
-| Kinematics | 123–128 | product of exponentials, space/body Jacobian, τ = JᵀF, singularities and ellipses, analytic + Newton IK, null space, closed chains |
-| Dynamics | 129–135 | Lagrange, M(q) properties and Ṁ − 2C skew, recursive Newton–Euler, inverse and forward dynamics, task-space dynamics Λ/J̄/μ/p, constrained dynamics |
-| Trajectories & Planning | 136–138 | cubic/quintic/trapezoid, time-optimal scaling under torque limits, C-space A* and RRT |
-| Robot Control | 139–141 | PD + gravity vs computed torque, operational-space control with dynamically consistent null-space torques, hybrid force and task-space impedance |
-| Manipulation & Mobility | 142–144 | friction cones and force closure, nonholonomic unicycle tracking, interview drill |
+| Kinematics | 123–129 | product of exponentials, space/body Jacobian, a graded C++ workshop (implement an RRPR arm with g++), τ = JᵀF, singularities and ellipses, analytic + Newton IK, null space, closed chains |
+| Dynamics | 130–136 | Lagrange, M(q) properties and Ṁ − 2C skew, recursive Newton–Euler, inverse and forward dynamics, task-space dynamics Λ/J̄/μ/p, constrained dynamics |
+| Trajectories & Planning | 137–139 | cubic/quintic/trapezoid, time-optimal scaling under torque limits, C-space A* and RRT |
+| Robot Control | 140–142 | PD + gravity vs computed torque, operational-space control with dynamically consistent null-space torques, hybrid force and task-space impedance |
+| Manipulation & Mobility | 143–145 | friction cones and force closure, nonholonomic unicycle tracking, interview drill |
 
 The numerics are in `ctrlcore/robokin.py` and `ctrlcore/robodyn.py`; checks
 (RNEA = closed-form Lagrange, M symmetric positive definite, Ṁ − 2C skew,

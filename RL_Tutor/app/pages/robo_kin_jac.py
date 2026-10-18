@@ -66,13 +66,13 @@ def dots_card() -> Card:
         "most of the remaining chapters become 'J again, used a new way'."))
     rows = [
         ("124", "velocity", "V = J θ̇", "joint speeds → hand twist"),
-        ("125", "statics", "τ = Jᵀ F", "hand wrench → joint torques"),
-        ("125", "singularity", "rank J drops", "directions the hand loses"),
-        ("125", "manipulability", "ellipsoid of J Jᵀ", "how far from singular"),
-        ("126", "inverse kinematics", "Δθ = J⁺ e", "Newton steps toward a pose"),
-        ("127", "redundancy", "N = I − J⁺J", "arm moves, hand stays put"),
-        ("129–134", "dynamics", "τ = M θ̈ + h + JᵀF", "contact forces enter through Jᵀ"),
-        ("139–141", "control", "τ = Jᵀ(K e − B V)", "task-space, impedance, force control"),
+        ("126", "statics", "τ = Jᵀ F", "hand wrench → joint torques"),
+        ("126", "singularity", "rank J drops", "directions the hand loses"),
+        ("126", "manipulability", "ellipsoid of J Jᵀ", "how far from singular"),
+        ("127", "inverse kinematics", "Δθ = J⁺ e", "Newton steps toward a pose"),
+        ("128", "redundancy", "N = I − J⁺J", "arm moves, hand stays put"),
+        ("130–135", "dynamics", "τ = M θ̈ + h + JᵀF", "contact forces enter through Jᵀ"),
+        ("140–142", "control", "τ = Jᵀ(K e − B V)", "task-space, impedance, force control"),
     ]
     cell = f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}'"
     mono = (f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}; "
@@ -183,8 +183,8 @@ def overview_card() -> Card:
         "direction is lost. Sizes, in numbers: the parallelogram's area is "
         "4|det J| and the ellipse's is π|det J|; the ellipse's half-axes are "
         "the singular values σ₁ ≥ σ₂ of J, and σ₂ = 0 exactly at a "
-        "singularity. Those same numbers drive page 125 (how close to "
-        "singular, video 5.4) and page 126 (inverse kinematics blows up as "
+        "singularity. Those same numbers drive page 126 (how close to "
+        "singular, video 5.4) and page 127 (inverse kinematics blows up as "
         "σ₂ → 0, because a tiny tip step needs huge joint steps)."))
     c.add(plain(
         "<b>Easy to move = hard to push, and the other way round.</b> A force "

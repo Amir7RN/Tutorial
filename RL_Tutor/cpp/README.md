@@ -31,3 +31,11 @@ Editing these files changes the displayed examples, not the Python simulations.
 `BEGIN`/`END` comments identify the regions loaded into the GUI. Keep their keys
 stable when editing. Run `python -m unittest discover -s tests -p test_cpp_examples.py`
 to check card coverage and compile/run the numerical checks (requires g++).
+
+## RRPR workshop (page 125)
+
+`cpp/workshop/` holds the in-app C++ exercises: `mrlite.hpp` (small fixed-size
+matrix types), `rrpr_starter.cpp` (copied to your own `my_rrpr.cpp` on first
+use) and `rrpr_solution.cpp` (shown one exercise at a time). The page compiles
+your file with g++ and a generated test `main()`; grading lives in
+`ctrlcore/rrpr_check.py`.

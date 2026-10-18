@@ -185,6 +185,7 @@ from .robo_kin import (
     PoEPage,
     StaticsPage,
 )
+from .robo_cpp_workshop import RRPRWorkshopPage
 from .robo_dyn import (
     ConstrainedDynamicsPage,
     ForwardDynamicsPage,
@@ -430,30 +431,31 @@ PAGE_CLASSES = [
     # ---- Kinematics (playlists 3-6) ---------------------------------------
     PoEPage,               # 123 product of exponentials
     JacobianPage,          # 124 columns are screw axes; the velocity ellipse
-    StaticsPage,           # 125 tau = J^T F, singularities, force ellipse
-    IKPage,                # 126 analytic branches, Newton-Raphson, DLS
-    NullSpacePage,         # 127 J^+, I - J^+ J, self-motion
-    ClosedChainPage,       # 128 four-bar, Stewart, actuator singularities
+    RRPRWorkshopPage,      # 125 C++ workshop: implement the RRPR arm, graded
+    StaticsPage,           # 126 tau = J^T F, singularities, force ellipse
+    IKPage,                # 127 analytic branches, Newton-Raphson, DLS
+    NullSpacePage,         # 128 J^+, I - J^+ J, self-motion
+    ClosedChainPage,       # 129 four-bar, Stewart, actuator singularities
     # ---- Dynamics (playlist 7) --------------------------------------------
-    LagrangePage,          # 129 L = K - P, the 2R equations
-    MassMatrixPage,        # 130 M SPD, Christoffel, Mdot - 2C skew
-    NewtonEulerPage,       # 131 the O(n) recursion, traced
-    InverseDynamicsPage,   # 132 torque from a trajectory, term by term
-    ForwardDynamicsPage,   # 133 qdd = M^-1 (tau - h); integrators
-    TaskDynamicsPage,      # 134 Lambda, mu, p; the mass the hand feels
-    ConstrainedDynamicsPage,  # 135 Lagrange multipliers, contact forces
+    LagrangePage,          # 130 L = K - P, the 2R equations
+    MassMatrixPage,        # 131 M SPD, Christoffel, Mdot - 2C skew
+    NewtonEulerPage,       # 132 the O(n) recursion, traced
+    InverseDynamicsPage,   # 133 torque from a trajectory, term by term
+    ForwardDynamicsPage,   # 134 qdd = M^-1 (tau - h); integrators
+    TaskDynamicsPage,      # 135 Lambda, mu, p; the mass the hand feels
+    ConstrainedDynamicsPage,  # 136 Lagrange multipliers, contact forces
     # ---- Trajectories & planning (playlists 8-9) --------------------------
-    TimeScalingPage,       # 136 cubic, quintic, trapezoid
-    TimeOptimalPage,       # 137 the (s, sdot) phase plane
-    MotionPlanningPage,    # 138 C-space obstacles, A*, RRT
+    TimeScalingPage,       # 137 cubic, quintic, trapezoid
+    TimeOptimalPage,       # 138 the (s, sdot) phase plane
+    MotionPlanningPage,    # 139 C-space obstacles, A*, RRT
     # ---- Robot control (playlist 10) --------------------------------------
-    MotionControlPage,     # 139 PD + gravity vs computed torque
-    OperationalSpacePage,  # 140 OSC and null-space torques
-    ForceControlPage,      # 141 hybrid motion/force, task-space impedance
+    MotionControlPage,     # 140 PD + gravity vs computed torque
+    OperationalSpacePage,  # 141 OSC and null-space torques
+    ForceControlPage,      # 142 hybrid motion/force, task-space impedance
     # ---- Manipulation & mobility (playlists 11-12) ------------------------
-    GraspingPage,          # 142 friction cones, force closure
-    MobileRobotPage,       # 143 nonholonomic unicycle tracking
-    InterviewDrillPage,    # 144 the questions, answered
+    GraspingPage,          # 143 friction cones, force closure
+    MobileRobotPage,       # 144 nonholonomic unicycle tracking
+    InterviewDrillPage,    # 145 the questions, answered
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

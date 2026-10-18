@@ -2063,17 +2063,17 @@ def big_picture_card() -> Card:
          ("what torques hold a force? (statics)",
           "τ = JᵀF, from power: twist · wrench = joint speeds · torques. A "
           "load-cell reading becomes joint torques with no new free-body "
-          "diagram per pose", "125"),
+          "diagram per pose", "126"),
          ("which angles reach a target? (inverse kinematics)",
           "Δθ = J⁺ log(T(θ)⁻¹T<sub>d</sub>): the log gives the pose error as "
           "one twist, the screw that would carry you there; it wraps and takes "
-          "the short way", "126"),
+          "the short way", "127"),
          ("what torques give this motion? (dynamics)",
           "recursive Newton–Euler: twists passed outward, wrenches inward, one "
-          "frame-change rule (the adjoint) per link, same code for any robot", "131"),
+          "frame-change rule (the adjoint) per link, same code for any robot", "132"),
          ("control", "orientation error = log(R<sub>d</sub>ᵀR), a 3-vector you "
           "can multiply by a gain; forces moved between frames with the same "
-          "rules as twists", "139–141")])))
+          "rules as twists", "140–142")])))
     c.add(body(
         "<b>3. When is the hand method still right?</b> For one body, a "
         "planar mechanism or a quick check it is perfect, and it is the same "
@@ -3391,7 +3391,7 @@ def wrench_card() -> Card:
         "allowed motions satisfy A q̇ = 0: power = q̇ᵀAᵀλ = (A q̇)ᵀλ = 0. "
         "That was this card's argument in joint coordinates — a force paired "
         "with a velocity through a dot product, and the dot product (power) "
-        "as the thing that is physical. On page 125 the same argument, with "
+        "as the thing that is physical. On page 126 the same argument, with "
         "the Jacobian in place of Ad, gives τ = JᵀF.")))
     return c
 

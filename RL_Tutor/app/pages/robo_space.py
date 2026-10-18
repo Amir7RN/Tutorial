@@ -78,8 +78,8 @@ class RoboRoadmapPage(Page):
             "This block answers three questions about any robot arm, in "
             "order. <b>Where is the hand?</b> (kinematics, pages 115–123). "
             "<b>How fast and how hard can the hand move when the motors "
-            "turn?</b> (the Jacobian, pages 124–128). <b>What motor torques "
-            "does a given motion need?</b> (dynamics, pages 129–135). The "
+            "turn?</b> (the Jacobian, pages 124–129). <b>What motor torques "
+            "does a given motion need?</b> (dynamics, pages 130–136). The "
             "last pages use those three answers to plan and control the arm. "
             "You need no earlier page of the tutor: only that a matrix times "
             "a vector is a weighted sum of columns, and that a derivative is "
@@ -177,8 +177,8 @@ class RoboRoadmapPage(Page):
             "space control, impedance and hybrid force control."))
         p.add(plain(
             "Do not try to master this list on the first pass. Items 1–2 are "
-            "the Kinematics section (pages 123–128), items 3–5 the Dynamics "
-            "section (129–135), item 6 Robot Control (139–141). If you only "
+            "the Kinematics section (pages 123–129), items 3–5 the Dynamics "
+            "section (130–136), item 6 Robot Control (140–142). If you only "
             "have time for one idea, take the Jacobian: almost every other "
             "item is built from it."))
         self.add(p)
