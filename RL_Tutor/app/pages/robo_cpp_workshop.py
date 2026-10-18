@@ -33,6 +33,7 @@ from .base import Page
 from .robo_common import SEC_KIN, deg, labelled_slider, plain, playlist_badge, start_here
 from .robo_space_rigid import PINK, _block_html, _frame3d, in_words
 from .robo_space_topo import _clear, _layout
+from . import rrpr_render as rr
 
 MONO = "font-family:Consolas"
 
@@ -445,82 +446,164 @@ class Workshop:
 # drawing the arm
 # ==========================================================================
 
-def draw_rrpr(ax, q, T_mine=None, label_axes=False):
-    pts = rc.fk_points(q)
-    ax.plot(*pts[:3].T, "-", color=theme.CYAN, lw=6, solid_capstyle="round")
-    ax.plot(*pts[2:].T, "-", color=theme.CYAN, lw=3.5)
-    ax.plot(*pts[:3].T, "o", color=theme.WARN, ms=6)
-    T = rk.fk_space(rc.M_HOME, rc.S_LIST, q)
-    # joint axes, carried by the joints before them
-    Tk = np.eye(4)
-    for i in range(4):
-        S = rc.S_LIST[:, i]
-        w = S[:3]
-        if np.linalg.norm(w) > 0:
-            d = Tk[:3, :3] @ w
-            p = pts[0] if i == 0 else pts[1] if i == 1 else pts[2]
-            ax.plot(*np.vstack([p - 0.45 * d, p + 0.45 * d]).T, "--", color=PINK, lw=1.6)
-            if label_axes:
-                ax.text(*(p + 0.55 * d), f"S{i+1}", color=PINK, fontsize=9)
-        else:
-            d = Tk[:3, :3] @ S[3:]
-            mid = pts[1] + 0.5 * (pts[2] - pts[1])
-            ax.quiver(*mid, *(0.4 * d), color=PINK, lw=1.6, arrow_length_ratio=0.3)
-            if label_axes:
-                ax.text(*(mid + 0.45 * d + [0, 0, 0.12]), "S3 (slide)", color=PINK, fontsize=9)
-        Tk = Tk @ rk.exp6(S, q[i])
-    _frame3d(ax, np.eye(3), (0, 0, 0), scale=0.4, name="s", lw=1.6)
-    _frame3d(ax, T[:3, :3], T[:3, 3], scale=0.35, name="b" if T_mine is None else None, lw=2.4)
-    if T_mine is not None and np.all(np.isfinite(T_mine)):
-        p = T_mine[:3, 3]
-        if np.all(np.abs(p) < 10):
-            _frame3d(ax, T_mine[:3, :3], p, scale=0.5, lw=1.4, ls=":", name="′")
-            ax.plot(*p, "o", color=theme.TEXT, ms=4)
-    ax.set_xlim(-1.6, 1.6)
-    ax.set_ylim(-1.6, 1.6)
-    ax.set_zlim(-0.2, 2.0)
-    ax.set_box_aspect((1, 1, 0.68))
+def draw_rrpr(ax, q, T_mine=None):
+    """The pose lab's view: the solid arm, joint arrows dimmed, your frame dotted."""
+    rr.draw_robot(ax, q, focus=-1, T_mine=T_mine)
 
 
 # ==========================================================================
 # cards
 # ==========================================================================
 
-def robot_card() -> Card:
-    c = Card("the robot: an RRPR arm in 3-D")
-    c.add(in_words(
-        "Four joints: a waist (R), a shoulder (R), a telescoping slide (P) and "
-        "a wrist roll (R). Small enough to check by hand, rich enough to use "
-        "every tool from pages 118–124: a prismatic joint (ω = 0), axes that "
-        "do not pass through the origin, and a tool frame that is rotated at "
-        "home. Everything below is about this one robot."))
-    cell = f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}'"
-    mono = f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}; {MONO}; color:{theme.CYAN}'"
-    rows = [("1", "R  waist", "ω = (0, 0, 1)", "q = (0, 0, 0)", "(0, 0, 1,  0, 0, 0)"),
-            ("2", "R  shoulder", "ω = (0, −1, 0)", "q = (0, 0, 1)", "(0, −1, 0,  1, 0, 0)"),
-            ("3", "P  slide", "v = (1, 0, 0)", "—", "(0, 0, 0,  1, 0, 0)"),
-            ("4", "R  wrist roll", "ω = (1, 0, 0)", "q = (1, 0, 1)", "(1, 0, 0,  0, 1, 0)")]
-    html_rows = "".join(f"<tr><td {cell}>{a}</td><td {cell}><b>{b}</b></td><td {mono}>{d}</td>"
-                        f"<td {mono}>{e}</td><td {mono}>{s}</td></tr>" for a, b, d, e, s in rows)
-    c.add(body(f"<table style='border-collapse:collapse'><tr><th {cell} align='left'>joint</th>"
-               f"<th {cell} align='left'>type</th><th {cell} align='left'>axis</th>"
-               f"<th {cell} align='left'>through</th><th {cell} align='left'>Sᵢ = (ω, v) in {{s}}</th>"
-               f"</tr>{html_rows}</table>"))
-    c.add(body(
-        "<b>Home pose</b> (all joints zero): M = (R, p) with R = diag(1, −1, −1), the tool's "
-        "z-axis pointing down, and p = (1.5, 0, 0.8). Units: metres and radians; joint 3's "
-        "variable d₃ is a length. The Sᵢ column is filled in for you here as a check on "
-        "exercise 4; try deriving S₂ and S₄ from −ω × q before you look."))
-    cv = MplCanvas(width=7.6, height=4.4)
-    _layout(cv, ["3d"])
-    _clear(cv)
-    draw_rrpr(cv.ax, np.array([0.5, 0.45, 0.25, 0.6]), label_axes=True)
-    cv.ax.view_init(elev=22, azim=-60)
-    cv.ax.set_title("θ = (0.5, 0.45, 0.25 m, 0.6): pink dashed = joint axes now",
-                    color=theme.TEXT, fontsize=9)
-    cv.refresh()
-    c.add(cv)
-    return c
+class RobotView:
+    """The robot card: a solid 3-D arm you can pose, and one joint at a time animated."""
+
+    HOME = (30, 25, 25, 40)
+
+    def __init__(self):
+        c = self.card = Card("the robot: an RRPR arm in 3-D")
+        c.add(in_words(
+            "Four joints: a waist (R), a shoulder (R), a telescoping slide (P) and "
+            "a wrist roll (R). Small enough to check by hand, rich enough to use "
+            "every tool from pages 118–124: a prismatic joint (ω = 0), axes that "
+            "do not pass through the origin, and a tool frame that is rotated at "
+            "home. Press a ▶ button to watch one joint move on its own."))
+        cell = f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}'"
+        mono = f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}; {MONO}; color:{theme.CYAN}'"
+        rows = [("1", "R  waist", "ω = (0, 0, 1)", "q = (0, 0, 0)", "(0, 0, 1,  0, 0, 0)",
+                 "turns the whole arm about the vertical column"),
+                ("2", "R  shoulder", "ω = (0, −1, 0)", "q = (0, 0, 1)", "(0, −1, 0,  1, 0, 0)",
+                 "tilts the arm up (+) and down, about a horizontal axis"),
+                ("3", "P  slide", "v = (1, 0, 0)", "—", "(0, 0, 0,  1, 0, 0)",
+                 "pushes the inner tube out along the arm; no rotation"),
+                ("4", "R  wrist roll", "ω = (1, 0, 0)", "q = (1, 0, 1)", "(1, 0, 0,  0, 1, 0)",
+                 "spins the hand about the arm's own axis")]
+        html_rows = "".join(
+            f"<tr><td {cell}><b style='color:{rr.JOINT_COLS[i]}'>■ {a}</b></td>"
+            f"<td {cell}><b style='color:{rr.JOINT_COLS[i]}'>{b}</b></td><td {mono}>{d}</td>"
+            f"<td {mono}>{e}</td><td {mono}>{s}</td><td {cell}>{w}</td></tr>"
+            for i, (a, b, d, e, s, w) in enumerate(rows))
+        c.add(body(f"<table style='border-collapse:collapse'><tr><th {cell} align='left'>joint</th>"
+                   f"<th {cell} align='left'>type</th><th {cell} align='left'>axis</th>"
+                   f"<th {cell} align='left'>through</th><th {cell} align='left'>Sᵢ = (ω, v) in {{s}}</th>"
+                   f"<th {cell} align='left'>what it does</th></tr>{html_rows}</table>"))
+        c.add(body(
+            "<b>Home pose</b> (all joints zero): the arm points along +x at height 1, the "
+            "tool sits at p = (1.5, 0, 0.8), hanging 0.2 below the roll axis, with its z-axis "
+            "pointing down: R = diag(1, −1, −1). Units: metres and radians; d₃ is a length. "
+            "The Sᵢ column is a check for exercise 4; derive S₂ and S₄ from −ω × q first."))
+        self.q = [labelled_slider(c, "θ1 waist", -180, 180, self.HOME[0], deg, self._draw),
+                  labelled_slider(c, "θ2 shoulder", -20, 80, self.HOME[1], deg, self._draw),
+                  labelled_slider(c, "d3 slide", 0, 60, self.HOME[2], lambda v: f"{v/100:.2f} m", self._draw),
+                  labelled_slider(c, "θ4 roll", -180, 180, self.HOME[3], deg, self._draw)]
+        row = QHBoxLayout()
+        self.btns = []
+        for i, name in enumerate(rr.JOINT_LABELS):
+            b = QPushButton(f"▶  {name}")
+            b.setStyleSheet(f"color:{rr.JOINT_COLS[i]}; font-weight:bold;")
+            b.clicked.connect(lambda _=False, i=i: self._animate(i))
+            row.addWidget(b)
+            self.btns.append(b)
+        b_home = QPushButton("home pose")
+        b_home.clicked.connect(self._home)
+        row.addWidget(b_home)
+        row.addStretch(1)
+        c.add_layout(row)
+        self.msg = body("")
+        c.add(self.msg)
+        self.cv = MplCanvas(width=8.4, height=6.0)
+        _layout(self.cv, ["3d"])
+        c.add(self.cv)
+        c.add(plain(
+            "<b>How to read the picture.</b> Each joint has one colour, the same as in the "
+            "table. A curved arrow circles each revolute axis and points the way <b>+θ</b> "
+            "turns (right-hand rule: thumb along ω, fingers curl the + way). The straight teal "
+            "arrow is the slide's +d₃. Grey parts are links; a coloured part is the joint "
+            "itself: the orange turntable, the violet shoulder drum, the teal inner tube and the "
+            "pink roll drum. The hand hangs off the roll axis, so θ₄ swings it in a circle. "
+            "While a joint is animated its axis is drawn as a long dashed line and the dotted "
+            "curve is the path the tool point traces. Notice: the waist path is a horizontal "
+            "circle, the shoulder path an arc in a vertical plane, the slide path a straight "
+            "line, the roll path a small circle around the arm."))
+        self.focus = None
+        self._ticking = False
+        self.phase = 0.0
+        self.timer = QTimer()
+        self.timer.setInterval(60)
+        self.timer.timeout.connect(self._tick)
+        self._draw()
+
+    def _pose(self):
+        v = [s.value() for s in self.q]
+        return np.array([np.radians(v[0]), np.radians(v[1]), v[2] / 100, np.radians(v[3])])
+
+    def _home(self):
+        self._stop()
+        for s, v in zip(self.q, (0, 0, 0, 0)):
+            s.blockSignals(True)
+            s.setValue(v)
+            s.blockSignals(False)
+        self._draw()
+
+    def _animate(self, i):
+        if self.focus == i and self.timer.isActive():
+            self._stop()
+            self._draw()
+            return
+        self.focus = i
+        self.center = self.q[i].value()
+        self.phase = 0.0
+        self.trail = rr.tool_path(self._pose(), i)
+        for k, b in enumerate(self.btns):
+            b.setText(("■  stop " if k == i else "▶  ") + rr.JOINT_LABELS[k])
+        self.timer.start()
+
+    def _stop(self):
+        self.timer.stop()
+        self.focus = None
+        for k, b in enumerate(self.btns):
+            b.setText("▶  " + rr.JOINT_LABELS[k])
+
+    def _tick(self):
+        i = self.focus
+        self.phase += 0.09
+        s = self.q[i]
+        lo, hi = rr.SWEEP[i](np.radians(self.center) if i != 2 else self.center / 100)
+        mid, amp = 0.5 * (lo + hi), 0.5 * (hi - lo)
+        val = mid + amp * np.sin(self.phase)
+        raw = val * 100 if i == 2 else np.degrees(val)
+        raw = max(s.minimum(), min(s.maximum(), raw))
+        self._ticking = True
+        s.setValue(int(round(raw)))
+        self._ticking = False
+        self._draw(animating=True)
+
+    def _draw(self, *_, animating=False):
+        if self._ticking:
+            return
+        if not animating and self.timer.isActive():
+            self._stop()
+        q = self._pose()
+        _clear(self.cv)
+        ax = self.cv.ax
+        trail = self.trail if self.focus is not None else None
+        rr.draw_robot(ax, q, focus=self.focus, trail=trail)
+        ax.view_init(elev=24, azim=-58)
+        if self.focus is None:
+            ax.set_title("drag the sliders, or press ▶ to animate one joint", color=theme.TEXT,
+                         fontsize=9)
+            self.msg.setText(f"<span style='color:{theme.TEXT_DIM}'>θ = ({q[0]:+.2f}, "
+                             f"{q[1]:+.2f}, {q[2]:.2f} m, {q[3]:+.2f})</span>")
+        else:
+            i = self.focus
+            what = ("the whole arm turns about the column; the tool draws a horizontal circle",
+                    "the arm tilts about the shoulder axis; the tool draws a vertical arc",
+                    "only the inner tube moves, straight out along the arm; nothing rotates",
+                    "the hand spins about the arm's axis; the tool point circles that axis")[i]
+            ax.set_title(f"{rr.JOINT_LABELS[i]} moving alone", color=rr.JOINT_COLS[i], fontsize=10)
+            self.msg.setText(f"<b style='color:{rr.JOINT_COLS[i]}'>{rr.JOINT_LABELS[i]}:</b> {what}. "
+                             f"<span style='color:{theme.TEXT_DIM}'>Press the button again to stop.</span>")
+        self.cv.refresh()
 
 
 def method_card() -> Card:
@@ -806,7 +889,8 @@ class RRPRWorkshopPage(Page):
             "off-by-one Jacobian column), tells you which one. When all ten pass you have "
             "everything the next pages build on: singularities (126), inverse kinematics "
             "(127) and redundancy (128)."))
-        self.add(robot_card())
+        self.robot = RobotView()
+        self.add(self.robot.card)
         self.add(method_card())
         self.ws = Workshop()
         self.bench = WorkbenchCard(self.ws)
