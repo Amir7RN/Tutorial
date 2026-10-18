@@ -1,0 +1,140 @@
+We can represent the configuration of a body
+frame {b} in the fixed space frame {s} by
+specifying the position p of the frame {b},
+in {s} coordinates, and the rotation matrix
+R specifying the orientation of {b}, also
+in {s} coordinates.
+We gather these together in a single 4 by
+4 matrix T, called a homogeneous transformation
+matrix, or just a transformation matrix for
+short.
+The bottom row, which consists of three zeros
+and a one, is included to simplify matrix
+operations, as we'll see soon.
+The set of all transformation matrices is
+called the special Euclidean group SE(3).
+Transformation matrices satisfy properties
+analogous to those for rotation matrices.
+Each transformation matrix has an inverse
+such that T times its inverse is the 4 by
+4 identity matrix.
+The product of two transformation matrices
+is also a transformation matrix.
+Matrix multiplication is associative, but
+not generally commutative.
+Also analogous to rotation matrices, transformation
+matrices have three common uses: The first
+is to represent a rigid-body configuration.
+The second is to change the frame of reference
+of a vector or a frame.
+The third is to displace a vector or a frame.
+To represent a frame {b} relative to a frame
+{s}, we construct the matrix T_sb consisting
+of the rotation matrix R_sb, as we saw in
+previous videos, and the position p of the
+{b} frame origin in {s} frame coordinates.
+The representation of the {s} frame relative
+to the {b} frame is just the inverse.
+As with the rotation matrix, the matrix inverse
+corresponds to switching the order of the
+subscripts.
+To change the frame of reference of a configuration,
+we can use the same subscript cancellation
+rule as for rotation matrices.
+If we know T_sb and T_bc, we can calculate
+T_sc, representing the configuration of frame
+{c} in frame {s}, by multiplying T_sb by T_bc.
+The inverse of T_sc is T_cs.
+Just as we followed T_sb and then T_bc to
+get to T_sc, we can follow Tbc inverse and
+T_sb inverse to get T_cs.
+We can also change the frame of reference
+for a point p in space.
+Let p_b and p_s be the representations of
+the point in the {b} and {s} frames.
+We could naively try our subscript cancellation
+rule again, but this doesn't work: T_sb and
+p_b have a dimension mismatch.
+To fix this, we simply append a 1 to the end
+of each vector, making the 3-vector into a
+4-vector.
+This is called the homogeneous coordinate
+representation of the 3-vector.
+Finally, a transformation matrix can be used
+to displace a point or a frame.
+Consider the fact that any configuration can
+be achieved from the initial configuration
+by first rotating, and then translating.
+In this animation, a frame initially at the
+zero orientation rotates about a fixed axis
+omega-hat a distance theta.
+It then translates according to the vector
+p, which is expressed in the coordinates of
+the initial frame T_zero.
+Its final configuration is given by T, where
+the Translation and Rotation operators are
+expressed by these matrices.
+T can be viewed not only as a configuration,
+but also as the transformation that takes
+the identity matrix to T.
+Let's consider a specific example of using
+a transformation matrix T to move a frame.
+Our transformation T is defined by a translation
+of 2 units along the y-axis, a rotation axis
+aligned with the z-axis, and a rotation angle
+of 90 degrees, or pi over 2.
+We will use the transformation T to move the
+{b} frame relative to the {s} frame.
+The {b} frame is initially represented by
+T_sb.
+Since we have two frames, we need to know
+whether the transformation vectors p and omega-hat
+are expressed in the {b} frame or the {s}
+frame.
+The answer depends on whether T right-multiplies
+or left-multiplies T_sb.
+If we left-multiply T_sb by T, the vectors
+p and omega-hat are considered to be expressed
+in the frame of the first subscript of T_sb,
+the {s} frame.
+Let's animate the transformation T.
+The rotation axis z and the translation axis
+y, expressed in the {s} frame, are shown.
+First the {b} frame will rotate 90 degrees
+about the z-axis of the {s} frame, and then
+it will translate 2 units along the y-direction
+of the {s} frame.
+Let's run the animation.
+And now one more time.
+Notice where the {b} frame ends up.
+We call this new frame {b-prime}.
+If instead we right-multiply T_sb by T, the
+vectors p and omega-hat are considered to
+be expressed in the frame of the second subscript
+of T_sb, the {b} frame.
+Also, the order of the operations is reversed:
+first we translate T_sb, and then we rotate
+it.
+Let's animate the motion.
+Watch how the {b} frame first translates by
+2 units in the y-direction of the {b} frame,
+then rotates about the z-axis of the {b} frame.
+Let's run the animation.
+Notice that the body z-axis, used for rotation
+in the second step, moved along with the frame
+during the initial translation.
+And now one more time.
+Notice where the {b} frame ends up.
+We call this new frame {b-double-prime}.
+In summary, if the transformation T is applied
+on the right, the vectors p and omega-hat
+are considered to be expressed in the body
+frame, moving the frame {b} to the new frame
+{b-double-prime}.
+If the transformation T is applied on the
+left, p and omega-hat are considered to be
+expressed in the space frame, moving the frame
+{b} to the new frame {b-prime}.
+In the next video we introduce our representation
+of a rigid-body linear and angular velocity,
+called a twist.

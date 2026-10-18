@@ -1,0 +1,111 @@
+in addition to the number of degrees of
+freedom another important property of a
+configuration space is its shape or
+topology consider a plane and the
+surface of a sphere for example both of
+these spaces have two Dimensions but
+their shape is quite different the
+sphere wraps around in a way that the
+plane does not this difference in shape
+impacts the way we use coordinates to
+represent the space we say two spaces
+have the same shape or more formly that
+they are topologically equivalent if one
+can be smoothly deformed into the other
+without cutting or gluing a classic
+example is shown in this video where the
+surface of a doughnut also called a
+Taurus is smoothly deformed into the
+surface of a coffee mug these are both
+two-dimensional spaces they cannot be
+deformed into a plane however that would
+require cutting so the mug and the
+Taurus are topologically equivalent but
+they are not equivalent to a plane the
+topology of a space is a fundamental
+property and is not affected by our
+choice of how to represent the space
+with
+coordinates some topologically distinct
+one-dimensional spaces are the circle
+the line and a closed interval of the
+line topologically distinct
+two-dimensional spaces include the plane
+the surface of a sphere the surface of a
+Taurus and the surface of a
+cylinder let's look at some examples of
+physical systems with two-dimensional
+c-spaces
+the first is a point moving in a plane
+the topology of this c-space is just a
+two-dimensional ukian space and a
+configuration can be represented by two
+real
+numbers a spherical pendulum pivots
+about the center of the sphere and the
+topology of the c-space is the
+two-dimensional surface of a sphere a
+configuration can be represented by
+latitude and
+longitude the c-space of a 2R robot is a
+Taurus and a configuration can be
+represented by two coordinates ranging
+from 0 to 2 pi and Fin the c-s space of
+a rotating sliding knob is a cylinder
+and a configuration can be represented
+by one real number representing the
+sliding distance and one angle between
+0o and 2 pi the topology of each c-space
+as you see in the middle column does not
+depend on how we decide to represent the
+space using coordinates whereas the
+representation in coordinates depends on
+an arbitrary Choice such as where we
+define the zero angle for each joint of
+the 2R
+robot let's focus on the 2R robot the
+topology of the c-space is a Taurus we
+can represent the Taurus using two joint
+angle coordinates ranging between 0 and
+2 pi the space of coordinates is
+obtained from the Taurus by cutting the
+Taurus once to get a cylinder then again
+to get a square subset of the plane
+because of this cutting which means that
+the square and the Taurus do not have
+the same topology even if the
+configuration on the Taurus moves
+smoothly the coordinate representation
+changes discontinuously at 0 and 2 pi
+in this video you can see that as the
+robot moves the coordinate
+representation jumps suddenly from one
+edge of the coordinate Square to the
+other now let's focus on the rotating
+and sliding knob its c space is a
+cylinder due to one linear joint and one
+rotational joint we can cut this
+cylinder once to get our coordinate
+representation a flat subset of the
+two-dimensional plane the angle
+coordinate is discon continuous at 0 and
+2 pi as the robot moves in this video
+you see the discontinuity in the
+representation of the knob
+angle finally let's look at the
+spherical pendulum it has a spherical
+c-space and we can see its
+representation as a subset of the plane
+each of the points on the top line
+segment of the representation correspond
+to the same point the North Pole of the
+sphere and each of the points on the
+bottom line segment correspond to the
+South Pole this video shows the changing
+representation as the spherical pendulum
+moves in summary c-spaces of the same
+Dimension can have different topologies
+in the next video we discuss different
+ways to represent C- spaces that are not
+flat ukian
+spaces for

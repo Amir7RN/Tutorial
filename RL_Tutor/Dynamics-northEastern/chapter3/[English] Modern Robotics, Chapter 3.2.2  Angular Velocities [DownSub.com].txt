@@ -1,0 +1,76 @@
+Let's say that R is the rotation matrix of
+a frame {b} relative to a frame {s}.
+A simple idea is to define the rate of rotation
+of {b}, which is also called the angular velocity,
+to be R-dot, the time rate of change of R.
+But this has 9 variables, and we should be
+able to find a good representation of angular
+velocity using only 3 variables.
+Unlike the curved space of orientations, SO(3),
+represented here as a sphere, at any given
+orientation, the space of angular velocities
+is a flat 3-dimensional vector space tangent
+to SO(3) at that orientation.
+A 3-dimensional vector space can be represented
+globally, without any singularities, by three
+coordinates.
+This tinkertoy coordinate frame represents
+the body frame {b}.
+Now imagine a rotation axis passing through
+the origin, and the motion of the frame as
+it rotates about that axis according to the
+right-hand rule.
+Any angular velocity can be represented by
+a rotation axis and the speed of rotation
+about it.
+We can express the axis as a unit vector in
+the {s} frame, writing it as omega-hat_s.
+The hat means that the vector has unit length.
+We call the rate of rotation theta-dot, and
+we can multiply the unit axis omega-hat_s
+by the rate of rotation theta-dot to get the
+angular velocity vector omega s, expressed
+in the {s} frame.
+As the frame rotates about the axis, the b-frame
+x-axis traces out a circle.
+The linear velocity of the x-axis is in a
+direction tangent to this circle, and is calculated
+as omega_s cross x-hat_b.
+A similar relationship holds for the other
+two coordinate axes.
+Since we will often take the cross product
+of a vector with another vector, we define
+a bracket notation that allows us to write
+x crossed with y as bracket-x times y, where
+bracket-x is a 3 by 3 matrix representation
+of the 3-vector x.
+The matrix bracket-x is called a skew-symmetric
+matrix because bracket-x is equal to the negative
+of its transpose.
+The set of all 3 by 3 skew-symmetric matrices
+is called little so(3), due to its relationship
+to big SO(3), the space of rotation matrices.
+With the bracket notation, we can write the
+relationship between R-dot and the angular
+velocity omega_s as R-dot = bracket omega_s
+times R.
+The angular velocity vector can be expressed
+in other frames, not just the {s} frame.
+For example, we could write it in the {b}
+frame coordinates.
+Using our change of reference frame subscript
+cancellation rule from the previous video,
+we get omega-b equals R_bs times omega_s,
+or R_sb inverse times omega-s.
+R usually indicates the body frame relative
+to the space frame, so we can drop the subscripts
+and write the relationship between the body
+angular velocity and spatial angular velocity
+as omega_b equals R inverse times omega_s
+and omega_s equals R times omega_b.
+We will also find the little so(3) matrix
+representation of the angular velocity to
+be useful.
+In the next video we will begin to learn how
+to integrate a constant angular velocity for
+a given time to find a rotational displacement.

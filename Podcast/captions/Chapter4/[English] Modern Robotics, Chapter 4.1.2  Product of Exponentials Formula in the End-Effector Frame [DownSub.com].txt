@@ -1,0 +1,105 @@
+In the previous video, we derived the product
+of exponentials formula to calculate T of
+theta, the configuration of the end-effector
+frame {b} relative to the fixed space frame
+{s}, when we're given the joint positions
+theta.
+In that formula, the joint screw axes are
+defined in the {s}-frame fixed to the world.
+In this video, we derive an alternative version
+of the formula where the joint screw axes
+are defined in the {b}-frame fixed to the
+end-effector.
+We use the same RPR robot as an example.
+First let's move the robot to its zero configuration.
+As before, we define M to be the configuration
+of the {b}-frame when the robot is at its
+zero configuration.
+Now we rotate joint 1 by an angle theta_1.
+The motion of the {b}-frame is a rotation
+about the screw axis of joint 1.
+We will represent the screw axis in the {b}-frame
+as B1, with the angular component omega1 and
+the linear component v1.
+Since the screw axis has rotation, omega_1
+is a unit vector.
+Since the screw axis is aligned with the z-axis
+of the {b}-frame, omega1 is equal to zero,
+zero, one.
+The linear motion v1 can be obtained by visualizing
+a turntable at joint 1 rotating and measuring
+the linear velocity at a point at the origin
+of the {b}-frame.
+Since the distance between the joint 1 and
+the {b}-frame is 3, the linear velocity v_1
+is zero, three, zero in the {b}-frame.
+We could also calculate this by defining a
+point q_1 on the axis of joint 1, where q_1
+is expressed in the {b}-frame.
+Then v_1 is minus omega_1 cross q_1.
+Now that we have the screw axis B_1, we can
+calculate the {b}-frame configuration T of
+theta.
+We simply apply the body-frame transformation
+corresponding to motion along the B_1 screw
+axis by an angle theta_1.
+This transformation is e to the bracket B_1
+times theta_1.
+Since it is a body-frame transformation, it
+postmultiplies M.
+Now suppose we change joint 2, extending it
+by theta2 units of distance.
+The screw axis B2 corresponding to joint 2
+has zero angular component omega2, so the
+linear component v2 must be a unit vector.
+If we imagine the whole space translating
+at unit velocity along joint 2, a point at
+the origin of the {b}-frame would move with
+a linear velocity v2 equal to one, zero, zero,
+expressed in the {b}-frame.
+Therefore the screw axis B2 is defined as
+zero, zero, zero, one, zero, zero.
+The new configuration of the {b}-frame, T
+of theta, is obtained by right-multiplying
+the previous configuration by e to the bracket
+B_2 times theta_2.
+Notice that the previous motion of joint 1
+does not affect the relationship of joint
+2's screw axis to the {b}-frame, because joint
+1 is not between joint 2 and the {b}-frame.
+Therefore, B_2 is the same as the screw axis
+of joint 2 when the robot is at its zero configuration.
+Finally, let's rotate joint 3 by theta_3.
+The screw axis B_3 is a pure rotation about
+an axis out of the screen, so the omega_3
+vector is zero, zero, one.
+Rotation about this axis induces a linear
+motion v_3 equal to zero, one, zero in the
+{b}-frame.
+The new configuration of the {b}-frame, T
+of theta, is given by right-multiplying the
+previous configuration by the new body-frame
+transformation.
+Again, the previous motions of joints 1 and
+2 do not affect the relationship of joint
+3's screw axis to the {b}-frame, because they
+are not between joint 3 and the {b}-frame.
+Therefore, B3 is the same as the screw axis
+of joint 3 when the robot is at its zero configuration.
+In summary, we've derived a procedure for
+forward kinematics when the screw axes are
+expressed in the {b}-frame.
+First, define the M matrix representing the
+{b}-frame when the joint variables are zero.
+Second, define the {b}-frame screw axes B_1
+to B_n for each of the n joint axes when the
+joint variables are zero.
+Finally, for the given joint values, evaluate
+the product of exponentials formula in the
+{b}-frame.
+Comparing the two product of exponential formulas,
+in the {s}-frame and the {b}-frame, the major
+differences are the frame of representation
+of the screws and whether M is on the right
+side or the left side of the sequence of matrix
+multiplications.

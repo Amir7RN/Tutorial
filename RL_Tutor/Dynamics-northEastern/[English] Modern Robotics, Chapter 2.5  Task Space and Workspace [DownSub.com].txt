@@ -1,0 +1,32 @@
+The C-space is the space of all possible configurations
+of a robot.
+Two somewhat different spaces of interest
+are the task space and the workspace.
+The task space is a space in which the robot's
+task can be naturally expressed.
+For example, if the task is to control the
+position of the tip of a marker on a board,
+then task space is the Euclidean plane.
+If the task is to control the position and
+orientation of a rigid body, then the task
+space is the 6-dimensional space of rigid
+body configurations.
+You only have to know about the task, not
+the robot, to define the task space.
+The workspace is a specification of the configurations
+that the end-effector of the robot can reach,
+and has nothing to do with a particular task.
+For example, a planar robot with 2 revolute
+joints, limited to ranges of motion of 180
+and 150 degrees, has the workspace shown here.
+The workspace is often defined in terms of
+the Cartesian points that can be reached by
+the end-effector, but it is also possible
+to include the orientation.
+The set of positions that can be reached with
+all possible orientations is sometimes called
+the dexterous workspace.
+So this concludes Chapter 2 on configuration
+spaces.
+In Chapter 3, we will focus on representing
+configurations and velocities of rigid bodies.

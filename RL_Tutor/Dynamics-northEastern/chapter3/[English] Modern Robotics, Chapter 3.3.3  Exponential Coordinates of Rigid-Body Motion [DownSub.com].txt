@@ -1,0 +1,115 @@
+In the previous videos, we learned that any
+instantaneous velocity of a rigid body can
+be represented as a twist, defined by a speed
+theta-dot rotating about, or translating along,
+a screw axis S. In this video, we integrate
+the vector differential equation describing
+the motion of a frame twisting along a constant
+screw axis to find the final displacement
+of the frame.
+This animation shows a screw axis S and a
+frame at time zero.
+Let's say that this configuration is coincident
+with the space frame {s}, so its representation
+is the identity matrix.
+Now we let the frame twist about the screw
+axis at a rotational speed theta-dot = 1.
+The animation shows the configuration achieved
+at times t equals pi and t equals 2 pi.
+These configurations are represented as transformation
+matrices, but an alternative representation
+would use 6 exponential coordinates, similar
+to the 3 exponential coordinates for rotation
+that we saw earlier.
+In this case, we could represent the configuration
+at time pi as S times pi, meaning the configuration
+achieved after the frame has followed the
+screw axis S for time pi.
+Similarly, we could represent the configuration
+at time 2 pi as S times 2 pi.
+Let's look at some of the analogies between
+rotations and full rigid-body motions.
+For rotations, we have a unit rotation axis
+omega-hat.
+For rigid-body motions, we have a screw axis
+where either the angular component is a unit
+vector or the angular component is zero and
+the linear component is a unit vector.
+For rotations, the exponential coordinates
+are omega-hat theta, where theta is the angle
+of rotation about the axis omega-hat.
+For rigid-body motions, the exponential coordinates
+are S-theta.
+If the screw axis has any angular component,
+theta is the angle rotated about the screw
+axis.
+If the screw axis has zero rotation, then
+theta is the linear distance traveled along
+the axis.
+For rotations, the matrix representation of
+the exponential coordinates is the 3 by 3
+skew symmetric representation of omega-hat
+times theta.
+The set of all such matrices is called little
+so(3).
+For rigid-body motions, the matrix representation
+of the exponential coordinates is a 4 by 4
+matrix in little se(3), which we learned about
+in the last video.
+For rotations, the exponential maps matrices
+in little so(3) to rotation matrices, and
+the log maps rotation matrices to little so(3).
+For rigid-body motions, the exponential maps
+matrices in little se(3) to transformation
+matrices, and the log maps transformation
+matrices to little se(3).
+As with the case for rotations, the matrix
+exponential for rigid-body motions has closed-form
+solutions.
+There are two cases to consider: one where
+the screw axis is a pure translation with
+no rotation, and one where the screw axis
+has rotation.
+For the case of a purely translational screw
+axis, theta refers to the linear distance
+traveled, and the solution is particularly
+simple: the orientation is unchanged, hence
+the identity matrix in the top left submatrix,
+and the new position is just the unit linear
+velocity of the screw axis times the distance
+traveled.
+For the case of a screw axis with rotation,
+again a closed-form solution exists, but it
+is a bit more complicated.
+The algorithm for the matrix logarithm involves
+inverting these expressions to find the matrix
+representation of the exponential coordinates
+S times theta.
+Now, given a body frame {b} at the configuration
+T_sb relative to the space frame {s}, we would
+like to know the final configuration T_sb-prime
+of the body frame if it travels a distance
+theta along the screw S.
+We could represent S in either the {s} frame
+or the {b} frame.
+If we define it in the {b} frame, the final
+configuration T_sb prime is T_sb times the
+matrix exponential.
+Remembering that multiplying by a transformation
+on the right corresponds to a transformation
+expressed in the frame of the second subscript.
+If we define the screw axis in the {s} frame,
+we must premultiply T_sb by the matrix exponential,
+since multiplication on the left means that
+the transformation is expressed in the frame
+of the first subscript.
+Each single-degree-of-freedom joint of a robot,
+such as a revolute joint, a prismatic joint,
+or a helical joint, has a joint axis defined
+by a screw axis.
+The matrix exponential and log will be used
+extensively in the study of robot kinematics,
+starting in Chapter 4.
+The next and final video of Chapter 3 covers
+the representation of forces and torques in
+three-dimensional space.

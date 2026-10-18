@@ -1,0 +1,65 @@
+A robot hand is holding this apple in gravity,
+and the robot is equipped with a force-torque
+sensor at its wrist.
+It measures forces and torques in the frame
+{f}.
+If we know the mass of the apple, the direction
+of gravity, and the location of the apple
+in the hand, what are the forces and torques
+measured by the sensor?
+In this final video of Chapter 3 we will develop
+the representations and transformations needed
+to answer this question.
+Here we see two frames, {s} and {b}.
+A line of force f_b acts at the point r_b,
+both represented in the {b} frame.
+f_b is a 3-vector specifying the magnitude
+of the force in 3 directions.
+From physics we know that this force induces
+a 3-vector torque, or moment, about the frame
+{b} equal to r_b cross f_b.
+We can package the moment and the force together
+in a single 6-vector called the wrench, just
+as we packaged the angular and linear velocity
+of a rigid body into a twist.
+Since we know the transform T_sb, we should
+be able to represent this same wrench in the
+{s} frame.
+To derive the relationship between the wrenches
+F_b and F_s, keep in mind this fact: the dot
+product of a twist and a wrench is power.
+Power does not depend on a coordinate frame,
+and therefore the power must be the same whether
+the wrench and twist are represented in the
+{b} frame or in the {s} frame.
+Using our rule to change the frame of representation
+of a twist, we can express V_b in terms of
+T_sb and V_s.
+Since the transpose of the product of a matrix
+and a vector is equal to the product of the
+vector transposed and the matrix transposed,
+we can rewrite the equation as shown here.
+Finally, this equation holds for all twists
+Vs, so it simplifies to the relationship we
+are looking for, changing the coordinate frame
+of the wrench from the {b} frame to the {s}
+frame.
+Returning to our apple example, we can define
+a frame {a} at the center of mass of the apple.
+In this frame, the force due to gravity is
+mg in the minus y direction, and the moment
+is zero, since the force vector passes through
+the origin of the {a} frame.
+To transform to the force sensor frame, we
+use T_af, the configuration of the force sensor
+frame relative to the apple frame, and we
+see that the wrench F_f has a moment of negative
+m_gL about the z-axis of the {f} frame.
+So, this concludes Chapter 3.
+The material in this chapter is fundamental
+to representing motion and forces in three-dimensional
+space, for robots and other types of mechanical
+systems.
+We're now equipped with the tools we need
+to study the kinematics and statics of robots,
+which begins in Chapter 4.

@@ -1,0 +1,469 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Twist and Screw Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a lab bench. 3-D viewport on the left, instrument panel on the right, readouts underneath; stacks on a phone. */
+:root{
+  --bg:#eceeea; --panel:#fbfbf9; --ink:#1b211f; --muted:#56605c; --line:#d3d8d2;
+  --scene:#f3f4f1; --grid:#c4cac3; --grid2:#a3aba2; --body:#8fa6bd;
+  --vel:#d9480f; --along:#08807a; --around:#6a4bd0; --screw:#c0265e;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#131715; --panel:#1b201e; --ink:#e6eae7; --muted:#9ba59f; --line:#2c3330;
+  --scene:#171c1a; --grid:#2a312e; --grid2:#3d4642; --body:#4d6680;
+  --vel:#ff7a3d; --along:#2fc4b8; --around:#a48cff; --screw:#ff5c93; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#131715; --panel:#1b201e; --ink:#e6eae7; --muted:#9ba59f; --line:#2c3330;
+  --scene:#171c1a; --grid:#2a312e; --grid2:#3d4642; --body:#4d6680;
+  --vel:#ff7a3d; --along:#2fc4b8; --around:#a48cff; --screw:#ff5c93; color-scheme:dark }
+
+body{background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-body)}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:16px;padding-block:24px 48px;display:grid;gap:20px}
+h1{font:700 clamp(28px,4vw,40px)/1.05 var(--f-display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+h2{font:600 18px/1.2 var(--f-display);margin:0 0 10px}
+.lede{max-width:68ch;color:var(--muted);margin:6px 0 0}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+
+.bridge{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.bridge > div{background:var(--panel);padding:14px 16px;min-width:0}
+.bridge .eq{font-family:var(--f-mono);font-size:13px;margin:6px 0;overflow-wrap:anywhere}
+.bridge p{margin:0;font-size:13.5px;color:var(--muted)}
+.bridge .arrow{color:var(--screw);font-weight:600}
+
+.bench{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.view{position:relative;background:var(--scene);border:1px solid var(--line);border-radius:10px;overflow:hidden;height:min(68vh,620px);min-height:340px}
+#stage{position:absolute;inset:0}
+.viewbar{position:absolute;left:10px;right:10px;bottom:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;pointer-events:none}
+.viewbar > *{pointer-events:auto}
+.legend{position:absolute;top:10px;left:10px;display:flex;flex-wrap:wrap;gap:6px 12px;font-size:12px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);border-radius:8px;padding:6px 10px;max-width:calc(100% - 20px)}
+.sw{display:inline-flex;align-items:center;gap:6px}
+.sw i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.hint{font-size:12px;color:var(--muted);background:color-mix(in srgb,var(--panel) 88%,transparent);border-radius:6px;padding:4px 8px}
+
+button{font:600 13px var(--f-body);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:7px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--muted)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--screw);outline-offset:2px}
+button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+button[aria-pressed="true"]{border-color:var(--screw);box-shadow:inset 0 0 0 1px var(--screw)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;display:grid;gap:16px}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{font-weight:500;padding:6px 10px}
+fieldset{border:0;margin:0;padding:0;display:grid;gap:6px}
+legend{padding:0;margin-bottom:4px}
+.row{display:grid;grid-template-columns:34px minmax(0,1fr) 46px;gap:8px;align-items:center}
+.row label{font-family:var(--f-mono);font-size:13px}
+.row output{font-family:var(--f-mono);font-size:13px;text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--screw)}
+.toggles{display:flex;flex-wrap:wrap;gap:6px}
+
+.readouts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.card dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0;font-size:13.5px}
+.card dt{color:var(--muted)}
+.card dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.note{font-size:13px;color:var(--muted);margin:10px 0 0}
+.pill{display:inline-block;font:600 11px var(--f-body);letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:99px;border:1px solid var(--screw);color:var(--screw)}
+
+.try ol{margin:0;padding-left:20px;display:grid;gap:8px;max-width:80ch}
+.try li::marker{font-family:var(--f-mono);color:var(--muted)}
+
+@media (max-width:960px){ .bench{grid-template-columns:minmax(0,1fr)} .readouts{grid-template-columns:minmax(0,1fr)} }
+@media (max-width:720px){ .bridge{grid-template-columns:minmax(0,1fr)} }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Twist and Screw Lab</h1>
+    <p class="lede">Meriam gives a rigid body's velocity as one angular velocity ω plus the velocity of one reference point. Those six numbers are already a twist. This lab shows that any twist is a single screw motion: one spin about one line, plus one slide along that same line. There is one screw, not three.</p>
+  </header>
+
+  <section class="bridge" aria-label="Three ways to write the same motion">
+    <div>
+      <div class="label">Meriam</div>
+      <div class="eq">v<sub>P</sub> = v<sub>A</sub> + ω × r<sub>P/A</sub></div>
+      <p>Pick a reference point A. ω and v<sub>A</sub> give the velocity of every point P.</p>
+    </div>
+    <div>
+      <div class="label">Twist</div>
+      <div class="eq">V = (ω, v<sub>A</sub>) <span class="arrow">· 6 numbers</span></div>
+      <p>The same two vectors, stacked. The book uses A = a frame's origin: the world origin for V<sub>s</sub>, the body origin for V<sub>b</sub>.</p>
+    </div>
+    <div>
+      <div class="label">Screw</div>
+      <div class="eq">axis ŝ through q, pitch h, rate |ω|</div>
+      <p>Choose A on one special line and v<sub>A</sub> points along ω. That line is the screw axis.</p>
+    </div>
+  </section>
+
+  <section class="bench">
+    <div class="view">
+      <div id="stage" role="img" aria-label="3-D view of a box moving along a screw axis, with velocity arrows"></div>
+      <div class="legend" aria-hidden="true">
+        <span class="sw"><i style="background:var(--screw)"></i>screw axis</span>
+        <span class="sw"><i style="background:var(--vel)"></i>point velocity</span>
+        <span class="sw"><i style="background:var(--along)"></i>slide along axis</span>
+        <span class="sw"><i style="background:var(--around)"></i>carried around axis</span>
+        <span class="sw"><i style="background:#e5484d"></i>x</span>
+        <span class="sw"><i style="background:#30a46c"></i>y</span>
+        <span class="sw"><i style="background:#3e63dd"></i>z</span>
+      </div>
+      <div class="viewbar">
+        <button id="play" class="primary" type="button">Pause</button>
+        <button id="reset" type="button">Restart motion</button>
+        <span class="hint">Drag to orbit · scroll or pinch to zoom</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div>
+        <div class="label" style="margin-bottom:6px">Presets</div>
+        <div class="presets" id="presets">
+          <button type="button" data-p="general" aria-pressed="true">General screw</button>
+          <button type="button" data-p="hinge" aria-pressed="false">Door hinge</button>
+          <button type="button" data-p="wheel" aria-pressed="false">Rolling wheel</button>
+          <button type="button" data-p="spin" aria-pressed="false">Spin in place</button>
+          <button type="button" data-p="slide" aria-pressed="false">Pure slide</button>
+        </div>
+      </div>
+
+      <fieldset>
+        <legend class="label">ω · angular velocity (rad/s)</legend>
+        <div class="row"><label for="wx">ω<sub>x</sub></label><input id="wx" type="range" min="-3" max="3" step="0.1"><output for="wx"></output></div>
+        <div class="row"><label for="wy">ω<sub>y</sub></label><input id="wy" type="range" min="-3" max="3" step="0.1"><output for="wy"></output></div>
+        <div class="row"><label for="wz">ω<sub>z</sub></label><input id="wz" type="range" min="-3" max="3" step="0.1"><output for="wz"></output></div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="label">v<sub>B</sub> · velocity of the box centre at the start (m/s)</legend>
+        <div class="row"><label for="vx">v<sub>x</sub></label><input id="vx" type="range" min="-3" max="3" step="0.1"><output for="vx"></output></div>
+        <div class="row"><label for="vy">v<sub>y</sub></label><input id="vy" type="range" min="-3" max="3" step="0.1"><output for="vy"></output></div>
+        <div class="row"><label for="vz">v<sub>z</sub></label><input id="vz" type="range" min="-3" max="3" step="0.1"><output for="vz"></output></div>
+      </fieldset>
+
+      <fieldset>
+        <legend class="label">A · reference point, fixed in space (m)</legend>
+        <div class="row"><label for="ax">A<sub>x</sub></label><input id="ax" type="range" min="-3" max="3" step="0.1"><output for="ax"></output></div>
+        <div class="row"><label for="ay">A<sub>y</sub></label><input id="ay" type="range" min="-3" max="3" step="0.1"><output for="ay"></output></div>
+        <div class="row"><label for="az">A<sub>z</sub></label><input id="az" type="range" min="-3" max="3" step="0.1"><output for="az"></output></div>
+        <div class="toggles" style="margin-top:4px">
+          <button id="snapA" type="button">Put A on the screw axis</button>
+          <button id="originA" type="button">Put A at the world origin</button>
+        </div>
+      </fieldset>
+
+      <div class="toggles">
+        <button id="tArrows" type="button" aria-pressed="true">Corner velocities</button>
+        <button id="tTrails" type="button" aria-pressed="true">Paths</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="readouts" aria-live="off">
+    <div class="card">
+      <h2>Twist at A</h2>
+      <dl>
+        <dt>ω</dt><dd id="rW"></dd>
+        <dt>|ω|</dt><dd id="rWn"></dd>
+        <dt>v<sub>A</sub></dt><dd id="rVA"></dd>
+        <dt>V</dt><dd id="rV"></dd>
+      </dl>
+      <p class="note">Move A and only v<sub>A</sub> changes. ω is the same for every point of a rigid body.</p>
+    </div>
+    <div class="card">
+      <h2>The one screw <span class="pill" id="rKind">screw</span></h2>
+      <dl>
+        <dt>direction ŝ</dt><dd id="rS"></dd>
+        <dt>axis point q</dt><dd id="rQ"></dd>
+        <dt>pitch h</dt><dd id="rH"></dd>
+        <dt>slide speed</dt><dd id="rSlide"></dd>
+      </dl>
+      <p class="note">q = ω × v<sub>0</sub> / |ω|², h = ω · v<sub>0</sub> / |ω|², where v<sub>0</sub> is the velocity at the world origin. None of these change when you move A or while the body moves.</p>
+    </div>
+    <div class="card">
+      <h2>v<sub>A</sub>, split by the screw</h2>
+      <dl>
+        <dt>along axis</dt><dd id="rAlong"></dd>
+        <dt>around axis</dt><dd id="rAround"></dd>
+        <dt>distance to axis</dt><dd id="rDist"></dd>
+        <dt>box centre now</dt><dd id="rVB"></dd>
+      </dl>
+      <p class="note">Every point gets the same slide along the axis, plus ω × (its offset from the axis). Points on the axis keep only the slide.</p>
+    </div>
+  </section>
+
+  <section class="card try">
+    <h2>Things to try, in order</h2>
+    <ol>
+      <li><b>General screw</b>, then watch. Each corner traces a helix, all around the same magenta line and all climbing at the same rate. That is one screw, even though ω has three components.</li>
+      <li>Move A with its sliders. ω stays fixed and v<sub>A</sub> changes, but the axis and pitch stay put. The six numbers of the twist depend on where you stand; the screw doesn't.</li>
+      <li>Press <b>Put A on the screw axis</b>. The violet "around" arrow vanishes, and v<sub>A</sub> points straight along the axis. The screw axis is exactly the set of points whose velocity is parallel to ω.</li>
+      <li><b>Rolling wheel</b>. The pitch is 0 and the axis runs through the contact line under the box. That is Meriam's instant centre of zero velocity, extended into 3-D as a line.</li>
+      <li><b>Door hinge</b>. Pitch 0 again, with the axis off to the side. Then nudge v<sub>z</sub> up: the hinge becomes a screw going into wood.</li>
+      <li>Set all three ω sliders to 0. The pitch becomes infinite, every point gets the same velocity, and there is no axis to draw. That is a prismatic joint.</li>
+    </ol>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+  // ---------- vector helpers ----------
+  const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+  const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+  const sc=(a,k)=>[a[0]*k,a[1]*k,a[2]*k];
+  const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  const norm=a=>Math.hypot(a[0],a[1],a[2]);
+  const rot=(v,s,th)=>{const c=Math.cos(th),n=Math.sin(th);return add(add(sc(v,c),sc(cross(s,v),n)),sc(s,dot(s,v)*(1-c)));};
+  const fmt=x=>{const y=Math.abs(x)<0.005?0:x;return (y<0?'−':' ')+Math.abs(y).toFixed(2);};
+  const fv=a=>'('+a.map(fmt).join(',')+')';
+  const EPS=1e-3;
+
+  // ---------- state ----------
+  const presets={
+    general:{w:[0,0,2],v:[1,0,0.5],A:[1.5,0,0]},
+    hinge:{w:[0,0,1.5],v:[0,-1.5,0],A:[0,0,0]},
+    wheel:{w:[0,2,0],v:[1,0,0],A:[0,0,0]},
+    spin:{w:[1,1,1],v:[0,0,0],A:[1,0,0]},
+    slide:{w:[0,0,0],v:[1,0.5,0.3],A:[0,0,0]}
+  };
+  let w=[0,0,2], v0=[1,0,0.5], A=[1.5,0,0], t=0;
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let playing=!reduce, showArrows=true, showTrails=true;
+
+  function screw(){
+    const wn=norm(w);
+    if(wn<EPS){ const vn=norm(v0); return {kind:'slide',wn:0,s:vn>EPS?sc(v0,1/vn):[0,0,0],h:Infinity,q:null,vn}; }
+    return {kind:'screw',wn,s:sc(w,1/wn),h:dot(w,v0)/(wn*wn),q:sc(cross(w,v0),1/(wn*wn))};
+  }
+  const velAt=P=>add(v0,cross(w,P));       // spatial twist (w, v0) is constant in time
+  function mapPoint(x,S,tt){
+    if(S.kind==='slide') return add(x,sc(v0,tt));
+    const th=S.wn*tt;
+    return add(add(S.q,rot(sub(x,S.q),S.s,th)),sc(S.s,S.h*S.wn*tt));
+  }
+
+  // ---------- three.js ----------
+  const stage=document.getElementById('stage');
+  const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  stage.appendChild(renderer.domElement);
+  const scene=new THREE.Scene();
+  const camera=new THREE.PerspectiveCamera(42,1,0.05,200);
+  camera.up.set(0,0,1); camera.position.set(6.5,-7.5,5.2);
+  const controls=new THREE.OrbitControls(camera,renderer.domElement);
+  controls.target.set(0.4,0,0); controls.enableDamping=true; controls.update();
+  scene.add(new THREE.AmbientLight(0xffffff,0.65));
+  const dl=new THREE.DirectionalLight(0xffffff,0.6); dl.position.set(4,-6,8); scene.add(dl);
+
+  let grid=null;
+  const worldAxes=new THREE.AxesHelper(1.4); scene.add(worldAxes);
+
+  const half=[0.6,0.4,0.25];
+  const body=new THREE.Group(); body.matrixAutoUpdate=false; scene.add(body);
+  const boxGeo=new THREE.BoxGeometry(half[0]*2,half[1]*2,half[2]*2);
+  const boxMat=new THREE.MeshStandardMaterial({transparent:true,opacity:0.55,roughness:0.7});
+  body.add(new THREE.Mesh(boxGeo,boxMat));
+  const edgeMat=new THREE.LineBasicMaterial();
+  body.add(new THREE.LineSegments(new THREE.EdgesGeometry(boxGeo),edgeMat));
+  body.add(new THREE.AxesHelper(0.75));
+
+  const corners=[];
+  for(const sx of [-1,1]) for(const sy of [-1,1]) for(const sz of [-1,1]) corners.push([sx*half[0],sy*half[1],sz*half[2]]);
+  const mkArrow=()=>{const a=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,0xffffff,0.14,0.08);scene.add(a);return a;};
+  const cornerArrows=corners.map(mkArrow);
+  const aTotal=mkArrow(), aAlong=mkArrow(), aAround=mkArrow();
+
+  const aMarker=new THREE.Mesh(new THREE.SphereGeometry(0.07,20,14),new THREE.MeshBasicMaterial());
+  scene.add(aMarker);
+
+  const axisMat=new THREE.MeshBasicMaterial();
+  const axisMesh=new THREE.Mesh(new THREE.CylinderGeometry(0.025,0.025,14,12),axisMat);
+  scene.add(axisMesh);
+  const qMarker=new THREE.Mesh(new THREE.SphereGeometry(0.05,16,12),axisMat); scene.add(qMarker);
+  const slideArrow=mkArrow();
+
+  const trailIdx=[0,3,5,6], TN=900;
+  const trails=trailIdx.map(()=>{
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TN*3),3));
+    g.setDrawRange(0,0); const l=new THREE.Line(g,new THREE.LineBasicMaterial({transparent:true,opacity:0.8}));
+    scene.add(l); return {g,n:0,l};
+  });
+  const clearTrails=()=>trails.forEach(tr=>{tr.n=0;tr.g.setDrawRange(0,0);});
+
+  const K=0.4; // metres of arrow per m/s
+  function setArrow(arr,origin,vec,len){
+    const n=norm(vec);
+    if(n*K<0.02){arr.visible=false;return;}
+    arr.visible=true; arr.position.set(origin[0],origin[1],origin[2]);
+    arr.setDirection(new THREE.Vector3(vec[0]/n,vec[1]/n,vec[2]/n));
+    const L=len||n*K; arr.setLength(L,Math.min(0.16,L*0.35),Math.min(0.09,L*0.2));
+  }
+
+  function applyTheme(){
+    scene.background=new THREE.Color(css('--scene'));
+    if(grid){scene.remove(grid);grid.geometry.dispose();}
+    grid=new THREE.GridHelper(12,24,new THREE.Color(css('--grid2')),new THREE.Color(css('--grid')));
+    grid.rotation.x=Math.PI/2; scene.add(grid);
+    boxMat.color.set(css('--body')); edgeMat.color.set(css('--ink'));
+    aMarker.material.color.set(css('--ink'));
+    axisMat.color.set(css('--screw'));
+    const vel=new THREE.Color(css('--vel'));
+    cornerArrows.forEach(a=>a.setColor(vel)); aTotal.setColor(vel);
+    aAlong.setColor(new THREE.Color(css('--along'))); aAround.setColor(new THREE.Color(css('--around')));
+    slideArrow.setColor(new THREE.Color(css('--screw')));
+    trails.forEach(tr=>tr.l.material.color.set(css('--muted')));
+  }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
+  new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+  function resize(){
+    const r=stage.getBoundingClientRect();
+    renderer.setSize(r.width,r.height,false);
+    renderer.domElement.style.width='100%'; renderer.domElement.style.height='100%';
+    camera.aspect=r.width/Math.max(r.height,1); camera.updateProjectionMatrix();
+  }
+  new ResizeObserver(resize).observe(stage);
+
+  // ---------- controls ----------
+  const ids=['wx','wy','wz','vx','vy','vz','ax','ay','az'];
+  const el=Object.fromEntries(ids.map(i=>[i,document.getElementById(i)]));
+  function writeSliders(){
+    [...w,...v0,...A].forEach((x,k)=>{el[ids[k]].value=x; el[ids[k]].nextElementSibling.textContent=(+x).toFixed(1);});
+  }
+  function readSliders(){
+    const g=i=>parseFloat(el[i].value);
+    w=[g('wx'),g('wy'),g('wz')]; v0=[g('vx'),g('vy'),g('vz')]; A=[g('ax'),g('ay'),g('az')];
+    ids.forEach(i=>el[i].nextElementSibling.textContent=parseFloat(el[i].value).toFixed(1));
+  }
+  ids.forEach(i=>el[i].addEventListener('input',()=>{
+    readSliders();
+    if(i[0]!=='a'){t=0;clearTrails();markPreset(null);}
+    refresh(true);
+  }));
+  const presetBtns=[...document.querySelectorAll('#presets button')];
+  function markPreset(p){presetBtns.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.p===p)));}
+  presetBtns.forEach(b=>b.addEventListener('click',()=>{
+    const p=presets[b.dataset.p]; w=[...p.w]; v0=[...p.v]; A=[...p.A];
+    writeSliders(); markPreset(b.dataset.p); t=0; clearTrails(); refresh(true);
+  }));
+  const clamp=x=>Math.max(-3,Math.min(3,Math.round(x*10)/10));
+  document.getElementById('snapA').addEventListener('click',()=>{
+    const S=screw(); if(S.kind!=='screw') return;
+    A=S.q.map(clamp); writeSliders(); refresh(true);
+  });
+  document.getElementById('originA').addEventListener('click',()=>{A=[0,0,0];writeSliders();refresh(true);});
+  const playBtn=document.getElementById('play');
+  const setPlay=p=>{playing=p;playBtn.textContent=p?'Pause':'Play';};
+  playBtn.addEventListener('click',()=>setPlay(!playing));
+  document.getElementById('reset').addEventListener('click',()=>{t=0;clearTrails();refresh(true);});
+  const tog=(id,fn)=>{const b=document.getElementById(id);b.addEventListener('click',()=>{const v=b.getAttribute('aria-pressed')!=='true';b.setAttribute('aria-pressed',String(v));fn(v);refresh(true);});};
+  tog('tArrows',v=>showArrows=v);
+  tog('tTrails',v=>{showTrails=v;trails.forEach(tr=>tr.l.visible=v);});
+
+  // ---------- per-frame update ----------
+  const $=id=>document.getElementById(id);
+  let lastDom=0;
+  function refresh(forceDom){
+    const S=screw();
+    // body pose
+    const p=mapPoint([0,0,0],S,t);
+    const cols=[[1,0,0],[0,1,0],[0,0,1]].map(e=>sub(mapPoint(e,S,t),p));
+    body.matrix.set(cols[0][0],cols[1][0],cols[2][0],p[0], cols[0][1],cols[1][1],cols[2][1],p[1], cols[0][2],cols[1][2],cols[2][2],p[2], 0,0,0,1);
+    body.matrixWorldNeedsUpdate=true;
+
+    // corner arrows
+    corners.forEach((c,k)=>{
+      const P=mapPoint(c,S,t);
+      if(showArrows) setArrow(cornerArrows[k],P,velAt(P)); else cornerArrows[k].visible=false;
+    });
+
+    // A and its split
+    aMarker.position.set(A[0],A[1],A[2]);
+    const vA=velAt(A);
+    setArrow(aTotal,A,vA);
+    let along=[0,0,0],around=[0,0,0];
+    if(S.kind==='screw'){ along=sc(S.s,dot(S.s,vA)); around=sub(vA,along); }
+    else { along=vA; }
+    setArrow(aAlong,A,along); setArrow(aAround,A,around);
+
+    // axis
+    if(S.kind==='screw'){
+      axisMesh.visible=qMarker.visible=true; slideArrow.visible=false;
+      axisMesh.position.set(S.q[0],S.q[1],S.q[2]);
+      axisMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(S.s[0],S.s[1],S.s[2]));
+      qMarker.position.set(S.q[0],S.q[1],S.q[2]);
+    } else {
+      axisMesh.visible=qMarker.visible=false;
+      if(S.vn>EPS) setArrow(slideArrow,[0,0,0],S.s,1.6); else slideArrow.visible=false;
+    }
+
+    // trails
+    if(showTrails && playing){
+      trailIdx.forEach((ci,k)=>{
+        const tr=trails[k]; if(tr.n>=TN) return;
+        const P=mapPoint(corners[ci],S,t), arr=tr.g.attributes.position.array;
+        arr[tr.n*3]=P[0];arr[tr.n*3+1]=P[1];arr[tr.n*3+2]=P[2]; tr.n++;
+        tr.g.setDrawRange(0,tr.n); tr.g.attributes.position.needsUpdate=true;
+      });
+    }
+
+    // DOM readouts (throttled)
+    const now=performance.now();
+    if(!forceDom && now-lastDom<120) return; lastDom=now;
+    $('rW').textContent=fv(w);
+    $('rWn').textContent=fmt(norm(w))+' rad/s';
+    $('rVA').textContent=fv(vA)+' m/s';
+    $('rV').textContent='['+w.map(fmt).join(' ')+' |'+vA.map(fmt).join(' ')+' ]';
+    $('rVB').textContent=fv(velAt(p))+' m/s';
+    if(S.kind==='screw'){
+      $('rKind').textContent=Math.abs(S.h)<0.005?'pure spin':'screw';
+      $('rS').textContent=fv(S.s);
+      $('rQ').textContent=fv(S.q)+' m';
+      $('rH').textContent=fmt(S.h)+' m/rad';
+      $('rSlide').textContent=fmt(S.h*S.wn)+' m/s';
+      $('rAlong').textContent=fv(along);
+      $('rAround').textContent=fv(around);
+      const off=sub(A,S.q), d=norm(sub(off,sc(S.s,dot(off,S.s))));
+      $('rDist').textContent=fmt(d)+' m';
+    } else {
+      $('rKind').textContent=S.vn>EPS?'pure slide':'at rest';
+      $('rS').textContent=S.vn>EPS?fv(S.s)+' (slide direction)':'none';
+      $('rQ').textContent='no axis';
+      $('rH').textContent=S.vn>EPS?'∞':'undefined';
+      $('rSlide').textContent=fmt(S.vn)+' m/s';
+      $('rAlong').textContent=fv(vA);
+      $('rAround').textContent=fv([0,0,0]);
+      $('rDist').textContent='no axis';
+    }
+  }
+
+  let prev=performance.now();
+  function frame(now){
+    const dt=Math.min(0.05,(now-prev)/1000); prev=now;
+    if(playing){
+      t+=dt;
+      const wn=norm(w), T=wn>0.05?Math.min(2*Math.PI/wn,8):3;
+      if(t>T){t=0;clearTrails();}
+    }
+    refresh(false);
+    controls.update();
+    renderer.render(scene,camera);
+    requestAnimationFrame(frame);
+  }
+
+  writeSliders(); readSliders(); setPlay(playing); applyTheme(); resize(); refresh(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,91 @@
+to represent a sea space using real
+numbers we have to make some arbitrary
+choices for example to represent points
+on a plane we choose a point in the
+space as the origin and two orthogonal
+coordinate axes with that choice we can
+represent any points as a list of two
+coordinates XY of course our
+representation of the space have not
+changed the underlying space itself
+therefore the topology of the space is
+independent of our representation of the
+space if the space is flat like a lying
+a plane or more generally an
+n-dimensional Euclidean space we
+typically choose an origin and
+coordinate axes and then use coordinates
+to represent a point this is what we're
+most familiar with a velocity is then
+just the time to remove those
+coordinates if the space is curved
+however like a sphere we have two ways
+we could represent it we could either
+use an explicit parameterization which
+uses a minimum number of coordinates to
+represent the space such as latitude and
+longitude for sphere or we could use an
+implicit representation which uses more
+coordinate subject to constraints an
+implicit representation views the M
+dimensional space as embedded in a
+higher dimensional Euclidean space in
+the sphere example we view the
+two-dimensional surface as embedded in a
+three dimensional Euclidean space and we
+use three Euclidean coordinates XY and Z
+subject to a single constant radius
+constraint as we learned before one
+constraint on three coordinates implies
+two degrees of freedom that is a
+two-dimensional C space so how do we
+choose between explicit and implicit
+representations advantage of the
+explicit parameterization is the
+simplicity of a minimum number of
+coordinates a disadvantage is that
+because the topology of the space is
+different from the Euclidean space the
+representation will have poor behavior
+at some points of the space for example
+if you walk at constant speeds
+along a constant latitude near the
+equator your longitude changes slowly if
+you do it near the North Pole however
+your longitude changes very quickly with
+no upper bounds as you get closer to the
+North Pole the North Pole is called a
+singularity of the representation also
+the moment you step over the North Pole
+your longitude changes by 180 degrees
+the rapidly changing coordinates and
+discontinuities at certain points with
+space are not great properties of the
+representation keep in mind that has
+nothing to do with the topology of the
+sphere the sphere looks the same
+everywhere at the North Pole or on the
+equator there's only an issue with our
+representation of the sphere with the
+implicit representation using XYZ
+coordinates subject to one constraint
+there are no problems anywhere with
+discontinuities or rapidly changing
+coordinates the disadvantage is the
+somewhat greater complexity of the
+representation throughout this book we
+use implicit representations
+particularly for the curved non
+Euclidean space of orientations of a
+rigid body the singularity free implicit
+representation we use is called the
+rotation matrix in summary we typically
+do not represent configurations using a
+minimum set of coordinates and we
+typically do not represent velocities is
+the time rate of change of coordinates
+in the next video we'll learn about two
+types of constraints on the motion of a
+robot configuration constraints and
+velocity constraints
+you

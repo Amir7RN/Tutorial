@@ -1,0 +1,97 @@
+For robots with links and joints forming closed
+loops, it is often easier to find an implicit
+representation of the C-space rather than
+an explicit parametrization.
+Consider the 4-bar closed chain shown here.
+Grubler's formula tells us the 4-bar has one
+degree of freedom, so it should be possible
+to parametrize the C-space by a single variable.
+This representation may be hard to derive
+and may have subtle singularities, so instead
+we could view the C-space as a 1-dimensional
+space embedded in the 4-dimensional space
+of joint angles, defined by the three loop-closure
+equations that say the final position and
+orientation, after going around the loop,
+must be equal to the initial position and
+orientation.
+If we define the vector of joint angles theta,
+we can rewrite the loop-closure equations
+in this vector form.
+These constraints are called holonomic constraints,
+constraints that reduce the dimension of the
+C-space.
+If the robot's configuration is defined by
+n variables subject to k independent holonomic
+constraints, then the dimension of the C-space,
+and the number of degrees of freedom, is n
+minus k.
+If the robot is moving, we could ask how these
+holonomic constraints restrict the velocity
+of the robot.
+Since g of theta has to be zero at all times,
+the time rate of change of g must also be
+zero at all times.
+We can write these constraints as a matrix
+dependent on the configuration theta times
+the joint velocities theta-dot equal to zero.
+If we call this matrix A of theta, we can
+write the velocity constraints as A of theta
+times theta-dot equals zero, where the A matrix
+has k rows and n columns.
+Velocity constraints like this are called
+Pfaffian constraints.
+Sometimes we call holonomic constraints "integrable"
+constraints, since they are essentially the
+integral of these velocity constraints.
+In some cases, though, a set of velocity constraints
+cannot be integrated to equivalent configuration
+constraints.
+Consider the chassis of a car driving on a
+plane.
+If we define an x-y reference frame, we can
+represent the configuration of the chassis
+as q = (phi, x, y), where phi is the chassis
+angle, and (x,y) refers to the location of
+a point halfway between the rear wheels.
+If the forward velocity of the car is v, the
+x-y velocity is x-dot = v cos phi and y-dot
+= v sin phi.
+We can express v as y-dot divided by sin phi
+and substitute this into our equation for
+x-dot to get the velocity constraint x-dot
+times sine phi minus y-dot times cosine phi
+equals zero.
+We can write this as a Pfaffian constraint
+A of q times q-dot equals zero where the single
+row of the 1 by 3 A matrix is 0, sine of phi,
+and minus cosine of phi.
+Unlike a holonomic constraint, this velocity
+constraint cannot be integrated to give an
+equivalent configuration constraint.
+Therefore we call this a nonholonomic constraint.
+A nonholonomic constraint reduces the space
+of possible velocities of the car -- the car
+cannot slide directly to the side -- but it
+does not reduce the space of configurations.
+Sideways motion can be achieved by parallel
+parking, and the car can reach any configuration
+in the 3-dimensional C-space.
+A robot can be subject to both holonomic and
+nonholonomic constraints.
+Again using the car as an example, if we consider
+the chassis to be a rigid body in space, then
+three holonomic constraints keep the chassis
+confined to the plane, while one nonholonomic
+constraint prevents sideways sliding.
+To summarize, holonomic constraints are constraints
+on configuration, nonholonomic constraints
+are constraints on velocity, and Pfaffian
+constraints take the form A of theta times
+theta-dot equals zero.
+Determining whether Pfaffian constraints are
+actually holonomic configuration constraints
+or only nonholonomic velocity constraints
+is left to Chapter 13.
+In the next video we wrap up Chapter 2 by
+introducing the task space and the workspace.

@@ -1,0 +1,83 @@
+In this video we'll see how the matrix exponential
+can be applied to integrate the angular velocity
+of a rotating rigid body.
+Let's start with this frame of coordinate
+axes, which will rotate about a unit angular
+velocity axis.
+To understand the motion of the coordinate
+axes, it suffices to consider just one of
+the coordinate axes, since the same reasoning
+applies to any axis.
+Let's call this remaining vector p.
+As the vector p rotates about the rotation
+axis, it traces out a circle.
+The purpose of this video is to determine
+the final location of the vector if it rotates
+an angle theta about the rotation axis.
+We will do this by integrating the differential
+equation of motion describing the motion of
+p.
+Here is a picture of our initial vector, p
+at time 0, and the unit rotation axis omega-hat.
+As p begins to rotate, it traces out a circle
+around the rotation axis.
+The 3-vector linear velocity is tangent to
+the circle at any time, and is given by omega-hat
+cross p.
+After rotating an angle theta, the vector
+ends up at p at time theta.
+At any instant of time, the time derivative
+of p is given by p-dot = omega-hat cross p.
+We can write this as a differential equation
+p-dot of t equals omega-hat cross p of t.
+The angular velocity is constant.
+Using our 3 by 3 skew-symmetric matrix notation,
+this becomes p-dot of t equals bracket omega-hat
+times p of t.
+This is a vector differential equation, whose
+solution, as we saw in the last video, is
+calculated using the matrix exponential.
+In general, a matrix exponential can be calculated
+using a series expansion, but when the matrix
+is 3 by 3 and skew symmetric, the series expansion
+has a simple closed form: the 3 by 3 identity
+matrix plus sin of theta times bracket omega-hat
+plus 1 minus cosine of theta times bracket
+omega-hat squared.
+In other words, the matrix exponential takes
+the skew-symmetric representation of the exponential
+coordinates omega-hat theta and calculates
+the corresponding rotation matrix.
+This equation is often called Rodrigues' formula.
+Essentially, exponentiation integrates the
+angular velocity omega-hat for time theta
+seconds, going from the identity matrix to
+the final rotation matrix R.
+We can also define the inverse of the matrix
+exponential, the matrix logarithm, which takes
+a rotation matrix R and returns the skew-symmetric
+matrix representation of the exponential coordinates
+that achieve it, starting from the identity
+orientation.
+Just as the matrix exponential is like integration,
+the matrix log is like differentiation: it
+returns the unit angular velocity and the
+integration time that achieves the rotation
+matrix R.
+The matrix log is an algorithm that inverts
+Rodrigues' formula.
+Later, when we're studying the kinematics
+of robots, the matrix exponential and log
+will become very useful.
+Basically, for a revolute joint, the unit
+angular velocity omega-hat represents the
+axis of rotation of the joint, and theta represents
+how far that joint has been rotated.
+Before we get to robot kinematics, though,
+we have to generalize the matrix exponential
+and log to cases where frames both rotate
+AND translate.
+In other words, general rigid-body motion.
+We'll start the process of generalizing from
+rotations to general rigid-body motions in
+the next video.

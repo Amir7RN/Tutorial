@@ -1,0 +1,137 @@
+In the previous video, the robot's end-effector
+velocity v_tip was the time derivative of
+a minimum set of coordinates describing the
+end-effector's configuration.
+The Jacobian J maps the joint velocities to
+v_tip.
+For this 2R robot, the Jacobian has two columns,
+one for each joint, which we call J_1 and
+J_2.
+Each column is the contribution to v_tip when
+the speed at that joint is 1 and the speed
+at all other joints is zero.
+In this video, the end-effector velocity will
+be represented by the twist V_s represented
+in the space frame {s}.
+We call the corresponding Jacobian the space
+Jacobian J_s.
+It also has two columns, one for each joint.
+Since V_s is a 6-vector and there are 2 joints,
+the space Jacobian is a 6 by 2 matrix.
+For a general open-chain robot with n joints,
+the space Jacobian is 6 by n.
+Each column of the space Jacobian is the spatial
+twist when that joint's velocity is 1 and
+the velocity at all other joints is zero.
+To derive the form of the space Jacobian,
+let's use a specific example: a 5R arm, whose
+joint angle are given by theta_1 through theta_5.
+Then the space Jacobian is 6 by 5.
+Let's focus on J_s3, the third column of the
+space Jacobian, which corresponds to the spatial
+twist when the velocity at joint 3 is 1 and
+the velocity at all other joints is zero.
+If all joint angles are zero, then J_s3 is
+simply S3, the screw axis of joint 3 when
+the arm is at its zero configuration.
+We used this in Chapter 4 for the product
+of exponentials formula in the {s} frame.
+To find the column of the space Jacobian,
+though, we need the spatial twist corresponding
+to a unit velocity at joint 3 when the robot
+is at an arbitrary configuration, not just
+the zero configuration.
+So let's start moving the joints of the robot
+and see how that affects J_s3.
+First we rotate joint 5.
+Because joint 5 is not between joint 3 and
+the {s} frame, the relationship between joint
+3 and the {s} frame is not affected by joint
+5's angle.
+Therefore, J_s3 is unaffected by joint 5's
+value, and J_s3 is still equal to S3 at this
+configuration of the robot.
+Now we rotate joint 4.
+Again, J_s3 is unaffected by joint 4's value.
+Now we rotate joint 3.
+Again, the configuration of joint 3 relative
+to the {s} frame is unaffected by this motion,
+so J_s3 is unaffected by joint 3's value.
+Now we rotate joint 2 by theta_2.
+Now we see that the configuration of joint
+3 has moved relative to the {s} frame, so
+J_s3 must change.
+But, we've drawn a new frame {s-prime} that
+has the same relationship to joint 3 that
+the frame {s} had to joint 3 before joint
+2 moved.
+Therefore, the twist due to a unit velocity
+at joint 3 in the {s-prime} frame is just
+S3, the spatial screw axis when the robot
+was at its zero configuration.
+The configuration of {s-prime} in the {s}
+frame can be written e to the bracket S2 theta_2,
+the displacement achieved by the {s} frame
+by following the screw axis of joint 2 by
+an angle theta_2.
+Now we rotate joint 1 by theta_1.
+Again, joint 3 moves relative to the {s} frame,
+so J_s3 changes.
+We draw a new frame {s-double-prime} where
+the relationship between joint 3 and {s-double-prime}
+is the same as the relationship between joint
+3 and {s} when the robot is at its zero configuration.
+The frame {s-double-prime} is obtained from
+the frame {s-prime} by rotating it about the
+joint 1 axis by an angle theta_1.
+Because the joint 1 axis is represented by
+the spatial screw axis S_1, performing the
+transformation in the space frame corresponds
+to multiplying T-s-s-prime by e to the bracket
+S_1 theta_1 on the left, yielding this expression
+for the {s-double-prime} frame in the {s}
+frame.
+The reason we constructed this {s-double-prime}
+frame is that the screw axis of the third
+joint is the same in the {s-double-prime}
+frame as the screw axis S_3 of the third joint
+in the {s} frame when the arm is at its zero
+configuration.
+So, to find J_s3, we just need to express
+S_3, now corresponding to the screw axis in
+the {s-double-prime} frame, to the screw axis
+expressed in the {s} frame.
+We use our standard rule for changing the
+reference frame of a twist, which gives us
+this final expression.
+The same reasoning applies for any joint,
+not just joint 3 of this 5R robot.
+Joint positions of joints between the joint
+and the {s} frame must be taken into account,
+while joint positions that do not affect the
+relationship between the joint and the {s}
+frame can be ignored.
+We can generalize to this definition of the
+space Jacobian J_s.
+The first column of the space Jacobian is
+just the screw axis S1 when the robot is at
+is zero configuration.
+It does not depend on the joint positions,
+because no joint is between joint 1 and the
+{s} frame.
+Any other column i of the space Jacobian is
+given by the screw axis S_i premultiplied
+by the transformation that expresses the screw
+axis in the {s} frame for arbitrary joint
+positions.
+You can see that J_s2 depends only on the
+position of joint 1, J_s3 depends only on
+the positions of joints 1 and 2, etcetera.
+Notice that no differentiation is necessary
+to calculate the Jacobian.
+Also, the space Jacobian is independent of
+the choice of the end-effector {b} frame.
+In the next video we will do a similar derivation
+for the body Jacobian, where the end-effector
+twist is expressed in the end-effector frame
+{b}.

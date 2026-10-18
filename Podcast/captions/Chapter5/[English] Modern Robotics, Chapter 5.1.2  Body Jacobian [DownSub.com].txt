@@ -1,0 +1,107 @@
+In the previous video, we learned how to take
+the joint screw axes S_1 to S_n, defined in
+the space frame {s} when the robot is at the
+zero configuration, and transform them to
+the n columns of the space Jacobian at any
+arbitrary joint configuration theta.
+In this video, we construct the 6 by n body
+Jacobian J_b from the screw axes B_1 to B_n,
+expressed in the end-effector frame {b}.
+The body Jacobian transforms joint velocities
+to the body twist.
+To derive the body Jacobian J_b, let's use
+the 5R arm from the previous video as an example.
+To derive J_b, we need to define the end-effector
+frame {b}, but we don't need an {s} frame.
+J_b has five columns, one for each joint,
+and in this video we will focus on J_b3, the
+third column, corresponding to the end-effector
+twist when joint 3 moves with unit velocity.
+First we set all joint angles equal to zero.
+At this configuration, J_b3 is just B_3, the
+screw axis of joint 3 expressed in the {b}
+frame when the arm is at its zero configuration.
+Now we rotate joint 1.
+Notice that this rotation of joint 1 does
+not change the relationship between joint
+3 and the {b} frame, so J_b3 is still equal
+to B_3.
+Now we rotate joint 2.
+Again, the relationship between joint 3 and
+the {b} frame is unaffected by joint 2's motion,
+so J_b3 is still equal to B_3.
+Now we rotate joint 3.
+As with joints 1 and 2, J_b3 is unaffected
+by joint 3's motion.
+Now we rotate joint 4 by theta_4.
+This motion changes the configuration of joint
+3 relative to the {b} frame, so J_b3 changes.
+We define the frame {b-double-prime} to be
+the {b} frame before joint 4 is rotated, and
+the frame {b-prime} to be the {b} frame after
+joint 4 is rotated.
+The relationship between the two is given
+by T_b-double-prime_b-prime equals e to the
+bracket B_4 times theta_4.
+We define the {b-double-prime} frame because
+the screw axis for joint 3 is just B_3 in
+this frame.
+Finally, we rotate joint 5 by theta_5, giving
+us the final end-effector frame {b}, obtained
+by rotating the frame {b-prime} about the
+joint 5 screw axis by theta_5.
+To find the {b} frame relative to the {b-double-prime}
+frame, we postmultiply T-b-double-prime-b-prime
+by the body-frame transformation corresponding
+to rotation about the body screw axis B_5,
+giving us the equation shown here.
+What we really want, though, is the configuration
+of the {b-double-prime} frame relative to
+the {b} frame, so we reverse the subscripts,
+which is the same as taking the inverse of
+the transformation matrix.
+Making use of the fact that the inverse of
+A times B, where A and B are invertible matrices,
+is just B-inverse times A-inverse, we can
+rewrite T_b_b-double-prime in this form.
+Since the screw axis of joint 3 is just B_3
+in the {b-double-prime} frame, to find J_b3
+we just need to use our rule for changing
+the frame of reference of a twist.
+The final expression for the J_b3 column depends
+on the screw axis for joint 3 as well as the
+joint angles and screw axes for joints 4 and
+5.
+The same reasoning applies for any joint,
+so we can generalize to this definition of
+the body Jacobian J_b.
+The last column of the body Jacobian is just
+the screw axis B_n when the robot is at its
+zero configuration.
+It does not depend on the joint positions,
+because no joint is between joint n and the
+{b} frame.
+Any other column i of the body Jacobian is
+given by the screw axis B_i premultiplied
+by the transformation that expresses the screw
+axis in the {b} frame for arbitrary joint
+positions.
+You can see that J_b1 depends on the positions
+of joints 2 through n, J_b2 depends on the
+positions of joints 3 through n, etcetera.
+You can also see that the body Jacobian is
+independent of the choice of the space frame
+{s}.
+Since each column of a Jacobian is a twist,
+we can use our rule for representing a twist
+in a different frame to translate between
+the space Jacobian J_s and the body Jacobian
+J_b.
+J_b is obtained from J_s by the matrix adjoint
+of T_bs, and J_s is obtained from J_b by the
+matrix adjoint of T_sb.
+In the next video we will see that the Jacobian
+is used not only to convert joint velocities
+to end-effector twists, but also to understand
+how end-effector wrenches are related to torques
+and forces at the joints.

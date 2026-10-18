@@ -1,0 +1,55 @@
+In the last video, we learned that rigid-body
+velocities can be represented as a 6-vector
+twist.
+The twist can be represented in any arbitrary
+frame; for example, the twist could be represented
+as V_a in frame {a} or as V_b in frame {b}.
+If we want to change the frame of representation
+of a twist, it is tempting to try a subscript
+cancellation rule, V_a equals T_ab times V_b
+but this doesn't work due to dimension mismatch:
+transformation matrices are 4 by 4 but twists
+are 6-vectors.
+It is apparent that we need to premultiply
+V-b by a 6 by 6 matrix.
+The 6 by 6 matrix we need is called the adjoint
+representation of a transformation matrix,
+and it is defined as you see here.
+Now we can apply a modified version of our
+subscript cancellation rule to change the
+frame of representation of a twist.
+By analogy to the matrix representation of
+angular velocity, we would like to find a
+matrix representation for twists.
+Recall that, for angular velocities, we had
+the 3 by 3 skew-symmetric matrix representations
+of angular velocities bracket omega_b equals
+R-inverse times R-dot and bracket omega_s
+equals R-dot times R-inverse
+Similarly, if T represents the body frame
+{b} in the space frame {s}, we have 4 by 4
+matrix representations of the twists bracket
+V_b equals T inverse times T-dot and bracket
+V_s equals T-dot times T-inverse where little
+se(3) is the space of 4 by 4 matrix representations
+of twists.
+Little se(3) gets its name from its relationship
+with big SE(3).
+The top left 3 by 3 submatrix is the skew-symmetric
+matrix representation of the angular velocity,
+as we've seen before, and the top right 3
+by 1 vector is the linear velocity of a point
+at the origin of the frame, expressed in that
+frame.
+The bottom row is 4 zeros.
+Notice that we are overloading the bracket
+notation.
+In one case it means the matrix representation
+of an angular velocity.
+In this case it means the matrix representation
+of a twist.
+These matrix representations will be used
+in the next video when we develop the matrix
+exponential and log for rigid-body motions,
+analogous to the matrix exponential and log
+for rotations that we've already seen.

@@ -1,0 +1,39 @@
+Any orientation can be achieved from an initial
+orientation aligned with the space frame by
+rotating about some unit axis by a particular
+angle. We call the unit axis omega-hat and
+the rotation distance theta. If we multiply
+these two together, we get the 3-vector omega-hat
+theta. This is a 3-parameter representation
+of orientation. We call these 3 parameters
+the exponential coordinates representing the
+orientation of one frame relative to another.
+This is an alternative representation to a
+rotation matrix.
+We call these exponential coordinates because
+of the connection to linear differential equations.
+In particular, we should view omega-hat as
+an angular velocity that is followed for theta
+seconds, and we have to integrate the angular
+velocity from the initial orientation to find
+the final orientation.
+Before solving that problem, let's look at
+a familiar problem in linear ordinary differential
+equations in a single variable: x-dot = a
+times x, where a is a constant. The solution,
+as you learn in any course on differential
+equations, is e to the a t times x at time
+zero, where the exponential function e to
+the a t is defined by the series expansion
+shown here.
+This scalar linear differential equation has
+an analogous vector linear differential equation,
+where x is now an n-vector and A is a constant
+n by n matrix. The solution to this differential
+equation has the same form as the single-variable
+case. The term e to the A t is called a matrix
+exponential. As we'll see in the next video,
+this equation can be used to integrate an
+angular velocity, where the matrix A is the
+3 by 3 skew-symmetric representation of the
+angular velocity.

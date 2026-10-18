@@ -1,0 +1,63 @@
+Here you can see a 6R robot with a frame {b}
+at the hand.
+Imagine that the joints are moving according
+to a trajectory theta of t.
+The changing joint angles theta as a function
+of time move the hand along the path shown
+in yellow.
+The hand is moving in free space, so it is
+applying no forces to the environment.
+In Chapter 8, when we study the inverse dynamics
+of a robot, we will learn how the trajectory
+theta of t can be turned into the torques
+required to move the robot along the trajectory.
+We call these torques tau-motion of t.
+Now assume we choose a particular time instant
+t, and let tau-motion be the joint torques
+at this instant.
+Now assume that someone applies a wrench to
+the hand at this instant.
+Perhaps someone grabbed the hand of the robot.
+We will call this wrench minus F_b, consisting
+of three angular moments and three linear
+forces expressed in the {b} frame.
+If we want the robot to continue to track
+the planned trajectory, despite this disturbance
+wrench, the robot's motors must create a wrench
+F_b to balance the disturbance wrench.
+Therefore, the joint torques should be tau-motion
+plus tau, where we need to know how Fb relates
+to tau.
+To find this relationship, recall from physics
+that force times velocity is power.
+In the {b} frame, the wrench F_b created by
+the motors multiplies the twist V_b to get
+the mechanical power produced or consumed
+at the hand.
+This power must be coming from the motors,
+and we know that the power produced or consumed
+by the motors is the joint torques dotted
+with the joint velocities.
+If we plug in the identity J_b theta-dot equals
+V_b, and recognize that the equality must
+hold at all theta-dot, we get this equation,
+and getting rid of the transposes we get the
+relationship we were looking for, tau equals
+J_b-transpose times F_b.
+The exact same derivation holds for wrenches
+and Jacobians expressed in the space frame
+{s}, so we can generalize to the following
+main result of this video:
+To resist a wrench minus F applied to the
+end-effector at a configuration theta, the
+joint torques and forces tau must be J of
+theta transposed times F.
+This result holds no matter what frame the
+Jacobian and wrench are expressed in.
+This relationship can be useful in force control
+of a robot: if we want the end-effector to
+apply a wrench F to the environment, we use
+this formula to calculate the joint forces
+and torques tau.
+In the next video we will consider the implications
+of non-square and singular Jacobian matrices.

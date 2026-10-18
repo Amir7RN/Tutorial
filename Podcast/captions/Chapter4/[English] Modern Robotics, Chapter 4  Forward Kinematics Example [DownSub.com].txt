@@ -1,0 +1,76 @@
+The 4-joint RRRP robot, like you see here,
+is a popular choice for certain kinds of assembly
+tasks.
+In this picture, we see it at its zero configuration.
+To solve the forward kinematics, we need to
+find M, the configuration of the {b}-frame,
+and the joint screw axes when the arm is at
+its zero configuration.
+Then we can use the product of exponentials
+formulas from the previous videos.
+First let's focus on the orientation of M.
+From the picture, we can see that the {b}-frame
+x-axis is aligned with the minus y-axis of
+the {s}-frame.
+The {b}-frame y-axis is aligned with the minus
+x-axis of the {s}-frame.
+And the {b}-frame z-axis is aligned with the
+minus z-axis of the {s}-frame.
+Also, we can see that the {b}-frame is offset
+from the {s}-frame by 19 units in the x-direction
+and -3 units in the z direction of the {s}-frame.
+We add the row of zeros and a one to complete
+the M matrix.
+Next let's find the screw axis of joint 1,
+expressed in the {s}-frame.
+The axis of rotation is aligned with the {s}-frame
+z-axis, so the angular component of S1 is
+zero, zero, one.
+A rotation about this axis causes no linear
+motion of a point at the origin of the {s}-frame,
+so the linear component of the screw S1 is
+zero.
+We can also express the screw axis as B_1
+in the {b}-frame.
+The joint axis is in the negative z_b direction,
+so the angular component is zero, zero, minus
+one.
+A unit angular velocity about the joint 1
+axis induces a linear velocity at a point
+at the origin of the {b}-frame, and it is
+apparent from the figure that this linear
+velocity is 19 units in the minus x_b direction.
+This should be readily apparent from the figure;
+you shouldn't have to do any math.
+Now let's go faster through the rest of the
+joints.
+Joint 2's axis is aligned with the {s}-frame
+z-axis, so the angular component of the {s}-frame
+screw S_2 is zero, zero, one.
+Unit angular velocity about this axis induces
+a linear velocity at the {s}-frame origin
+of 10 units in the minus y_s direction.
+The screw axis B_2 in the {b}-frame is zero,
+zero, minus one, minus 9, zero, zero.
+Joint 3's rotational screw axis induces a
+large linear velocity at the origin of the
+{s}-frame but zero linear velocity at the
+origin of the {B}-frame.
+Finally, the prismatic axis of joint 4 is
+aligned with the z-axis of the {s}-frame and
+the minus z-axis of the {b}-frame.
+The angular component of both screw axes is
+zero, since it is a prismatic joint.
+For most open-chain robots, deriving the screw
+axes is just this easy: you can simply look
+at a good drawing of the robot at its zero
+configuration and get the screw axes by inspection.
+If anything is unclear about what we did,
+you should either pause this video at appropriate
+places or look at the examples in the book.
+So, this concludes Chapter 4.
+You now know how to use the material of Chapter
+3 to solve the forward kinematics of robots.
+In Chapter 5, we will study the velocity kinematics
+relating joint velocities to the twist of
+the end-effector.

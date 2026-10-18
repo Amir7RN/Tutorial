@@ -1,0 +1,62 @@
+We begin our study of the representation of
+the configuration of a rigid body by focusing
+on orientation only.
+The approach to representing the full configuration
+of a rigid body is analogous.
+Consider two frames, a space frame {s} and
+a body frame {b}.
+They are shown at different locations, but
+we are focusing on their orientations.
+We can express the orientation of the frame
+{b} relative to {s} by writing the unit coordinate
+axes of frame {b} in the coordinates of frame
+{s}.
+In the coordinates of {s}, the x_b-axis is
+0, 1, 0, the y_b-axis is -1, 0, 0, and the
+z_b-axis is 0, 0, 1.
+We can write these column vectors side by
+side to form the rotation matrix R_sb.
+The second subscript, {b}, indicates the frame
+whose orientation is being represented, and
+the first subscript, {s}, is the frame of
+reference.
+Sometimes the two subscripts are implicit
+and we leave them out, writing the rotation
+matrix simply as R.
+As we learned in Chapter 2, the space of orientations
+of a rigid body is only 3 dimensional, but
+we have 9 numbers in a rotation matrix.
+That means the 9 entries of the matrix must
+be subject to 6 constraints.
+Three of those constraints are that the column
+vectors are all unit vectors, and the other
+3 are that the dot product of any two of the
+column vectors is zero.
+In other words, the 3 vectors are orthogonal
+to each other.
+These 6 constraints can be written compactly
+as R transpose times R is equal to the 3 by
+3 identity matrix I. These constraints ensure
+that the determinant of R is either 1, corresponding
+to right-handed frames, or -1, corresponding
+to left-handed frames.
+We only use right-handed frames, so the determinant
+of R must be 1.
+The set of all rotation matrices is called
+the special orthogonal group SO(3): the set
+of all 3x3 real matrices R such that R transpose
+R is equal to the identity matrix and the
+determinant of R is equal to 1.
+Rotation matrices satisfy the following properties:
+The inverse of R is equal to its transpose,
+which is also a rotation matrix.
+The matrix product of two rotation matrices
+is also a rotation matrix.
+Matrix multiplication is associative, but
+in general it is not commutative.
+Finally, for any 3-vector x, R times x has
+the same length as x.
+As we will see later, this means that rotating
+a vector does not change its length.
+In the next video, we will study 3 common
+uses of rotation matrices.

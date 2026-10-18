@@ -1,0 +1,88 @@
+There are three common uses of a rotation
+matrix: The first is to represent an orientation.
+The second is to change the frame of reference
+of a vector or frame.
+And the third is to rotate a vector or frame.
+To demonstrate these, I will use these three
+coordinate frames, representing the same space
+with different orientations.
+To help you visualize these frames in 3 dimensions,
+I�ll use my handy tinkertoy frame.
+This is the z-axis, this is the x-axis, and
+this is the y-axis.
+So initially I�ll orient it aligned with
+the frame {s}.
+And then I�ll rotate by 90 degrees about
+the z-axis, and then I get the frame {b},
+and then if I rotate by -90 degrees about
+the y-axis, I get the frame {c}.
+As we saw in a previous video, we can represent
+{c} relative to {s} by writing the coordinate
+axes of {c} in {s} coordinates, yielding the
+rotation matrix R_sc.
+If we write the coordinate axes of {s} in
+{c} coordinates, the resulting rotation matrix
+R_cs is just the transpose, or inverse, of
+R_sc.
+To demonstrate a change of reference frame,
+consider the rotation matrix R_bc, representing
+the orientation of frame {c} in frame {b}
+coordinates.
+If we want to express the {c} frame in {s}
+coordinates instead of {b} coordinates, we
+can perform the matrix multiplication R_sc
+equals R_sb times R_bc.
+By premultiplying R_bc by R_sb, we've changed
+the representation of the {c} frame from the
+{b} frame to the {s} frame, as we can verify
+by inspecting the rotation matrices.
+You can remember the change of reference frame
+operation by a subscript cancellation rule:
+if the second subscript of the first matrix
+matches the first subscript of the second
+matrix, they cancel each other, leaving the
+two remaining subscripts in the right order.
+We can also change the frame of reference
+of a vector.
+Let p_b be the position of point p when expressed
+in {b} frame coordinates.
+To express p in {s} coordinates, we can premultiply
+p_b by R_sb to get p_s.
+This operation again satisfies a subscript
+cancellation rule.
+The final use of a rotation matrix is to rotate
+a vector or frame.
+For example, it is apparent that the {b} frame
+is obtained from the {s} frame by rotating
+the {s} frame about the z_s axis by 90 degrees.
+Thus we could consider the matrix R_sb as
+an operation that rotates about the z-axis
+by 90 degrees.
+If we premultiply a vector pb by this rotation
+operator, we just get a change of reference
+frame to {s} coordinates, as we saw before.
+But if the vector is p_s in {s} coordinates,
+then there is no subscript cancellation, and
+instead we get a new vector p-prime-s, obtained
+by rotating p_s by 90 degrees about the z_s
+axis.
+The vector has been rotated, but it is still
+represented in the original frame {s}.
+We can also rotate the frame c by premultiplying
+or postmultiplying R_sc by the rotation operator
+R. If you premultiply by R, the rotation axis
+is interpreted as the z-axis of the frame
+of the first subscript, {s}.
+You end up with a rotated frame {c-prime},
+still expressed in {s}.
+If you postmultiply by R, the rotation axis
+is interpreted as the z-axis of the frame
+of the second subscript, {c}.
+You end up with a different rotated frame
+{c-double-prime}, still expressed in {s}.
+In summary, a rotation matrix has three uses:
+representing an orientation, changing the
+frame of reference of a vector or a frame,
+and rotating a vector or a frame.
+In the next video, we will learn how to represent
+the angular velocity of a frame.

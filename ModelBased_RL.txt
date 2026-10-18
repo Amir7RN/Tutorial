@@ -1,0 +1,204 @@
+#include <cmath>
+#include <algorithm>
+#include <iostream>
+#include <vector>
+
+using namespace std;
+
+struct Transition{
+    bool   Done;
+    double Reward;
+    double Probability;
+    int    next_state;
+};
+
+struct Chances {
+    double prob;
+    int    move;
+};
+
+using actioncell = vector<Transition>;
+using statecell = vector<actioncell>;
+using TransitionTable = vector<statecell>;
+using Policy = vector<int>;
+
+TransitionTable Environment(int nStates, int nActions) {
+    TransitionTable P(nStates, statecell(nActions, actioncell()));
+    int Goal = 15;
+    vector<int> Holes = {5,7,12,13};
+
+    auto next_state = [&](int state, int action){
+
+        //up, down, left, right 0,1,2,3
+        int col = state % 4;
+        int row = state / 4;
+
+        switch (action) {
+            case 0:
+                row = max(0, row -1);
+                break;
+            case 1:
+                row = min(3, row +1);
+                break;
+            case 2:
+                col = max(0, col -1);
+                break;
+            case 3:
+                col = min(3, col +1);
+                break;
+        }
+
+        return row * 4 + col;
+    };
+
+    auto is_hole = [&](int state){
+        return find(Holes.begin(), Holes.end(), state) != Holes.end();
+    };
+
+    for (int s = 0; s < nStates; ++s){
+        for (int a = 0; a < nActions; ++a){
+
+            if (s == Goal || is_hole(s)){
+                P[s][a].push_back({true, 0, 1, s});
+                continue;
+            }
+
+            vector<Chances> Landing {
+                {0.1, (a+1) % 4 },
+                {0.8, a},
+                {0.1, (a+3) % 4}
+            };
+
+            for (const auto& ln : Landing){
+                double reward = -0.04;
+                bool finished = false;
+                int ns = next_state(s, ln.move);
+                if (ns == Goal) {
+                    reward = 1;
+                    finished = true;
+                }
+                if (is_hole(ns)) {
+                    reward = -1;
+                    finished = true;
+                }
+
+                P[s][a].push_back({finished, reward, ln.prob, ns});
+            }
+        }
+    }
+    return P;
+}
+
+Policy Value_Iteration(const TransitionTable& Env, double Theta = 0.001, double gamma = 0.99){
+    int nState = (int)Env.size();
+    int nAction = (int)Env[0].size();
+    Policy pi(nState, 0);
+
+    vector<double> V(nState,0), V_prev(nState,0);
+
+    while (true){
+        double max_diff = 0.0;
+
+        for (int s = 0; s < nState; s++){
+
+            double Q_max = -1e9;
+            for (int a = 0; a < nAction; a++){
+
+                const auto& trans = Env[s][a];
+                double Q = 0;
+
+                for (const auto& tr : trans){
+
+                    Q += tr.Probability * (tr.Reward + gamma * V_prev[tr.next_state]);
+                }
+
+                if (Q > Q_max){
+                    Q_max = Q;
+                    V[s] = Q;
+                    pi[s] = a;
+                }
+            }
+            max_diff = max(max_diff, fabs(V[s] - V_prev[s]));
+        }
+        V_prev = V;
+
+        if (max_diff < Theta) break;
+
+    }
+
+    return pi;
+}
+
+
+vector<double> policy_evaluation(const TransitionTable& Env, Policy pi, double gamma = 0.99, double Theta = 0.001){
+    int nState = (int)Env.size();
+    int nAction = (int)Env[0].size();
+
+    vector<double> V(nState, 0.0), V_prev(nState, 0.0);
+    while(true){
+        double max_diff = 0.0;
+    
+        for (int s = 0; s < nState; ++s){
+            int act = pi[s];
+            const auto& transition = Env[s][act];
+
+            for (const auto& tr : transition){
+                V[s] += tr.probability * (tr.Reward + gamma * V_prev[tr.next_state] );
+            } 
+                        
+            max_diff = max(max_diff, V[s] - V_prev[s]);
+        }
+        V_Prev = V;
+        if (max_diff < Theta) break;
+        
+    }
+
+    return V;
+}
+
+bool policy_improvement(const TransitionTable& Env, vector<double>& V, Policy& pi, double gamma = 0.99){
+
+    int nState = (int)Env.size();
+    int nAction = (int)Env[0].size();
+    double Q_best = 0.0;
+    bool policy_stable = true;
+    Policy best_action(nState, -1);
+
+    for (int s = 0; s < nState; ++s){
+        double Q_best = 0.0;
+        for (int a = 0; a < nAction; a++){
+            double Q = 0;
+            const auto& transition = Env[s][a];
+            for (const auto& tr : transition){
+                Q += tr.probability * (tr.Reward + gamma * V_prev[tr.next_state]);
+            }
+            if (Q_best[s] > V[s]){
+                Q_best = Q;
+                best_action[s] = a
+            }
+        }
+        if (pi[s] != best_action[s])  {
+            policy_stable = false;
+            
+    }
+    }
+    pi = best_action;
+
+    return policy_stable;            
+}
+
+Policy policy_iteration(const TransitionTable& Env){
+
+    int nState = (int)Env.size();
+    Policy pi(nState, 0.0);
+    int Epoch = 0;
+
+    while(true){
+        Epoch++;
+        vector<double> Value = policy_evaluation(Env, pi);
+        bool is_stable = policy_improvement(Env, Value, pi);
+        if (is_stable) break;
+    }
+
+    return pi;
+}

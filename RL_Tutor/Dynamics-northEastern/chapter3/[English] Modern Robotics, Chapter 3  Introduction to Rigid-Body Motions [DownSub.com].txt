@@ -1,0 +1,47 @@
+In Chapter 3, we learn representations of
+configurations, velocities, and forces that
+we'll use throughout the rest of the book.
+As discussed in the last chapter, we'll use
+implicit representations of configurations,
+considering the C-space as a surface embedded
+in a higher-dimensional space.
+In other words, our representation of a configuration
+will not use a minimum set of coordinates,
+and velocities will not be the time derivative
+of coordinates.
+This approach may be new to you if you haven't
+taken a course in three-dimensional kinematics
+before.
+Rigid-body configurations are represented
+using frames.
+A frame consists of an origin and orthogonal
+x, y, and z coordinate axes.
+All frames are right-handed, which means that
+the cross product of the x and y axes creates
+the z-axis.
+You can create a right-handed frame using
+your right hand: your index finger is the
+x-axis, your middle finger is the y-axis,
+and your thumb is the z-axis.
+If I want to represent the position and orientation
+of a body in space, I fix a frame to the body
+and fix a frame in space.
+The configuration of the body is given by
+the position of the origin of the body frame
+and the directions of the coordinate axes
+of the body frame, expressed in the space-frame
+coordinates.
+In this book, all frames are considered to
+be stationary.
+Even if the body is moving, when we talk about
+the body frame, we mean the stationary frame
+coincident with the frame attached to the
+body at a particular instant in time.
+Positive rotation about an axis is defined
+by the right-hand rule.
+If you align the thumb of your right hand
+with the axis of rotation, positive rotation
+is the direction that your fingers curl.
+With those preliminaries out of the way, in
+the next video we move on to representing
+the orientation of a rigid body.

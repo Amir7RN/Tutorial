@@ -1,0 +1,150 @@
+We've seen two major uses of Jacobian matrices:
+converting a set of joint velocities theta-dot
+to an end-effector twist V and converting
+an end-effector wrench F to a set of joint
+forces and torques tau.
+The twists and wrenches can be expressed in
+the space frame {s} or the end-effector frame
+{b}.
+The Jacobian is a 6 by n matrix, where n is
+the number of joints.
+This means that the rank of the Jacobian can
+be no greater than the minimum of 6 and n.
+We say that the Jacobian is full rank at a
+configuration theta if the rank is equal to
+the minimum of 6 and n.
+We say that the Jacobian is singular at a
+configuration theta-star if the rank of the
+Jacobian at theta-star is less than the maximum
+rank the Jacobian can achieve at some configuration.
+At a singular configuration, the robot loses
+the ability to move in one or more directions.
+We can also categorize Jacobians according
+to the number of joints n.
+If n is less than 6, the Jacobian is "tall,"
+meaning it has more rows than columns.
+The set of reachable configurations for the
+end-effector is less than 6-dimensional, so
+we call such robots kinematically deficient.
+This does not mean the robot is not useful,
+it just means it is not capable of general
+motion at the end-effector.
+An example robot is the 4-joint RRRP robot
+shown here, which has a 6-by-4 Jacobian.
+If n equals 6, the Jacobian is a 6-by-6 square
+matrix, as for this 6R robot.
+Such robots are often called general purpose
+manipulators, because they are capable of
+general 6-dimensional rigid-body motion at
+their end-effectors.
+If n is greater than 6, the Jacobian is "fat,"
+meaning it has more columns than rows.
+An example of such a robot is the 7R robot
+pictured here, which has a 6-by-7 Jacobian.
+Such robots are called redundant, because
+they can achieve the same end-effector twist
+with different joint velocities.
+This capability can be useful in a number
+of circumstances, allowing internal motion
+of the arm that is not visible in motion at
+the end-effector.
+Your own arm has a redundancy like this: keeping
+your hand stationary at a fixed configuration
+in space, you can still move your arm internally.
+It can be difficult to visualize 6-dimensional
+motion of a robot, so to illustrate the shape
+and rank properties of the Jacobian, we will
+use a simple planar example.
+In this example, the end-effector velocity
+v_tip and force f_tip are 2-vectors, and the
+Jacobian is 2 by n, where n is the number
+of joints.
+For the 3_R arm shown here, the number of
+joints n is 3, the robot is redundant, and
+its 2-by-3 Jacobian matrix is full rank, meaning
+its rank is 2, at the configuration shown.
+Since the Jacobian is rank 2, the robot can
+generate any linear velocity at its end-effector,
+and any force applied to the end-effector
+must be actively resisted by at least one
+of the joints.
+Using the fact that v_tip equals J theta-dot,
+we can always calculate v_tip given the joint
+velocities theta-dot.
+This figure shows the components of the endpoint
+velocity caused by the individual joint velocities,
+and we can sum them to get the end-effector
+velocity v_tip.
+Since the rank of J is 2, any v_tip can be
+created by the joints.
+You could imagine asking the inverse question,
+given v_tip, what is theta-dot?
+The answer to this question is not as straightforward,
+however, because in general, as in this case,
+the inverse of J does not exist, either because
+J is not square or because it is singular.
+Because this 3R robot is redundant, it turns
+out that for any v_tip, there is a full one-dimensional
+set of solutions of joint velocities that
+achieves v_tip.
+This inverse question will be addressed in
+more detail in Chapter 6.
+Moving on to forces, using the fact that tau
+equals J-transpose times f_tip, we can always
+find the joint forces and torques tau that
+correspond to the end-effector force f_tip.
+For the f_tip shown here, we can graphically
+calculate tau_1, the torque about the first
+joint, using the relationship tau_1 equals
+minus r_1 times the magnitude of f_tip, where
+r_1 is the vector perpendicular to f_tip from
+the joint to the line of force.
+Similarly, we can calculate the torques at
+joints 2 and 3.
+Each joint has to individually support the
+endpoint force f_tip.
+You could also imagine asking the inverse
+question given tau, what is the endpoint force
+f_tip, but this question is not as straightforward,
+because the inverse of J-transpose may not
+exist.
+For the 3R arm, for most random choices of
+joint torques, the arm will have internal
+motion, and will not simply statically resist
+an externally applied force minus f_tip.
+Moving on, let's consider the redundant 3_R
+arm when it is fully stretched out.
+The rank of the 2-by-3 Jacobian drops to 1,
+meaning the arm is at a singular configuration.
+Rotation at joint 1, 2, and 3 produces only
+vertical velocity at the end-effector; no
+horizontal velocity can be achieved.
+Also because of the singularity, a horizontal
+force applied at the end-effector is resisted
+by the mechanical structure of the robot;
+no joint torques have to be applied.
+This 2_R robot has a square Jacobian that
+has rank equal to 2 at the configuration shown.
+This means that any tip velocity is possible
+and any force applied to the tip must be actively
+resisted by the joints.
+In this picture, the 2_R robot is at a singular
+configuration, where only vertical velocities
+are possible and horizontal forces can be
+passively resisted by the mechanical structure
+of the robot.
+Finally, we have a 1_R robot.
+The Jacobian is 2-by-1 and is full rank, meaning
+the rank is equal to 1, at any configuration.
+This robot is kinematically deficient for
+the task of achieving arbitrary linear velocities
+at the tip, as it can only achieve linear
+velocities perpendicular to the link.
+Any horizontal force is passively resisted
+by the joint, while any vertical force must
+be actively resisted by the joint torque.
+In the next and final video of Chapter 5,
+we will characterize how close a robot is
+to being singular using the manipulability
+ellipsoid touched on in the first video of
+this chapter.

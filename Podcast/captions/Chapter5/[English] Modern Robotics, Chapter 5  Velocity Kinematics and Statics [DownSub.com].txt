@@ -1,0 +1,204 @@
+In the last chapter, we studied the forward
+kinematics, relating the joint positions to
+the end-effector configuration, T of theta.
+In this chapter, we study the relationship
+between joint velocities and the end-effector
+velocity.
+Usually we represent the configuration of
+the end-effector as a transformation matrix
+and the velocity as a twist.
+To get to the main ideas quickly, though,
+lets represent the configuration of the end-effector
+using a minimum set of coordinates and the
+velocity as the time derivative of those coordinates.
+Then the forward kinematics can be written
+x equals f of theta, where x is a vector of
+m coordinates representing the end-effector
+configuration and theta is an n-vector of
+joint coordinates.
+To find the relationship between the joint
+velocities and the end-effector velocity,
+we take the time derivative of the forward
+kinematics.
+Applying the chain rule for differentiation
+and dropping the dependence on time, we get
+x-dot = d-f d-theta times theta-dot.
+Because x has m coordinates and the joint
+vector theta has n coordinates, the matrix
+of partial derivatives d-f d-theta is m-by-n.
+This matrix is called the Jacobian J of the
+robot arm.
+The Jacobian is important not only for relating
+joint velocities to end-effector velocities,
+but also for relating end-effector wrenches
+to joint forces and torques, as we will see
+soon.
+Let's look at a 2R arm as an example, where
+x_1 and x_2 are the end-effector coordinates.
+The forward kinematics are given by these
+equations.
+We take the time derivative of the forward
+kinematics, and we name the endpoint velocity
+v_tip.
+Notice that the vector equation can be written
+as a vector times the velocity of the first
+joint theta_1-dot plus another vector times
+the velocity of a second joint theta_2-dot.
+Let's call the first vector J_1.
+Clearly it is a function of the joint variables
+theta.
+J_1 is just the end-effector velocity when
+joint 1 rotates at unit speed while joint
+2 is kept constant.
+We can visualize it as a vector orthogonal
+to the line connecting joint 1 to the end-effector.
+Similarly, J_2 is the velocity of the end-effector
+when joint 2 rotates at unit speed while joint
+1 is kept constant.
+Plotting them both, we see that J_1 and J_2
+form a basis for the space of linear velocities
+of the end-effector.
+We can put the J_1 and J_2 vectors side-by-side
+to form the Jacobian matrix J. The end-effector
+velocity is just a linear combination of J_1
+and J_2, with coefficients equal to the joint
+velocities.
+If the second joint angle is zero degrees,
+as shown here, or 180 degrees, J_1 and J_2
+are aligned, and it is impossible to generate
+any end-effector velocity except along this
+line.
+I can use my arm as an example.
+When it is fully extended, rotation about
+my shoulder, and about my elbow, both cause
+the hand to move vertically.
+The arm loses the ability to move in some
+directions when the dimension of the column
+space of the Jacobian drops from its maximum
+value, and such a configuration is called
+a singularity.
+We can use the Jacobian to find limits on
+the end-effector velocity due to limits on
+the joint velocity.
+In this figure, the set of allowable joint
+velocities is depicted as a square in the
+joint velocity space, with the corners A,
+B, C, and D.
+The point A, for example, corresponds to simultaneous
+maximum positive velocity at both joints 1
+and 2.
+We can map this square set of joint velocities
+through the Jacobian to get a parallelogram
+of possible velocities at the tip, including
+the tip velocity A corresponding to the joint
+velocity A.
+The Jacobian, and therefore this parallelogram,
+depends on the joint angles theta.
+Instead of a square of possible joint velocities,
+it is common to consider a circle, or more
+generally a sphere, of possible joint velocities.
+This maps through the Jacobian to produce
+an ellipse, or more generally an ellipsoid,
+of possible tip velocities.
+This ellipsoid shows that the robot can move
+fast up and to the left, but only slowly up
+and to the right.
+If the robot is at a different configuration,
+however, the ellipsoid can look very different.
+We call these ellipsoids manipulability ellipsoids.
+If the 2R robot is at a singularity, the ellipse
+collapses to a line segment.
+The Jacobian also relates forces at the end-effector
+to forces and torques at the joints.
+To find this relationship, let tau be the
+vector of joint torques and forces generated
+by motors at revolute and prismatic joints,
+respectively.
+From physics we know that velocity times force
+is power, and the equivalent for a robot arm
+is theta-dot transpose times tau is equal
+to the power produced or consumed by the robot's
+motors.
+The robot's velocity and joint torques could
+instead be expressed in terms of a velocity
+and force at the tip, so the power can be
+written equivalently as v_tip transpose times
+f_tip, where f_tip is the force applied by
+the end-effector.
+If no power is used to move the robot, then
+theta-dot transpose times tau is equal to
+v_tip transpose times f_tip.
+Using our previously derived identity v_tip
+equals J-theta-dot, we get this equation.
+We can rewrite this as this equation using
+the fact that the transpose of J-theta-dot
+is equal to theta-dot transpose times J transpose.
+Since this equation holds for all theta-dot,
+the equation reduces to tau equals J transpose
+times f_tip, the relationship we were looking
+for.
+For our force analyses, we assume the robot
+is at equilibrium and that all joint torques
+and forces create forces at the end effector;
+no joint effort is needed to cancel gravity,
+for example.
+This equation is useful for force control:
+if we want the robot to generate the force
+f_tip at its end-effector, the motors must
+generate joint torques and forces equal to
+J transpose times f_tip.
+In the case that J transpose is invertible,
+we also have the relationship f_tip equals
+J transpose inverse times tau.
+Assuming J transpose is invertible, we can
+map joint torque limits to tip force limits
+using the inverse of the Jacobian transpose,
+similar to how we mapped joint velocity limits
+to tip velocity limits.
+In this configuration, the arm can apply large
+forces up and to the right, at point D, but
+much smaller forces up and to the left.
+The reason is clear: a line of force up and
+to the right passes close to the joints, therefore
+requiring little torque about the joints,
+while a line of force up and to the left passes
+far from the joints, requiring larger torque.
+In the extreme case, if my arm is extended
+straight out, at a singularity, I could theoretically
+resist infinite forces applied along the arm,
+because the forces pass through the joints,
+creating zero torque.
+On the other hand, it is hard to hold this
+book up in gravity, because the force requires
+large joint torques.
+This example also demonstrates that the tip
+force limits are in a sense reciprocal to
+the tip velocity limits: it is easy to apply
+force in a direction that it is hard to move,
+and hard to apply force in a direction that
+it is easy to move.
+It is common to consider joint torque limits
+that are circular, or more generally spherical.
+In this case, the torque limits map to an
+end-effector force ellipse or ellipsoid.
+As with the manipulability ellipsoid, the
+force ellipsoid depends on the configuration
+of the robot.
+So, this video summarizes the important concepts
+of Chapter 5.
+In the rest of this chapter, we translate
+these concepts to twists and wrenches.
+In particular, in this video we represented
+velocities as v_tip, the time derivative of
+coordinates.
+In the remainder of the chapter, we represent
+end-effector velocities as twists, either
+in the {s}-frame or the {b}-frame.
+In this video, we represented end-effector
+forces as f_tip, forces dual to v_tip.
+In the remainder of the chapter, end-effector
+forces will be represented as wrenches, either
+in the {s}-frame or the {b}-frame.
+In the next video we derive the Jacobian when
+the end-effector velocity is expressed as
+a twist in the space frame {s}.

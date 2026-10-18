@@ -1,0 +1,148 @@
+Chapter 4 addresses the forward kinematics
+of open-chain robots, as illustrated in this
+video of a robot with 6 revolute joints.
+We define a frame {s} fixed in space, often
+at the base of the robot, and a frame {b}
+at the end-effector of the robot arm.
+If we command the robot to move, the {b}-frame
+moves.
+The forward kinematics problem is to find
+the configuration of the {b}-frame relative
+to the {s}-frame given the vector of joint
+angles theta.
+The transformation matrix representing the
+{b}-frame in the {s}-frame is T_sb of theta,
+or just T of theta for short.
+To derive a procedure to calculate T of theta,
+let's use a simple robot arm that moves in
+a plane.
+This robot has three joints: a revolute joint,
+a prismatic joint, and another revolute joint.
+You can also see the stationary {s}-frame
+and the end-effector {b}-frame.
+This is a stick figure version of the robot.
+The joint variable theta_1 represents the
+angle of joint 1 relative to the horizontal.
+Theta_2 represents the extension of the prismatic
+joint, and theta_3 represents the angle of
+joint 3.
+The 3-vector theta is a list of the three
+joint variables, and T of theta represents
+the configuration of the {b} frame relative
+to the {s} frame.
+If we set all of the joint variables equal
+to zero, the robot is in its home position,
+as shown here.
+We write the zero configuration of the {b}
+frame as T of zero, or simply M for short.
+At the zero configuration, the {b}-frame has
+the same orientation as the {s}-frame, and
+the 3 in the top right element of the M matrix
+means that the {b}-frame is 3 units from the
+{s}-frame in the xs-direction.
+Now say we rotate joint 3 by pi over 4 radians.
+The theta vector is now zero, zero, pi over
+4.
+This motion of the {b} frame can be represented
+by a rotation about the screw axis of joint
+3.
+Since it is a revolute joint with no translational
+motion, the screw axis has zero pitch.
+Because positive rotation is in the direction
+indicated in the figure, by the right-hand
+rule, the screw axis is out of the screen,
+toward you.
+As we learned in chapter 3 videos, a screw
+axis can be represented in any frame.
+Let's represent it in the {s}-frame, and let's
+call joint 3's screw axis S_3, consisting
+of an angular component omega_3 and a linear
+component v_3.
+Since the screw axis involves rotation, omega3
+must be a unit vector.
+Positive rotation is about an axis out of
+the screen, which is aligned with the {s}
+frame's z-axis.
+Therefore, the unit angular component is zero
+zero one, a unit vector aligned with the zs-axis.
+To visualize the linear component v_3, imagine
+the entire space rotating about joint 3, visualized
+here as a turntable.
+Then v_3 is the linear velocity of a point
+at the origin of the {s}-frame when the turntable
+rotates with unit angular velocity, as shown
+here.
+So, v_3 is zero, minus 2, zero, meaning that
+the origin has a velocity of 2 units in the
+minus ys-direction.
+V_3 could also be calculated as minus omega_3
+cross q_3, where q_3 is any point on the joint
+axis represented in the {s}-frame.
+Now that we have the screw axis S_3, we can
+calculate the {b}-frame configuration T of
+theta.
+We simply apply the space-frame transformation
+corresponding to motion along the S_3 screw
+axis by an angle pi over 4.
+This transformation is e to the bracket S3
+times pi over 4 using the matrix exponential
+from the chapter 3 videos.
+Since it is a space-frame transformation,
+it premultiplies M.
+Now suppose we change joint 2, extending it
+by 0.5 units of distance.
+The theta vector is now zero, 0.5, pi over
+4.
+The screw axis S_2 corresponding to joint
+2 has zero angular component omega_2, so the
+linear component v_2 must be a unit vector.
+If we imagine the whole space translating
+at unit velocity along joint 2, a point at
+the origin of the {s}-frame would move with
+a linear velocity v_2 equal to one, zero,
+zero, expressed in the {s}-frame.
+Therefore the screw axis S2 is defined as
+zero, zero, zero, one, zero, zero.
+The new configuration of the {b}-frame, T
+of theta, is obtained by left-multiplying
+the previous configuration by e to the bracket
+S_2 times theta2.
+It's important to notice that the previous
+motion of joint 3 does not affect the relationship
+of joint 2's screw axis to the {s}-frame.
+That's because joint 3 is not between joint
+2 and the {s}-frame.
+Therefore, S_2 is the same as the screw axis
+of joint 2 when the robot is at its zero configuration.
+Finally, let's rotate joint 1 by pi over 6.
+The theta vector is now pi over 6, 0.5, pi
+over 4.
+The screw axis S1 is a pure rotation about
+an axis out of the screen, so the omega_1
+vector is zero, zero, one.
+Rotation about this axis does not cause any
+linear motion at the origin of the {s}-frame,
+so the v_1 vector is zero, zero, zero.
+The new configuration of the {b}-frame, T
+of theta, is again given by left-multiplying
+the previous configuration by the new space-frame
+transformation.
+Again, the previous motions of joints 2 and
+3 do not affect the relationship of joint
+1's screw axis to the {s}-frame, because they
+are not in between joint 1 and the {s}-frame.
+Therefore, S_1 is the same as the screw axis
+of joint 1 when the robot is at its zero configuration.
+For any serial robot, the procedure generalizes
+directly.
+First, define the M matrix representing the
+{b}-frame when the joint variables are zero.
+Second, define the {s}-frame screw axes S_1
+to S_n for each of the n joint axes when the
+joint variables are zero.
+Finally, for the given joint values, evaluate
+the product of exponentials formula in the
+space frame.
+In the next video we will see an alternative
+version of this formula, in terms of screw
+axes expressed in the {b}-frame.

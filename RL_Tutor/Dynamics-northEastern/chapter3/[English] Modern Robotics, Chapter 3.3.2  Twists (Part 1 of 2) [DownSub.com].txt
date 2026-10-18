@@ -1,0 +1,116 @@
+As we learned in the last video, a transformation
+matrix T can be used to represent the configuration
+of the body frame {b} relative to the space
+frame {s}.
+Now we need to represent the velocity of the
+body frame.
+Just as the time derivative of a rotation
+matrix was not our representation of angular
+velocity, the time derivative of a transformation
+matrix is not our representation of a rigid-body
+velocity.
+Let's just jump right to our representation,
+without deriving it.
+You can see the details of the derivation
+in the book.
+It turns out that any rigid-body velocity,
+which consists of a linear component and an
+angular component, is equivalent to the instantaneous
+velocity about some screw axis.
+The screw axis is defined by a point q on
+the axis; a unit vector s in the direction
+of the axis; and the pitch h of the screw,
+which is the ratio of the linear speed along
+the axis to the angular speed about the axis.
+For now we will assume that the pitch h is
+finite; later we will return to the case where
+the pitch is infinite.
+Given any linear and angular velocity of a
+body, there is a corresponding screw axis.
+It's as if the body's instantaneous motion
+is twisting about the screw axis.
+The screw axis defines the direction the body
+is moving, and theta-dot is a scalar indicating
+how fast the body rotates about the screw.
+Our representation of a screw axis is not
+a point q, a unit vector s, and a pitch h,
+however.
+Instead, we choose a reference frame, and
+we define the screw axis S as a 6-vector in
+that frame's coordinates, consisting of S-omega,
+the 3-dimensional unit angular velocity when
+the rotational speed theta-dot is 1, and S_v,
+the 3-dimensional linear velocity of the origin
+of the frame when the rotational speed is
+1.
+The linear velocity of the origin, as you
+see in the figure, is a combination of two
+terms: h times s, which is the linear velocity
+due to translation along the screw axis if
+there is a nonzero pitch, and -s cross q,
+which is the linear velocity due to rotation
+about the screw axis.
+Multiplying our representation of the screw
+axis S by the scalar rate of rotation theta-dot,
+we get the twist, a full representation of
+angular and linear velocity.
+Let's look at a simple example, where the
+screw axis is a zero pitch screw, a pure rotation
+like a turntable.
+The axis is pointing toward you, out of your
+screen.
+This is an animation of a turntable moved
+by the screw axis.
+We start rotating about the screw at a rate
+of theta-dot = 1.
+Defining a reference frame as shown, we see
+that the angular velocity S-omega is 1 about
+the z-axis, which is also out of the screen.
+Since the reference frame is 2 units from
+the screw axis, the linear velocity at the
+frame origin is 2 units in the minus y direction,
+so we get S_v equal to (0,-2,0).
+We can choose a reference frame at a different
+location.
+In this frame, the angular velocity is the
+same as before, but S_v is different.
+Finally, if we choose a reference frame on
+the screw axis itself, S_v is zero.
+Because the frame has a different orientation
+from before, the angular velocity is now 1
+unit in the minus y direction.
+We have been focusing on the case where the
+screw axis has finite pitch, but there are
+two cases to consider: the pitch is infinite,
+or the pitch is finite.
+If the pitch is infinite, the motion is a
+pure linear motion with no rotation.
+In this case, S-omega is zero, S_v is a unit
+vector, and theta-dot indicates the linear
+speed.
+If the pitch is finite, S-omega is a unit
+vector and theta-dot is the rotational speed
+in radians per second.
+If the screw axis S is expressed in coordinates
+of the body frame {b}, then S-theta-dot is
+called the body twist V_b.
+If the screw axis S is expressed in coordinates
+of the space frame {s}, then S-theta-dot is
+called the spatial twist V_s.
+In summary, a twist is a 6-vector consisting
+of a 3-vector expressing the angular velocity
+and a 3-vector expressing the linear velocity.
+Both of these are written in coordinates of
+the same frame, and the linear velocity refers
+to the linear velocity of a point at the origin
+of that frame.
+Both the body twist and the spatial twist
+represent the same motion, just in different
+coordinate frames.
+The body twist is not affected by the choice
+of the space frame, and the spatial twist
+is not affected by the choice of the body
+frame.
+In the next video we discuss a matrix representation
+of twists, which will be used in the matrix
+exponential for rigid-body motion.
