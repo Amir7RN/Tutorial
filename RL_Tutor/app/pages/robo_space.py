@@ -857,6 +857,7 @@ class TwistsPage(Page):
             "twist V = Sθ̇; infinite pitch = pure slide; body vs spatial twist.")))
         self.add(rr.twist_card())
         self.add(rr.rigid_rule_card())
+        self.add(rr.screw_cylinder_card())
         self.screwlab = rr.ScrewLabCard()
         self.add(self.screwlab.card)
         self.turn = rr.TurntableCard()
@@ -866,6 +867,7 @@ class TwistsPage(Page):
             "The 6×6 adjoint moves twists between frames; [V<sub>b</sub>] = "
             "T⁻¹Ṫ and [V<sub>s</sub>] = ṪT⁻¹ are 4×4 matrices in se(3).")))
         self.add(rr.adjoint_card())
+        self.add(rr.adjoint_direction_card())
         self.add(rr.two_routes_card())
 
         self.add(interview(

@@ -220,6 +220,7 @@ class JacobianPage(Page):
         self.add(self.vel_lab.card)
         self.add(jac.space_card())
         self.add(jac.body_card())
+        self.add(jac.adjoint_jobs_card())
         self.builder_lab = jac.JacobianBuilderLab()
         self.add(self.builder_lab.card)
 

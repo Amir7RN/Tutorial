@@ -3477,3 +3477,144 @@ class AppleCard:
         _square2d(ax, (-2, 1.2), (-1.4, 1.4))
         ax.set_title("grey bar: hand from sensor {f} to apple {a} (scaled to L)")
         self.cv.refresh()
+
+
+# ==========================================================================
+# page 121 -- two cards that answer the questions people actually get stuck on
+# ==========================================================================
+
+def screw_cylinder_card() -> Card:
+    """One screw, and a cylinder for every point: q on the axis, tan(helix) = h/r."""
+    c = Card("one screw, a cylinder for every point — and what 'spatial' and 'body' twist really pick")
+    c.add(in_words(
+        "The screw is only a line in space, a pitch h and a turn rate. It has "
+        "no thickness. Every point of the body rides its <b>own</b> cylinder "
+        "around that line, with radius = that point's distance from the line. "
+        "A point near the axis rides a thin cylinder and moves slowly; a far "
+        "point rides a fat one and moves fast. A spatial twist and a body "
+        "twist are the same screw, each reporting the velocity of one chosen "
+        "point, so each reports a different cylinder."))
+    c.add(body(
+        "<b>1. q sits on the axis, not on a cylinder's skin.</b> q is just one "
+        "point that pins down where the line is (any point of the line would "
+        "do). The radius of a point P's cylinder is P's perpendicular distance "
+        "from the line, |ŝ × (P − q)|.<br>"
+        "<b>2. Every point moves on a helix.</b> Its velocity has two parts:"))
+    c.add(math_label(
+        r"v_P=\underbrace{\omega\times(P-q)}_{\mathrm{around:}\ r|\omega|}"
+        r"\ +\ \underbrace{h\,\omega}_{\mathrm{along:}\ h|\omega|}"
+        r"\qquad\Rightarrow\qquad \tan(\mathrm{helix\ angle})=\frac{h}{r}", 15))
+    c.add(body(
+        "The around part depends on the radius; the along part is the same for "
+        "every point. So with h = 0 (a hinge) every helix flattens into a "
+        "circle, and for a given pitch thin cylinders get steep helices and fat "
+        "ones shallow helices: every point climbs at the same rate, but far "
+        "points travel further round per turn. The cross term alone only ever "
+        "gives the circular direction; the pitch is what tilts it into a helix.<br>"
+        "<b>3. Numbers</b> (the lab's general screw: ω = (0, 0, 2), axis through "
+        "q = (0, 0.5, 0), h = 0.25):"))
+    c.add(body(_grid_table(
+        ("point P", "radius r", "around r|ω|", "along h|ω|", "v_P", "helix angle"),
+        [("origin (0, 0, 0)", "0.5", "1.0", "0.5", "(1, 0, 0.5)", "atan(0.25/0.5) = 26.6°"),
+         ("(0, 2, 0)", "1.5", "3.0", "0.5", "(−3, 0, 0.5)", "atan(0.25/1.5) = 9.5°"),
+         ("q itself", "0", "0", "0.5", "(0, 0, 0.5)", "90°: pure slide")])))
+    c.add(body(
+        "<b>4. So what do 'spatial' and 'body' choose?</b> Two things: whose "
+        "cylinder (which reference point) and whose axes (which numbers)."))
+    c.add(body(_grid_table(
+        ("twist", "reference point: whose cylinder", "numbers written in"),
+        [("spatial V<sub>s</sub>", "the body point at {s}'s origin (often imaginary, off the real body)",
+          "{s}'s axes"),
+         ("body V<sub>b</sub>", "the body point at {b}'s origin (the end effector)", "{b}'s axes")])))
+    c.add(body(
+        "Top three numbers, ω: the same spin arrow, in s-numbers or b-numbers. "
+        "Bottom three, v: the velocity of that frame's reference point, riding "
+        "its own cylinder. The screw (line, pitch, rate) is identical; the "
+        "adjoint converts one report into the other (later on this page)."))
+    cv = MplCanvas(width=7.4, height=4.6)
+    _layout(cv, ["3d"])
+    _clear(cv)
+    ax = cv.ax
+    q, s, h = np.array([0, 0.5, 0.0]), np.array([0, 0, 1.0]), 0.25
+    ax.plot([0, 0], [0.5, 0.5], [-0.6, 3.4], "--", color=PINK, lw=2)
+    ax.text(0, 0.5, 3.5, "screw axis (ŝ, through q)", color=PINK, fontsize=8)
+    t = np.linspace(0, 2 * np.pi, 60)
+    for r, start, col, name in ((0.5, -np.pi / 2, theme.CYAN, "point at {s} origin: r = 0.5"),
+                                (1.5, np.pi / 2, theme.WARN, "point (0, 2, 0): r = 1.5")):
+        for z0 in (-0.4, 3.2):
+            ax.plot(q[0] + r * np.cos(t), q[1] + r * np.sin(t), np.full_like(t, z0),
+                    color=col, lw=0.6, alpha=0.4)
+        for a in np.linspace(0, 2 * np.pi, 9)[:-1]:
+            ax.plot([q[0] + r * np.cos(a)] * 2, [q[1] + r * np.sin(a)] * 2, [-0.4, 3.2],
+                    color=col, lw=0.5, alpha=0.25)
+        th = np.linspace(0, 4 * np.pi, 200)
+        ax.plot(q[0] + r * np.cos(start + th), q[1] + r * np.sin(start + th), h * th,
+                color=col, lw=2.2, label=name)
+        p0 = np.array([q[0] + r * np.cos(start), q[1] + r * np.sin(start), 0])
+        v = np.cross(2 * s, p0 - q) + h * 2 * s
+        ax.quiver(*p0, *(0.35 * v), color=col, lw=2, arrow_length_ratio=0.2)
+        ax.plot(*p0, "o", color=col, ms=6)
+    ax.plot([0], [0.5], [0], "o", color=PINK, ms=6)
+    ax.text(0.08, 0.5, -0.2, "q", color=PINK, fontsize=9)
+    ax.set_xlim(-1.7, 1.7)
+    ax.set_ylim(-1.2, 2.2)
+    ax.set_zlim(-0.5, 3.5)
+    ax.set_box_aspect((1, 1, 1.15))
+    ax.view_init(elev=18, azim=-62)
+    ax.set_title("same screw, two cylinders: the far point's helix is shallower (tan = h/r)",
+                 color=theme.TEXT, fontsize=9)
+    cv.legend(ax, loc="upper left")
+    cv.refresh()
+    c.add(cv)
+    return c
+
+
+def adjoint_direction_card() -> Card:
+    """Ad_{T_sb} goes the SAME way as T_sb: b-numbers to s-numbers."""
+    c = Card("which way does [Ad_T] go? The same way as T — check your reading")
+    c.add(in_words(
+        "A common trap: 'T<sub>sb</sub> is b seen from s, so [Ad<sub>T<sub>sb</sub></sub>] "
+        "must do the reverse and carry things from s to b.' No. The adjoint "
+        "does exactly the job T does, in the same direction. The only "
+        "difference is the kind of object: T moves a point, [Ad<sub>T</sub>] "
+        "moves a twist."))
+    c.add(body(_grid_table(
+        ("statement", "verdict"),
+        [("T<sub>sb</sub> is the configuration of {b} as seen from {s}", "✅"),
+         ("T<sub>bs</sub> is {s} as seen from {b}, and T<sub>bs</sub> = T<sub>sb</sub>⁻¹", "✅"),
+         ("[Ad<sub>T<sub>sb</sub></sub>] carries twists from s-numbers to b-numbers",
+          "❌ it goes b-numbers → s-numbers, like T<sub>sb</sub>")])))
+    c.add(body(
+        "<b>Why: T<sub>sb</sub> has two readings that are one and the same.</b> "
+        "'Where {b} is, described in {s}' and 'the converter that turns "
+        "b-numbers into s-numbers' (p<sub>s</sub> = T<sub>sb</sub>p<sub>b</sub>). "
+        "The adjoint is the same converter for twists. The inner subscripts "
+        "cancel in both:"))
+    c.add(math_label(
+        r"p_s=T_{sb}\,p_b\qquad\Longleftrightarrow\qquad"
+        r"\mathcal{V}_s=[\mathrm{Ad}_{T_{sb}}]\,\mathcal{V}_b,\qquad"
+        r"\mathcal{V}_b=[\mathrm{Ad}_{T_{bs}}]\,\mathcal{V}_s", 15))
+    c.add(body(
+        "Exactly the pattern of ω<sub>b</sub> = R<sub>bs</sub>ω<sub>s</sub> from page 119.<br>"
+        "<b>You usually know T<sub>sb</sub>, not T<sub>bs</sub>.</b> That is fine: "
+        "[Ad<sub>T<sub>bs</sub></sub>] = [Ad<sub>T<sub>sb</sub></sub>]⁻¹, and with "
+        "T<sub>sb</sub> = (R, p) both are written down directly, no numerical inverse:"))
+    c.add(body(
+        "<table><tr><td>[Ad<sub>T<sub>sb</sub></sub>] =&nbsp;</td><td>"
+        + _block_html("R", "0", "[p] R", "R") +
+        "</td><td width='30'></td><td>[Ad<sub>T<sub>bs</sub></sub>] =&nbsp;</td><td>"
+        + _block_html("Rᵀ", "0", "−Rᵀ[p]", "Rᵀ") + "</td></tr></table>"))
+    c.add(plain(
+        "<b>What each one does, in words.</b> [Ad<sub>T<sub>sb</sub></sub>] (body → "
+        "space): turn ω and v into {s}'s axes, then move the reference point from "
+        "{b}'s origin to {s}'s origin, which adds the carried-round term p × ω "
+        "(the merry-go-round). [Ad<sub>T<sub>bs</sub></sub>] (space → body): the "
+        "reverse, move the reference point back to {b}'s origin, then turn into "
+        "{b}'s axes.<br>"
+        "<b>Why a 6 × 6 at all, if the meaning is T's?</b> A point is 4 numbers "
+        "(position plus a 1), so T is 4 × 4. A twist is 6 numbers, ω plus one "
+        "point's velocity, and that velocity changes when you change the "
+        "reference point (the cylinders card earlier on this page). The p × ω term "
+        "handles that, which is why the 4 × 4 gets rearranged into a 6 × 6. "
+        "Same frames, same direction, different kind of object."))
+    return c

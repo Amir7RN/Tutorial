@@ -444,6 +444,47 @@ def body_card() -> Card:
     return c
 
 
+def adjoint_jobs_card() -> Card:
+    c = Card("one matrix, two jobs: the adjoint in a change of observer and in a Jacobian column")
+    c.add(in_words(
+        "[Ad<sub>T</sub>] shows up twice on this page with what look like two "
+        "meanings. In one, nothing moves and only the observer changes. In "
+        "the other, an axis really has been carried somewhere new by the "
+        "joints before it, and we write it in {s} again. The algebra is the "
+        "same because both are 'apply a rigid transform to a twist'."))
+    c.add(body(_block_html(
+        "<b>change of observer</b><br>V<sub>b</sub> = [Ad<sub>T<sub>bs</sub></sub>] V<sub>s</sub>",
+        "<b>Jacobian column</b><br>J<sub>si</sub> = [Ad<sub>T<sub>i−1</sub></sub>] Sᵢ,&nbsp; "
+        "T<sub>i−1</sub> = e<sup>[S₁]θ₁</sup>⋯e<sup>[S<sub>i−1</sub>]θ<sub>i−1</sub></sup>",
+        "same motion, same screw;<br>only who reports it changes",
+        "the axis has physically moved;<br>T<sub>i−1</sub> is that motion, written in {s}")))
+    c.add(body(
+        "<b>A whole Jacobian at once.</b> Each column is a twist, so the "
+        "change-of-observer rule applies to all of them in one multiplication: "
+        "J<sub>b</sub> = [Ad<sub>T<sub>bs</sub></sub>] J<sub>s</sub>, all 6 × n of it.<br>"
+        "<b>Check on the 2R hand</b> (video 5's numbers: L = (1, 0.8), θ = (0°, 90°), "
+        "θ̇ = (1, 1)). J<sub>s1</sub> = (0, 0, 1, 0, 0, 0) and J<sub>s2</sub> = "
+        "(0, 0, 1, L₁s₁, −L₁c₁, 0) = (0, 0, 1, 0, −1, 0), so"))
+    c.add(math_label(
+        r"\mathcal{V}_s=J_s\dot\theta=(0,0,2,\ 0,-1,0):\quad"
+        r"q=\frac{\omega\times v}{|\omega|^2}=(0.5,0,0),\quad h=0", 15))
+    c.add(body(
+        "The whole hand is spinning at 2 rad/s about a vertical line through "
+        "(0.5, 0), with no slide: a plain hinge at this instant. The tip "
+        "(1, 0.8) rides the cylinder of radius √(0.5² + 0.8²) = 0.943, so its "
+        "speed is 0.943 × 2 = 1.887 = |(−1.6, 1.0)| ✓, tangent to that circle. "
+        "Now change observer to a frame {b} at the tip with axes parallel to {s} "
+        "(R = I, p = (1, 0.8, 0)): v<sub>b</sub> = v<sub>s</sub> − p × ω = "
+        "(0, −1, 0) − (1.6, −2, 0) = (−1.6, 1, 0). The bottom half of the body "
+        "twist is the tip velocity of video 5: the same screw, reported at the "
+        "tip's cylinder instead of the origin's."))
+    c.add(link_back("121", (
+        "The 'cylinder for every point' and 'which way does Ad go' cards on page "
+        "121 are the picture behind this: Ad<sub>T<sub>sb</sub></sub> goes "
+        "b-numbers → s-numbers, the same direction as T<sub>sb</sub>.")))
+    return c
+
+
 def _jac_html(J, col, changed):
     """6 x n Jacobian; the chosen column tinted, changed entries in orange."""
     n = J.shape[1]
