@@ -24,6 +24,7 @@ from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from . import robo_kin_jac as jac
 from . import robo_kin_poe as poe
 from .base import Page
+from .robo_space_rigid import in_words, link_back
 from .robo_common import (
     SEC_KIN,
     deg,
@@ -445,13 +446,6 @@ class StaticsPage(Page):
             "dangerous because nothing about the pose looks unusual."))
         self.add(k)
 
-        # video 5.4: manipulability, planar then spatial
-        self.add(jac.manip_card())
-        self.manip_lab = jac.ManipulabilityLab()
-        self.add(self.manip_lab.card)
-        self.ellipsoid_lab = jac.EllipsoidLab()
-        self.add(self.ellipsoid_lab.card)
-
         self.add(interview(
             "<b>“Your Cartesian controller commands huge joint velocities "
             "near some pose. Why, and what do you do?”</b> J is near-singular, "
@@ -499,6 +493,102 @@ class StaticsPage(Page):
         a2.set_ylabel("joint torque per N (N·m/N)")
         c.legend(a2, loc="lower left")
         c.refresh()
+
+
+class ManipulabilityPage(Page):
+    TITLE = "Manipulability: How Close to Singular?"
+    SUBTITLE = ("A pose is singular or not, but it can be nearly singular. The "
+                "unit sphere of joint speeds maps to an ellipsoid of hand "
+                "velocities with half-axes σᵢ = √λᵢ(JJᵀ); three numbers read "
+                "its shape, and the force ellipsoid is its inside-out twin.")
+    SECTION = SEC_KIN
+    NOTES = playlist_badge(4)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.add(watch(4))
+        self.add(start_here(
+            "Page 126 asked a yes/no question: has J lost a direction? This "
+            "page asks 'how much?'. Push every joint-speed vector of length 1 "
+            "through J, look at the shape of the hand velocities you get, and "
+            "turn that shape into a number a planner or controller can watch. "
+            "Every step uses the ideas of page 127: the ellipsoid's axes are "
+            "the singular vectors uᵢ, its half-lengths the singular values σᵢ."))
+        self.add(link_back(
+            "127",
+            "J vᵢ = σᵢuᵢ: the special joint-speed mix vᵢ produces hand velocity "
+            "σᵢuᵢ. JJᵀ is symmetric and positive (when J keeps all its "
+            "directions), its eigenvectors are the uᵢ and its eigenvalues are "
+            "λᵢ = σᵢ². So 'eigenvalues of JJᵀ' (the lecture's words) and "
+            "'singular values of J' (page 127) are the same numbers, squared."))
+
+        b = Card("from moment arms to one ellipsoid")
+        b.add(in_words(
+            "Each column of J is one joint's moment-arm velocity ω̂ᵢ × rᵢ. With "
+            "‖θ̇‖ = 1 you can spend your joint speed on any mix of them. Where "
+            "the columns point the same way they add up: a long axis, a fast "
+            "direction. Where they cancel or are all short: a short axis, a "
+            "slow direction. At a singularity the columns lie in a smaller "
+            "space, and one axis is exactly zero."))
+        b.add(body(_manip_table()))
+        b.add(plain(
+            "The force side is the same arms used the other way: τᵢ = "
+            "(column i) · F. A hand force along the slow direction is nearly "
+            "perpendicular to every column, so it costs almost no torque: "
+            "slow there means strong there. That is why the force ellipsoid "
+            "has the same axes with half-lengths 1/σᵢ."))
+        self.add(b)
+
+        # video 5.4: manipulability, planar then spatial
+        self.add(jac.manip_card())
+        self.manip_lab = jac.ManipulabilityLab()
+        self.add(self.manip_lab.card)
+        self.ellipsoid_lab = jac.EllipsoidLab()
+        self.add(self.ellipsoid_lab.card)
+
+        u = Card("what the number is used for")
+        u.add(body(
+            "<b>Planning:</b> reject or penalise paths through poses with small "
+            "μ₃ or large μ₁, so the controller never has to command huge joint "
+            "speeds.<br>"
+            "<b>Redundancy (page 130):</b> with a spare joint, move in the null "
+            "space up the gradient of μ₃: the hand stays on task while the arm "
+            "drifts away from singular poses.<br>"
+            "<b>Inverse kinematics (page 129):</b> μ₁ is the condition number "
+            "that sets how much a small hand error is amplified into joint "
+            "steps; damped least squares kicks in when σ<sub>min</sub> gets small.<br>"
+            "<b>Design:</b> choose link lengths and the work cell so the task "
+            "happens near the arm's most isotropic poses (μ₁ near 1)."))
+        u.add(plain(
+            "μ₃ = σ₁σ₂⋯ has units and grows with the size of the arm, so it "
+            "compares poses of one arm, not two different arms. μ₁ = σ₁/σ<sub>min</sub> "
+            "has no units and says how lopsided the ellipsoid is. Use μ₁ or "
+            "σ<sub>min</sub> to warn about a singularity: μ₃ can stay moderate "
+            "while one axis is already tiny, if another axis is long."))
+        self.add(u)
+
+        self.add(interview(
+            "<b>“Why can't you just use det J as a manipulability measure for a "
+            "6-DOF arm?”</b> It is zero exactly at a singularity, but its size "
+            "mixes units (rad/s rows and m/s rows), depends on the length "
+            "unit, and hides which direction is weak. Split J into its angular "
+            "and linear rows, then use σ<sub>min</sub> or σ<sub>max</sub>/σ<sub>min</sub> "
+            "of each part: a unit-consistent warning that also names the weak "
+            "direction (u<sub>min</sub>)."))
+        self.finish()
+
+
+def _manip_table():
+    cell = f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}'"
+    rows = (("velocity ellipsoid", "{Jθ̇ : ‖θ̇‖ = 1}", "uᵢ", "σᵢ = √λᵢ(JJᵀ)"),
+            ("force ellipsoid", "{F : ‖JᵀF‖ = 1}", "uᵢ (the same)", "1/σᵢ"),
+            ("singular pose", "σ<sub>min</sub> = 0", "u<sub>min</sub> = the lost direction",
+             "velocity axis 0, force axis ∞"))
+    head = "".join(f"<th {cell} align='left'>{h}</th>"
+                   for h in ("shape", "set of", "axes along", "half-lengths"))
+    body_rows = "".join("<tr>" + "".join(f"<td {cell}>{x}</td>" for x in r) + "</tr>"
+                        for r in rows)
+    return f"<table style='border-collapse:collapse'><tr>{head}</tr>{body_rows}</table>"
 
 
 # ==========================================================================
@@ -688,7 +778,7 @@ class NullSpacePage(Page):
             "projection' means θ̇₀ = 'walk downhill on a cost H', e.g. H = "
             "how close you are to the joint limits. A weighted inverse "
             "measures 'smallest' differently; with W = M it means least "
-            "kinetic energy, which page 135 uses."))
+            "kinetic energy, which page 137 uses."))
         self.add(m)
 
         lab = Card("self-motion: the hand stays put, the elbow swings")

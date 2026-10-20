@@ -855,10 +855,10 @@ def next_card() -> Card:
         "θ₂ = 90° and look for two columns that are multiples of each other. Then write "
         "<code>double det4(Mat4)</code> and scan θ₂ for where det(J<sub>s</sub>ᵀJ<sub>s</sub>) "
         "drops to zero.<br>"
-        "<b>4. One Newton step of inverse kinematics (page 127).</b> Target pose T<sub>d</sub>: "
+        "<b>4. One Newton step of inverse kinematics (page 129).</b> Target pose T<sub>d</sub>: "
         "the error twist is log(T⁻¹T<sub>d</sub>) and the step is Δθ = J<sub>b</sub>⁺ V<sub>b</sub>. "
-        "You have fkBody and jacobianBody already; page 127 adds the log and the pseudo-inverse.<br>"
-        "<b>5. Redundancy (page 128).</b> This arm has 4 joints and 6 hand directions: too few. "
+        "You have fkBody and jacobianBody already; page 129 adds the log and the pseudo-inverse.<br>"
+        "<b>5. Redundancy (page 130).</b> This arm has 4 joints and 6 hand directions: too few. "
         "Restrict the task to the tool position (3 numbers, the bottom rows of J after moving to "
         "the tool point) and you get a 3 × 4 Jacobian with a one-dimensional null space: "
         "a motion of the joints that leaves the tool where it is."))
@@ -888,7 +888,7 @@ class RRPRWorkshopPage(Page):
             "mistake (a transposed matrix, the wrong sign on −ω × q, M on the wrong side, an "
             "off-by-one Jacobian column), tells you which one. When all ten pass you have "
             "everything the next pages build on: singularities (126), inverse kinematics "
-            "(127) and redundancy (128)."))
+            "(129) and redundancy (130)."))
         self.robot = RobotView()
         self.add(self.robot.card)
         self.add(method_card())

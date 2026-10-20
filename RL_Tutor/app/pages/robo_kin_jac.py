@@ -183,8 +183,8 @@ def overview_card() -> Card:
         "direction is lost. Sizes, in numbers: the parallelogram's area is "
         "4|det J| and the ellipse's is π|det J|; the ellipse's half-axes are "
         "the singular values σ₁ ≥ σ₂ of J, and σ₂ = 0 exactly at a "
-        "singularity. Those same numbers drive page 126 (how close to "
-        "singular, video 5.4) and page 127 (inverse kinematics blows up as "
+        "singularity. Those same numbers drive page 128 (how close to "
+        "singular, video 5.4) and page 129 (inverse kinematics blows up as "
         "σ₂ → 0, because a tiny tip step needs huge joint steps)."))
     c.add(plain(
         "<b>Easy to move = hard to push, and the other way round.</b> A force "

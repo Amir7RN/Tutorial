@@ -79,13 +79,14 @@ ROBOT MECHANICS
    114-122 configuration space, constraints, SO(3), angular velocity,
            why omega (gyros, Euler rates), SE(3), twists, screw motion,
            wrenches
-   123-128 forward kinematics (PoE), Jacobian, statics, IK, null space,
+   123-131 forward kinematics (PoE), Jacobian, C++ workshop, statics,
+           eigenvectors and the SVD, manipulability, IK, null space,
            closed chains
-   129-135 dynamics: Lagrange, M(q), Newton-Euler, inverse and forward
+   132-138 dynamics: Lagrange, M(q), Newton-Euler, inverse and forward
            dynamics, task-space dynamics, constrained dynamics
-   136-138 time scaling, time-optimal scaling, motion planning
-   139-141 computed torque, operational space + null space, force control
-   142-144 grasping, wheeled mobile robots, interview drill
+   139-141 time scaling, time-optimal scaling, motion planning
+   142-144 computed torque, operational space + null space, force control
+   145-147 grasping, wheeled mobile robots, interview drill
 
 The mechanics block is appended rather than inserted so that every earlier
 page keeps its number. It derives the plant the control half assumed: where
@@ -181,11 +182,13 @@ from .robo_kin import (
     ClosedChainPage,
     IKPage,
     JacobianPage,
+    ManipulabilityPage,
     NullSpacePage,
     PoEPage,
     StaticsPage,
 )
 from .robo_cpp_workshop import RRPRWorkshopPage
+from .robo_linalg import EigenPage
 from .robo_dyn import (
     ConstrainedDynamicsPage,
     ForwardDynamicsPage,
@@ -433,29 +436,31 @@ PAGE_CLASSES = [
     JacobianPage,          # 124 columns are screw axes; the velocity ellipse
     RRPRWorkshopPage,      # 125 C++ workshop: implement the RRPR arm, graded
     StaticsPage,           # 126 tau = J^T F, singularities, force ellipse
-    IKPage,                # 127 analytic branches, Newton-Raphson, DLS
-    NullSpacePage,         # 128 J^+, I - J^+ J, self-motion
-    ClosedChainPage,       # 129 four-bar, Stewart, actuator singularities
+    EigenPage,             # 127 matrices as machines: det, eigen, SVD
+    ManipulabilityPage,    # 128 ellipsoids, mu1/mu2/mu3, force ellipsoid
+    IKPage,                # 129 analytic branches, Newton-Raphson, DLS
+    NullSpacePage,         # 130 J^+, I - J^+ J, self-motion
+    ClosedChainPage,       # 131 four-bar, Stewart, actuator singularities
     # ---- Dynamics (playlist 7) --------------------------------------------
-    LagrangePage,          # 130 L = K - P, the 2R equations
-    MassMatrixPage,        # 131 M SPD, Christoffel, Mdot - 2C skew
-    NewtonEulerPage,       # 132 the O(n) recursion, traced
-    InverseDynamicsPage,   # 133 torque from a trajectory, term by term
-    ForwardDynamicsPage,   # 134 qdd = M^-1 (tau - h); integrators
-    TaskDynamicsPage,      # 135 Lambda, mu, p; the mass the hand feels
-    ConstrainedDynamicsPage,  # 136 Lagrange multipliers, contact forces
+    LagrangePage,          # 132 L = K - P, the 2R equations
+    MassMatrixPage,        # 133 M SPD, Christoffel, Mdot - 2C skew
+    NewtonEulerPage,       # 134 the O(n) recursion, traced
+    InverseDynamicsPage,   # 135 torque from a trajectory, term by term
+    ForwardDynamicsPage,   # 136 qdd = M^-1 (tau - h); integrators
+    TaskDynamicsPage,      # 137 Lambda, mu, p; the mass the hand feels
+    ConstrainedDynamicsPage,  # 138 Lagrange multipliers, contact forces
     # ---- Trajectories & planning (playlists 8-9) --------------------------
-    TimeScalingPage,       # 137 cubic, quintic, trapezoid
-    TimeOptimalPage,       # 138 the (s, sdot) phase plane
-    MotionPlanningPage,    # 139 C-space obstacles, A*, RRT
+    TimeScalingPage,       # 139 cubic, quintic, trapezoid
+    TimeOptimalPage,       # 140 the (s, sdot) phase plane
+    MotionPlanningPage,    # 141 C-space obstacles, A*, RRT
     # ---- Robot control (playlist 10) --------------------------------------
-    MotionControlPage,     # 140 PD + gravity vs computed torque
-    OperationalSpacePage,  # 141 OSC and null-space torques
-    ForceControlPage,      # 142 hybrid motion/force, task-space impedance
+    MotionControlPage,     # 142 PD + gravity vs computed torque
+    OperationalSpacePage,  # 143 OSC and null-space torques
+    ForceControlPage,      # 144 hybrid motion/force, task-space impedance
     # ---- Manipulation & mobility (playlists 11-12) ------------------------
-    GraspingPage,          # 143 friction cones, force closure
-    MobileRobotPage,       # 144 nonholonomic unicycle tracking
-    InterviewDrillPage,    # 145 the questions, answered
+    GraspingPage,          # 145 friction cones, force closure
+    MobileRobotPage,       # 146 nonholonomic unicycle tracking
+    InterviewDrillPage,    # 147 the questions, answered
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read
