@@ -1,0 +1,108 @@
+In the previous video, we derived the Newton-Raphson
+numerical algorithm for inverse kinematics
+when the end-effector configuration is represented
+by a minimum set of coordinates x_d.
+In this final video of Chapter 6, we modify
+the algorithm so that the desired end-effector
+configuration is described by the transformation
+matrix T_sd.
+We also need to replace the error vector e
+by something else.
+The proper way to interpret e is as a velocity
+which, if the end-effector followed it for
+unit time, it would move from the current
+configuration f-of-theta_i to the desired
+configuration x_d.
+For our modified algorithm, we need to find
+the twist that would take the end-effector
+{b} frame to the desired frame in unit time.
+Let's illustrate using these three frames.
+The {s}-frame is fixed in space.
+The {d} frame is the desired configuration
+of the end-effector, and it is represented
+in the {s}-frame as T_sd.
+The {b}-frame is the configuration of the
+end-effector if the joint vector is theta_i,
+given by the forward kinematics T_sb-of-theta_i.
+We can calculate the configuration of the
+frame {d} relative to the frame {b} as T_bd
+equals T_sb-inverse times T_sd.
+We are looking for the twist that moves the
+{b} frame to the {d} frame in unit time, and
+the matrix representation of this twist is
+just bracket-V_b equals log of T_bd.
+If the {b} frame follows the body twist V_b
+for one unit of time, it will end up at the
+desired configuration {d}.
+Thus V_b serves a similar role as the error
+vector e in the coordinate version of the
+algorithm.
+Now we can write the modified algorithm as
+shown here.
+We begin with an initial guess theta_zero,
+then we calculate the matrix representation
+of the body twist V_b that moves the {b} frame
+to the {d} frame.
+If the angular component omega_b and the linear
+component v_b of the body twist are both small,
+then theta_zero is a good solution to the
+inverse kinematics problem.
+Otherwise, we update our joint vector guess
+by adding the pseudoinverse of the body Jacobian
+times the body twist V_b and repeat.
+We apply this algorithm to the inverse kinematics
+of a 4-joint RRRP arm.
+The desired end-effector configuration is
+illustrated by the frame {d}, but our initial
+joint vector guess theta-zero would put the
+end-effector frame {b} at the configuration
+shown.
+Let's animate the robot to move to the joint
+angles found at each of 4 iterations of the
+Newton-Raphson algorithm.
+This is iteration 1 ... then 2 ... then 3
+... then 4.
+After 4 iterations the remaining configuration
+error is imperceptible, and the numerical
+inverse kinematics algorithm has converged
+to a good solution.
+Of course in practice the robot would not
+actually move until it has calculated a solution;
+the animation here just visually demonstrates
+the iterations.
+Let's watch the animation one more time.
+We have been focusing on finding the joint
+positions that achieve a desired end-effector
+configuration, but in some cases we only need
+the joint velocities that achieve a desired
+end-effector twist.
+We call this the inverse velocity kinematics,
+where the desired twist V_d and the Jacobian
+J are expressed in the same frame, either
+the space frame {s} or the end-effector frame
+{b}.
+If the robot has more than 6 joints, the use
+of the pseudoinverse ensures that the sum
+of the squares of the elements of theta-dot
+is the smallest among all joint velocity vectors
+that achieve the desired twist.
+If the robot has less than 6 joints, meaning
+it cannot exactly achieve an arbitrary desired
+twist, the use of the pseudoinverse ensures
+that the error of the actual twist from the
+desired twist minimizes the sum of squares
+of elements of the error.
+The book describes other types of inverses
+that yield solutions minimizing other quantities.
+This concludes Chapter 6.
+With the forward kinematics of Chapter 4,
+the velocity kinematics of Chapter 5, and
+the inverse kinematics of Chapter 6, you are
+now prepared to design kinematic controllers
+for open-chain robots, as discussed in Chapter
+11.
+But before we do that, in Chapter 7 we look
+at the forward kinematics, inverse kinematics,
+and velocity kinematics of closed-chain robots,
+which exhibit features not present in open
+chains.

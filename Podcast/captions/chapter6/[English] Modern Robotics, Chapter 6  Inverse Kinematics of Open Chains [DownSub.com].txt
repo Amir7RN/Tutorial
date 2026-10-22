@@ -1,0 +1,87 @@
+In Chapter 4, we studied the forward kinematics
+of open chains: given the joint configuration
+theta, find the configuration of the end-effector
+frame {b} relative to the space frame {s}.
+In this chapter, we study the inverse kinematics
+problem: given a desired end-effector configuration,
+find joint positions that achieve it.
+This is obviously an important problem, since
+we have to control the end-effector's configuration
+for it to purposefully interact with the world.
+Inverse kinematics is trickier than forward
+kinematics.
+Unlike the forward kinematics, which has a
+unique end-effector configuration for a given
+set of joint values, the inverse kinematics
+problem may have zero, one, or multiple solutions
+for the joint values theta given the desired
+end-effector configuration.
+We'll see an example of this in a moment.
+There are two approaches to solving the inverse
+kinematics problem: first, in some cases we
+can find analytic closed-form solutions to
+the nonlinear equations.
+These solutions typically take advantage of
+geometric insight into the problem and the
+particular structure of the robot.
+For arbitrary robot kinematics, however, analytic
+solutions may not exist, so a second approach
+is to use an iterative numerical method.
+This approach requires an initial guess at
+a solution, then iteratively drives the initial
+guess toward a solution.
+Unlike analytic methods, this approach requires
+an initial guess and will only find one solution,
+not all possible solutions, but it applies
+to robots with arbitrary kinematics.
+In this video we will analytically solve the
+inverse kinematics for a planar 2R robot.
+For this example, and indeed many of inverse
+kinematics problems in robotics, it is useful
+to define the two-argument arctangent function.
+The atan2 function takes the x and y coordinates
+of a point in the plane and returns the angle
+of a vector from the origin to the point relative
+to the x-axis.
+Another useful tool is the law of cosines.
+If a, b, and c are the lengths of the sides
+of a triangle, and capital C is the interior
+angle opposite side c, then the length of
+edge c is given by c-squared equals a-squared
+plus b-squared minus 2ab cosine capital C.
+For a planar 2R robot, the inverse kinematics
+problem is to find the joint angles theta_1
+and theta_2 such that the tip of the robot
+is at the point (x,y).
+The workspace of the tip of the robot is bounded
+by circles: the inner circle has radius L_1
+minus L_2, and the outer circle has radius
+L_1 plus L_2.
+If we request a tip position (x,y) outside
+the workspace, there are no inverse kinematics
+solutions.
+If we request a tip position on the boundary
+of the workspace, there is one solution: theta_2
+is pi on the inner boundary and theta_2 is
+zero on the outer boundary.
+If we request a tip position in the interior
+of the workspace, then there are two solutions,
+as shown in the figure.
+For the solution shown on the right, here,
+gamma is the angle from the x-axis to the
+tip and alpha and beta are interior angles
+of the triangle formed by link_1, link_2,
+and the line from tip to joint_1.
+Gamma is determined from the atan2 function
+and alpha and beta are determined from the
+law of cosines.
+With these, the two solutions to the inverse
+kinematics for points in the interior of the
+workspace are shown here.
+The book discusses other examples of inverse
+kinematics, particularly for robots with 6
+joints, and the atan2 function and law of
+cosines are useful in those examples, too.
+In the next video we study numerical inverse
+kinematics, which is useful for cases where
+no closed-form analytic solution exists.

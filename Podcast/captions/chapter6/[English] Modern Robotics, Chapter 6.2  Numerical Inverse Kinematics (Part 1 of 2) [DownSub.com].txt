@@ -1,0 +1,116 @@
+The forward kinematics maps the joint vector
+theta to the transformation matrix representing
+the configuration of the end-effector.
+For simplicity, we will start instead with
+a coordinate-based forward kinematics, where
+f of theta is a minimal set of coordinates
+describing the end-effector configuration.
+Then the inverse kinematics problem is to
+find a joint vector theta_d satisfying x_d
+minus f of theta_d equals zero, where x_d
+is the desired end-effector configuration.
+To solve this problem, we will use the Newton-Raphson
+numerical root-finding method.
+In the case that theta and f-of-theta are
+scalars, the Newton Raphson method can be
+illustrated easily.
+Here is a plot of the desired end-effector
+position x_d minus f-of-theta as a function
+of theta.
+The roots of this function correspond to joint
+values theta that solve the inverse kinematics.
+In this example, two values of theta solve
+the inverse kinematics.
+Now, with the benefit of hindsight, we designate
+one of the solutions as theta_d.
+We also make an initial guess at the solution,
+theta_zero.
+At that guess, we can calculate the value
+of x_d minus f-of-theta.
+Since we know the forward kinematics f-of-theta,
+we can calculate the slope of x_d minus f
+of theta.
+If we extend the slope to where it crosses
+the theta-axis, we get our new guess theta_1.
+The change delta-theta in the guess is given
+by the expression in the figure.
+If the function x_d minus f were linear, theta_1
+would be an exact solution.
+Since it is not linear in general, theta_1
+is only closer to a solution, not an exact
+solution.
+Now we can repeat the process, getting a new
+guess theta_2, and continue until the sequence
+theta_zero, theta_1, theta_2, etc., converges
+to the solution theta_d.
+If our initial guess theta_zero had been to
+the left of the plateau in the function x_d
+minus f-of-theta, then the iterative process
+may have converged to the root on the left.
+In general, the initial guess should be close
+to a solution to ensure that the process converges.
+If the initial guess were near the top of
+the plateau, the calculated slope would have
+been small, and the next iteration would be
+far away, where it may be difficult to converge
+to a solution.
+To generalize the Newton-Raphson procedure
+to vectors of joints and endpoint coordinates,
+not just scalars, we can write the Taylor
+expansion of the function f-of-theta around
+theta_d, as shown here.
+f-of-theta_d is equal to f-of-theta_i, where
+theta_i is the current guess at the solution,
+plus the Jacobian of f evaluated at theta_i
+times delta-theta, plus higher-order terms.
+If we ignore the higher-order terms, this
+simplifies to x_d minus f-of-theta_i equals
+J-of-theta_i times delta-theta.
+We can solve for delta-theta as J-inverse
+times x_d minus f-of-theta_i.
+Of course, this only works if J is invertible.
+If J is not invertible, because it is not
+square or because the robot is at a singularity,
+we need a different way to calculate delta-theta.
+Let's rewrite the equation we are trying to
+solve and number it (1).
+Instead of premultiplying both sides by J-inverse,
+we could premultiply by the pseudoinverse
+of J. The pseudoinverse reduces to the matrix
+inverse in the case that J is invertible,
+but it can also be calculated for non-square
+and singular matrices.
+The pseudoinverse has the following nice properties:
+If there exists more than one solution exactly
+satisfying equation (1), for instance if the
+robot is redundant, then the pseudoinverse
+finds a solution vector theta-star that has
+the smallest length among all solutions.
+In other words, the change in joint values
+is as small as possible while still satisfying
+equation (1).
+On the other hand, if the robot is at a singularity
+or if it does not have enough joints to exactly
+satisfy equation (1), then theta-star calculated
+by the pseudoinverse is one that minimizes
+the error in satisfying equation (1).
+We can now state the Newton-Raphson numerical
+inverse kinematics algorithm.
+Starting from an initial guess theta_zero,
+we calculate the end-effector error e.
+If it is small enough, then theta_zero is
+our solution.
+If not, then we add pseudoinverse of J times
+the error e to our guess and repeat.
+We can use this algorithm inside a robot controller.
+At every timestep, an updated desired end-effector
+configuration x_d is sent to the controller,
+and it calculates an appropriate joint vector
+using Newton-Raphson.
+The previous joint vector is a good initial
+guess to the new joint vector, since the updated
+x_d should be close by the previous x_d.
+In the next video we adapt this algorithm
+to the case where the end-effector configuration
+is represented by a transformation matrix
+and the Jacobian is the body Jacobian.
