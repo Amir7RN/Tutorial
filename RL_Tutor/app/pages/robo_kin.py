@@ -22,6 +22,7 @@ from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from . import robo_kin_jac as jac
+from . import robo_manip as mp
 from . import robo_kin_poe as poe
 from .base import Page
 from .robo_space_rigid import in_words, link_back
@@ -521,6 +522,15 @@ class ManipulabilityPage(Page):
             "directions), its eigenvectors are the uᵢ and its eigenvalues are "
             "λᵢ = σᵢ². So 'eigenvalues of JJᵀ' (the lecture's words) and "
             "'singular values of J' (page 127) are the same numbers, squared."))
+
+        self.add(mp.qa_intro_card())
+        for card in (mp.q1_card, mp.q2_card, mp.q3_card, mp.q4_card, mp.q5_card,
+                     mp.q6_card, mp.q7_card, mp.q8_card, mp.q9_card, mp.q10_card):
+            self.add(card())
+        self.mix_lab = mp.MixLab()
+        self.add(self.mix_lab.card)
+        self.add(mp.q11_card())
+        self.add(mp.q12_card())
 
         b = Card("from moment arms to one ellipsoid")
         b.add(in_words(
