@@ -410,8 +410,8 @@ def symmetric_card() -> Card:
     c.add(body(_cell_table(
         ("matrix", "why symmetric, why positive", "page"),
         [("JJᵀ", "symmetric by construction; positive unless J lost a direction", "128 manipulability"),
-         ("mass matrix M(q)", "kinetic energy ½q̇ᵀMq̇ &gt; 0 whenever anything moves", "133"),
-         ("stiffness K (a spring)", "potential energy ½xᵀKx stored when stretched any way", "142–144")])))
+         ("mass matrix M(q)", "kinetic energy ½q̇ᵀMq̇ &gt; 0 whenever anything moves", "134"),
+         ("stiffness K (a spring)", "potential energy ½xᵀKx stored when stretched any way", "143–145")])))
     c.add(body(
         "<b>Two ellipsoids from one A ≻ 0.</b> Push the unit sphere through A: "
         "you get an ellipsoid with half-axes λᵢ along vᵢ. Or draw the "
@@ -765,11 +765,11 @@ def toolbox_card() -> Card:
         [("Ax = weighted sum of columns", "what does each input do on its own?",
           "J's columns (124), Jᵀ's rows give torques (126)"),
          ("det A, rank", "is anything flattened? how many directions survive?",
-          "singular poses (126), closed chains (131)"),
+          "singular poses (126), closed chains (132)"),
          ("eigen: Av = λv", "which directions only scale? does a mode grow or die?",
-          "poles = eig(A) (21), rotation axis (119), M(q) ≻ 0 (133)"),
+          "poles = eig(A) (21), rotation axis (119), M(q) ≻ 0 (134)"),
          ("symmetric A = QΛQᵀ, ≻ 0", "what shape is this energy / ellipsoid?",
-          "JJᵀ (128), mass matrix (133), task-space inertia Λ (137), stiffness K (142–144)"),
+          "JJᵀ (128), mass matrix (134), task-space inertia Λ (138), stiffness K (143–145)"),
          ("SVD: J vᵢ = σᵢuᵢ", "fast and slow directions of a map between two spaces",
           "velocity ellipse (124), manipulability (128)"),
          ("σ<sub>min</sub> → 0", "how close to losing a direction?",
@@ -777,7 +777,7 @@ def toolbox_card() -> Card:
          ("σ₁/σ<sub>min</sub> (condition number)", "how lopsided? how much does an error get amplified?",
           "μ₁ (128), IK conditioning (129)"),
          ("null space: vᵢ with σᵢ = 0", "which inputs do nothing at the output?",
-          "redundancy and self-motion (130), OSC posture (143)"),
+          "redundancy and self-motion (130), OSC posture (144)"),
          ("pseudo-inverse J⁺ = V Σ⁺ Uᵀ (1/σ)", "undo J as well as possible",
           "Newton IK (129), J⁺ and I − J⁺J (130)"),
          ("damped σ/(σ² + λ²)", "undo J without exploding near σ = 0",

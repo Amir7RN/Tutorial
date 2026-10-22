@@ -68,11 +68,11 @@ def dots_card() -> Card:
         ("124", "velocity", "V = J θ̇", "joint speeds → hand twist"),
         ("126", "statics", "τ = Jᵀ F", "hand wrench → joint torques"),
         ("126", "singularity", "rank J drops", "directions the hand loses"),
-        ("126", "manipulability", "ellipsoid of J Jᵀ", "how far from singular"),
-        ("127", "inverse kinematics", "Δθ = J⁺ e", "Newton steps toward a pose"),
-        ("128", "redundancy", "N = I − J⁺J", "arm moves, hand stays put"),
-        ("130–135", "dynamics", "τ = M θ̈ + h + JᵀF", "contact forces enter through Jᵀ"),
-        ("140–142", "control", "τ = Jᵀ(K e − B V)", "task-space, impedance, force control"),
+        ("128", "manipulability", "ellipsoid of J Jᵀ", "how far from singular"),
+        ("129", "inverse kinematics", "Δθ = J⁺ e", "Newton steps toward a pose"),
+        ("130", "redundancy", "N = I − J⁺J", "arm moves, hand stays put"),
+        ("133–139", "dynamics", "τ = M θ̈ + h + JᵀF", "contact forces enter through Jᵀ"),
+        ("143–145", "control", "τ = Jᵀ(K e − B V)", "task-space, impedance, force control"),
     ]
     cell = f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}'"
     mono = (f"style='padding:3px 10px; border-bottom:1px solid {theme.BORDER}; "

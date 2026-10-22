@@ -23,6 +23,7 @@ from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from . import robo_kin_jac as jac
 from . import robo_manip as mp
+from . import robo_ik as ik
 from . import robo_kin_poe as poe
 from .base import Page
 from .robo_space_rigid import in_words, link_back
@@ -625,7 +626,14 @@ class IKPage(Page):
             "approaches: geometry, giving a formula; or iteration — guess, "
             "measure the error, correct using the Jacobian, repeat."))
 
-        a = Card("analytic 2R: the law of cosines, two branches")
+        # video 6: the problem, atan2, law of cosines, the 2R triangle
+        self.add(ik.ik_problem_card())
+        self.add(ik.atan2_card())
+        self.add(ik.triangle_card())
+        self.triangle_lab = ik.TriangleLab()
+        self.add(self.triangle_lab.card)
+
+        a = Card("analytic 2R in one formula, and bigger arms")
         a.add(math_label(r"\cos\theta_2=\frac{x^2+y^2-L_1^2-L_2^2}{2L_1L_2},\quad "
                          r"\theta_2=\pm\arccos(\cdot),\quad "
                          r"\theta_1=\mathrm{atan2}(y,x)-\mathrm{atan2}(L_2\sin\theta_2,"
@@ -649,7 +657,12 @@ class IKPage(Page):
             "target is too far or too close."))
         self.add(a)
 
-        n = Card("numerical: Newton–Raphson on the residual")
+        # video 6.2 part 1: Newton–Raphson, the pseudoinverse
+        self.add(ik.newton_card())
+        self.newton1_lab = ik.NewtonScalarLab()
+        self.add(self.newton1_lab.card)
+
+        n = Card("numerical, in one line: Newton–Raphson on the residual")
         n.add(math_label(r"\theta^{k+1}=\theta^k+J^{\dagger}(\theta^k)\,"
                          r"\left(x_d-f(\theta^k)\right),\qquad "
                          r"J^{\dagger}=J^T(JJ^T+\lambda^2I)^{-1}", 16))
@@ -696,6 +709,11 @@ class IKPage(Page):
             "slower."))
         self.add(lab)
         self._draw()
+
+        # video 6.2 part 2: full poses, the log, the body Jacobian
+        self.add(ik.pose_newton_card())
+        self.body_lab = ik.BodyNewtonLab()
+        self.add(self.body_lab.card)
 
         self.add(interview(
             "<b>“Analytic or numerical IK?”</b> Analytic when it exists: "
@@ -761,6 +779,12 @@ class NullSpacePage(Page):
             "limits, keep a comfortable posture — without disturbing the "
             "hand."))
 
+        # end of video 6.2: inverse velocity kinematics, and J⁺ itself
+        self.add(ik.inverse_velocity_card())
+        self.add(ik.pinv_card())
+        self.pinv_lab = ik.PinvGeometryLab()
+        self.add(self.pinv_lab.card)
+
         m = Card("the general solution of ẋ = J θ̇")
         m.add(math_label(r"\dot\theta=J^{+}\dot x_d+(I-J^{+}J)\,\dot\theta_0,\qquad "
                          r"J^{+}=J^T(JJ^T)^{-1}", 17))
@@ -788,7 +812,7 @@ class NullSpacePage(Page):
             "projection' means θ̇₀ = 'walk downhill on a cost H', e.g. H = "
             "how close you are to the joint limits. A weighted inverse "
             "measures 'smallest' differently; with W = M it means least "
-            "kinetic energy, which page 137 uses."))
+            "kinetic energy, which page 138 uses."))
         self.add(m)
 
         lab = Card("self-motion: the hand stays put, the elbow swings")

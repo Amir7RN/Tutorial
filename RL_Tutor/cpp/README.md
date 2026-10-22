@@ -39,3 +39,12 @@ matrix types), `rrpr_starter.cpp` (copied to your own `my_rrpr.cpp` on first
 use) and `rrpr_solution.cpp` (shown one exercise at a time). The page compiles
 your file with g++ and a generated test `main()`; grading lives in
 `ctrlcore/rrpr_check.py`.
+
+## Workshop 2 (page 131)
+
+Statics, determinant, power iteration and deflation, manipulability, Gaussian
+elimination, damped least squares, the log of a pose, Newton–Raphson IK and
+null-space motion on the same arm. `rrpr_lib.hpp` supplies the arm (FK, both
+Jacobians, adjoint, …) so it works on its own. `rrpr2_starter.cpp` is copied to
+your `my_rrpr2.cpp`; answers are in `rrpr2_solution.cpp`; grading lives in
+`ctrlcore/rrpr2_check.py`.

@@ -219,7 +219,7 @@ _TOPO = {
             "a planner's distance, an interpolated path. Otherwise the arm "
             "turns 340° when 20° would do (the next lab). A grid planner on "
             "this C-space must link the right column to the left column, or it "
-            "misses short paths through the seam (page 141).",
+            "misses short paths through the seam (page 142).",
         extra="Where the zero of each angle is placed is an arbitrary choice; "
               "it moves the seams but cannot remove them. With joint limits "
               "(say ±150°) the C-space is a closed rectangle [−150°, 150°]², "
@@ -733,19 +733,19 @@ def why_card() -> Card:
           "wrap angle errors (PID, planners, interpolation); treat joint "
           "limits as walls, not seams; know that a closed chain may have "
           "separate pieces you cannot move between",
-          "129, 139, 140"),
+          "132, 142, 143"),
          ("explicit representation",
           "which minimal numbers do I write a pose with?",
           "joint angles q for an arm: exactly the q in the dynamics. Safe "
           "because a circle only has jumps, never blow-ups (page 116)",
-          "123–136"),
+          "123–139"),
          ("implicit representation",
           "what if every minimal set of numbers breaks somewhere?",
           "store the hand's orientation as a rotation matrix R (or a "
           "quaternion), never as Euler angles, so the controller has no "
           "gimbal lock; describe a closed chain by all its joints plus "
           "g(θ) = 0",
-          "118–122, 129, 141"),
+          "118–122, 132, 144"),
          ("velocity ≠ coordinate rate",
           "how fast is it moving?",
           "use angular velocity ω and twists V, not Euler-angle rates; the "
@@ -1153,7 +1153,7 @@ class HoopConstraintCard:
             "<b>Physically</b>, the red direction is also the direction in "
             "which the hoop pushes on the bead. A push along the red arrow "
             "can never speed up or slow down a motion along the green line, "
-            "so the hoop does no work. Page 138 uses exactly this: the "
+            "so the hoop does no work. Page 139 uses exactly this: the "
             "constraint force is Aᵀλ, and its power q̇ᵀAᵀλ = (A q̇)ᵀλ = 0."))
         self._draw()
 
@@ -1324,7 +1324,7 @@ class WallCard:
             "−3.00: the arrow lies flat along the wall and the gap rate is "
             "zero. Above −3 the finger pulls off the wall; below, it "
             "pushes into it, and the wall must push back (that push is the "
-            "constraint force Aᵀλ of page 138). At −3 the tip slides down "
+            "constraint force Aᵀλ of page 139). At −3 the tip slides down "
             "the wall at 1.73 m/s; to slide up, run both joints the other "
             "way. Same row of A, same cancellation."))
         self._draw()
@@ -1425,22 +1425,22 @@ def constraint_uses_card() -> Card:
     c.add(body(_grid_table(
         ("what you have", "what it tells you", "where you use it"),
         [("g(q) = 0", "which poses exist at all; n − k numbers are free",
-          "closed-chain inverse kinematics and assembly modes (131); a hand "
-          "held against a wall (138)"),
+          "closed-chain inverse kinematics and assembly modes (132); a hand "
+          "held against a wall (139)"),
          ("A(q) = ∂g/∂q", "row i: how fast gap i opens per unit speed of "
                           "each joint; also the direction the constraint pushes",
-          "constraint and contact forces Aᵀλ (138)"),
+          "constraint and contact forces Aᵀλ (139)"),
          ("null space of A", "every velocity the mechanism can actually make; "
                              "its size is the DOF at this pose",
-          "the speeds of passive joints when the motors turn (131); same idea "
+          "the speeds of passive joints when the motors turn (132); same idea "
           "as the Jacobian null space of a redundant arm (130); angular "
           "velocity as the null space of RᵀR = I's rules (119)"),
          ("rank of A drops", "a singular pose: the mechanism gains a freedom, "
                              "locks, or can flip to the other assembly mode",
-          "actuator singularities of parallel robots (131)"),
+          "actuator singularities of parallel robots (132)"),
          ("A(q)q̇ = 0 with no g behind it", "nonholonomic: directions are "
                                            "forbidden, places are not",
-          "car and differential-drive planning and control (139, 144)")])))
+          "car and differential-drive planning and control (142, 147)")])))
     c.add(plain(
         "The puzzle so far, in order. Pages 115–116: q is the list of joint numbers, "
         "and you know what shape the space of q is. This page: some q's are "
@@ -1448,7 +1448,7 @@ def constraint_uses_card() -> Card:
         "velocities are not allowed (A q̇ = 0 throws them out). The null space "
         "of A is what is left: the motions the robot can really make. Later, "
         "the Jacobian (124) maps the allowed q̇ to hand velocity, and the "
-        "dynamics (130–136) say what torques produce a given q̈, plus the "
+        "dynamics (133–139) say what torques produce a given q̈, plus the "
         "constraint force Aᵀλ that keeps the rule true."))
     return c
 

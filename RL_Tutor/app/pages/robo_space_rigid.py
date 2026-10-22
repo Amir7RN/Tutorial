@@ -2067,13 +2067,13 @@ def big_picture_card() -> Card:
          ("which angles reach a target? (inverse kinematics)",
           "Δθ = J⁺ log(T(θ)⁻¹T<sub>d</sub>): the log gives the pose error as "
           "one twist, the screw that would carry you there; it wraps and takes "
-          "the short way", "127"),
+          "the short way", "129"),
          ("what torques give this motion? (dynamics)",
           "recursive Newton–Euler: twists passed outward, wrenches inward, one "
-          "frame-change rule (the adjoint) per link, same code for any robot", "132"),
+          "frame-change rule (the adjoint) per link, same code for any robot", "135"),
          ("control", "orientation error = log(R<sub>d</sub>ᵀR), a 3-vector you "
           "can multiply by a gain; forces moved between frames with the same "
-          "rules as twists", "140–142")])))
+          "rules as twists", "143–145")])))
     c.add(body(
         "<b>3. When is the hand method still right?</b> For one body, a "
         "planar mechanism or a quick check it is perfect, and it is the same "

@@ -144,7 +144,7 @@ class LagrangePage(Page):
             "and accelerations all 0 → only gravity remains: the torque to "
             "hold still. (3) Move q₁ only → the printed M does not change, "
             "because M depends on the elbow alone. The stat compares this "
-            "closed-form answer with the Newton–Euler algorithm of page 134; "
+            "closed-form answer with the Newton–Euler algorithm of page 135; "
             "a value near zero means two very different methods agree."))
         self.add(lab)
         self._draw()

@@ -210,11 +210,13 @@ EXERCISES = [
 class Workshop:
     """Owns the editor, the file on disk, g++, and who gets told about results."""
 
-    def __init__(self):
-        self.path = rc.ensure_workbook()
-        self.harness = os.path.join(rc.BUILD, "harness.cpp")
-        self.exe = os.path.join(rc.BUILD, "harness.exe" if os.name == "nt" else "harness")
-        self.gxx = rc.find_gxx()
+    def __init__(self, ck=rc):
+        self.ck = ck                # the checker module: rrpr_check (page 125), rrpr2_check (131)
+        self.path = ck.ensure_workbook()
+        name = getattr(ck, "HARNESS", "harness")
+        self.harness = os.path.join(ck.BUILD, name + ".cpp")
+        self.exe = os.path.join(ck.BUILD, name + ".exe" if os.name == "nt" else name)
+        self.gxx = self.ck.find_gxx()
         self._built = None          # hash of the source the exe was built from
         self._proc = None
         self._then = None
@@ -278,12 +280,12 @@ class Workshop:
             self._load()
 
     def reset(self):
-        with open(rc.STARTER, encoding="utf-8") as f:
+        with open(self.ck.STARTER, encoding="utf-8") as f:
             self.editor.setPlainText(f.read())
         self.save()
 
     def goto_ex(self, ex):
-        line = rc.marker_line(self.editor.toPlainText(), ex)
+        line = self.ck.marker_line(self.editor.toPlainText(), ex)
         if line >= 0:
             self._goto(line)
 
@@ -316,14 +318,15 @@ class Workshop:
         h = hashlib.sha1()
         h.update(self._read().encode("utf-8"))
         h.update(harness_src.encode("utf-8"))
-        with open(os.path.join(rc.ROOT, "mrlite.hpp"), "rb") as f:
-            h.update(f.read())
+        for dep in getattr(self.ck, "DEPS", ("mrlite.hpp",)):
+            with open(os.path.join(self.ck.ROOT, dep), "rb") as f:
+                h.update(f.read())
         return h.hexdigest()
 
     def up_to_date(self):
         return (self._built is not None and os.path.exists(self.exe)
                 and not self.editor.document().isModified()
-                and self._built == self._hash(rc.harness_source(self.path)))
+                and self._built == self._hash(self.ck.harness_source(self.path)))
 
     def build(self, then):
         """Compile if the source changed, then call then(ok)."""
@@ -335,7 +338,7 @@ class Workshop:
             then(False)
             return
         self.sync()
-        src = rc.harness_source(self.path)
+        src = self.ck.harness_source(self.path)
         key = self._hash(src)
         if key == self._built and os.path.exists(self.exe):
             then(True)
@@ -347,7 +350,7 @@ class Workshop:
         self._t0 = time.perf_counter()
         self._then, self._key = then, key
         p = self._proc = QProcess()
-        cmd = rc.compile_command(self.gxx, self.harness, self.exe)
+        cmd = self.ck.compile_command(self.gxx, self.harness, self.exe)
         p.setProcessChannelMode(QProcess.MergedChannels)
         p.finished.connect(self._compiled)
         p.errorOccurred.connect(lambda *_: self._compiled(-1, None))
@@ -372,7 +375,7 @@ class Workshop:
 
     def _show_errors(self, out):
         base = os.path.basename(self.path)
-        lines = [ln.replace(rc.ROOT.replace("\\", "/") + "/", "").replace(rc.ROOT + os.sep, "")
+        lines = [ln.replace(self.ck.ROOT.replace("\\", "/") + "/", "").replace(self.ck.ROOT + os.sep, "")
                  for ln in out.splitlines()]
         self.log.setPlainText("\n".join(lines[:80]))
         self.log.show()
@@ -399,8 +402,8 @@ class Workshop:
         except subprocess.TimeoutExpired as e:
             out = (e.stdout or b"").decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
             crashed = True
-        vals, other = rc.parse_output(out)
-        results = rc.grade_all(vals)
+        vals, other = self.ck.parse_output(out)
+        results = self.ck.grade_all(vals)
         by_ex = {}
         for res in results:
             by_ex.setdefault(res.test.ex, []).append(res.ok)
@@ -426,7 +429,7 @@ class Workshop:
                                text=True, timeout=5)
         except (subprocess.TimeoutExpired, OSError):
             return None
-        vals, _ = rc.parse_output(r.stdout)
+        vals, _ = self.ck.parse_output(r.stdout)
         try:
             return (vals["pose_fks"].reshape(4, 4), vals["pose_fkb"].reshape(4, 4),
                     vals["pose_js"].reshape(4, 6).T, vals["pose_jb"].reshape(4, 6).T)
@@ -439,7 +442,7 @@ class Workshop:
             col = theme.GOOD if ok else theme.BAD if ok is False else theme.TEXT_FAINT
             mark = "✓" if ok else "✗" if ok is False else "·"
             lb.setText(f"<span style='color:{col}'><b>{ex} {mark}</b></span>")
-            lb.setToolTip(rc.EXERCISES[ex])
+            lb.setToolTip(self.ck.EXERCISES[ex])
 
 
 # ==========================================================================
@@ -641,7 +644,7 @@ def method_card() -> Card:
 class WorkbenchCard:
     def __init__(self, ws: Workshop):
         self.ws = ws
-        c = self.card = Card("workbench: my_rrpr.cpp")
+        c = self.card = Card(f"workbench: {os.path.basename(ws.path)}")
         row = QHBoxLayout()
         self.b_check = QPushButton("▶  check my code")
         self.b_check.setStyleSheet(f"font-weight:bold; color:{theme.GOOD};")
@@ -661,7 +664,7 @@ class WorkbenchCard:
         c.add_layout(row)
         chips = QHBoxLayout()
         chips.addWidget(body(f"<span style='color:{theme.TEXT_DIM}'>exercises:</span>"))
-        for ex in rc.EXERCISES:
+        for ex in ws.ck.EXERCISES:
             lb = QLabel()
             ws.chips.append((ex, lb))
             chips.addWidget(lb)
@@ -698,7 +701,7 @@ class WorkbenchCard:
 class ExerciseCard:
     def __init__(self, ws: Workshop, spec: dict, scroll_to_bench):
         self.ws, self.ex = ws, spec["ex"]
-        c = self.card = Card(f"exercise {self.ex} — {rc.EXERCISES[self.ex]}")
+        c = self.card = Card(f"exercise {self.ex} — {ws.ck.EXERCISES[self.ex]}")
         c.add(in_words(spec["why"]))
         c.add(body(spec["formula"]))
         sig = CodePane(spec["sig"], font_size=10)
@@ -719,7 +722,7 @@ class ExerciseCard:
         c.add_layout(row)
         self.res = body(f"<span style='color:{theme.TEXT_DIM}'>not checked yet</span>")
         c.add(self.res)
-        code = rc.solution_block(self.ex)
+        code = ws.ck.solution_block(self.ex)
         self.sol = CodePane(code, font_size=10)
         self.sol.setPlainText(code)
         self.sol.sizeHintLine(min(code.count("\n") + 2, 30))
@@ -734,7 +737,7 @@ class ExerciseCard:
 
     def update(self, results, passed):
         mine = [r for r in results if r.test.ex == self.ex]
-        blockers = rc.blocking(self.ex, passed)
+        blockers = self.ws.ck.blocking(self.ex, passed)
         n = sum(r.ok for r in mine)
         head_col = theme.GOOD if n == len(mine) else theme.BAD
         out = [f"<b style='color:{head_col}'>{n} / {len(mine)} tests pass</b>"]

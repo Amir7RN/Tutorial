@@ -78,8 +78,8 @@ class RoboRoadmapPage(Page):
             "This block answers three questions about any robot arm, in "
             "order. <b>Where is the hand?</b> (kinematics, pages 115–123). "
             "<b>How fast and how hard can the hand move when the motors "
-            "turn?</b> (the Jacobian, pages 124–131). <b>What motor torques "
-            "does a given motion need?</b> (dynamics, pages 132–138). The "
+            "turn?</b> (the Jacobian, pages 124–132). <b>What motor torques "
+            "does a given motion need?</b> (dynamics, pages 133–139). The "
             "last pages use those three answers to plan and control the arm. "
             "You need no earlier page of the tutor: only that a matrix times "
             "a vector is a weighted sum of columns, and that a derivative is "
@@ -177,8 +177,8 @@ class RoboRoadmapPage(Page):
             "space control, impedance and hybrid force control."))
         p.add(plain(
             "Do not try to master this list on the first pass. Items 1–2 are "
-            "the Kinematics section (pages 123–131), items 3–5 the Dynamics "
-            "section (132–138), item 6 Robot Control (142–144). If you only "
+            "the Kinematics section (pages 123–132), items 3–5 the Dynamics "
+            "section (133–139), item 6 Robot Control (143–145). If you only "
             "have time for one idea, take the Jacobian: almost every other "
             "item is built from it."))
         self.add(p)
@@ -563,7 +563,7 @@ class ConstraintsPage(Page):
             "flat: picking joint angles at random piles the hand up near the "
             "inner and outer edges (arm nearly folded or straight), so "
             "'random in joints' is not 'random in task space' — it matters "
-            "for sampling planners on page 141."))
+            "for sampling planners on page 142."))
         self.add(w)
         self._draw()
         self.wslim = JointLimitWorkspaceCard()
