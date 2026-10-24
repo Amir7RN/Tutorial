@@ -24,6 +24,7 @@ from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from . import robo_kin_jac as jac
 from . import robo_manip as mp
 from . import robo_ik as ik
+from . import robo_null as ns
 from . import robo_kin_poe as poe
 from .base import Page
 from .robo_space_rigid import in_words, link_back
@@ -781,7 +782,15 @@ class NullSpacePage(Page):
 
         # end of video 6.2: inverse velocity kinematics, and J⁺ itself
         self.add(ik.inverse_velocity_card())
-        self.add(ik.pinv_card())
+
+        # the pseudoinverse and the null space, step by step on one 3R arm
+        self.add(ns.roadmap_card())
+        for card in (ns.s1_card, ns.s2_card, ns.s3_card, ns.s4_card, ns.s5_card,
+                     ns.s6_card, ns.s7_card, ns.s8_card, ns.s9_card):
+            self.add(card())
+        self.subspace_lab = ns.FourSubspacesLab()
+        self.add(self.subspace_lab.card)
+        self.add(ns.s10_card())
         self.pinv_lab = ik.PinvGeometryLab()
         self.add(self.pinv_lab.card)
 
