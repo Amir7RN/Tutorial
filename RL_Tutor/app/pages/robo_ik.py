@@ -574,7 +574,7 @@ def pinv_card() -> Card:
         "every row dotted with n is 0). So ‖θ̇* + n‖² = ‖θ̇*‖² + ‖n‖²: adding "
         "any null motion only makes it longer. In the example, (0.2, 0.4) ⟂ (2, −1).<br>"
         "<b>Why the tall formula gives the closest twist.</b> The reachable "
-        "twists Jθ̇ fill J's column space. The closest point to V<sub>d</sub> is "
+        "twists Jθ̇ fill the hand reachable space. The closest point to V<sub>d</sub> is "
         "its perpendicular projection, so the error must be ⟂ every column: "
         "Jᵀ(Jθ̇ − V<sub>d</sub>) = 0, the 'normal equations', which solve to "
         "(JᵀJ)⁻¹JᵀV<sub>d</sub>. In the example (0.4, −0.2) ⟂ (1, 2)."))

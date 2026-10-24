@@ -59,7 +59,7 @@ def roadmap_card() -> Card:
         [("1", "what does J look like here, read by columns and by rows?"),
          ("2", "why is there no unique answer, and what do all the answers look like?"),
          ("3", "what are JᵀJ and JJᵀ, and how do they connect?"),
-         ("4", "the four fundamental subspaces: the map of the whole problem"),
+         ("4", "four pieces, two in joint space and two in hand space: the map of the whole problem"),
          ("5", "how to find U, Σ, V for any matrix (the SVD recipe)"),
          ("6", "applying J through its SVD: project, stretch, build"),
          ("7", "the pseudoinverse = the SVD run backwards"),
@@ -154,27 +154,35 @@ def s4_card() -> Card:
         "Every matrix splits its input space into two perpendicular pieces and "
         "its output space into two perpendicular pieces. Once you know the "
         "four pieces, J, Jᵀ, J⁺ and the null-space projector are all just "
-        "'which piece goes where'."))
+        "'which piece goes where'. Two pieces live in joint space, two in "
+        "hand space, and this page names them that way."))
     c.add(body(_table(
-        ("subspace", "lives in", "SVD vectors", "robot meaning", "here"),
-        [("<b>row space</b>", "joint speeds (ℝ³)", "vᵢ with σᵢ &gt; 0",
+        ("piece", "lives in", "SVD vectors", "robot meaning", "here"),
+        [("<b>joint working space</b>", "joint speeds (ℝ³)", "vᵢ with σᵢ &gt; 0",
           "joint mixes that move the tip", "the plane spanned by the rows (−1, −1, 0) and (2, 1, 1)"),
-         ("<b>null space</b>", "joint speeds", "vᵢ with σᵢ = 0 (and extra vᵢ)",
+         ("<b>joint null space</b>", "joint speeds", "vᵢ with σᵢ = 0 (and extra vᵢ)",
           "self-motion: the tip does not feel it", "the line through (1, −1, −1)"),
-         ("<b>column space</b>", "hand velocities (ℝ²)", "uᵢ with σᵢ &gt; 0",
+         ("<b>hand reachable space</b>", "hand velocities (ℝ²)", "uᵢ with σᵢ &gt; 0",
           "tip velocities you can make", "the whole plane (rank 2)"),
-         ("<b>left null space</b>", "hand velocities", "uᵢ with σᵢ = 0",
+         ("<b>hand unreachable space</b>", "hand velocities", "uᵢ with σᵢ = 0",
           "tip directions you cannot make", "nothing here; appears at a singularity")])))
+    c.add(plain(
+        "Textbook names, only for reading Strang or the book: joint working "
+        "space = <i>row space</i>, joint null space = <i>null space</i>, hand "
+        "reachable space = <i>column space</i>, hand unreachable space = "
+        "<i>left null space</i>."))
     c.add(body(
-        "<b>Perpendicular pairs.</b> Null space ⟂ row space: (1, −1, −1) · (−1, −1, 0) "
+        "<b>Perpendicular pairs.</b> Joint null space ⟂ joint working space: (1, −1, −1) · (−1, −1, 0) "
         "= 0 and (1, −1, −1) · (2, 1, 1) = 0. That is no accident: Jn = 0 says "
-        "exactly 'every row dotted with n is 0'. Same on the hand side: column "
-        "space ⟂ left null space."))
+        "exactly 'every row dotted with n is 0'. Same on the hand side: hand "
+        "reachable space ⟂ hand unreachable space."))
     c.add(body(
-        "<b>What J does:</b> it maps the row space onto the column space (one "
-        "to one, stretching by σᵢ) and sends the null space to zero.<br>"
-        "<b>What J⁺ does:</b> the exact reverse: maps the column space back onto "
-        "the row space (dividing by σᵢ) and sends the left null space to zero."))
+        "<b>What J does:</b> it maps the joint working space onto the hand "
+        "reachable space (one to one, stretching by σᵢ) and sends the joint "
+        "null space to zero.<br>"
+        "<b>What J⁺ does:</b> the exact reverse: maps the hand reachable space "
+        "back onto the joint working space (dividing by σᵢ) and sends the hand "
+        "unreachable space to zero."))
     return c
 
 
@@ -224,7 +232,7 @@ def s6_card() -> Card:
     c.add(plain(
         "Doing Jθ̇ directly gives the same (−1, 2), of course. The SVD route is "
         "not for computing; it is for <b>seeing</b>: which part of θ̇ matters "
-        "(the row-space part), how much each part is amplified (σᵢ), and which "
+        "(the joint working part), how much each part is amplified (σᵢ), and which "
         "part is lost entirely (the null part, 0.577 of this θ̇)."))
     return c
 
@@ -247,15 +255,15 @@ def s7_card() -> Card:
         "That is the whole definition. J⁺V<sub>d</sub> = (1/3, −1/3, 2/3), the "
         "answer of step 2. 'Inverse' only where an inverse makes sense: on "
         "the reachable hand directions, back into the joint mixes that make "
-        "them. Directions that J kills (null space) or cannot reach (left null "
-        "space) are simply left out."))
+        "them. Directions that J kills (joint null space) or cannot reach (hand "
+        "unreachable space) are simply left out."))
     return c
 
 
 def s8_card() -> Card:
     c = Card("step 8 · the same answer the leverage way: J⁺ = Jᵀ(JJᵀ)⁻¹")
     c.add(body(
-        "When J has full row rank (here: yes, rank 2) there is a formula without "
+        "When J can reach every hand direction (here: yes, rank 2) there is a formula without "
         "the SVD. It means the same thing, in x and y instead of u₁ and u₂."))
     c.add(body(
         "<b>One task number first.</b> Want only ẏ = 1: 2θ̇₁ + θ̇₂ + θ̇₃ = 1, a "
@@ -290,28 +298,29 @@ def s9_card() -> Card:
     c.add(body(
         "<b>Shortest.</b> Every exact answer is θ̇* + t·n with θ̇* = J⁺V<sub>d</sub> "
         "and n = (1, −1, −1) in the null space. θ̇* is built from v₁ and v₂ only "
-        "(row space), n is along v₃, and row space ⟂ null space, so by "
+        "(joint working space), n is along v₃, and joint working space ⟂ "
+        "joint null space, so by "
         "Pythagoras ‖θ̇* + tn‖² = ‖θ̇*‖² + t²‖n‖². Any t ≠ 0 makes it longer. "
         "Numbers: ‖(1/3, −1/3, 2/3)‖ = 0.816; add one unit of v₃ and it is 1.291."))
     c.add(body(
         "<b>J⁺J and I − J⁺J.</b> J⁺J first maps θ̇ to the hand and then back: "
-        "the null part is lost on the way, the row-space part comes back "
-        "unchanged. So J⁺J = projector onto the row space, and"))
+        "the null part is lost on the way, the working part comes back "
+        "unchanged. So J⁺J = projector onto the joint working space, and"))
     c.add(math_label(r"N=I-J^{+}J=v_3v_3^T=\frac{1}{3}\left[\ \ 1\ -1\ -1;\ \ -1\ \ 1\ \ 1;\ \ -1\ \ 1\ \ 1\ \right]", 15))
     c.add(body(
-        "is the projector onto the null space: it keeps only the part of a "
+        "is the projector onto the joint null space: it keeps only the part of a "
         "joint motion along v₃. Example: θ̇₀ = (1, 0, 0) ('turn joint 1') becomes "
         "Nθ̇₀ = (1/3)(1, −1, −1): turn joint 1 a bit, joints 2 and 3 back, and "
         "the tip stays put. Check: J·(1, −1, −1) = 0.<br>"
         "<b>The redundancy formula</b> now reads itself:"))
-    c.add(math_label(r"\dot\theta=\underbrace{J^{+}V_d}_{\mathrm{row\ space:\ does\ the\ task}}"
-                     r"+\underbrace{(I-J^{+}J)\,\dot\theta_0}_{\mathrm{null\ space:\ invisible\ to\ the\ tip}}", 16))
+    c.add(math_label(r"\dot\theta=\underbrace{J^{+}V_d}_{\mathrm{joint\ working\ part:\ does\ the\ task}}"
+                     r"+\underbrace{(I-J^{+}J)\,\dot\theta_0}_{\mathrm{joint\ null\ part:\ invisible\ to\ the\ tip}}", 16))
     c.add(plain(
-        "The two pieces live in perpendicular subspaces, so they cannot "
+        "The two pieces live in perpendicular parts of joint space, so they cannot "
         "interfere: whatever θ̇₀ you choose (away from joint limits, towards "
-        "high manipulability, away from an obstacle), N strips its row-space "
+        "high manipulability, away from an obstacle), N strips its working "
         "part and the task is untouched. Forgetting N is the classic bug: θ̇₀'s "
-        "row-space part leaks into the hand (the self-motion lab below has a "
+        "working part leaks into the hand (the self-motion lab below has a "
         "'WRONG' option that shows exactly that)."))
     return c
 
@@ -319,13 +328,13 @@ def s9_card() -> Card:
 def s10_card() -> Card:
     c = Card("step 10 · the other cases: too few joints, singular, weighted")
     c.add(body(_table(
-        ("case", "what the subspaces look like", "what J⁺V<sub>d</sub> gives"),
-        [("fat, full row rank (our arm)", "null space ≠ {0}, left null space = {0}",
+        ("case", "what the four pieces look like", "what J⁺V<sub>d</sub> gives"),
+        [("fat, rank = rows (our arm)", "joint null space ≠ {0}, hand unreachable space = {0}",
           "exact, shortest θ̇; = Jᵀ(JJᵀ)⁻¹V<sub>d</sub>"),
-         ("tall, full column rank (e.g. the 6 × 4 RRPR J)", "null space = {0}, left null space ≠ {0}",
+         ("tall, rank = columns (e.g. the 6 × 4 RRPR J)", "joint null space = {0}, hand unreachable space ≠ {0}",
           "the θ̇ whose twist is closest to V<sub>d</sub> (least squares); = (JᵀJ)⁻¹JᵀV<sub>d</sub>; "
-          "the left-null part of V<sub>d</sub> is simply impossible"),
-         ("singular (our arm straightened: θ = 0)", "a σ hits 0: both extra subspaces grow",
+          "the unreachable part of V<sub>d</sub> is simply impossible"),
+         ("singular (our arm straightened: θ = 0)", "a σ hits 0: both null pieces grow",
           "closest twist, and among those the shortest θ̇; only VΣ⁺Uᵀ works"),
          ("nearly singular", "a σ is tiny: 1/σ is huge",
           "violent joint speeds; damp: σ/(σ² + λ²) instead of 1/σ")])))
@@ -339,22 +348,23 @@ def s10_card() -> Card:
         "<b>If you want to read more:</b> Gilbert Strang's MIT 18.06 lectures "
         "on the four fundamental subspaces and on the SVD (free on MIT "
         "OpenCourseWare), and 3Blue1Brown's 'Essence of Linear Algebra' series "
-        "for the geometric feel. Once the four-subspace picture clicks, J, Jᵀ, "
-        "J⁺ and N are all 'which subspace goes where'."))
+        "for the geometric feel. Once the joint/hand four-piece picture clicks, J, Jᵀ, "
+        "J⁺ and N are all 'which piece goes where'."))
     return c
 
 
 class FourSubspacesLab:
-    """Joint-speed space in 3-D: row space plane, null line, the line of exact answers."""
+    """Joint-speed space in 3-D: working plane, null line, the line of exact answers."""
 
     def __init__(self):
-        c = self.card = Card("lab (3-D): the four subspaces, the line of answers and J⁺")
+        c = self.card = Card("lab (3-D): joint and hand spaces, the line of answers and J⁺")
         c.add(in_words(
             "Left, joint-speed space (θ̇₁, θ̇₂, θ̇₃). The translucent plane is the "
-            "row space (spanned by v₁, v₂), the red line is the null space (v₃). "
+            "joint working space (spanned by v₁, v₂), the red line is the joint "
+            "null space (v₃). "
             "The orange line is every θ̇ with Jθ̇ = V<sub>d</sub>; it runs "
             "parallel to the null line. The cyan dot is J⁺V<sub>d</sub>: where the "
-            "orange line pierces the row-space plane, its closest point to the "
+            "orange line pierces the working plane, its closest point to the "
             "origin. The yellow dot is J⁺V<sub>d</sub> + t·v₃ (null slider). Right: "
             "the arm, its three column arrows, and the tip velocity produced by "
             "the yellow θ̇, which never changes when you move t."))
@@ -382,9 +392,9 @@ class FourSubspacesLab:
             "(3) Turn V<sub>d</sub>: the orange line moves but always stays "
             "parallel to the red null line, and the cyan dot always stays in the "
             "plane. (4) Change the arm pose: the plane and the null line tilt; J "
-            "is a different matrix, same four-subspace picture. (5) Set θ₂ = θ₃ "
-            "= 0 (arm straight): σ₂ → 0, the row space collapses to a line, the "
-            "null space becomes a plane, and most V<sub>d</sub> can no longer be "
+            "is a different matrix, same four-piece picture. (5) Set θ₂ = θ₃ "
+            "= 0 (arm straight): σ₂ → 0, the working space collapses to a line, the "
+            "joint null space becomes a plane, and most V<sub>d</sub> can no longer be "
             "made exactly. The step-by-step numbers of step 7 are printed above "
             "the plot for whatever you choose."))
         self._draw()
@@ -424,7 +434,7 @@ class FourSubspacesLab:
             ax.plot_surface(P[0], P[1], P[2], color=theme.ACCENT, alpha=0.15, linewidth=0)
         else:
             ax.plot(*np.vstack([-R * V[:, 0], R * V[:, 0]]).T, color=theme.ACCENT, lw=2)
-        ax.plot(*np.vstack([-R * n, R * n]).T, color=theme.BAD, lw=2, label="null space (v₃)")
+        ax.plot(*np.vstack([-R * n, R * n]).T, color=theme.BAD, lw=2, label="joint null space (v₃)")
         ax.plot(*np.vstack([p - R * n, p + R * n]).T, color=theme.ORANGE, lw=2,
                 label="all θ̇ with Jθ̇ = V_d")
         ax.plot([0, p[0]], [0, p[1]], [0, p[2]], color=theme.CYAN, lw=2.2)
@@ -442,7 +452,7 @@ class FourSubspacesLab:
             getattr(ax, f"set_{nm}lim")(-R, R)
         ax.set_box_aspect((1, 1, 1), zoom=1.15)
         ax.view_init(elev=28, azim=-8)
-        ax.set_title("joint-speed space: plane = row space", color=theme.TEXT, fontsize=9)
+        ax.set_title("joint-speed space: plane = working space", color=theme.TEXT, fontsize=9)
         self.cv.legend(ax, loc="upper left")
         pts = draw_arm(bx, L3, q)
         tip = pts[-1]
