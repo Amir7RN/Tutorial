@@ -6,8 +6,16 @@ planar 3R arm with unit links at θ = (0°, 90°, −90°): joints at (0, 0), (1
 """
 from __future__ import annotations
 
+import os
+
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices
+
+from .. import theme
 from ..widgets import Card, body, math_label
 from .robo_common import plain
+
+PINV_HTML = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "pinv_steps.html")
 
 
 def _ul(*items):
@@ -23,6 +31,33 @@ def intro_card() -> Card:
     c.add(plain(
         "One arm for every number: planar 3R, links of length 1, θ = (0°, 90°, −90°). "
         "Joints at (0, 0), (1, 0), (1, 1), tip at (2, 1), so J = [−1 −1 0; 2 1 1]."))
+    return c
+
+
+def pinv_steps_card() -> Card:
+    """The interactive 'pseudo-inverse step by step' page, embedded."""
+    c = Card("interactive: the pseudoinverse step by step on the arm (fat, tall, SVD, summary)")
+    c.add(plain(
+        "Tabs: fat (3 joints, 2 demands, θ̇ = Jᵀ(JJᵀ)⁻¹V), tall (fewer joints than "
+        "demands, θ̇ = (JᵀJ)⁻¹JᵀV, the RRPR case), the same via SVD, and a summary. "
+        "Step through with 'Next step', drag the blue arrow, open 'Show the math'."))
+    url = QUrl.fromLocalFile(PINV_HTML)
+    try:
+        from PySide6.QtWebEngineWidgets import QWebEngineView
+    except ImportError:
+        QWebEngineView = None
+    if QWebEngineView is not None:
+        view = QWebEngineView()
+        view.setMinimumHeight(1000)
+        view.loadFinished.connect(
+            lambda ok: view.page().runJavaScript("document.documentElement.dataset.theme='dark'"))
+        view.load(url)
+        c.add(view)
+        c.view = view
+    link = body(f"<a href='open' style='color:{theme.CYAN}'>Open it in the browser instead</a>")
+    link.setTextInteractionFlags(Qt.TextBrowserInteraction)
+    link.linkActivated.connect(lambda _: QDesktopServices.openUrl(url))
+    c.add(link)
     return c
 
 
@@ -181,5 +216,5 @@ def chain_card() -> Card:
     return c
 
 
-CARDS = (intro_card, spaces_card, null_card, eigen_card, avoid_card,
+CARDS = (intro_card, pinv_steps_card, spaces_card, null_card, eigen_card, avoid_card,
          jtj_card, jjt_card, inverse_card, pinv_card, chain_card)

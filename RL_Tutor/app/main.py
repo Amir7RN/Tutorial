@@ -215,6 +215,8 @@ class MainWindow(QWidget):
 
 
 def main():
+    # the Kinematics summary embeds a web page; QtWebEngine needs this before QApplication
+    QApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setStyleSheet(theme.QSS)
     app.setFont(QFont("Segoe UI", 9))

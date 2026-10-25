@@ -1,0 +1,441 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Pseudo-Inverse Step by Step</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: tabs on top; picture left, the step list right; math hidden in "Show the math" */
+:root{
+  --bg:#f2f4f7; --panel:#ffffff; --ink:#1a2330; --muted:#5b6676; --line:#d4dae2; --hi:#eaf0ff;
+  --vel:#2a4fd6; --push:#d9661f; --grey:#8a93a1; --j1:#7a4fd0; --j2:#c0398a; --j3:#2e8b57;
+  --u1:#0f8a86; --u2:#8a7a12; --link:#3b4656; --ok:#1f8a4c; --inset:#f6f8fb;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --vel:#7d9bff; --push:#f08a45; --grey:#6c7686; --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a;
+  --u1:#33c2bd; --u2:#d4bf4a; --link:#b8c2cf; --ok:#4fd08a; --inset:#141a22; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --vel:#7d9bff; --push:#f08a45; --grey:#6c7686; --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a;
+  --u1:#33c2bd; --u2:#d4bf4a; --link:#b8c2cf; --ok:#4fd08a; --inset:#141a22; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1160px;margin:0 auto;padding-block:18px 30px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:1.3rem;margin:0 0 10px;text-wrap:balance}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.tabs button{font:inherit;font-weight:700;font-size:.9rem;padding:8px 13px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--vel);border-color:var(--vel);color:var(--panel)}
+.grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:18px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+#cv{width:100%;aspect-ratio:1.1/1;max-width:100%;display:block;touch-action:none;border-radius:6px}
+.hint{font-size:.82rem;color:var(--muted);margin:6px 0 0}
+.lead{margin:0 0 10px;color:var(--muted);font-size:.92rem}
+.steps{display:flex;flex-direction:column;gap:6px}
+.step{display:grid;grid-template-columns:30px minmax(0,1fr);gap:8px;text-align:left;font:inherit;color:var(--ink);
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer}
+.step .n{font-family:var(--mono);font-weight:600;color:var(--muted)}
+.step b{display:block}
+.step .t{font-size:.88rem;color:var(--muted)}
+.step.sub{margin-left:18px}
+.step[aria-current="true"]{background:var(--hi);border-color:var(--vel)}
+.step[aria-current="true"] .n{color:var(--vel)}
+.step[aria-current="true"] .t{color:var(--ink)}
+.nav{display:flex;gap:8px;margin:10px 0}
+.nav button{font:inherit;font-weight:700;border-radius:8px;padding:8px 14px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.nav button.primary{background:var(--vel);border-color:var(--vel);color:var(--panel)}
+.nav button:disabled{opacity:.45;cursor:default}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--vel);outline-offset:2px}
+details{border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
+summary{cursor:pointer;font-weight:700;font-size:.9rem;color:var(--muted)}
+.math{font-family:var(--mono);font-size:.84rem;font-variant-numeric:tabular-nums;display:grid;gap:4px;margin-top:8px;overflow-x:auto}
+.sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.sum h3{margin:0 0 6px;font-size:1rem}
+.sum ol{margin:0;padding-left:20px;display:grid;gap:4px}
+.mono{font-family:var(--mono);font-size:.86rem}
+.cv{color:var(--vel)} .cp{color:var(--push)} .cg{color:var(--grey)} .c1{color:var(--j1)} .c2{color:var(--j2)} .c3{color:var(--j3)} .cu1{color:var(--u1)} .cu2{color:var(--u2)} .cok{color:var(--ok)}
+</style>
+
+<div class="wrap">
+  <h1>Pseudo-inverse, step by step on the arm</h1>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="fat" aria-selected="true" type="button">Fat: 3 joints, 2 demands</button>
+    <button role="tab" data-tab="tall" aria-selected="false" type="button">Tall: 1 joint, 2 demands</button>
+    <button role="tab" data-tab="tall2" aria-selected="false" type="button">Tall: 2 joints, 3 demands</button>
+    <button role="tab" data-tab="svd" aria-selected="false" type="button">Same thing via SVD</button>
+    <button role="tab" data-tab="sum" aria-selected="false" type="button">Summary</button>
+  </div>
+
+  <div class="grid" id="stage">
+    <div class="card">
+      <canvas id="cv" aria-label="Arm drawing for the current step"></canvas>
+      <p class="hint">Drag the head of the blue arrow to change the tip velocity you want.</p>
+    </div>
+    <div class="card">
+      <p class="lead" id="lead"></p>
+      <div class="steps" id="steps"></div>
+      <div class="nav">
+        <button id="back" type="button">Back</button>
+        <button id="next" class="primary" type="button">Next step</button>
+      </div>
+      <details id="det"><summary>Show the math for this step</summary><div class="math" id="math"></div></details>
+    </div>
+  </div>
+
+  <div class="card" id="summary" hidden>
+    <div class="sum">
+      <div>
+        <h3>Fat: more joints than demands</h3>
+        <p class="lead">Every demand is reachable, in many ways. Fix the push first, then let the joints feel it.</p>
+        <ol>
+          <li><b>(JJᵀ)⁻¹</b> in three moves: split V along the no-leak hand axes u₁, u₂ · divide each part by its σ² · recombine. Result: the corrected push w.</li>
+          <li><b>Jᵀ</b>: each joint spins by the torque it feels from w.</li>
+          <li>Exact tip velocity, least joint motion, no fighting.</li>
+        </ol>
+        <p class="mono">θ̇ = Jᵀ (JJᵀ)⁻¹ V</p>
+      </div>
+      <div>
+        <h3>Tall: fewer joints than demands</h3>
+        <p class="lead">Only some demands are reachable. Let the joints feel V first, then divide.</p>
+        <ol>
+          <li><b>Jᵀ</b>: each joint reads its share of V. Whatever no joint can feel is dropped here.</li>
+          <li><b>(JᵀJ)⁻¹</b> in three moves: split the shares along the no-overlap joint mixes v₁, v₂ · divide each by its σ² · recombine. Result: joint speeds.</li>
+          <li>Reachable demand: exact. Unreachable: the closest the arm can do.</li>
+        </ol>
+        <p class="mono">θ̇ = (JᵀJ)⁻¹ Jᵀ V</p>
+      </div>
+      <div>
+        <h3>SVD: one recipe for every shape</h3>
+        <ol>
+          <li><b>Uᵀ</b>: split V along the ellipse axes u₁, u₂.</li>
+          <li><b>Σ⁺</b>: divide each part by its σ (skip σ = 0).</li>
+          <li><b>V</b>: each part becomes its joint mix; add them.</li>
+        </ol>
+        <p class="mono">θ̇ = V Σ⁺ Uᵀ V_d (equals both formulas above)</p>
+      </div>
+      <div>
+        <h3>Near a singularity: λ²</h3>
+        <ol>
+          <li>Divide by (σ² + λ²) instead of σ².</li>
+          <li>Healthy direction: λ² barely matters.</li>
+          <li>Weak direction: the answer fades to 0 instead of blowing up.</li>
+        </ol>
+        <p class="mono">θ̇ = (JᵀJ + λ²I)⁻¹ JᵀV</p>
+      </div>
+      <div>
+        <h3>What to do next</h3>
+        <ol>
+          <li>Redo each tab by hand with the numbers under "Show the math".</li>
+          <li>In your C++ workshop, run <span class="mono">pinvSolve</span> on the RRPR and compare with a library pseudoinverse.</li>
+          <li>Watch Strang's MIT 18.06 lectures on the four subspaces and the SVD.</li>
+          <li>Re-read Modern Robotics section 6.3 (inverse velocity kinematics) with these pictures in mind.</li>
+        </ol>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(()=>{
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f=(x,d=2)=>(Math.abs(x)<5e-4?0:x).toFixed(d);
+const vs=v=>'('+v.map(x=>f(x)).join(', ')+')';
+const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0);
+const add=(a,b)=>a.map((x,i)=>x+b[i]), scl=(a,k)=>a.map(x=>x*k);
+function eig2(A,B,C){const m=(A+C)/2,d=Math.sqrt(((A-C)/2)**2+B*B),t=0.5*Math.atan2(2*B,A-C);
+  return {l1:m+d,l2:m-d,e1:[Math.cos(t),Math.sin(t)],e2:[-Math.sin(t),Math.cos(t)]}}
+
+/* ---------- models ---------- */
+const state={tab:'fat',step:0,anim:1,V:{fat:[0,1],tall:[0.35,0.95],tall2:[1,0],svd:[0,1]}};
+function fatModel(V){
+  const P=[[0,0],[1,0],[1,1]],tip=[2,1];
+  const C=P.map(p=>[-(tip[1]-p[1]),tip[0]-p[0]]);
+  const A=C.reduce((s,c)=>s+c[0]*c[0],0),B=C.reduce((s,c)=>s+c[0]*c[1],0),Cc=C.reduce((s,c)=>s+c[1]*c[1],0),det=A*Cc-B*B;
+  const tauV=C.map(c=>dot(c,V));
+  const direct=C.reduce((s,c,i)=>add(s,scl(c,tauV[i])),[0,0]);
+  const w=[(Cc*V[0]-B*V[1])/det,(-B*V[0]+A*V[1])/det];
+  const td=C.map(c=>dot(c,w)), parts=C.map((c,i)=>scl(c,td[i]));
+  const E=eig2(A,B,Cc);let u1=E.e1,u2=E.e2;if(u1[1]<0)u1=scl(u1,-1);if(u2[0]<0)u2=scl(u2,-1);
+  const l1=E.l1,l2=E.l2,s1=Math.sqrt(l1),s2=Math.sqrt(l2);
+  const a1=dot(u1,V),a2=dot(u2,V), c1=a1/l1,c2=a2/l2;           // (JJᵀ)⁻¹ sub-steps
+  const v1=C.map(c=>dot(c,u1)/s1),v2=C.map(c=>dot(c,u2)/s2),b1=a1/s1,b2=a2/s2;
+  const tdS=[0,1,2].map(i=>b1*v1[i]+b2*v2[i]);
+  return {P,tip,C,A,B,Cc,tauV,direct,w,td,parts,u1,u2,l1,l2,s1,s2,a1,a2,c1,c2,v1,v2,b1,b2,tdS,V};
+}
+function tallModel(V){
+  const a=35*Math.PI/180,Lk=1.5,P=[[0,0]],tip=[Lk*Math.cos(a),Lk*Math.sin(a)];
+  const c=[-tip[1],tip[0]],c2=dot(c,c),tau=dot(c,V),td=tau/c2,res=scl(c,td),left=[V[0]-res[0],V[1]-res[1]];
+  return {P,tip,c,c2,tau,td,res,left,V};
+}
+function tall2Model(V){ // 2R, L=(1,0.8), θ=(0,90°); demands: spin ω=0 plus tip (vx,vy)
+  const P=[[0,0],[1,0]],tip=[1,0.8];
+  const J=P.map(p=>[1,-(tip[1]-p[1]),tip[0]-p[0]]);             // columns (ω, vx, vy)
+  const D=[0,V[0],V[1]];
+  const r=J.map(j=>dot(j,D));                                    // Jᵀ V: each joint's share
+  const A=dot(J[0],J[0]),B=dot(J[0],J[1]),Cc=dot(J[1],J[1]),det=A*Cc-B*B;
+  const E=eig2(A,B,Cc);let v1=E.e1,v2=E.e2;if(v1[0]<0)v1=scl(v1,-1);if(v2[1]<0)v2=scl(v2,-1);
+  const a1=dot(v1,r),a2=dot(v2,r),c1=a1/E.l1,c2=a2/E.l2;
+  const td=add(scl(v1,c1),scl(v2,c2));
+  const got=add(scl(J[0],td[0]),scl(J[1],td[1]));                // achieved (ω, vx, vy)
+  return {P,tip,J,D,r,A,B,Cc,det,l1:E.l1,l2:E.l2,v1,v2,a1,a2,c1,c2,td,got,V};
+}
+
+/* ---------- step text ---------- */
+const STEPS={
+ fat:{lead:'Three joints, and the tip has two demands (x and y velocity). Any demand is reachable, in infinitely many ways. We want the way with no joints fighting.',
+  steps:[
+   ['0','The setup','Faint arrows at the tip: what each joint does to the tip at 1 rad/s (its moment arm). Blue: the tip velocity you want.'],
+   ['1','Push with V as it is','Treat V as a push on the tip. Each joint feels a torque. If each joint spins at that torque, the tip goes along the grey arrow: too big and crooked. That crookedness is the leak.'],
+   ['2a','(JJᵀ)⁻¹, move 1: split V along the no-leak axes','u₁ and u₂ are the two hand directions where pushing comes out straight, with no leak. Split the blue arrow into its u₁ part and u₂ part.'],
+   ['2b','(JJᵀ)⁻¹, move 2: divide each part by its total leverage²','Along u₁ the joints have lots of leverage (σ₁² is big), so that part shrinks a lot. Along u₂ they have little (σ₂² is small), so that part shrinks less or even grows.'],
+   ['2c','(JJᵀ)⁻¹, move 3: recombine into the corrected push','Add the two rescaled parts. That is w, the corrected push: smaller, and leaning to cancel the leak. This is all (JJᵀ)⁻¹ does to a vector.'],
+   ['3','Jᵀ: joints feel the corrected push','Each joint spins at the torque it feels from w: its moment arm dotted with w. The arcs show the joint speeds.'],
+   ['4','Result','Each joint\'s tip contribution (its arrow × its speed) is stacked at the tip. They add up exactly to the blue arrow.']]},
+ tall:{lead:'One joint, and the tip has two demands. The joint can move the tip along only one line, so most demands are only partly reachable.',
+  steps:[
+   ['0','The setup','Faint line: the only direction this joint can move the tip. Blue: the tip velocity you want.'],
+   ['1','Jᵀ: the joint feels the push','Treat V as a push. The joint feels only the part along its own line: the shadow. The sideways part (dashed) it cannot feel, so it is dropped.'],
+   ['2','(JᵀJ)⁻¹: divide by arm²','With one joint, JᵀJ is just one number: arm². Torque ÷ arm² = joint speed. (With two or more joints it is a real matrix; see the next tab.)'],
+   ['3','Result','The tip moves along the shadow: the closest this arm can get. The dashed part is impossible for one joint.']]},
+ tall2:{lead:'Two joints, three demands: move the tip to the right AND keep the hand from spinning. Two joints cannot satisfy three demands, so the arm finds the closest compromise.',
+  steps:[
+   ['0','The setup','Blue: the tip velocity you want. The square at the tip is the hand; you also want its spin to be zero. The small panel is joint-speed space (θ̇₁ across, θ̇₂ up).'],
+   ['1','Jᵀ: each joint reads its share','Each joint dots its own arrow (spin part and tip part) with all three demands. That gives one number per joint, shown at the joints and as the grey arrow in the panel. Anything no joint can feel is dropped here.'],
+   ['2a','(JᵀJ)⁻¹, move 1: split the shares along the no-overlap mixes','The two joints overlap: both turn the hand, and both push the tip left. v₁ and v₂ are joint mixes with no overlap. Split the grey arrow along them.'],
+   ['2b','(JᵀJ)⁻¹, move 2: divide each part by its total leverage²','Along v₁ the joints together have lots of leverage, so that part shrinks a lot. Along v₂ they have little, so it shrinks less.'],
+   ['2c','(JᵀJ)⁻¹, move 3: recombine into joint speeds','Add the rescaled parts. That is θ̇, the joint speeds (pink in the panel, arcs on the arm). This is all (JᵀJ)⁻¹ does to a vector.'],
+   ['3','Result','Orange: the tip velocity you get. The hand spins a little and the tip moves right less than asked. That is the closest compromise: the leftover is something these two joints cannot do at all.']]},
+ svd:{lead:'The same fat arm, solved with the SVD. It works in the ellipse\'s own axes, where nothing leaks, so every step is a plain multiply or divide.',
+  steps:[
+   ['0','Ellipse axes','The ellipse shows every tip velocity from 1 rad/s of total joint speed. Its axes u₁ (long) and u₂ (short) are the directions with no leak.'],
+   ['1','Uᵀ: split V along u₁ and u₂','Measure how much of the blue arrow lies along each axis.'],
+   ['2','Σ⁺: divide each part by its σ','σ is the ellipse half-length on that axis. The short axis needs more joint speed per unit of tip speed.'],
+   ['3','V: each part becomes a joint mix','Each axis has its own joint mix. Add them up: the same joint speeds as the Fat tab.']]}
+};
+
+/* ---------- drawing ---------- */
+const cv=document.getElementById('cv'),cx=cv.getContext('2d');
+let W=0,H=0,dpr=1,view=null;const K=0.75;
+const BOUNDS={fat:[-0.7,3.5,-0.9,2.9],tall:[-0.8,2.8,-0.6,2.4],tall2:[-0.9,2.9,-1.1,2.4],svd:[-0.7,3.5,-0.9,2.9]};
+function setView(){const b=BOUNDS[state.tab]||BOUNDS.fat;const s=Math.min(W/(b[1]-b[0]),H/(b[3]-b[2]));
+  view={s,ox:(W-(b[1]-b[0])*s)/2-b[0]*s,oy:(H-(b[3]-b[2])*s)/2+b[3]*s}}
+let S=p=>[view.ox+p[0]*view.s,view.oy-p[1]*view.s];
+const Wmap=p=>[view.ox+p[0]*view.s,view.oy-p[1]*view.s];
+const Winv=(x,y)=>[(x-view.ox)/view.s,(view.oy-y)/view.s];
+function line(a,b,col,w,dash){const A=S(a),B=S(b);cx.beginPath();cx.strokeStyle=col;cx.lineWidth=w;cx.setLineDash(dash||[]);cx.moveTo(A[0],A[1]);cx.lineTo(B[0],B[1]);cx.stroke();cx.setLineDash([])}
+function arrow(o,v,col,w,dash,label,ldx,ldy){
+  const A=S(o),B=S(add(o,v)),dx=B[0]-A[0],dy=B[1]-A[1],L=Math.hypot(dx,dy);
+  cx.beginPath();cx.strokeStyle=col;cx.lineWidth=w;cx.setLineDash(dash||[]);cx.moveTo(A[0],A[1]);cx.lineTo(B[0],B[1]);cx.stroke();cx.setLineDash([]);
+  if(L>6){const ux=dx/L,uy=dy/L,h=Math.min(12,L*.45);cx.beginPath();cx.fillStyle=col;cx.moveTo(B[0],B[1]);
+    cx.lineTo(B[0]-ux*h-uy*h*.45,B[1]-uy*h+ux*h*.45);cx.lineTo(B[0]-ux*h+uy*h*.45,B[1]-uy*h-ux*h*.45);cx.closePath();cx.fill()}
+  if(label){cx.fillStyle=col;cx.font=`700 13px ${css('--body')}`;cx.fillText(label,B[0]+(ldx??8),B[1]+(ldy??-6))}
+}
+function text(p,t,col,dx,dy,mono){const P=S(p);cx.fillStyle=col;cx.font=`${mono?'600 12px '+css('--mono'):'700 13px '+css('--body')}`;cx.fillText(t,P[0]+(dx||0),P[1]+(dy||0))}
+function stext(x,y,t,col,mono){cx.fillStyle=col;cx.font=`${mono?'600 12px '+css('--mono'):'700 13px '+css('--body')}`;cx.fillText(t,x,y)}
+function arc(p,speed,col,label,r=24){
+  const P=S(p),sw=Math.max(-5.2,Math.min(5.2,speed*2.4)),a0=-Math.PI/2;
+  if(Math.abs(sw)>0.02){cx.beginPath();cx.strokeStyle=col;cx.lineWidth=3;cx.arc(P[0],P[1],r,a0,a0-sw,sw>0);cx.stroke();
+    const ae=a0-sw,ex=P[0]+r*Math.cos(ae),ey=P[1]+r*Math.sin(ae),tx=sw>0?Math.sin(ae):-Math.sin(ae),ty=sw>0?-Math.cos(ae):Math.cos(ae);
+    cx.beginPath();cx.fillStyle=col;cx.moveTo(ex+tx*8,ey+ty*8);cx.lineTo(ex-ty*5,ey+tx*5);cx.lineTo(ex+ty*5,ey-tx*5);cx.closePath();cx.fill()}
+  if(label){cx.fillStyle=col;cx.font=`600 12px ${css('--mono')}`;cx.fillText(label,P[0]-18,P[1]+r+18)}
+}
+function arm(P,tip){
+  const pts=P.concat([tip]);
+  for(let i=0;i<pts.length-1;i++)line(pts[i],pts[i+1],css('--link'),6);
+  const jc=[css('--j1'),css('--j2'),css('--j3')];
+  P.forEach((p,i)=>{const s=S(p);cx.beginPath();cx.fillStyle=css('--panel');cx.strokeStyle=jc[i];cx.lineWidth=3;cx.arc(s[0],s[1],8,0,2*Math.PI);cx.fill();cx.stroke();
+    cx.fillStyle=jc[i];cx.font=`700 12px ${css('--body')}`;cx.fillText('joint '+(i+1),i===1?s[0]+12:s[0]-64,i===1?s[1]+20:s[1]+4)});
+  const t=S(tip);cx.beginPath();cx.fillStyle=css('--ink');cx.arc(t[0],t[1],5,0,2*Math.PI);cx.fill();
+}
+function grid(){const b=BOUNDS[state.tab]||BOUNDS.fat;const g=css('--line');for(let x=Math.ceil(b[0]);x<=b[1];x++)line([x,b[2]],[x,b[3]],g,1);for(let y=Math.ceil(b[2]);y<=b[3];y++)line([b[0],y],[b[1],y],g,1)}
+const lerp=(a,b,t)=>a.map((x,i)=>x+(b[i]-x)*t);
+
+/* joint-speed inset (tall2) */
+function inset(M,st,t){
+  const bw=Math.min(W,H)*0.42,x0=W-bw-10,y0=H-bw-10;
+  cx.fillStyle=css('--inset');cx.strokeStyle=css('--line');cx.lineWidth=1;cx.beginPath();cx.rect(x0,y0,bw,bw);cx.fill();cx.stroke();
+  const vecs=[M.r,M.td,scl(M.v1,M.a1),scl(M.v2,M.a2)];let mx=0.3;vecs.forEach(v=>mx=Math.max(mx,Math.abs(v[0]),Math.abs(v[1])));
+  const sc=bw*0.4/mx,O=[x0+bw/2,y0+bw/2];
+  const saved=S;S=p=>[O[0]+p[0]*sc,O[1]-p[1]*sc];
+  line([-mx*1.2,0],[mx*1.2,0],css('--grey'),1);line([0,-mx*1.2],[0,mx*1.2],css('--grey'),1);
+  stext(x0+bw-28,O[1]-6,'θ̇₁',css('--muted'));stext(O[0]+6,y0+16,'θ̇₂',css('--muted'));
+  stext(x0+8,y0+bw-8,'joint-speed space',css('--muted'));
+  if(st>=2){line(scl(M.v1,-mx*1.3),scl(M.v1,mx*1.3),css('--u1'),1,[4,4]);line(scl(M.v2,-mx*1.3),scl(M.v2,mx*1.3),css('--u2'),1,[4,4]);
+    const e1=S(scl(M.v1,mx*1.15)),e2=S(scl(M.v2,mx*1.15));stext(e1[0]+3,e1[1],'v₁',css('--u1'));stext(e2[0]+3,e2[1],'v₂',css('--u2'));}
+  if(st>=1&&st<=4)arrow([0,0],M.r,css('--grey'),st===1?3:1.5,st===1?null:[4,3],st===1?'shares':'',4,-4);
+  if(st===2||st===3){const k=st===3?t:0;
+    const p1=lerp(scl(M.v1,M.a1),scl(M.v1,M.c1),k),p2=lerp(scl(M.v2,M.a2),scl(M.v2,M.c2),k);
+    arrow([0,0],scl(p1,st===2?t:1),css('--u1'),3);arrow(p1,scl(p2,st===2?t:1),css('--u2'),3);}
+  if(st===4){arrow([0,0],scl(M.v1,M.c1),css('--u1'),1.5,[4,3]);arrow(scl(M.v1,M.c1),scl(M.v2,M.c2),css('--u2'),1.5,[4,3]);}
+  if(st>=4){arrow([0,0],scl(M.td,st===4?t:1),css('--j2'),3.5,null,'θ̇',4,-4);}
+  S=saved;
+}
+/* joint-speed panel for the fat arm: 3 joints = 3-D, so one bar per joint */
+function insetBars(M,st,t){
+  const bw=Math.min(W,H)*0.44,bh=bw*0.78,x0=W-bw-10,y0=H-bh-10;
+  cx.fillStyle=css('--inset');cx.strokeStyle=css('--line');cx.lineWidth=1;cx.beginPath();cx.rect(x0,y0,bw,bh);cx.fill();cx.stroke();
+  stext(x0+8,y0+16,'joint-speed space (one bar per joint)',css('--muted'));
+  const jc=[css('--j1'),css('--j2'),css('--j3')];
+  let mx=0.3;M.tauV.forEach(x=>mx=Math.max(mx,Math.abs(x)));M.td.forEach(x=>mx=Math.max(mx,Math.abs(x)));
+  const zero=y0+bh*0.62,half=bh*0.28,colW=bw/3;
+  cx.strokeStyle=css('--grey');cx.lineWidth=1;cx.beginPath();cx.moveTo(x0+8,zero);cx.lineTo(x0+bw-8,zero);cx.stroke();
+  for(let i=0;i<3;i++){
+    const cxm=x0+colW*(i+0.5);
+    stext(cxm-20,y0+bh-8,'joint '+(i+1),jc[i]);
+    if(st>=1&&st<=4){const v=M.tauV[i]*(st===1?t:1),h=v/mx*half;cx.fillStyle=css('--grey');cx.globalAlpha=st===1?1:0.35;
+      cx.fillRect(cxm-16,Math.min(zero,zero-h),14,Math.abs(h));cx.globalAlpha=1;
+      if(st===1)stext(cxm-24,zero-h+(h>=0?-4:14),f(v,1),css('--grey'),true);}
+    if(st>=5){const v=M.td[i]*(st===5?t:1),h=v/mx*half;cx.fillStyle=jc[i];cx.fillRect(cxm-7,Math.min(zero,zero-h),14,Math.abs(h));
+      stext(cxm-18,zero-h+(h>=0?-4:14),f(v),jc[i],true);}
+  }
+  if(st===1)stext(x0+8,y0+32,'grey: shares if pushed with V',css('--grey'));
+  if(st>=2&&st<=4)stext(x0+8,y0+32,'(steps 2a–2c happen at the tip)',css('--muted'));
+  if(st>=5)stext(x0+8,y0+32,'joint speeds = arrow · w',css('--muted'));
+}
+function hand(tip,spin,col,dash){const P=S(tip),s=13;cx.save();cx.translate(P[0],P[1]);cx.rotate(-spin*0.6);cx.strokeStyle=col;cx.lineWidth=2;cx.setLineDash(dash||[]);cx.strokeRect(-s,-s,2*s,2*s);cx.restore();cx.setLineDash([])}
+
+function draw(){
+  if(!W)return;cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,W,H);setView();grid();
+  const t=state.anim,st=state.step,jc=[css('--j1'),css('--j2'),css('--j3')];
+  if(state.tab==='fat'){
+    const M=fatModel(state.V.fat);arm(M.P,M.tip);
+    if(st<=1||st===6)M.C.forEach((c,i)=>arrow(M.tip,scl(c,K*0.35),jc[i],2,[4,3],st===0?'joint '+(i+1):'',6,4));
+    arrow(M.tip,scl(M.V,K),css('--vel'),4,null,'V (want)',8,-8);
+    if(st===1){arrow(M.tip,scl(M.direct,K*0.25*t),css('--grey'),3,[6,4],'tip if pushed with V (¼ size)',-210,-10);
+      M.P.forEach((p,i)=>text(p,'feels '+f(M.tauV[i],1),jc[i],-24,44,true));}
+    if(st>=2&&st<=4){
+      line(add(M.tip,scl(M.u1,-2)),add(M.tip,scl(M.u1,2)),css('--u1'),1.2,[5,4]);line(add(M.tip,scl(M.u2,-1.4)),add(M.tip,scl(M.u2,1.4)),css('--u2'),1.2,[5,4]);
+      text(add(M.tip,scl(M.u1,1.75)),'u₁',css('--u1'),6,0);text(add(M.tip,scl(M.u2,1.2)),'u₂',css('--u2'),6,0);
+      const k=st===3?t:(st===4?1:0);
+      const p1=lerp(scl(M.u1,M.a1*K),scl(M.u1,M.c1*K),k),p2=lerp(scl(M.u2,M.a2*K),scl(M.u2,M.c2*K),k);
+      const g=st===2?t:1;
+      arrow(M.tip,scl(p1,g),css('--u1'),st===4?1.5:3,st===4?[4,3]:null,st===2?'u₁ part '+f(M.a1):st===3?'÷ '+f(M.l1,1):'',8,-4);
+      arrow(add(M.tip,p1),scl(p2,g),css('--u2'),st===4?1.5:3,st===4?[4,3]:null,st===2?'u₂ part '+f(M.a2):st===3?'÷ '+f(M.l2,2):'',8,12);
+      if(st===4)arrow(M.tip,scl(M.w,K*t),css('--push'),4,null,'corrected push w',8,16);
+    }
+    if(st===5){arrow(M.tip,scl(M.w,K),css('--push'),4,null,'corrected push w',8,16);M.P.forEach((p,i)=>arc(p,M.td[i]*t,jc[i],'θ̇='+f(M.td[i])));}
+    if(st===6){let o=M.tip;M.parts.forEach((pv,i)=>{const v=scl(pv,K*t);arrow(o,v,jc[i],3);o=add(o,v)});
+      M.P.forEach((p,i)=>arc(p,M.td[i],jc[i],'θ̇='+f(M.td[i])));text(add(M.tip,scl(M.V,K)),'sum = V ✓',css('--ok'),10,18);}
+    insetBars(M,st,t);
+  } else if(state.tab==='svd'){
+    const M=fatModel(state.V.svd);arm(M.P,M.tip);
+    const N=96,ks=K*0.35;cx.beginPath();cx.strokeStyle=css('--grey');cx.lineWidth=1.5;
+    for(let i=0;i<=N;i++){const a=i/N*2*Math.PI,p=add(M.tip,add(scl(M.u1,M.s1*Math.cos(a)*ks),scl(M.u2,M.s2*Math.sin(a)*ks)));const P=S(p);i?cx.lineTo(P[0],P[1]):cx.moveTo(P[0],P[1])}cx.stroke();
+    line(add(M.tip,scl(M.u1,-2)),add(M.tip,scl(M.u1,2)),css('--u1'),1.2,[5,4]);line(add(M.tip,scl(M.u2,-1.4)),add(M.tip,scl(M.u2,1.4)),css('--u2'),1.2,[5,4]);
+    text(add(M.tip,scl(M.u1,1.75)),'u₁',css('--u1'),6,0);text(add(M.tip,scl(M.u2,1.2)),'u₂',css('--u2'),6,0);
+    arrow(M.tip,scl(M.V,K),css('--vel'),4,null,'V (want)',8,-8);
+    if(st>=1){const p1=scl(M.u1,M.a1*K),p2=scl(M.u2,M.a2*K);
+      arrow(M.tip,scl(p1,st===1?t:1),css('--u1'),3,null,st===1?'along u₁: '+f(M.a1):'',8,-4);
+      arrow(add(M.tip,p1),scl(p2,st===1?t:1),css('--u2'),3,null,st===1?'along u₂: '+f(M.a2):'',8,10);}
+    if(st>=2){const x0=-0.6,y0=2.7;text([x0,y0+0.15],'after ÷σ:',css('--muted'),0,0);
+      text([x0,y0-0.05],'u₁ part '+f(M.a1)+' ÷ '+f(M.s1)+' = '+f(M.b1),css('--u1'),0,0,true);
+      text([x0,y0-0.25],'u₂ part '+f(M.a2)+' ÷ '+f(M.s2)+' = '+f(M.b2),css('--u2'),0,0,true);}
+    if(st===3)M.P.forEach((p,i)=>arc(p,M.tdS[i]*t,jc[i],'θ̇='+f(M.tdS[i])));
+  } else if(state.tab==='tall'){
+    const M=tallModel(state.V.tall);arm(M.P,M.tip);
+    const dir=scl(M.c,1/Math.sqrt(M.c2));
+    line(add(M.tip,scl(dir,-1.3)),add(M.tip,scl(dir,1.3)),css('--j1'),1.2,[5,4]);
+    text(add(M.tip,scl(dir,1.15)),'the only line this joint can move the tip',css('--j1'),-60,-10);
+    arrow(M.tip,scl(M.V,K),css('--vel'),4,null,'V (want)',8,-8);
+    if(st>=1){const sh=scl(M.res,K*(st===1?t:1));arrow(M.tip,sh,css('--push'),4,null,st>=3?'tip actually moves':'shadow: what the joint feels',8,18);
+      line(add(M.tip,scl(M.res,K)),add(M.tip,scl(M.V,K)),css('--grey'),2,[5,4]);
+      text(add(M.tip,scl(add(M.res,scl(M.left,.5)),K)),st>=3?'impossible part':'not felt',css('--grey'),8,0);
+      text(M.P[0],'feels '+f(M.tau),css('--j1'),-20,66,true);}
+    if(st>=2)arc(M.P[0],M.td*(st===2?t:1),css('--j1'),'θ̇='+f(M.td));
+  } else if(state.tab==='tall2'){
+    const M=tall2Model(state.V.tall2);arm(M.P,M.tip);
+    hand(M.tip,0,css('--vel'),[4,3]);text(M.tip,'hand: want no spin',css('--vel'),-60,32);
+    arrow(M.tip,scl(M.V,K),css('--vel'),4,null,'V (want)',8,-8);
+    if(st>=1&&st<=4)M.P.forEach((p,i)=>text(p,'share '+f(M.r[i]),jc[i],-26,64,true));
+    if(st>=4)M.P.forEach((p,i)=>arc(p,M.td[i]*(st===4?t:1),jc[i],'θ̇='+f(M.td[i])));
+    if(st===5){const g=[M.got[1],M.got[2]];arrow(M.tip,scl(g,K*t),css('--push'),4,null,'tip gets',8,18);
+      hand(M.tip,M.got[0]*t,css('--push'));text(M.tip,'hand spins '+f(M.got[0]),css('--push'),-60,48);}
+    inset(M,st,t);
+  }
+  if(state.tab!=='sum'){const tp=tipNow();const h=S(add(tp,scl(state.V[state.tab],K)));cx.beginPath();cx.strokeStyle=css('--vel');cx.lineWidth=2;cx.arc(h[0],h[1],9,0,2*Math.PI);cx.stroke();}
+}
+function tipNow(){return state.tab==='tall'?tallModel(state.V.tall).tip:state.tab==='tall2'?[1,0.8]:[2,1]}
+
+/* ---------- math panel ---------- */
+function mathHTML(){
+  const st=state.step;
+  if(state.tab==='fat'){const M=fatModel(state.V.fat);
+    return [
+     `<div>Joint arrows (columns of J): <span class="c1">${vs(M.C[0])}</span> <span class="c2">${vs(M.C[1])}</span> <span class="c3">${vs(M.C[2])}</span></div><div class="cv">V = ${vs(M.V)}</div>`,
+     `<div>Torques from pushing with V: arrow · V = (${M.tauV.map(x=>f(x)).join(', ')}) = JᵀV</div><div>Tip from those speeds: J JᵀV = <span class="cg">${vs(M.direct)}</span> ≠ V</div><div>JJᵀ = [${f(M.A)} ${f(M.B)}; ${f(M.B)} ${f(M.Cc)}]; off-diagonal ${f(M.B)} is the leak</div>`,
+     `<div>u₁ = ${vs(M.u1)}, u₂ = ${vs(M.u2)} (eigenvectors of JJᵀ)</div><div>u₁·V = <span class="cu1">${f(M.a1)}</span>, u₂·V = <span class="cu2">${f(M.a2)}</span></div>`,
+     `<div>σ₁² = ${f(M.l1)}, σ₂² = ${f(M.l2)} (eigenvalues of JJᵀ)</div><div><span class="cu1">${f(M.a1)} ÷ ${f(M.l1)} = ${f(M.c1,3)}</span>, <span class="cu2">${f(M.a2)} ÷ ${f(M.l2)} = ${f(M.c2,3)}</span></div>`,
+     `<div>w = ${f(M.c1,3)}·u₁ + ${f(M.c2,3)}·u₂ = <span class="cp">${vs(M.w)}</span> = (JJᵀ)⁻¹V</div><div>Check (aim test): JJᵀ w = ${vs([M.A*M.w[0]+M.B*M.w[1],M.B*M.w[0]+M.Cc*M.w[1]])} = V ✓</div>`,
+     `<div>θ̇ᵢ = arrowᵢ · w = (${M.td.map(x=>f(x)).join(', ')}) = Jᵀw</div>`,
+     `<div>Jθ̇ = ${vs(M.parts.reduce(add,[0,0]))} = V ✓</div><div>θ̇ = Jᵀ(JJᵀ)⁻¹V</div>`][st];}
+  if(state.tab==='tall'){const M=tallModel(state.V.tall);
+    return [
+     `<div>Joint arrow (J is 2×1): <span class="c1">${vs(M.c)}</span>, arm length ${f(Math.sqrt(M.c2))}</div><div class="cv">V = ${vs(M.V)}</div>`,
+     `<div>JᵀV = arrow · V = <span class="cp">${f(M.tau)}</span></div>`,
+     `<div>JᵀJ = arm² = ${f(M.c2)} (a 1×1 matrix: just a number)</div><div>θ̇ = ${f(M.tau)} ÷ ${f(M.c2)} = ${f(M.td)} rad/s</div>`,
+     `<div>Tip = J θ̇ = ${vs(M.res)}; impossible part = ${vs(M.left)}, perpendicular to the arrow</div><div>θ̇ = (JᵀJ)⁻¹JᵀV</div>`][st];}
+  if(state.tab==='tall2'){const M=tall2Model(state.V.tall2);
+    return [
+     `<div>Columns of J (3×2), as (spin, vx, vy): <span class="c1">${vs(M.J[0])}</span>, <span class="c2">${vs(M.J[1])}</span></div><div class="cv">Demands D = (spin 0, ${f(M.V[0])}, ${f(M.V[1])})</div><div>(spin in rad/s and velocity in m/s are added with weight 1 here)</div>`,
+     `<div>JᵀD = (column₁ · D, column₂ · D) = <span class="cg">${vs(M.r)}</span></div>`,
+     `<div>JᵀJ = [${f(M.A)} ${f(M.B)}; ${f(M.B)} ${f(M.Cc)}]; off-diagonal ${f(M.B)} is the overlap</div><div>v₁ = ${vs(M.v1)}, v₂ = ${vs(M.v2)} (eigenvectors of JᵀJ)</div><div>v₁·shares = <span class="cu1">${f(M.a1)}</span>, v₂·shares = <span class="cu2">${f(M.a2)}</span></div>`,
+     `<div>σ₁² = ${f(M.l1)}, σ₂² = ${f(M.l2)}</div><div><span class="cu1">${f(M.a1)} ÷ ${f(M.l1)} = ${f(M.c1,3)}</span>, <span class="cu2">${f(M.a2)} ÷ ${f(M.l2)} = ${f(M.c2,3)}</span></div>`,
+     `<div>θ̇ = ${f(M.c1,3)}·v₁ + ${f(M.c2,3)}·v₂ = <span class="c2">${vs(M.td)}</span> = (JᵀJ)⁻¹JᵀD</div>`,
+     `<div>Achieved Jθ̇ = (spin ${f(M.got[0])}, ${f(M.got[1])}, ${f(M.got[2])})</div><div>Wanted (spin 0, ${f(M.V[0])}, ${f(M.V[1])})</div><div>No other θ̇ gets closer (smallest total squared error).</div>`][st];}
+  if(state.tab==='svd'){const M=fatModel(state.V.svd);
+    return [
+     `<div><span class="cu1">σ₁ = ${f(M.s1)}, u₁ = ${vs(M.u1)}</span></div><div><span class="cu2">σ₂ = ${f(M.s2)}, u₂ = ${vs(M.u2)}</span></div>`,
+     `<div>Uᵀ V = (<span class="cu1">${f(M.a1)}</span>, <span class="cu2">${f(M.a2)}</span>)</div>`,
+     `<div>Σ⁺: (${f(M.a1)} ÷ ${f(M.s1)}, ${f(M.a2)} ÷ ${f(M.s2)}) = (<span class="cu1">${f(M.b1)}</span>, <span class="cu2">${f(M.b2)}</span>)</div>`,
+     `<div>v₁ = (${M.v1.map(x=>f(x)).join(', ')}), v₂ = (${M.v2.map(x=>f(x)).join(', ')})</div><div>θ̇ = ${f(M.b1)}·v₁ + ${f(M.b2)}·v₂ = (${M.tdS.map(x=>f(x)).join(', ')})</div><div>Fat tab gave (${M.td.map(x=>f(x)).join(', ')}): the same ✓</div>`][st];}
+  return '';
+}
+
+/* ---------- UI ---------- */
+const stepsEl=document.getElementById('steps'),leadEl=document.getElementById('lead'),mathEl=document.getElementById('math');
+function renderSteps(){
+  if(state.tab==='sum')return;
+  const D=STEPS[state.tab];leadEl.textContent=D.lead;
+  stepsEl.innerHTML=D.steps.map((s,i)=>`<button class="step${/[abc]$/.test(s[0])?' sub':''}" data-i="${i}" type="button" aria-current="${i===state.step}"><span class="n">${s[0]}</span><span><b>${s[1]}</b><span class="t">${s[2]}</span></span></button>`).join('');
+  stepsEl.querySelectorAll('.step').forEach(b=>b.onclick=()=>go(+b.dataset.i,false));
+  document.getElementById('back').disabled=state.step===0;
+  document.getElementById('next').disabled=state.step===D.steps.length-1;
+  mathEl.innerHTML=mathHTML();
+}
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let raf=0;
+function go(i,animate=true){
+  state.step=i;renderSteps();cancelAnimationFrame(raf);
+  if(!animate||reduce){state.anim=1;draw();return}
+  const t0=performance.now();(function tick(now){state.anim=Math.min(1,(now-t0)/800);draw();if(state.anim<1)raf=requestAnimationFrame(tick)})(t0);
+}
+document.getElementById('next').onclick=()=>go(state.step+1);
+document.getElementById('back').onclick=()=>go(state.step-1,false);
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{
+  state.tab=b.dataset.tab;state.step=0;
+  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b?'true':'false'));
+  const sum=state.tab==='sum';document.getElementById('stage').hidden=sum;document.getElementById('summary').hidden=!sum;
+  if(!sum){resize();go(0,false)}
+});
+
+let drag=false;
+function pt(e){const r=cv.getBoundingClientRect();return [e.clientX-r.left,e.clientY-r.top]}
+cv.addEventListener('pointerdown',e=>{if(state.tab==='sum')return;const p=pt(e),h=S(add(tipNow(),scl(state.V[state.tab],K)));
+  if(Math.hypot(p[0]-h[0],p[1]-h[1])<22){drag=true;cv.setPointerCapture(e.pointerId)}});
+cv.addEventListener('pointermove',e=>{const p=pt(e);if(state.tab==='sum')return;
+  if(!drag){const h=S(add(tipNow(),scl(state.V[state.tab],K)));cv.style.cursor=Math.hypot(p[0]-h[0],p[1]-h[1])<22?'grab':'default';return}
+  const w=Winv(p[0],p[1]),tp=tipNow();let v=[(w[0]-tp[0])/K,(w[1]-tp[1])/K];const L=Math.hypot(v[0],v[1]);if(L>1.6)v=scl(v,1.6/L);if(L<0.15)v=scl(v,0.15/(L||1));
+  state.V[state.tab]=v;state.anim=1;mathEl.innerHTML=mathHTML();draw()});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>drag=false));
+
+function resize(){const r=cv.getBoundingClientRect();if(!r.width)return;dpr=window.devicePixelRatio||1;W=r.width;H=r.height;cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr);draw()}
+new ResizeObserver(resize).observe(cv);
+const retheme=()=>draw();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+renderSteps();resize();
+})();
+</script>
+
+</body></html>
