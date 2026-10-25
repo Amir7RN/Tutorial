@@ -210,6 +210,10 @@ class SectionSummary(Page):
             from ..widgets.rigid_arm_lab import RigidArmLab
             self.arm_capstone = RigidArmLab(capstone=True)
             self.add(self.arm_capstone)
+        if self.SECTION == 'Kinematics':
+            from .kin_summary import CARDS
+            for make in CARDS:
+                self.add(make())
         self.finish()
 
 
