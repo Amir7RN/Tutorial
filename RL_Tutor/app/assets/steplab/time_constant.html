@@ -1,0 +1,110 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The time constant and the pole</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+let PLANE = null;
+const st = () => {
+  const v = SL.v, J = v.J / 1000, b = v.b / 100, tau = J / b, p = S6() ? v.p : -1 / tau, toff = v.toff / 1000;
+  return { J, b, tau, p, toff, tauP: -1 / p };
+};
+const S6 = () => SL.st === 4 || SL.st === 5;
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'The time constant and the pole: how long, and how often per second',
+  sub: 'The motor joint again: J θ̈ + b θ̇ = τ, speed as output. τ = J/b is how long; the pole s = −1/τ is the same number as a rate. Steps 4–5 let you drag the pole directly.',
+  view: '2d',
+  legend: [['--a', 'speed ω(t)'], ['--b', 'input torque'], ['--c', 'τ markers'], ['--d', 'pole'], ['--bad', 'unstable']],
+  controls: [
+    { id: 'J', label: 'J', min: 10, max: 160, value: 40, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'b', label: 'b', min: 10, max: 160, value: 40, fmt: x => f(x / 100, 2) + ' N·m·s' },
+    { id: 'toff', label: 'stop pouring at', min: 100, max: 1500, step: 10, value: 600, fmt: x => f(x / 1000, 2) + ' s' },
+    { id: 'p', label: 'pole s (steps 4–5)', min: -60, max: 12, step: .5, value: -10, fmt: x => f(x, 1) + ' 1/s' },
+  ],
+  buttons: [{ label: 'double J', onclick: () => { SL.setControl('J', 80); SL.setControl('b', 40); SL.redraw(); } }, { label: 'double J and b', onclick: () => { SL.setControl('J', 80); SL.setControl('b', 80); SL.redraw(); } }, { label: 'reset 0.04 / 0.4', onclick: () => { SL.setControl('J', 40); SL.setControl('b', 40); SL.redraw(); } }],
+  drag: () => [{ panel: () => PLANE, pos: () => [SL.v.p, 0], set: q => { SL.setControl('p', Math.max(-60, Math.min(12, Math.round(q[0] * 2) / 2))); } }],
+  steps: [
+    ['The cup with a hole: pour, then stop', 'Apply a torque (pour) and the speed rises; remove it (stop pouring) and the speed drains away. The same number τ governs both halves.'],
+    ['Where 63.2 % comes from', 'y(t) = 1 − e^(−t/τ). At t = τ that is 1 − 1/e = 0.632. After each further τ the remaining gap shrinks by the same factor e: 63 %, 86 %, 95 %, 98 %.'],
+    ['The pole is the same number as a rate', 'The solution is built from e^(st) with s = −1/τ. τ answers “how long?”, the pole answers “how many e-folds per second?”. J = 0.04, b = 0.4: τ = 0.1 s, pole at −10 1/s.'],
+    ['Kick it: the transient decays at the pole', 'No input, just an initial speed: ω(t) = ω₀ e^(st). This is the transient every response contains. Its rate is the pole, whatever the input.'],
+    ['Move the pole, watch everything else move with it', 'Drag the pole along the real axis. Further left: faster decay, shorter τ, quicker settling. Closer to 0: slower. The step response and the kick response both follow.'],
+    ['The sign: the one thing people get backwards', 'Push the pole into the right half-plane (s > 0): e^(st) grows. Negative pole = decays = stable. Positive = grows = unstable. Zero = holds forever (page 7).'],
+    ['Two time constants in one motor', 'Electrical τ_e = L/R (about 1 ms) and mechanical τ_m = J/b (100 ms here). Two poles a hundred times apart: the fast one has finished before the slow one starts, so you can usually ignore it.'],
+    ['What it means for the robot in front of you', '2 % settling ≈ 3.91 τ. Double J at fixed b: settling time doubles, final speed unchanged. Double both: τ is back to 0.1 s but the final speed halves. Changing one number can move two behaviours.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), tau = s.tauP, unstable = s.p > 0;
+    const Tend = S === 0 ? Math.max(1.6, s.toff + 5 * s.tau) : (unstable ? .5 : Math.max(.3, Math.min(6, 6 * Math.abs(tau))));
+    let pts;
+    if (S === 0) pts = [...Array(601)].map((_, i) => { const tt = i / 600 * Tend, K = 1 / s.b; const y = tt < s.toff ? K * (1 - Math.exp(-tt / s.tau)) : K * (1 - Math.exp(-s.toff / s.tau)) * Math.exp(-(tt - s.toff) / s.tau); return [tt, y]; });
+    else if (S === 3 || S === 5) pts = [...Array(601)].map((_, i) => { const tt = i / 600 * Tend; return [tt, Math.exp(s.p * tt)]; });
+    else pts = [...Array(601)].map((_, i) => { const tt = i / 600 * Tend; return [tt, s.p === 0 ? tt : (Math.exp(s.p * tt) - 1) / s.p * (-s.p)]; });
+    const ymax = Math.min(8, Math.max(1.2, ...pts.map(p => p[1])) * 1.1);
+    const A = Pl.panel(0, 0, .62, .64, [0, Tend, S === 3 ? -.05 : -.05 * ymax, ymax], false);
+    const n = Math.max(2, Math.round(pts.length * (S === 0 ? t : 1)));
+    A.series([{ pts: pts.slice(0, n).map(p => [p[0], Math.min(ymax * 1.5, p[1])]), cl: unstable ? '--bad' : '--a', w: 2.5, label: S === 0 ? 'speed ω (rad/s): torque 1 N·m on, then off' : S === 3 || S === 5 ? 'kick: ω₀ e^(st), ω₀ = 1' : 'unit step, normalised to its final value' }], { title: S === 0 ? 'pour, then stop pouring' : S === 3 ? 'no input, an initial speed' : 'response for pole s = ' + f(s.p, 1) });
+    if (S === 0) { A.line([s.toff, -.05], [s.toff, ymax], '--b', 1.5, [4, 3]); A.text([s.toff, ymax * .95], 'torque off', '--b', 4, 0, { size: 12 }); }
+    if (S >= 1 && !unstable && s.p < 0) { const k = S === 3 || S === 5 ? 'decay' : 'rise';
+      [1, 2, 3, 4].forEach(m => { const x = m * tau, y = k === 'decay' ? Math.exp(-m) : 1 - Math.exp(-m); if (x > Tend) return; A.line([x, 0], [x, y], '--c', 1, [3, 3]); A.dot([x, y], 4, '--c'); A.text([x, y], m + 'τ: ' + f(100 * y, 1) + ' %', '--c', 4, k === 'decay' ? -6 : 14, { size: 11 }); }); }
+    if (S === 2 || S === 3) A.line([0, S === 3 ? 1 : 0], [tau, S === 3 ? 0 : 1], '--b', 1.5, [6, 3]);
+    if (S === 6) { const te = .001, B = Pl.panel(0, 0, .62, .64, [Math.log10(1e-4), Math.log10(1), 0, 1.1], false); B.frame('electrical and mechanical step responses, log time axis');
+      const curve = tc => [...Array(201)].map((_, i) => { const lt = -4 + i / 50, tt = Math.pow(10, lt); return [lt, 1 - Math.exp(-tt / tc)]; });
+      B.clip(() => { B.poly(curve(te), '--d', 2.5); B.poly(curve(s.tau), '--a', 2.5); });
+      B.text([Math.log10(te), .7], 'current: τ_e = L/R = 1 ms', '--d', 6, 0, { size: 12 }); B.text([Math.log10(s.tau), .4], 'speed: τ_m = J/b = ' + f(s.tau * 1000, 0) + ' ms', '--a', 6, 0, { size: 12 });
+      [-4, -3, -2, -1, 0].forEach(l => B.text([l, 0], Math.pow(10, l) + ' s', '--muted', -8, -6, { size: 11 })); }
+    /* s-plane */
+    const P = Pl.panel(.63, 0, .37, .64, [-65, 15, -30, 30]); PLANE = P; P.frame('s-plane: drag the pole' + (S6() ? '' : ' (steps 4–5)')); P.axes();
+    P.poly([[0, -30], [15, -30], [15, 30], [0, 30]], null, 0, null, '--bad', true); P.text([2, 26], 'unstable', '--bad', 0, 0, { size: 11 });
+    const px = s.p; P.line([px - 2, -2], [px + 2, 2], unstable ? '--bad' : '--d', 3); P.line([px - 2, 2], [px + 2, -2], unstable ? '--bad' : '--d', 3); P.text([px, 0], 's = ' + f(px, 1), unstable ? '--bad' : '--d', -20, -14, { size: 12 });
+    [-60, -40, -20, 0].forEach(x => P.text([x, -30], String(x), '--muted', -8, -4, { size: 11 }));
+    const R = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); R.frame();
+    const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    L(.02, .2, `J = ${f(s.J, 3)}, b = ${f(s.b, 2)}  →  τ = J/b = ${f(s.tau * 1000, 1)} ms,  pole = −b/J = ${f(-1 / s.tau, 2)} 1/s`, '--ink');
+    L(.02, .42, `final speed per N·m = 1/b = ${f(1 / s.b, 3)} rad/s     2 % settling = 3.91 τ = ${f(3.91 * s.tau, 3)} s`, '--a');
+    if (S6()) L(.02, .64, `dragged pole s = ${f(s.p, 1)} 1/s  →  ${s.p < 0 ? 'τ = −1/s = ' + f(-1000 / s.p, 1) + ' ms, decays' : s.p === 0 ? 'no decay: holds forever' : 'grows ×e every ' + f(1000 / s.p, 1) + ' ms: UNSTABLE'}`, s.p > 0 ? '--bad' : '--d');
+    L(.02, .86, 'τ answers "how long", the pole answers "how fast, per second": the same number, inverted', '--muted');
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">J = ${f(s.J, 3)} kg·m², b = ${f(s.b, 2)} N·m·s, τ = ${f(s.tau, 4)} s${S6() ? `, dragged pole s = ${f(s.p, 1)}` : ''}.</p>`;
+    const rows = [
+`${E(`on:   ω(t) = (τ_in/b)(1 − e^(−t/τ))
+off:  ω(t) = ω(t_off) · e^(−(t − t_off)/τ)
+τ = J/b = ${f(s.tau * 1000, 1)} ms`)}
+<p>Hold this picture: the store is the spinning inertia (angular momentum Jω), the drain is friction b ω. Big store or weak drain → slow.</p>`,
+`${E(`y(τ)  = 1 − e⁻¹ = 0.6321
+y(2τ) = 1 − e⁻² = 0.8647
+y(3τ) = 1 − e⁻³ = 0.9502
+y(4τ) = 1 − e⁻⁴ = 0.9817
+2 %:  e^(−t/τ) = 0.02 ⇒ t = τ ln 50 = 3.91 τ = ${f(3.91 * s.tau, 3)} s`)}
+<p>63.2 % is not a convention: it is what e^(−1) is. Each τ removes the same fraction (63 %) of whatever gap is left.</p>`,
+`${E(`J ω̇ + b ω = 0  ⇒ try ω = e^(st):  (J s + b) e^(st) = 0  ⇒  s = −b/J = ${f(-1 / s.tau, 3)} 1/s
+τ = −1/s = ${f(s.tau, 4)} s`)}
+${ul(['The characteristic equation J s + b = 0 has one root: the pole.', 'Units: 1/s. −10 1/s means “shrinks by a factor e ten times per second”.', 'Textbooks write G(s) = (1/b)/(τ s + 1): the pole is where the denominator is zero.'])}`,
+`${E(`τ_in = 0, ω(0) = ω₀:  ω(t) = ω₀ e^(s t)
+after τ: ω₀ e⁻¹ = 0.368 ω₀ (the dashed tangent hits zero at t = τ)`)}
+<p>Every response = forced part + this transient. The transient’s amplitude depends on how you kicked it; its rate never does.</p>`,
+`${E(`pole s = ${f(s.p, 1)}  ⇒  ${s.p < 0 ? 'τ = ' + f(-1000 / s.p, 1) + ' ms, 2 % settling ' + f(-3.91 / s.p, 3) + ' s' : 'no decay'}`)}
+${ul(['Twice as far left = twice as fast.', 'The pole’s position <b>is</b> the behaviour: speed of response, settling time, bandwidth (page 8) all follow from it.', 'A controller’s whole job (page 2) is to move poles like this one.'])}`,
+`${E(`s < 0: e^(st) → 0           stable
+s = 0: e^(st) = 1           marginal (holds)
+s > 0: e^(st) → ∞           unstable${s.p > 0 ? `   (now: ×e every ${f(1000 / s.p, 1)} ms)` : ''}`)}
+<p>The minus sign in τ = −1/s is why people get it backwards: a <b>negative</b> pole means a <b>positive</b> time constant. Physically: negative damping (energy pumped in) puts a pole on the right.</p>`,
+`${E(`electrical: L di/dt + R i = v   ⇒ τ_e = L/R ≈ 1 mH / 1 Ω = 1 ms, pole −1000 1/s
+mechanical: J ω̇ + b ω = K_t i    ⇒ τ_m = J/b = ${f(s.tau * 1000, 0)} ms, pole ${f(-1 / s.tau, 1)} 1/s
+ratio ≈ ${f(s.tau / .001, 0)}×`)}
+<p>When poles are 10× or more apart, the fast one can be treated as instantaneous: the current loop “just delivers” torque, and the joint looks first order. That is the approximation behind pages 5–8.</p>`,
+`${E(`base:          J = 0.04, b = 0.4  →  τ = 0.100 s, settle 0.391 s, ω_final = 2.5 rad/s per N·m
+double J:      J = 0.08, b = 0.4  →  τ = 0.200 s, settle 0.782 s, ω_final = 2.5
+double J & b:  J = 0.08, b = 0.8  →  τ = 0.100 s, settle 0.391 s, ω_final = 1.25
+now:           J = ${f(s.J, 3)}, b = ${f(s.b, 2)}  →  τ = ${f(s.tau, 3)} s, settle ${f(3.91 * s.tau, 3)} s, ω_final = ${f(1 / s.b, 3)}`)}
+<p>A payload raises J: the joint gets slower in proportion, but its steady speed per torque is unchanged.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>τ</b>${f(s.tau * 1000, 0)} ms</span><span><b>pole</b>${f(-1 / s.tau, 1)}</span>`; },
+});
+</script>
+</body></html>

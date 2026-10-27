@@ -1,0 +1,132 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The control problem</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* One joint: J θ̈ + b θ̇ + k θ = τ_m − τ_load,  motor torque lags the command with time constant τ_e. */
+const J = .04, b = .4, SPEC = { ts: .2, os: 5 };
+let SPRING = false, LAG = false;
+const modeOf = S => S <= 2 ? 'none' : S === 3 ? 'P' : S === 4 ? 'PD' : 'PID';
+const gains = S => { const v = SL.v, m = modeOf(S); return { Kp: m === 'none' ? 0 : v.kp, Kd: m === 'PD' || m === 'PID' ? v.kd / 10 : 0, Ki: m === 'PID' ? v.ki * 10 : 0, m }; };
+const simulate = (g, load, Tend = 1.2) => {
+  const k = SPRING ? 20 : 0, te = LAG ? .01 : 0, dt = 2e-4, out = []; let th = 0, w = 0, I = 0, tm = 0;
+  for (let i = 0, n = Math.round(Tend / dt); i <= n; i++) {
+    const t = i * dt, r = 1, e = r - th, d = t >= .6 ? load : 0;
+    const cmd = g.m === 'none' ? 1 : g.Kp * e - g.Kd * w + g.Ki * I;
+    if (i % 10 === 0) out.push([t, th, w, cmd]);
+    if (te) tm += dt * (cmd - tm) / te; else tm = cmd;
+    const a = (tm - d - b * w - k * th) / J;
+    w += dt * a; th += dt * w; I += dt * e;
+  }
+  return out;
+};
+const charPoly = g => {
+  const k = SPRING ? 20 : 0, plant = LAG ? CTL.pmul([.01, 1], [J, b, k]) : [J, b, k];
+  if (g.m === 'none') return plant;
+  if (!g.Ki) return CTL.padd(plant, [g.Kd, g.Kp]);
+  return CTL.padd(CTL.pmul(plant, [1, 0]), [g.Kd, g.Kp, g.Ki]);
+};
+const st = () => {
+  const S = SL.st, g = gains(S), load = SL.v.load / 10, res = simulate(g, load);
+  const before = res.filter(p => p[0] < .6), m = CTL.metrics(before, g.m === 'none' ? undefined : 1);
+  const errLoad = 1 - res[res.length - 1][1];
+  const roots = CTL.roots(charPoly(g));
+  const order = 2 + (LAG ? 1 : 0);
+  return { S, g, load, res, m, errLoad, roots, order };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const tick = ok => ok ? '<span class="cc">✓</span>' : '<span class="cbad">✗</span>';
+SL.app({
+  title: 'Every control problem in four steps, on one joint',
+  sub: 'A rigid joint (J = 0.04 kg·m², b = 0.4 N·m·s) asked to move to 1 rad, with a load torque arriving at t = 0.6 s. The mechanism never changes; only the software in front of it does.',
+  view: '2d',
+  legend: [['--a', 'angle θ'], ['--grey', 'target 1 rad'], ['--c', 'spec window'], ['--d', 'closed-loop poles'], ['--b', 'motor command']],
+  controls: [
+    { id: 'kp', label: 'K_p', min: 0, max: 60, step: .5, value: 9, fmt: x => f(x, 1) + ' N·m/rad' },
+    { id: 'kd', label: 'K_d', min: 0, max: 30, step: .5, value: 6, fmt: x => f(x / 10, 2) + ' N·m·s' },
+    { id: 'ki', label: 'K_i', min: 0, max: 40, step: .5, value: 2, fmt: x => f(x * 10, 0) + ' N·m/(rad·s)' },
+    { id: 'load', label: 'load torque at 0.6 s', min: 0, max: 20, value: 5, fmt: x => f(x / 10, 1) + ' N·m' },
+  ],
+  buttons: [{ label: 'add a spring (k = 20)', toggle: true, pressed: false, onclick: e => { SPRING = !SPRING; e.setAttribute('aria-pressed', SPRING); SL.redraw(); } },
+            { label: 'add motor lag (τ_e = 10 ms)', toggle: true, pressed: false, onclick: e => { LAG = !LAG; e.setAttribute('aria-pressed', LAG); SL.redraw(); } },
+            { label: 'tune: meets all specs', onclick: () => { SL.setControl('kp', 58); SL.setControl('kd', 21); SL.setControl('ki', 1); SL.go(5); } }],
+  steps: [
+    ['Step 1: what does the plant do on its own?', 'Apply a constant torque and watch. Speed rises with time constant J/b = 0.1 s and the angle just keeps growing: nothing compares it to a target. This is the open-loop response.'],
+    ['Its order: count the energy stores', 'Each independent store of energy is one state. The spinning mass stores kinetic energy; the angle becomes a second state as soon as we care about position. A spring adds potential energy; motor inductance adds magnetic energy. The order sets how many poles there are.'],
+    ['Step 2: write down what you want', 'Specifications: settle within 0.2 s, overshoot below 5 %, and no steady error when a load torque arrives. Green box: where the response must stay.'],
+    ['Step 3a: P control', 'τ = K_p(θ_d − θ). It aims at the target, but it rings, and the load pushes it off target: a steady error K_p must hold back. Some gaps cannot be closed with one knob.'],
+    ['Step 3b: PD control', 'Add −K_d θ̇: damping without touching the hardware. Overshoot goes, but the load still leaves a steady error.'],
+    ['Step 4: PID: close the last gap', 'Add K_i∫e: the integral keeps growing until the error is zero, so it supplies the load torque by itself. Press “tune” to meet all three specs.'],
+    ['Transient and steady state', 'Every response = a transient that dies out + a steady state that remains. The specs are statements about exactly these two parts.'],
+    ['A controller moves poles; the plant stays', 'Same J, same b in every case. Feedback only changes the roots of the closed-loop characteristic equation. Their real parts set how fast the transient dies, their imaginary parts how much it rings.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = s.S, t = SL.ease(SL.anim);
+    const Tend = 1.2, ymax = S <= 1 ? Math.max(2, ...s.res.map(p => p[1])) : 1.6;
+    const A = Pl.panel(0, 0, .62, .64, [0, Tend, -.2, ymax], false);
+    const n = Math.max(2, Math.round(s.res.length * (S >= 3 ? t : 1)));
+    A.series([{ pts: s.res.slice(0, n).map(p => [p[0], p[1]]), cl: '--a', w: 2.5, label: 'θ(t), ' + (s.g.m === 'none' ? 'open loop, τ = 1 N·m' : s.g.m) }], { title: S <= 1 ? 'open loop: constant torque in, angle out' : 'closed loop: target 1 rad, load from 0.6 s', yl: 'rad' });
+    if (S >= 2) { A.line([0, 1], [Tend, 1], '--grey', 1.5, [5, 4]); A.line([.6, -.2], [.6, ymax], '--b', 1, [3, 3]); A.text([.6, ymax * .92], 'load on', '--b', 4, 0, { size: 11 });
+      A.poly([[SPEC.ts, .98], [Tend, .98], [Tend, 1.02], [SPEC.ts, 1.02]], '--c', 1, null, '--c', true); A.line([0, 1.05], [Tend, 1.05], '--c', 1, [2, 3]); A.text([.02, 1.07], '5 % overshoot limit', '--c', 0, -4, { size: 11 }); }
+    if (S === 6 && s.g.m !== 'none') { const yss = s.res.filter(p => p[0] < .6).slice(-1)[0][1]; A.poly(s.res.filter(p => p[0] < .6).map(p => [p[0], p[1] - yss]), '--e', 2, [5, 3]); A.line([0, yss], [.6, yss], '--d', 2); A.text([.3, yss], 'steady state', '--d', 0, -8, { size: 12 }); A.text([.05, -.15], 'pink: transient = θ − steady state', '--e', 0, 0, { size: 12 }); }
+    if (S === 0) { const B = Pl.panel(0, 0, .62, .64, [0, Tend, 0, 3], false); B.poly(s.res.map(p => [p[0], p[2]]), '--b', 2, [6, 3]); B.text([Tend * .55, 2.6], 'dashed: speed ω → 1/b = 2.5 rad/s', '--b', 0, 0, { size: 12 }); }
+    /* s-plane */
+    const R = s.roots, re = Math.max(30, ...R.map(r => Math.abs(r[0])), ...R.map(r => Math.abs(r[1]))) * 1.2;
+    const P = Pl.panel(.63, 0, .37, .64, [-re, re * .3, -re * .65, re * .65]); P.frame('closed-loop poles (s-plane)'); P.axes();
+    R.forEach(r => { P.line([r[0] - re * .03, r[1] - re * .03], [r[0] + re * .03, r[1] + re * .03], '--d', 3); P.line([r[0] - re * .03, r[1] + re * .03], [r[0] + re * .03, r[1] - re * .03], '--d', 3); });
+    P.text([-re * .95, -re * .55], R.length + ' poles: ' + R.map(r => f(r[0], 1) + (r[1] ? (r[1] > 0 ? '+' : '−') + f(Math.abs(r[1]), 1) + 'j' : '')).join(', '), '--d', 0, 0, { size: 11, mono: true });
+    /* spec checklist */
+    const Rb = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); Rb.frame();
+    const L = (x, y, txt, cl) => Rb.label(Rb.x + Rb.w * x, Rb.y + Rb.h * y, txt, cl, { mono: true, size: 12 });
+    const okTs = s.m.ts < SPEC.ts, okOs = s.m.os < SPEC.os, okE = Math.abs(s.errLoad) < .002;
+    L(.02, .2, `controller: ${s.g.m === 'none' ? 'none (constant 1 N·m)' : s.g.m}   K_p = ${f(s.g.Kp, 1)}  K_d = ${f(s.g.Kd, 2)}  K_i = ${f(s.g.Ki, 0)}`, '--ink');
+    L(.02, .42, `order of the plant = ${s.order}   (mass: 2 states${SPRING ? ', spring: no extra state, it stores energy in θ' : ''}${LAG ? ', motor lag: +1' : ''})`, '--muted');
+    if (S >= 2 && s.g.m !== 'none') { L(.02, .64, `settling (2 %) = ${f(s.m.ts, 3)} s  ${okTs ? '✓' : '✗'} < 0.2 s`, okTs ? '--c' : '--bad'); L(.36, .64, `overshoot = ${f(s.m.os, 1)} %  ${okOs ? '✓' : '✗'} < 5 %`, okOs ? '--c' : '--bad');
+      L(.66, .64, `error under load = ${f(s.errLoad, 4)} rad ${okE ? '✓' : '✗'} < 0.002`, okE ? '--c' : '--bad'); }
+    if (S >= 2 && s.g.m === 'none') L(.02, .64, 'no controller yet: the specs cannot even be evaluated', '--bad');
+  },
+  math(S) {
+    const s = st(), g = s.g, cp = charPoly(g);
+    const head = `<p class="cg">J = 0.04 kg·m², b = 0.4 N·m·s${SPRING ? ', spring k = 20 N·m/rad' : ''}${LAG ? ', motor lag τ_e = 10 ms' : ''}. Load ${f(s.load, 1)} N·m from t = 0.6 s.</p>`;
+    const poly = p => p.map((c, i) => f(c, 3) + (p.length - 1 - i ? ' s' + (p.length - 1 - i > 1 ? '^' + (p.length - 1 - i) : '') : '')).join(' + ');
+    const rows = [
+`${E(`J θ̈ + b θ̇ = τ          (τ = 1 N·m constant)
+speed:  ω(t) = (τ/b)(1 − e^(−t/τ_m)),  τ_m = J/b = ${f(J / b, 2)} s,  ω → ${f(1 / b, 2)} rad/s
+angle:  θ(t) = ∫ω dt  → grows without limit`)}
+<p>Characterising the plant answers: how fast (τ_m), how far (gain 1/b), can it overshoot (no: one store per state here), can it hold position (no: nothing pulls θ back). Pages 3–15 are entirely this step.</p>`,
+`${E(`states = independent energy stores
+rotating mass: ½Jω²   → ω       (and θ, because we control position)
+${SPRING ? 'spring:        ½kθ²   → θ  (already a state)\n' : ''}${LAG ? 'inductance:    ½Li²   → i (motor torque)\n' : ''}order = ${s.order}
+open-loop characteristic polynomial: ${poly(LAG ? CTL.pmul([.01, 1], [J, b, SPRING ? 20 : 0]) : [J, b, SPRING ? 20 : 0])}`)}
+<p>Dampers and gears add no state: they store no energy. Toggle the buttons and watch the pole count change.</p>`,
+`${ul(['<b>Settling time</b> &lt; 0.2 s: within 2 % of the target and staying there.', '<b>Overshoot</b> &lt; 5 %: never more than 1.05 rad.', '<b>Zero steady-state error under load</b>: a constant load torque must not leave the joint off target (checked as &lt; 0.002 rad at t = 1.2 s).'])}
+<p>The first two describe the <b>transient</b>, the third the <b>steady state</b>. These are the only two things a response is made of.</p>`,
+`${E(`τ = K_p (θ_d − θ)
+closed loop: J θ̈ + b θ̇ + K_p θ = K_p θ_d − τ_load
+char. poly: ${poly(cp)}
+steady error under load = τ_load / K_p = ${f(s.load / Math.max(g.Kp, 1e-9), 3)} rad`)}
+<p>K_p is a software spring: stiffer means less error but faster ringing (ζ = b / (2√(J K_p)) = ${f(b / (2 * Math.sqrt(J * Math.max(g.Kp, 1e-9))), 3)}).</p>`,
+`${E(`τ = K_p (θ_d − θ) − K_d θ̇
+closed loop: J θ̈ + (b + K_d) θ̇ + K_p θ = …
+char. poly: ${poly(cp)}
+ζ = (b + K_d) / (2√(J K_p)) = ${f((b + g.Kd) / (2 * Math.sqrt(J * Math.max(g.Kp, 1e-9))), 3)}
+steady error under load still = τ_load / K_p = ${f(s.load / Math.max(g.Kp, 1e-9), 3)} rad`)}`,
+`${E(`τ = K_p e − K_d θ̇ + K_i ∫e dt
+char. poly (one order higher): ${poly(cp)}
+at steady state θ̇ = 0 and e must be 0, else ∫e would keep growing:
+K_i ∫e = τ_load  → error = 0`)}
+<p>The integrator adds a pole (order 3) and some extra overshoot risk, which is why K_d and K_i are tuned together.</p>`,
+`${E(`θ(t) = θ_ss + θ_tr(t),   θ_tr(t) = Σ cᵢ e^(pᵢ t) → 0 when every Re pᵢ < 0
+θ_ss now ≈ ${f(s.res.filter(p => p[0] < .6).slice(-1)[0][1], 4)} rad`)}
+<p>The transient’s shape comes from the poles (rates); its size from the initial conditions and the input. The steady state comes from the DC gain and from integrators.</p>`,
+`${E(`closed-loop poles: ${s.roots.map(r => f(r[0], 2) + (r[1] ? (r[1] > 0 ? ' + ' : ' − ') + f(Math.abs(r[1]), 2) + 'j' : '')).join(',  ')}
+slowest decay rate = ${f(Math.min(...s.roots.map(r => -r[0])), 2)} 1/s  → settling ≈ 4 / that = ${f(4 / Math.min(...s.roots.map(r => -r[0])), 3)} s`)}
+<p>The metal is unchanged. Every page from here on is either reading where the poles are (3–15) or deciding where to put them (16 onward).</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>mode</b>${s.g.m}</span><span><b>overshoot</b>${f(s.m.os, 1)} %</span><span><b>t_s</b>${f(s.m.ts, 3)} s</span>`; },
+});
+</script>
+</body></html>

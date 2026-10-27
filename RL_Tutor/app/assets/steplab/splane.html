@@ -1,0 +1,110 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The s-plane</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+let PLANE = null, TNOW = 0;
+const st = () => { const v = SL.v; return { sg: v.sg / 10, w: v.w / 10, t: v.t / 100 }; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const SIX = [[-2, 0, 'decays, no ringing'], [1, 0, 'grows, no ringing'], [0, 0, 'holds (integrator)'], [0, 6, 'rings forever'], [-1.5, 6, 'decaying ringing'], [.6, 6, 'growing ringing']];
+SL.app({
+  title: 'The s-plane: what j physically is, and every motion a linear system can make',
+  sub: 'Drag the pole (σ + jω) on the s-plane, or use the sliders. Left: the complex number e^(st) moving in its own plane. Right: the real signal you would see on a scope.',
+  view: '2d',
+  legend: [['--a', 'e^(st) (the complex number)'], ['--b', 'real part = what you measure'], ['--d', 'pole'], ['--e', 'conjugate twin'], ['--c', 'energy stores']],
+  controls: [
+    { id: 'sg', label: 'σ (real part)', min: -40, max: 15, value: -5, fmt: x => f(x / 10, 1) + ' 1/s' },
+    { id: 'w', label: 'ω (imaginary part)', min: 0, max: 120, value: 60, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 't', label: 'time t', min: 0, max: 300, value: 60, fmt: x => f(x / 100, 2) + ' s' },
+  ],
+  play: { tick(dt) { let t = SL.v.t + dt * 50; if (t > 300) t = 0; SL.setControl('t', t); } },
+  reset() { SL.setControl('t', 0); },
+  drag: () => [{ panel: () => PLANE, pos: () => [SL.v.sg / 10, SL.v.w / 10], set: q => { SL.setControl('sg', Math.max(-40, Math.min(15, Math.round(q[0] * 10)))); SL.setControl('w', Math.max(0, Math.min(120, Math.round(q[1] * 10)))); } }],
+  steps: [
+    ['j is a quarter turn', 'Multiplying by j turns an arrow by 90°. Multiplying by e^(jωΔt) turns it by ωΔt. So e^(jωt) is an arrow spinning at ω rad/s, and its real part (its shadow on the real axis) is cos ωt.'],
+    ['e^(st): a spiral', 's = σ + jω. e^(st) = e^(σt)·e^(jωt): spin at ω while the length scales by e^(σt). Its real part is e^(σt) cos ωt: a decaying (σ < 0) or growing (σ > 0) oscillation.'],
+    ['Why poles come in pairs', 'A real system cannot output a complex number. The pole’s twin σ − jω spins the other way; added, the imaginary parts cancel and only 2e^(σt) cos ωt is left.'],
+    ['Every motion, the complete list', 'Six places a pole can sit, six behaviours: decay, growth, hold, ring forever, decaying ring, growing ring. Drag your pole and see which one it is.'],
+    ['The two axes are two physical rates', 'σ is the decay rate (1/τ, how fast the envelope shrinks), ω the oscillation rate (2π/ω is the period). Nothing mystical about “imaginary”: it is the rotation rate.'],
+    ['One reservoir cannot ring; two can', 'A single store can only fill or drain: its pole sits on the real axis. Oscillation needs two stores trading energy back and forth (spring ↔ mass). That exchange is what an imaginary part is.'],
+    ['And this is what a controller is for', 'Pick where you want the pole; the gains follow. For the joint J θ̈ + b θ̇ = τ with PD: K_p = J(σ² + ω²), K_d = −2Jσ − b. Drag the pole and read the gains.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = s.t;
+    const sg = S === 0 ? 0 : s.sg, w = s.w;
+    /* left: complex plane of e^(st) */
+    const amp = Math.exp(sg * t), R = Math.max(1.2, Math.min(4, Math.exp(Math.max(0, sg) * 3))) * 1.1;
+    const A = Pl.panel(0, 0, .3, .62, [-R, R, -R, R]); A.frame(S === 2 ? 'e^(st) and its twin' : 'e^(st) in the complex plane'); A.axes();
+    const path = []; for (let k = 0; k <= 400; k++) { const tt = k / 400 * t; path.push([Math.exp(sg * tt) * Math.cos(w * tt), Math.exp(sg * tt) * Math.sin(w * tt)]); }
+    A.clip(() => { A.poly(path, '--a', 1.5); if (S === 2) A.poly(path.map(p => [p[0], -p[1]]), '--e', 1.5); });
+    const z = [amp * Math.cos(w * t), amp * Math.sin(w * t)];
+    A.arrow([0, 0], z, '--a', 3, 'e^(st)'); A.line(z, [z[0], 0], '--b', 1.5, [3, 3]); A.dot([z[0], 0], 5, '--b');
+    if (S === 2) { A.arrow([0, 0], [z[0], -z[1]], '--e', 3, 'twin'); A.arrow([0, 0], [2 * z[0], 0], '--b', 3.5, 'sum: real'); }
+    /* middle: the real signal */
+    const T = 3, ym = Math.min(8, Math.max(1.2, Math.exp(Math.max(0, sg) * T))) * (S === 2 ? 2.2 : 1.1);
+    const B = Pl.panel(.31, 0, .4, .62, [0, T, -ym, ym], false), sig = [...Array(601)].map((_, i) => { const tt = i / 600 * T; return [tt, (S === 2 ? 2 : 1) * Math.exp(sg * tt) * Math.cos(w * tt)]; });
+    B.series([{ pts: sig, cl: '--b', w: 2.5, label: S === 2 ? '2 e^(σt) cos ωt' : 'Re e^(st) = e^(σt) cos ωt' }, { pts: sig.map(p => [p[0], (S === 2 ? 2 : 1) * Math.exp(sg * p[0])]), cl: '--grey', w: 1, dash: [4, 3], label: 'envelope e^(σt)' }], { title: 'what a scope shows' });
+    B.line([t, -ym], [t, ym], '--a', 1, [3, 3]);
+    /* right: s-plane */
+    const P = Pl.panel(.72, 0, .28, .62, [-4.5, 2, -12.5, 12.5], false); PLANE = P; P.frame('s-plane (drag)');
+    P.poly([[0, -12.5], [2, -12.5], [2, 12.5], [0, 12.5]], null, 0, null, '--bad', true); P.axes();
+    if (S === 3) SIX.forEach(([a, b]) => { P.dot([a, b], 4, '--grey'); if (b) P.dot([a, -b], 4, '--grey'); });
+    const mark = (x, y, cl) => { P.line([x - .15, y - .45], [x + .15, y + .45], cl, 3); P.line([x - .15, y + .45], [x + .15, y - .45], cl, 3); };
+    mark(sg, w, '--d'); if (w) mark(sg, -w, '--e');
+    P.text([sg, w], 'σ + jω', '--d', 8, -6, { size: 11 });
+    /* bottom */
+    const Bt = Pl.panel(0, .64, 1, .36, [0, 1, 0, 1], false); Bt.frame();
+    const L = (x, y, txt, cl) => Bt.label(Bt.x + Bt.w * x, Bt.y + Bt.h * y, txt, cl, { mono: true, size: 12 });
+    const kind = sg < 0 ? (w ? 'decaying oscillation' : 'pure decay') : sg > 0 ? (w ? 'growing oscillation (unstable)' : 'pure growth (unstable)') : (w ? 'sustained oscillation (marginal)' : 'constant (marginal)');
+    if (S === 3) { SIX.forEach(([a, b, lab], i) => { const pnl = Pl.panel(i / 6, .66, 1 / 6 - .005, .2, [0, 3, -2.2, 2.2], false); pnl.frame(); pnl.poly([...Array(121)].map((_, k) => { const tt = k / 40; return [tt, Math.max(-2.2, Math.min(2.2, Math.exp(a * tt) * Math.cos(b * tt)))]; }), (Math.sign(a) === Math.sign(sg) && (b > 0) === (w > 0)) ? '--b' : '--grey', 2); pnl.label(pnl.x + 4, pnl.y + pnl.h - 6, lab, '--muted', { size: 10 }); });
+      L(.02, .8, `your pole: ${kind}`, '--d'); return; }
+    if (S === 5) { const Jm = 1, k = sg * sg + w * w, c = -2 * sg; /* m x'' + c x' + k x = 0 with this pole */
+      const E0 = [...Array(301)].map((_, i) => { const tt = i / 100, x = Math.exp(sg * tt) * Math.cos(w * tt), v = Math.exp(sg * tt) * (sg * Math.cos(w * tt) - w * Math.sin(w * tt)); return [tt, .5 * k * x * x, .5 * Jm * v * v]; });
+      const em = Math.max(...E0.map(p => p[1] + p[2])), C = Pl.panel(0, .66, .7, .34, [0, 3, 0, em * 1.1], false);
+      C.series([{ pts: E0.map(p => [p[0], p[1]]), cl: '--c', w: 2, label: 'spring energy ½kx²' }, { pts: E0.map(p => [p[0], p[2]]), cl: '--e', w: 2, label: 'mass energy ½mv²' }], { title: w ? 'two stores trading energy: that is the ω' : 'ω = 0: no trading, just draining' });
+      const Rr = Pl.panel(.71, .66, .29, .34, [0, 1, 0, 1], false); Rr.frame(); Rr.label(Rr.x + 8, Rr.y + 24, `m = 1, k = σ² + ω² = ${f(k, 2)}`, '--ink', { mono: true, size: 12 }); Rr.label(Rr.x + 8, Rr.y + 46, `c = −2σ = ${f(c, 2)}`, '--ink', { mono: true, size: 12 }); return; }
+    L(.02, .2, `s = ${f(sg, 2)} ${w ? '± j' + f(w, 2) : ''}   →   ${kind}`, '--d');
+    L(.02, .42, `decay rate σ: envelope e^(σt)${sg < 0 ? ', τ = −1/σ = ' + f(-1 / sg, 3) + ' s, 2 % settling ≈ ' + f(4 / -sg, 2) + ' s' : sg > 0 ? ', doubles every ' + f(Math.log(2) / sg, 3) + ' s' : ', constant'}`, '--b');
+    L(.02, .64, `oscillation rate ω: ${w ? 'period 2π/ω = ' + f(2 * Math.PI / w, 3) + ' s (' + f(w / (2 * Math.PI), 2) + ' Hz)' : 'none'}`, '--a');
+    if (S === 6) { const J = .04, b = .4, Kp = J * (sg * sg + w * w), Kd = -2 * J * sg - b; L(.02, .86, `joint J = 0.04, b = 0.4 with PD:  K_p = J(σ² + ω²) = ${f(Kp, 3)} N·m/rad,  K_d = −2Jσ − b = ${f(Kd, 3)} N·m·s${Kd < 0 ? '  (negative: needs to pump energy in)' : ''}`, '--c'); }
+    else L(.02, .86, `ζ = −σ/√(σ² + ω²) = ${f(-sg / Math.max(1e-9, Math.hypot(sg, w)), 3)},  ω_n = √(σ² + ω²) = ${f(Math.hypot(sg, w), 3)} rad/s   (page 11)`, '--muted');
+  },
+  math(S) {
+    const s = st(), sg = S === 0 ? 0 : s.sg, w = s.w, t = s.t, z = [Math.exp(sg * t) * Math.cos(w * t), Math.exp(sg * t) * Math.sin(w * t)];
+    const head = `<p class="cg">s = ${f(sg, 2)} + j${f(w, 2)}, t = ${f(t, 2)} s.</p>`;
+    const rows = [
+`${E(`j · (a + jb) = −b + ja           (turn by 90°)
+e^(jθ) = cos θ + j sin θ          (Euler)
+e^(jωt) at t = ${f(t, 2)}: angle ωt = ${f(w * t * 180 / Math.PI % 360, 1)}°, real part cos ωt = ${f(Math.cos(w * t), 3)}`)}
+<p>A rotating arrow and its shadow: that is all a sinusoid is. j is the bookkeeping that lets one number hold both the shadow (real) and the hidden other half (imaginary).</p>`,
+`${E(`e^(st) = e^(σt) (cos ωt + j sin ωt)
+now:  length e^(σt) = ${f(Math.exp(sg * t), 4)},  angle ωt = ${f(w * t, 3)} rad
+      e^(st) = ${f(z[0], 4)} ${z[1] < 0 ? '−' : '+'} j${f(Math.abs(z[1]), 4)}
+real signal: e^(σt) cos ωt = ${f(z[0], 4)}`)}
+<p>“Rotating about what axis?” The arrow rotates in the complex plane of the solution, not in physical space. The physical signal is only its real part.</p>`,
+`${E(`e^((σ+jω)t) + e^((σ−jω)t) = e^(σt)(e^(jωt) + e^(−jωt)) = 2 e^(σt) cos ωt
+imaginary parts: +e^(σt) sin ωt and −e^(σt) sin ωt cancel`)}
+<p>Polynomials with real coefficients (every physical system) have complex roots in conjugate pairs, so their responses are always real.</p>`,
+`${ul(['real, negative: decays (first order, page 6)', 'real, positive: grows (unstable)', 'at 0: holds (integrator, page 7)', 'on the imaginary axis: rings forever (undamped, page 10)', 'left half, complex: decaying ringing (page 11)', 'right half, complex: growing ringing (unstable)'])}
+<p>Any linear system’s free response is a sum of these six shapes, one per pole. That list is complete.</p>`,
+`${E(`σ = ${f(sg, 2)} 1/s  ⇒  ${sg < 0 ? 'τ = ' + f(-1 / sg, 3) + ' s' : 'no decay'}
+ω = ${f(w, 2)} rad/s  ⇒  ${w ? 'period ' + f(2 * Math.PI / w, 3) + ' s' : 'no oscillation'}
+distance from the origin ω_n = ${f(Math.hypot(sg, w), 3)} rad/s
+ζ = cos(angle from the negative real axis) = ${f(-sg / Math.max(1e-9, Math.hypot(sg, w)), 3)}`)}
+<p>Reading a pole map: left–right is “how fast does it die”, up–down is “how fast does it ring”.</p>`,
+`${E(`one store:  a ẋ + b x = 0  → s = −b/a       (real only)
+two stores: m ẍ + c ẋ + k x = 0 → s = (−c ± √(c² − 4mk))/(2m)
+complex when c² < 4mk: the stores exchange energy faster than the damper removes it`)}
+<p>The plot shows the two energies swapping: spring full when the mass is still, mass full when the spring is relaxed. The swap rate is ω; the slow loss is σ.</p>`,
+`${E(`J θ̈ + (b + K_d) θ̇ + K_p θ = 0  with poles σ ± jω:
+J s² + (b + K_d) s + K_p = J (s − σ − jω)(s − σ + jω) = J s² − 2Jσ s + J(σ² + ω²)
+⇒ K_p = J(σ² + ω²) = ${f(.04 * (sg * sg + w * w), 4)},   K_d = −2Jσ − b = ${f(-2 * .04 * sg - .4, 4)}`)}
+<p>That is pole placement in two lines: the controller exists to move the poles of the physical system to where you want them. Pages 10–15 learn to read poles; pages 16+ learn to place them.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>s</b>${f(s.sg, 1)} ± j${f(s.w, 1)}</span>`; },
+});
+</script>
+</body></html>

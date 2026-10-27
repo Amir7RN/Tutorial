@@ -1,0 +1,112 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The pole at the origin</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const J = .04;
+let AW = false;
+const st = () => { const v = SL.v; return { b: v.b / 100, Kp: v.kp / 10, Ki: v.ki, load: v.load / 10, sat: v.sat / 10 }; };
+/* open-loop store: J ω̇ = u − b ω for a pulse or a step */
+const openLoop = (b, kind, T = 1.5) => { const dt = 1e-3; let w = 0; const out = []; for (let i = 0; i <= T / dt; i++) { const t = i * dt, u = kind === 'pulse' ? (t > .1 && t < .3 ? 1 : 0) : (t > .1 ? 1 : 0); out.push([t, w, u]); w += dt * (u - b * w) / J; } return out; };
+/* speed loop on the leak-free joint: τ = Kp e + Ki ∫e, saturated; load torque from 0.5 s; target 10 rad/s */
+const speedLoop = (Kp, Ki, load, sat, aw, T = 2) => { const dt = 2e-4, out = []; let w = 0, I = 0;
+  for (let i = 0; i <= T / dt; i++) { const t = i * dt, e = 10 - w, d = t >= .8 ? load : 0; let u = Kp * e + Ki * I; const us = Math.max(-sat, Math.min(sat, u));
+    if (i % 10 === 0) out.push([t, w, us, Ki * I]);
+    if (!aw || us === u) I += dt * e;
+    w += dt * (us - d) / J; }
+  return out; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'The pole at the origin: a store with no drain',
+  sub: 'Take the motor joint and remove the drain (b → 0), or look at position instead of speed. The transient never decays: that is a weakness for a plant and a superpower in a controller.',
+  view: '2d',
+  legend: [['--a', 'leaky store (b > 0)'], ['--e', 'perfect store (b = 0)'], ['--b', 'input'], ['--c', 'integral term K_i∫e'], ['--bad', 'saturation']],
+  controls: [
+    { id: 'b', label: 'leak b (steps 0–2)', min: 0, max: 80, value: 40, fmt: x => f(x / 100, 2) + ' N·m·s' },
+    { id: 'kp', label: 'K_p (speed loop)', min: 0, max: 60, value: 8, fmt: x => f(x / 10, 1) + ' N·m per rad/s' },
+    { id: 'ki', label: 'K_i', min: 0, max: 60, value: 0, fmt: x => x + ' N·m per rad' },
+    { id: 'load', label: 'load torque at 0.8 s', min: 0, max: 30, value: 15, fmt: x => f(x / 10, 1) + ' N·m' },
+    { id: 'sat', label: 'motor torque limit', min: 5, max: 100, value: 100, fmt: x => f(x / 10, 1) + ' N·m' },
+  ],
+  buttons: [{ label: 'anti-windup', toggle: true, pressed: false, onclick: e => { AW = !AW; e.setAttribute('aria-pressed', AW); SL.redraw(); } },
+            { label: 'P only', onclick: () => { SL.setControl('ki', 0); SL.redraw(); } }, { label: 'PI', onclick: () => { SL.setControl('ki', 30); SL.redraw(); } },
+            { label: 'low torque limit', onclick: () => { SL.setControl('sat', 12); SL.setControl('ki', 40); SL.redraw(); } }],
+  steps: [
+    ['What “no drain” does to the equation', 'J ω̇ = u − b ω with b = 0 becomes J ω̇ = u: the speed is the running total (integral) of the input. Same for position: θ is the integral of ω. Transfer function 1/(J s): a pole at s = 0.'],
+    ['The same experiments, leaky vs perfect', 'A pulse of torque: the leaky store drains back to zero; the perfect one keeps whatever it was given. A step: the leaky one levels off at u/b; the perfect one ramps forever.'],
+    ['Marginally stable: its own category', 'Left alone it neither decays nor grows: it holds. But a bounded input (a step) gives an unbounded output (a ramp). Not stable, not unstable: marginal.'],
+    ['Why P control cannot hold against a load', 'Speed loop τ = K_p(ω_d − ω) on a frictionless joint. A load torque needs a constant motor torque, which needs a constant error: steady error = load / K_p. More K_p only shrinks it.'],
+    ['PI: let the controller hold it', 'Add K_i∫e. The integral keeps growing while there is any error, and stops only when the error is exactly zero. It ends up supplying the load torque by itself (green).'],
+    ['The price: windup', 'With a torque limit the motor saturates, but the integral keeps accumulating error it cannot act on. When the error finally changes sign the stored integral causes a big overshoot. Anti-windup stops integrating while saturated.'],
+    ['Speed out vs position out', 'The same joint seen through position adds one more integrator: θ = ∫ω. That is why a P controller on position has no steady error to a constant target (no load), while on speed it does.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    if (S <= 2) {
+      const kind = S === 1 ? 'pulse' : 'step', leaky = openLoop(Math.max(s.b, 1e-6), kind), perfect = openLoop(0, kind), mx = Math.max(...perfect.map(p => p[1]), ...leaky.map(p => p[1])) * 1.15;
+      const A = Pl.panel(0, 0, .5, .64, [0, 1.5, -.1 * mx, mx], false);
+      A.series([{ pts: leaky.map(p => [p[0], p[1]]), cl: '--a', w: 2.5, label: 'leaky b = ' + f(s.b, 2) }, { pts: perfect.map(p => [p[0], p[1]]), cl: '--e', w: 2.5, label: 'no drain' }, { pts: leaky.map(p => [p[0], p[2] * mx * .3]), cl: '--b', w: 1.5, dash: [4, 3], label: 'input (scaled)' }], { title: kind + ' of 1 N·m', yl: 'ω rad/s' });
+      if (S === 0) { const B = Pl.panel(.51, 0, .49, .64, [-1.3, 1.3, -1.6, 1.6]); B.frame('two buckets');
+        [[-.6, '--a', true], [.6, '--e', false]].forEach(([x, cl, hole]) => { B.poly([[x - .35, -1], [x + .35, -1], [x + .35, 1], [x - .35, 1]], '--link', 3, null, null, true); B.poly([[x - .35, -1], [x + .35, -1], [x + .35, hole ? 0 : .7], [x - .35, hole ? 0 : .7]], null, 0, null, cl, true); if (hole) B.arrow([x + .35, -.9], [.35, 0], '--a', 3, 'drain'); B.text([x, -1.3], hole ? 'leaky' : 'no drain', cl, -22, 0, { size: 12 }); }); }
+      else { const B = Pl.panel(.51, 0, .49, .64, [-12, 4, -6, 6]); B.frame('poles'); B.axes(); const pl = -Math.max(s.b, 1e-6) / J;
+        B.line([pl - .5, -.5], [pl + .5, .5], '--a', 3); B.line([pl - .5, .5], [pl + .5, -.5], '--a', 3); B.text([pl, 0], 'leaky: −b/J = ' + f(pl, 1), '--a', -40, -14, { size: 11 });
+        B.line([-.5, -.5], [.5, .5], '--e', 3); B.line([-.5, .5], [.5, -.5], '--e', 3); B.text([0, 0], 'perfect: 0', '--e', 6, 18, { size: 11 }); }
+    } else if (S <= 5) {
+      const r = speedLoop(s.Kp, S === 3 ? 0 : s.Ki, s.load, S === 5 ? s.sat : 1e9, AW), mx = Math.max(12, ...r.map(p => p[1])) * 1.1;
+      const A = Pl.panel(0, 0, .62, .64, [0, 2, -1, mx], false);
+      A.series([{ pts: r.map(p => [p[0], p[1]]), cl: '--a', w: 2.5, label: 'speed ω (target 10 rad/s)' }], { title: S === 3 ? 'P speed loop, load at 0.8 s' : S === 4 ? 'PI speed loop, load at 0.8 s' : 'PI with a torque limit of ' + f(s.sat, 1) + ' N·m', yl: 'rad/s' });
+      A.line([0, 10], [2, 10], '--grey', 1.5, [5, 4]); A.line([.8, -1], [.8, mx], '--b', 1, [3, 3]);
+      const um = Math.max(1, ...r.map(p => Math.abs(p[2])), ...r.map(p => Math.abs(p[3]))) * 1.2, B = Pl.panel(.63, 0, .37, .64, [0, 2, -um * .3, um], false);
+      const list = [{ pts: r.map(p => [p[0], p[2]]), cl: '--b', w: 2, label: 'motor torque' }]; if (S >= 4) list.push({ pts: r.map(p => [p[0], p[3]]), cl: '--c', w: 2, label: 'K_i∫e' });
+      B.series(list, { title: 'torques', yl: 'N·m' }); B.line([0, s.load], [2, s.load], '--grey', 1, [4, 3]); B.text([.05, s.load], 'load', '--grey', 0, -4, { size: 11 });
+      if (S === 5) { B.line([0, s.sat], [2, s.sat], '--bad', 1.5, [5, 3]); }
+    } else {
+      const dt = 1e-3, Kp = 3, T = 2, sp = [], po = []; let w = 0, w2 = 0, th = 0;
+      for (let i = 0; i <= T / dt; i++) { const tt = i * dt; sp.push([tt, w]); po.push([tt, th]); w += dt * (Kp * (1 - w) - .4 * w) / J; w2 += dt * (Kp * (1 - th) - .4 * w2) / J; th += dt * w2; }
+      const A = Pl.panel(0, 0, .5, .64, [0, T, -.1, 1.4], false); A.series([{ pts: sp, cl: '--a', w: 2.5, label: 'speed loop, target 1 rad/s' }], { title: 'P on speed (b = 0.4): settles short' }); A.line([0, 1], [T, 1], '--grey', 1, [5, 4]);
+      const B = Pl.panel(.51, 0, .49, .64, [0, T, -.1, 1.4], false); B.series([{ pts: po, cl: '--e', w: 2.5, label: 'position loop, target 1 rad' }], { title: 'P on position: reaches the target' }); B.line([0, 1], [T, 1], '--grey', 1, [5, 4]);
+    }
+    const R = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); R.frame();
+    const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    if (S <= 2) { L(.02, .25, `leaky:   J ω̇ = u − ${f(s.b, 2)} ω     pole −b/J = ${f(-s.b / J, 2)} 1/s,  τ = ${s.b ? f(J / s.b * 1000, 0) + ' ms' : '∞'}`, '--a'); L(.02, .5, 'perfect: J ω̇ = u           pole 0: ω(t) = ω(0) + (1/J)∫u dt', '--e'); L(.02, .75, 'step input: leaky → u/b (finite);  perfect → (u/J)·t (ramp, unbounded)', '--muted'); }
+    else if (S <= 5) { const r = speedLoop(s.Kp, S === 3 ? 0 : s.Ki, s.load, S === 5 ? s.sat : 1e9, AW), e = 10 - r[r.length - 1][1];
+      L(.02, .25, `final error = ${f(e, 3)} rad/s   ${S === 3 ? `(predicted load/K_p = ${f(s.load / Math.max(s.Kp, 1e-9), 3)})` : ''}`, Math.abs(e) < .02 ? '--c' : '--bad');
+      L(.02, .5, `max overshoot = ${f(Math.max(...r.map(p => p[1])) - 10, 2)} rad/s   anti-windup: ${AW ? 'on' : 'off'}`, '--muted'); L(.02, .75, `K_p = ${f(s.Kp, 1)}, K_i = ${S === 3 ? 0 : s.Ki}, load = ${f(s.load, 1)} N·m${S === 5 ? ', limit ' + f(s.sat, 1) + ' N·m' : ''}`, '--ink'); }
+    else { L(.02, .3, 'speed loop:    J ω̇ + b ω = K_p(ω_d − ω)  → ω_ss = K_p/(K_p + b) ω_d < ω_d', '--a'); L(.02, .6, 'position loop: one extra 1/s inside the loop → θ_ss = θ_d (type-1 system)', '--e'); }
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">J = 0.04 kg·m². Speed target 10 rad/s, load ${f(s.load, 1)} N·m from 0.8 s, K_p = ${f(s.Kp, 1)}, K_i = ${s.Ki}.</p>`;
+    const rows = [
+`${E(`with drain:  J ω̇ = u − b ω   →  G(s) = 1/(J s + b),  pole −b/J
+no drain:    J ω̇ = u         →  G(s) = 1/(J s),      pole 0
+position:    θ̇ = ω           →  one more 1/s`)}
+<p>An integrator is a store whose content only changes when something flows in or out. The output is the history of the input.</p>`,
+`${E(`pulse of area A (here 1 N·m × 0.2 s = 0.2 N·m·s):
+  leaky:   ω peaks, then decays as e^(−t b/J)
+  perfect: ω jumps to A/J = ${f(.2 / J, 2)} rad/s and stays there forever`)}
+<p>A perfect integrator has memory: it reports the total ever put in. A leaky one forgets with time constant J/b.</p>`,
+`${ul(['<b>Stable</b>: every transient decays (all poles in the left half-plane).', '<b>Unstable</b>: some transient grows.', '<b>Marginally stable</b>: a transient that neither decays nor grows — a pole exactly on the imaginary axis, like s = 0 here.'])}
+${E(`step u = 1:  ω(t) = t/J = ${f(1 / J, 1)}·t rad/s  → unbounded although u is bounded`)}
+<p>That is why marginal stability needs its own name: the plant is harmless left alone but cannot be left in open loop under a constant input.</p>`,
+`${E(`J ω̇ = K_p(ω_d − ω) − τ_load
+steady state ω̇ = 0:  K_p e_ss = τ_load  ⇒  e_ss = τ_load / K_p = ${f(s.load / Math.max(s.Kp, 1e-9), 3)} rad/s`)}
+<p>The controller can only produce torque by having an error. A command built from the current error alone cannot hold a load without one.</p>`,
+`${E(`τ = K_p e + K_i ∫e dt
+at steady state ω̇ = 0 and ∫e must stop changing ⇒ e = 0, and K_i ∫e = τ_load`)}
+<p>The integrator in the controller is a perfect store: it remembers how much torque was needed and keeps supplying it with zero error. Larger K_i: faster removal of the error, but more overshoot (one more pole in the loop).</p>`,
+`${E(`saturated: τ = ±τ_max while K_i∫e keeps growing (wound up)
+anti-windup (clamping): stop integrating while the command is saturated`)}
+<p>Press “low torque limit”: the speed overshoots badly while the integral unwinds. Turn on anti-windup: the overshoot mostly disappears. Every real PI/PID needs this.</p>`,
+`${E(`speed loop, P:    ω_ss/ω_d = K_p/(K_p + b) = ${f(3 / 3.4, 3)}  (with K_p = 3, b = 0.4)
+position loop, P: L(s) = K_p/(s(J s + b)) has a pole at 0
+                  ⇒ e_ss = 0 for a constant target`)}
+<p>Where integrators show up: position from velocity (free), PI control (on purpose), and the cost each time is one more pole of phase lag (−90°) to stabilise.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>b</b>${f(s.b, 2)}</span><span><b>K_i</b>${s.Ki}</span><span><b>anti-windup</b>${AW ? 'on' : 'off'}</span>`; },
+});
+</script>
+</body></html>

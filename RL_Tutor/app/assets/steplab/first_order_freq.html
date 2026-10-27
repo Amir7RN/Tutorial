@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>First order in frequency</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const st = () => {
+  const v = SL.v, K = v.K / 100, tau = v.tau / 1000, w = Math.pow(10, v.lw / 100), kp = v.kp / 10, D = v.d / 1000;
+  const G = CTL.tf([K], [tau, 1]), H = CTL.freq(G, w), mag = CTL.cabs(H), ph = CTL.carg(H);
+  return { K, tau, w, f: w / (2 * Math.PI), kp, D, G, H, mag, ph };
+};
+/* closed loop: τ ẏ + y = K u(t − D), u = kp (1 − y) */
+const loop = (K, tau, kp, D, T) => { const dt = Math.min(tau / 200, 2e-4), n = Math.round(T / dt), lag = Math.round(D / dt), y = new Float64Array(n + 1), out = [];
+  for (let i = 0; i < n; i++) { const yd = i - lag >= 0 ? y[i - lag] : 0, u = kp * (1 - yd); y[i + 1] = y[i] + dt * (K * u - y[i]) / tau; if (i % Math.max(1, Math.round(n / 600)) === 0) out.push([i * dt, y[i]]); } return out; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'First order in frequency: shake it and read two numbers',
+  sub: 'The motor joint, speed out: G(s) = K/(τs + 1) with K = 2.5 rad/s per N·m and τ = 0.1 s. Drive it with a sine at ω and the output is a sine at ω: smaller and later.',
+  view: '2d',
+  legend: [['--b', 'input sine'], ['--a', 'output sine'], ['--c', 'Bode magnitude / phase'], ['--d', 'asymptotes'], ['--bad', '−180°']],
+  controls: [
+    { id: 'lw', label: 'drive frequency ω', min: 0, max: 300, value: 100, fmt: x => f(Math.pow(10, x / 100), 2) + ' rad/s' },
+    { id: 'K', label: 'K', min: 50, max: 500, value: 250, fmt: x => f(x / 100, 2) },
+    { id: 'tau', label: 'τ', min: 10, max: 500, value: 100, fmt: x => f(x / 1000, 3) + ' s' },
+    { id: 'kp', label: 'loop gain K_p (steps 4–5)', min: 1, max: 400, value: 40, fmt: x => f(x / 10, 1) },
+    { id: 'd', label: 'loop delay (step 5)', min: 0, max: 50, step: .5, value: 10, fmt: x => f(x, 1) + ' ms' },
+  ],
+  buttons: [{ label: 'ω = 1/τ (corner)', onclick: () => { SL.setControl('lw', Math.round(100 * Math.log10(1000 / SL.v.tau))); SL.redraw(); } }],
+  steps: [
+    ['Drive it with a sine, read two numbers', 'Input: sin(ωt). After the start-up transient dies, the output is A sin(ωt + φ): same frequency, amplitude ratio A, phase φ (negative = lag). Two numbers per frequency; that is the whole frequency response.'],
+    ['Why s becomes jω', 'A sine is the real part of e^(jωt). Plug s = jω into G(s): G(jω) = K / (1 + jωτ) is a complex number whose length is A and whose angle is φ. Nothing is thrown away.'],
+    ['dB, since it is only a unit', '20 log₁₀ |G|. ×10 = +20 dB, ×2 ≈ +6 dB, ×0.707 = −3 dB, ×0.1 = −20 dB. Logs turn products into sums, so stacked blocks add on a Bode plot.'],
+    ['The Bode plot: −20 dB/decade and −90°', 'Flat at K below the corner ω = 1/τ, then falling 20 dB per decade; phase from 0° through −45° at the corner to −90°. Two straight lines describe it.'],
+    ['Why one store can never oscillate', 'The phase never gets past −90°. With proportional feedback the closed-loop pole is −(1 + K K_p)/τ: always real and negative, for any gain. A first-order loop cannot be destabilised.'],
+    ['Cheat with delay', 'Add a delay: its phase −ωD keeps growing with ω, so the total eventually passes −180°. Now a high enough gain makes the loop oscillate. Real “first-order” loops are destabilised exactly this way.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    if (S <= 1) {
+      const T = 3 * 2 * Math.PI / s.w, N = 600, inp = [...Array(N + 1)].map((_, i) => [i / N * T, Math.sin(s.w * i / N * T)]);
+      const out = inp.map(([tt]) => [tt, s.mag * Math.sin(s.w * tt + s.ph) - s.mag * Math.sin(s.ph) * Math.exp(-tt / s.tau)]);
+      const mx = Math.max(1, s.mag) * 1.2, A = Pl.panel(0, 0, .62, .64, [0, T, -mx, mx], false);
+      A.series([{ pts: inp, cl: '--b', w: 2, label: 'input sin(ωt), 1 N·m' }, { pts: out, cl: '--a', w: 2.5, label: 'output (rad/s), incl. start-up' }], { title: 'ω = ' + f(s.w, 2) + ' rad/s (' + f(s.f, 2) + ' Hz)' });
+      const tp = (Math.PI / 2 - s.ph) / s.w + 2 * 2 * Math.PI / s.w, ti = Math.PI / 2 / s.w + 2 * 2 * Math.PI / s.w;
+      A.line([ti, 1], [tp, s.mag], '--c', 1.5, [4, 3]); A.text([tp, s.mag], 'lag ' + f(-s.ph * 180 / Math.PI, 1) + '°, ratio ' + f(s.mag, 3), '--c', 6, -8, { size: 12 });
+      const B = Pl.panel(.63, 0, .37, .64, [-.4, 1.6, -1.2, .8]); B.frame('G(jω) in the complex plane'); B.axes();
+      const den = [1, s.w * s.tau]; B.arrow([0, 0], [1, 0], '--grey', 2); B.arrow([1, 0], [0, s.w * s.tau > 1.5 ? 0 : 0], '--grey', 1);
+      B.arrow([0, 0], [s.H[0] / s.K, s.H[1] / s.K], '--a', 3, 'G/K'); B.circle([.5, 0], .5, '--c', 1, [4, 3]); B.text([-.35, .65], 'all G(jω)/K lie on this circle', '--c', 0, 0, { size: 11 });
+    } else {
+      const ws = CTL.logspace(Math.log10(.1 / s.tau), Math.log10(1000 / s.tau), 300), G = S === 5 ? CTL.tf([s.K * s.kp], [s.tau, 1], s.D) : (S === 4 ? CTL.tf([s.K * s.kp], [s.tau, 1]) : s.G);
+      const H = ws.map(w => CTL.freq(G, w)), mag = H.map(h => CTL.db(CTL.cabs(h))), ph = CTL.unwrapPhase(H.map(CTL.carg)).map(x => x * 180 / Math.PI);
+      const lw = ws.map(Math.log10), mlo = Math.min(...mag) - 5, mhi = Math.max(...mag) + 8, plo = Math.max(-360, Math.min(-200, Math.min(...ph) - 10));
+      const A = Pl.panel(0, 0, .62, .38, [lw[0], lw[lw.length - 1], mlo, mhi], false);
+      A.series([{ pts: lw.map((x, i) => [x, mag[i]]), cl: '--c', w: 2.5, label: S >= 4 ? '|L(jω)| dB' : '|G(jω)| dB' }], { title: 'magnitude (dB) vs log₁₀ ω' });
+      const kdb = CTL.db(S >= 4 ? s.K * s.kp : s.K), wc = Math.log10(1 / s.tau);
+      if (S === 3) { A.line([lw[0], kdb], [wc, kdb], '--d', 1.5, [6, 3]); A.line([wc, kdb], [lw[lw.length - 1], kdb - 20 * (lw[lw.length - 1] - wc)], '--d', 1.5, [6, 3]); A.dot([wc, kdb - 3], 5, '--d'); A.text([wc, kdb - 3], '−3 dB at ω = 1/τ', '--d', 6, 14, { size: 11 }); }
+      if (S >= 4) A.line([lw[0], 0], [lw[lw.length - 1], 0], '--grey', 1, [3, 3]);
+      const B = Pl.panel(0, .4, .62, .26, [lw[0], lw[lw.length - 1], plo, 10], false);
+      B.series([{ pts: lw.map((x, i) => [x, ph[i]]), cl: '--e', w: 2.5, label: 'phase (deg)' }], { title: '' }); B.line([lw[0], -90], [lw[lw.length - 1], -90], '--d', 1, [4, 3]); B.line([lw[0], -180], [lw[lw.length - 1], -180], '--bad', 1.5, [6, 3]);
+      const lx = Math.log10(s.w); if (lx >= lw[0] && lx <= lw[lw.length - 1]) { const h = CTL.freq(G, s.w); A.dot([lx, CTL.db(CTL.cabs(h))], 5, '--a'); }
+      if (S >= 4) { const tauCL = s.tau / (1 + s.K * s.kp), T = Math.max(8 * tauCL, 8 * s.D, .05), r = loop(s.K, s.tau, s.kp, S === 5 ? s.D : 0, T), mx = Math.min(3, Math.max(1.2, ...r.map(p => Math.abs(p[1]))));
+        const C = Pl.panel(.63, 0, .37, .66, [0, T, -mx * .5, mx], false); C.series([{ pts: r, cl: '--a', w: 2.5, label: 'closed-loop step' }], { title: S === 5 ? 'with ' + f(s.D * 1000, 1) + ' ms delay' : 'no delay: any gain is stable' });
+        C.line([0, s.K * s.kp / (1 + s.K * s.kp)], [T, s.K * s.kp / (1 + s.K * s.kp)], '--grey', 1, [4, 3]); }
+      else { const C = Pl.panel(.63, 0, .37, .66, [0, 1, 0, 1], false); C.frame('dB table'); const rows = [['×100', '+40 dB'], ['×10', '+20 dB'], ['×2', '+6.0 dB'], ['×1', '0 dB'], ['×0.707', '−3.0 dB'], ['×0.5', '−6.0 dB'], ['×0.1', '−20 dB'], ['×0.01', '−40 dB']];
+        rows.forEach(([a, b], i) => C.label(C.x + 20, C.y + 40 + i * 26, a.padEnd(8) + b, '--ink', { mono: true }));
+        C.label(C.x + 20, C.y + 40 + 9 * 26, `|G| now: ${f(s.mag, 3)} = ${f(CTL.db(s.mag), 2)} dB`, '--a', { mono: true }); }
+    }
+    const R = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); R.frame();
+    const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    L(.02, .22, `G(jω) = K/(1 + jωτ) at ω = ${f(s.w, 2)}:  |G| = ${f(s.K, 2)}/√(1 + ${f((s.w * s.tau) ** 2, 3)}) = ${f(s.mag, 3)} (${f(CTL.db(s.mag), 1)} dB)`, '--a');
+    L(.02, .46, `phase = −atan(ωτ) = −atan(${f(s.w * s.tau, 3)}) = ${f(s.ph * 180 / Math.PI, 1)}°   (a lag of ${f(-s.ph / s.w * 1000, 1)} ms at this ω)`, '--e');
+    L(.02, .7, `corner ω = 1/τ = ${f(1 / s.tau, 1)} rad/s (${f(1 / s.tau / (2 * Math.PI), 2)} Hz): bandwidth of this first-order system`, '--d');
+    if (S >= 4) L(.02, .92, `closed-loop pole (no delay) = −(1 + K K_p)/τ = ${f(-(1 + s.K * s.kp) / s.tau, 1)} 1/s`, '--c');
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">K = ${f(s.K, 2)}, τ = ${f(s.tau, 3)} s, drive ω = ${f(s.w, 3)} rad/s.</p>`;
+    const crit = (() => { /* gain margin with delay: find ω where −atan(ωτ) − ωD = −π */ if (!s.D) return null; let lo = 0, hi = 1e6; for (let i = 0; i < 200; i++) { const m = (lo + hi) / 2; (Math.atan(m * s.tau) + m * s.D < Math.PI ? lo = m : hi = m); } const w = lo; return { w, kmax: Math.sqrt(1 + (w * s.tau) ** 2) / s.K }; })();
+    const rows = [
+`${E(`τ ẏ + y = K sin(ωt)
+steady state: y(t) = A sin(ωt + φ)
+A = K/√(1 + (ωτ)²) = ${f(s.mag, 4)},   φ = −atan(ωτ) = ${f(s.ph * 180 / Math.PI, 2)}°`)}
+<p>The start-up part decays with the pole (e^(−t/τ)); what remains is a pure sine. Linear systems never change the frequency, only amplitude and timing.</p>`,
+`${E(`input  e^(jωt) → output G(jω) e^(jωt)
+G(jω) = K/(1 + jωτ) = ${f(s.H[0], 4)} ${s.H[1] < 0 ? '−' : '+'} ${f(Math.abs(s.H[1]), 4)} j
+|G(jω)| = ${f(s.mag, 4)},   ∠G(jω) = ${f(s.ph * 180 / Math.PI, 2)}°`)}
+<p>Real sin = Im e^(jωt), so the response to sin is Im of G(jω)e^(jωt) = |G| sin(ωt + ∠G). The complex number packs both read-off numbers.</p>`,
+`${E(`dB = 20 log₁₀ |G|
+|G| = ${f(s.mag, 4)}  →  ${f(CTL.db(s.mag), 2)} dB
+K = ${f(s.K, 2)}  →  ${f(CTL.db(s.K), 2)} dB (the low-frequency level)`)}
+<p>20 log for amplitude ratios (10 log is for powers). Cascades multiply magnitudes, so dB add: that is why Bode plots of complicated systems are sums of simple pieces.</p>`,
+`${E(`ω ≪ 1/τ:  |G| ≈ K,          φ ≈ 0°
+ω = 1/τ:   |G| = K/√2 (−3 dB), φ = −45°
+ω ≫ 1/τ:  |G| ≈ K/(ωτ)  → −20 dB per decade, φ → −90°`)}
+<p>−20 dB/decade, physically: above the corner the store has no time to fill, so the output is the input integrated (1/(jωτ)): ten times faster shaking, ten times smaller swing, a quarter-cycle late.</p>`,
+`${E(`loop L(s) = K_p K/(τs + 1),   closed-loop pole: τs + 1 + K K_p = 0
+s = −(1 + K K_p)/τ = ${f(-(1 + s.K * s.kp) / s.tau, 2)} 1/s   (real, negative, for every K_p > 0)`)}
+<p>∠L never reaches −180°, so |L| = 1 can never coincide with a phase of −180°: no gain makes it ring. Higher gain only makes it faster (and leaves an error 1/(1 + K K_p) = ${f(1 / (1 + s.K * s.kp), 3)}).</p>`,
+`${E(`L(jω) = K_p K e^(−jωD)/(1 + jωτ),  phase = −atan(ωτ) − ωD
+reaches −180° at ω₁₈₀ = ${crit ? f(crit.w, 1) : '—'} rad/s
+largest stable K_p = √(1 + (ω₁₈₀τ)²)/K = ${crit ? f(crit.kmax, 2) : '—'}   (now K_p = ${f(s.kp, 1)}: ${crit ? (s.kp < crit.kmax ? 'stable' : '<span class="cbad">UNSTABLE</span>') : ''})`)}
+<p>Every real loop has some delay (sampling, computation, page 1). That is why “a first-order plant is unconditionally stable” is true on paper and false on hardware.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>|G|</b>${f(s.mag, 3)} (${f(CTL.db(s.mag), 1)} dB)</span><span><b>φ</b>${f(s.ph * 180 / Math.PI, 1)}°</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>How software changes physics</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const J = .04, b = .4;
+/* left rig: real spring k and damper c bolted on. right rig: bare joint + PD running at f_s with delay T_d. */
+const run = (Kp, Kd, fs, Td, Tend = .8, push) => {
+  const dt = 5e-5, n = Math.round(Tend / dt), Ts = 1 / fs, lag = Td, real = [], soft = [], energy = [];
+  let x1 = .3, v1 = 0, x2 = .3, v2 = 0, tau = 0, nextSample = 0, queue = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i * dt, ext = push ? (t > .1 && t < .12 ? push : 0) : 0;
+    if (t >= nextSample - 1e-12) { queue.push([t + lag, -Kp * x2 - Kd * v2]); nextSample += Ts; }
+    while (queue.length && queue[0][0] <= t + 1e-12) tau = queue.shift()[1];
+    const a1 = (ext - (b + Kd) * v1 - Kp * x1) / J, a2 = (tau + ext - b * v2) / J;
+    v1 += dt * a1; x1 += dt * v1; v2 += dt * a2; x2 += dt * v2;
+    if (i % 10 === 0) { real.push([t, x1]); soft.push([t, x2]); energy.push([t, .5 * J * v2 * v2 + .5 * Kp * x2 * x2]); }
+  }
+  return { real, soft, energy };
+};
+const st = () => { const v = SL.v; return { Kp: v.kp, Kd: v.kd / 100, fs: v.fs, Td: v.td / 1000 }; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const Zmag = (Kp, Kd, w, Td) => { const e = CTL.cexp([0, -w * Td]), jw = [0, w];
+  const z = CTL.cadd(CTL.cadd(CTL.cscl(CTL.cmul(jw, jw), J), CTL.cscl(jw, b)), CTL.cmul(e, CTL.cadd([Kp, 0], CTL.cscl(jw, Kd)))); return CTL.cabs(z); };
+SL.app({
+  title: 'How software changes physics: a steel spring and a software spring',
+  sub: 'Same joint (J = 0.04 kg·m², b = 0.4 N·m·s) twice. Left: a real spring k and damper c bolted on. Right: nothing bolted on, a motor running τ = −K_p θ − K_d θ̇. Both released from 0.3 rad.',
+  view: '2d',
+  legend: [['--a', 'real spring rig'], ['--b', 'software spring rig'], ['--e', 'energy in the software rig'], ['--c', 'stiffness felt |Z(jω)|']],
+  controls: [
+    { id: 'kp', label: 'K_p (= k)', min: 0, max: 300, value: 100, fmt: x => x + ' N·m/rad' },
+    { id: 'kd', label: 'K_d (= c)', min: 0, max: 300, value: 160, fmt: x => f(x / 100, 2) + ' N·m·s' },
+    { id: 'fs', label: 'controller rate f_s', min: 50, max: 10000, step: 50, value: 5000, fmt: x => x + ' Hz' },
+    { id: 'td', label: 'loop delay T_d', min: 0, max: 15, step: .25, value: 0, fmt: x => f(x, 2) + ' ms' },
+  ],
+  buttons: [{ label: 'position control (stiff)', onclick: () => { SL.setControl('kp', 300); SL.setControl('kd', 300); SL.redraw(); } },
+            { label: 'impedance (soft)', onclick: () => { SL.setControl('kp', 20); SL.setControl('kd', 60); SL.redraw(); } },
+            { label: 'torque mode (K_p = 0)', onclick: () => { SL.setControl('kp', 0); SL.setControl('kd', 0); SL.redraw(); } },
+            { label: 'slow loop + delay', onclick: () => { SL.setControl('fs', 400); SL.setControl('td', 6); SL.redraw(); } }],
+  steps: [
+    ['Line 1: the hardware is fixed', 'J θ̈ + b θ̇ = τ_motor + τ_external. No line of code changes J or b.'],
+    ['Line 2: the controller is just a number sent to the motor', 'Every tick the controller reads θ and θ̇ and sends τ_motor = −K_p θ − K_d θ̇ to the current loop. That is all software does.'],
+    ['Line 3: substitute', 'J θ̈ + (b + K_d) θ̇ + K_p θ = τ_external. A mass–spring–damper: the mass is still J, but there is now a stiffness K_p and extra damping K_d in a joint with no spring.'],
+    ['Two machines, one trace', 'Set K_p = k and K_d = c and release both: the traces lie on top of each other. The shaft cannot tell a steel spring from a torque proportional to angle — neither can a person pushing it.'],
+    ['A software spring is a spring only inside the bandwidth', 'The software reads, computes and writes once per tick, late. Lower f_s or add delay and the traces separate; the stiffness felt at high frequency is no longer K_p.'],
+    ['Where the energy comes from', 'A steel spring can only return energy you put in. The software spring is powered by the motor: with delay it pushes at slightly the wrong moment. The software rig rings longer, and with enough delay and stiffness its energy grows instead of falling (try K_p = 300 with “slow loop + delay”).'],
+    ['Three paradigms, one equation', 'Position control = large K_p (stiff), impedance control = chosen K_p and K_d (compliant), torque control = K_p = 0 (only J and b remain). Same equation, different terms added. Push the hand (impulse at 0.1 s) and compare.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const push = S === 6 ? 2 : 0, r = run(s.Kp, s.Kd, s.fs, s.Td, .8, push);
+    const ymax = Math.max(.35, ...r.soft.map(p => Math.abs(p[1])).slice(0, 2000)) * 1.15;
+    const A = Pl.panel(0, 0, .62, .62, [0, .8, -ymax, ymax], false);
+    const list = [{ pts: r.real, cl: '--a', w: 3, label: 'real spring + damper' }];
+    if (S >= 3) list.push({ pts: r.soft.map(p => [p[0], Math.max(-ymax * 2, Math.min(ymax * 2, p[1]))]), cl: '--b', w: 2, dash: [6, 3], label: 'software spring' });
+    A.series(list, { title: S === 6 ? 'push at t = 0.1 s (impulse 2 N·m for 20 ms)' : 'released from 0.3 rad', yl: 'rad' });
+    if (S <= 2) { const B = Pl.panel(.63, 0, .37, .62, [-1.2, 1.2, -1.2, 1.2]); B.frame(S === 0 ? 'the hardware' : S === 1 ? 'the software' : 'what the shaft feels');
+      B.circle([0, 0], .5, '--link', 4); B.arrow([0, 0], [.8 * Math.cos(.5), .8 * Math.sin(.5)], '--link', 3, 'θ');
+      if (S >= 1) { B.arc([0, 0], 50, -.2, 1.2, '--b', 3, true, 'τ_motor'); }
+      if (S === 2) { for (let i = 0; i < 7; i++) B.line([-.9 + i * .1, -.8 + (i % 2 ? .08 : -.08)], [-.8 + i * .1, -.8 + (i % 2 ? -.08 : .08)], '--d', 2); B.text([-.95, -.6], 'virtual spring K_p', '--d', 0, 0, { size: 12 }); } }
+    if (S === 3 || S === 4) { const B = Pl.panel(.63, 0, .37, .62, [0, .8, -.05, .05], false), d = r.real.map((p, i) => [p[0], r.soft[i][1] - p[1]]);
+      const mx = Math.max(1e-4, ...d.map(p => Math.abs(p[1]))) * 1.2, B2 = Pl.panel(.63, 0, .37, .62, [0, .8, -mx, mx], false);
+      B2.series([{ pts: d, cl: '--bad', w: 2, label: 'difference (software − real)' }], { title: 'how different are they?', yl: f(mx, 4) + ' rad' }); }
+    if (S === 4) { const ws = CTL.logspace(0, 3.5, 200), ptsZ = ws.map(w => [Math.log10(w), Math.log10(Zmag(s.Kp, s.Kd, w, s.Td + .5 / s.fs))]), ptsR = ws.map(w => [Math.log10(w), Math.log10(Zmag(s.Kp, s.Kd, w, 0))]);
+      const lo = Math.min(...ptsR.map(p => p[1]), ...ptsZ.map(p => p[1])), hi = Math.max(...ptsR.map(p => p[1]), ...ptsZ.map(p => p[1]));
+      const C = Pl.panel(0, .64, .62, .36, [0, 3.5, lo - .2, hi + .2], false); C.series([{ pts: ptsR, cl: '--a', w: 2.5, label: 'real: |J(jω)² + (b+c)jω + k|' }, { pts: ptsZ, cl: '--b', w: 2, dash: [5, 3], label: 'software (with delay)' }], { title: 'impedance felt at the shaft vs log₁₀ ω' }); }
+    if (S === 5) { const B = Pl.panel(.63, 0, .37, .62, [0, .8, 0, Math.max(...r.energy.slice(0, 600).map(p => p[1])) * 1.3], false);
+      B.series([{ pts: r.energy, cl: '--e', w: 2.5, label: '½Jω² + ½K_p θ²' }], { title: 'stored energy, software rig', yl: 'J' }); }
+    if (S !== 4) { const R = Pl.panel(0, .64, 1, .36, [0, 1, 0, 1], false); R.frame();
+      const wn = Math.sqrt(s.Kp / J), z = (b + s.Kd) / (2 * Math.sqrt(J * Math.max(s.Kp, 1e-9))), L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+      L(.02, .2, 'hardware:   0.04 θ̈ + 0.4 θ̇ = τ_motor + τ_ext', '--ink');
+      L(.02, .42, `controller: τ_motor = −${f(s.Kp, 0)} θ − ${f(s.Kd, 2)} θ̇   (every ${f(1000 / s.fs, 2)} ms, ${f(s.Td * 1000, 2)} ms late)`, '--b');
+      L(.02, .64, `closed:     0.04 θ̈ + ${f(b + s.Kd, 2)} θ̇ + ${f(s.Kp, 0)} θ = τ_ext`, '--a');
+      L(.02, .86, `ω_n = √(K_p/J) = ${f(wn, 1)} rad/s   ζ = (b+K_d)/(2√(J K_p)) = ${s.Kp ? f(z, 3) : '—'}`, '--c'); }
+  },
+  math(S) {
+    const s = st(), wn = Math.sqrt(s.Kp / J), z = (b + s.Kd) / (2 * Math.sqrt(J * Math.max(s.Kp, 1e-9))), Dtot = s.Td + .5 / s.fs;
+    const head = `<p class="cg">K_p = ${s.Kp} N·m/rad, K_d = ${f(s.Kd, 2)} N·m·s, f_s = ${s.fs} Hz, delay ${f(s.Td * 1000, 2)} ms (total effective ≈ ${f(Dtot * 1000, 2)} ms with the hold).</p>`;
+    const rows = [
+`${E('J θ̈ + b θ̇ = τ_motor + τ_external          J = 0.04, b = 0.4')}
+<p>You were right: software cannot change J. The question is how a controller makes this joint behave like a spring anyway.</p>`,
+`${E(`τ_motor = −K_p (θ − θ_d) − K_d θ̇      (θ_d = 0 here)
+= −${f(s.Kp, 0)} θ − ${f(s.Kd, 2)} θ̇`)}
+<p>It reads displacement off the encoder and commands a torque proportional to it and opposing it — exactly what a steel spring does mechanically.</p>`,
+`${E(`J θ̈ + (b + K_d) θ̇ + K_p θ = τ_external
+ω_n = √(K_p / J) = ${f(wn, 2)} rad/s
+ζ = (b + K_d) / (2√(J K_p)) = ${s.Kp ? f(z, 3) : '—'}`)}
+<p><b>Software does not change the hardware’s parameters; it adds terms to the hardware’s equation of motion.</b> Behaviour is a property of the equation, so that is enough. Every controller in this tutor is a careful choice of which terms to add.</p>`,
+`${E(`real rig:     J θ̈ + (b + c) θ̇ + k θ = 0    with k = ${s.Kp}, c = ${f(s.Kd, 2)}
+software rig: J θ̈ + b θ̇ = −K_p θ − K_d θ̇    (same numbers)`)}
+<p>At ${s.fs} Hz with ${f(s.Td * 1000, 2)} ms delay the largest difference is ${(() => { const r = run(s.Kp, s.Kd, s.fs, s.Td); return f(Math.max(...r.real.map((p, i) => Math.abs(r.soft[i][1] - p[1]))), 5); })()} rad: same torque, same shaft, same moment.</p>`,
+`${E(`software torque = −K_p θ(t − D) − K_d θ̇(t − D),  D ≈ T_d + T/2 = ${f(Dtot * 1000, 2)} ms
+in frequency: K_p e^(−jωD)  — a spring whose force arrives late by ωD rad`)}
+${ul([`Below ≈ 1/(10 D) = ${f(1 / (10 * Dtot), 0)} rad/s the lag is small: it feels like a spring.`, 'Near and above 1/D the “spring” force is out of phase: part of it acts as negative damping.', 'Press “slow loop + delay”: the dashed trace rings longer or diverges while the steel spring is unchanged.'])}`,
+`${E(`steel spring: only τ_ext·θ̇ can add energy;
+              with no push the energy can only fall.
+software spring: the motor supplies τ_motor·θ̇;
+              with delay that is sometimes positive work.`)}
+<p>A passive spring can never destabilise anything. A virtual one, delayed enough and stiff enough, is an energy source: that is why high-gain impedance control needs fast loops, low delay and some physical damping.</p>`,
+`${ul(['<b>Position control</b>: K_p large → the external push barely moves it (stiff).', '<b>Impedance control</b>: K_p, K_d chosen to feel like a specified spring–damper (compliant, safe contact).', '<b>Torque control</b>: K_p = K_d = 0 → only J and b resist the push; it drifts away.'])}
+${E(`all three:  J θ̈ + (b + K_d) θ̇ + K_p θ = τ_external    — only the added terms differ`)}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>ω_n</b>${f(Math.sqrt(s.Kp / J), 1)} rad/s</span><span><b>ζ</b>${s.Kp ? f((b + s.Kd) / (2 * Math.sqrt(J * s.Kp)), 2) : '—'}</span>`; },
+});
+</script>
+</body></html>

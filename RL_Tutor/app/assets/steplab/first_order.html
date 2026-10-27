@@ -1,0 +1,123 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What a first-order system is</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* One store, one drain:  τ ẏ + y = K u.  Default: the motor joint, ω in rad/s, torque in N·m (K = 1/b, τ = J/b). */
+const DRESS = {
+  motor: { name: 'motor speed', store: 'J (kg·m²)', drain: 'b (N·m·s)', y: 'ω (rad/s)', u: 'τ (N·m)', p: [.04, .4], K: p => 1 / p[1], tau: p => p[0] / p[1] },
+  rc: { name: 'RC circuit', store: 'C (F)', drain: 'R (Ω)', y: 'v_C (V)', u: 'v_in (V)', p: [100e-6, 1000], K: p => 1, tau: p => p[0] * p[1] },
+  tank: { name: 'water tank', store: 'A (m²)', drain: 'R (s/m²)', y: 'h (m)', u: 'q_in (m³/s)', p: [.5, 40], K: p => p[1], tau: p => p[0] * p[1] },
+  thermal: { name: 'heated block', store: 'C_th (J/K)', drain: 'R_th (K/W)', y: 'ΔT (K)', u: 'P (W)', p: [900, .5], K: p => p[1], tau: p => p[0] * p[1] },
+};
+let DR = 'motor', INPUT = 'pulse';
+const rng = s => () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+const st = () => {
+  const v = SL.v, K = v.K / 100, tau = v.tau / 1000, u0 = 1, noise = v.noise / 100;
+  const Tend = 6 * tau, dt = Tend / 600, r = rng(3);
+  const step = [...Array(601)].map((_, i) => { const t = i * dt; return [t, K * u0 * (1 - Math.exp(-t / tau))]; });
+  const meas = step.map(([t, y]) => [t, y + noise * K * .06 * (((r() + r() + r()) / 3 - .5) * 6)]);
+  /* two-point fit from the noisy data: final value from the last 10 %, τ from the 63.2 % crossing */
+  const yf = meas.slice(-60).reduce((a, p) => a + p[1], 0) / 60, K_hat = yf / u0;
+  const sm = meas.map((p, i) => [p[0], meas.slice(Math.max(0, i - 5), i + 6).reduce((a, q) => a + q[1], 0) / (Math.min(i + 6, meas.length) - Math.max(0, i - 5))]);
+  const cross = sm.find(p => p[1] >= .632 * yf), tau_hat = cross ? cross[0] : NaN;
+  return { K, tau, u0, Tend, dt, step, meas, yf, K_hat, tau_hat };
+};
+const inputFn = (kind, tau) => kind === 'pulse' ? t => (t > tau && t < 2.5 * tau ? 1 : 0) : kind === 'ramp' ? t => Math.min(1, t / (3 * tau)) : t => Math.sin(2 * Math.PI * t / (2 * tau));
+const respond = (K, tau, u, Tend) => { const dt = Tend / 1200; let y = 0; const out = []; for (let i = 0; i <= 1200; i++) { const t = i * dt; out.push([t, y, u(t)]); y += dt * (K * u(t) - y) / tau; } return out; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+let tankT = 0;
+SL.app({
+  title: 'What a first-order system is: one store, one drain',
+  sub: 'Fill rate in, drain proportional to the level. That single sentence fixes the shape of every response. Default numbers: the motor joint, J = 0.04 kg·m², b = 0.4 N·m·s.',
+  view: '2d',
+  legend: [['--a', 'level / output y'], ['--b', 'input u'], ['--c', 'read-off points'], ['--e', 'model prediction'], ['--grey', 'noisy measurement']],
+  controls: [
+    { id: 'K', label: 'gain K', min: 50, max: 500, value: 250, fmt: x => f(x / 100, 2) },
+    { id: 'tau', label: 'time constant τ', min: 20, max: 500, value: 100, fmt: x => f(x / 1000, 3) + ' s' },
+    { id: 'noise', label: 'measurement noise', min: 0, max: 100, value: 30, fmt: x => x + ' %' },
+  ],
+  buttons: [{ label: 'other input: pulse', onclick: () => { INPUT = 'pulse'; SL.redraw(); } }, { label: 'ramp', onclick: () => { INPUT = 'ramp'; SL.redraw(); } }, { label: 'sine', onclick: () => { INPUT = 'sine'; SL.redraw(); } }]
+    .concat(Object.keys(DRESS).map(k => ({ label: DRESS[k].name, onclick: () => { DR = k; const d = DRESS[k]; SL.setControl('K', Math.min(500, Math.max(50, Math.round(d.K(d.p) * 100)))); SL.setControl('tau', Math.min(500, Math.max(20, Math.round(d.tau(d.p) * 1000)))); SL.redraw(); } }))),
+  steps: [
+    ['What it physically is', 'One reservoir that fills at the input rate and drains at a rate proportional to its level. As the level rises the drain speeds up, until outflow equals inflow. No equation needed to see the shape.'],
+    ['Now the equation: the picture written down', 'store × rate of change = inflow − outflow. For the motor: J ω̇ = τ − b ω. Divide by b: τ_c ω̇ + ω = K τ with K = 1/b and τ_c = J/b.'],
+    ['Two numbers, and what each physically is', 'K: where it ends up per unit input (the drain sets it). τ: how long it takes (store ÷ drain). Nothing else about a first-order system is free.'],
+    ['Read them off a step response', 'Final value ÷ step size = K. Time to reach 63.2 % of the final value = τ. The curve starts at its steepest and never overshoots.'],
+    ['Fit K and τ from noisy data', 'Average the end for the final value; smooth, then find the 63.2 % crossing. Two numbers from one experiment.'],
+    ['Then predict every other input for free', 'With K and τ fitted, the model predicts the response to a pulse, a ramp or a sine you never tested. Pick an input with the buttons: model vs the real system.'],
+    ['Four physical dresses, one curve', 'Motor speed, RC circuit, water tank, heated block: different stores and drains, the same equation and the same curve once time is measured in τ.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), d = DRESS[DR];
+    if (S <= 1) {
+      const A = Pl.panel(0, 0, .42, .64, [-1.4, 1.4, -1.6, 1.6]); A.frame('the reservoir');
+      const lvl = Math.min(1, (S === 0 ? t : 1) * .85), y0 = -1.1, H = 2;
+      A.poly([[-.6, y0], [.6, y0], [.6, y0 + H], [-.6, y0 + H]], '--link', 3, null, null, true);
+      A.poly([[-.6, y0], [.6, y0], [.6, y0 + H * lvl], [-.6, y0 + H * lvl]], null, 0, null, '--a', true);
+      A.arrow([-.2, 1.5], [0, -.5], '--b', 4, 'inflow u'); A.arrow([.6, y0 + .1], [.6 * lvl + .1, 0], '--e', 3 + 3 * lvl, 'outflow ∝ level', null, 4, 18);
+      A.text([-.6, y0 + H * lvl], 'level y', '--a', -60, 4, { size: 12 });
+    }
+    const right = S <= 1 ? Pl.panel(.43, 0, .57, .64, [0, s.Tend, -.05 * s.K, 1.15 * s.K], false) : Pl.panel(0, 0, .64, .64, [0, s.Tend, -.1 * s.K, 1.2 * s.K], false);
+    if (S <= 4) {
+      const list = [{ pts: S === 4 ? s.meas : s.step.slice(0, Math.max(2, Math.round(s.step.length * (S === 3 ? t : 1)))), cl: S === 4 ? '--grey' : '--a', w: S === 4 ? 1 : 2.5, label: S === 4 ? 'noisy measured step response' : 'y(t) for a unit step of u' }];
+      if (S === 4 && isFinite(s.tau_hat)) list.push({ pts: s.step.map(([tt]) => [tt, s.K_hat * (1 - Math.exp(-tt / s.tau_hat))]), cl: '--e', w: 2.5, label: 'fitted model' });
+      right.series(list, { title: 'step response (' + d.name + ')', yl: d.y });
+      right.line([0, s.K], [s.Tend, s.K], '--grey', 1, [5, 4]);
+      if (S >= 2) { right.line([s.tau, 0], [s.tau, .632 * s.K], '--c', 1.5, [4, 3]); right.line([0, .632 * s.K], [s.tau, .632 * s.K], '--c', 1.5, [4, 3]); right.dot([s.tau, .632 * s.K], 5, '--c'); right.text([s.tau, .632 * s.K], '63.2 % at t = τ', '--c', 8, 14, { size: 12 }); right.text([s.Tend * .7, s.K], 'final = K·u = ' + f(s.K, 2), '--grey', 0, -6, { size: 12 }); }
+      if (S >= 3) { right.line([0, 0], [s.tau, s.K], '--b', 1.5, [6, 3]); right.text([s.tau * .4, s.K * .5], 'initial slope hits the final value at τ', '--b', 6, 0, { size: 11 }); }
+    }
+    if (S === 5) { const u = inputFn(INPUT, s.tau), Tend = 6 * s.tau, truth = respond(s.K, s.tau, u, Tend), model = respond(s.K_hat, s.tau_hat, u, Tend), mx = Math.max(s.K, ...truth.map(p => Math.abs(p[1]))) * 1.2;
+      const P = Pl.panel(0, 0, .64, .64, [0, Tend, -mx, mx], false); P.series([{ pts: truth.map(p => [p[0], p[2] * s.K]), cl: '--b', w: 1.5, dash: [4, 3], label: 'input × K' }, { pts: truth.map(p => [p[0], p[1]]), cl: '--a', w: 3, label: 'real system' }, { pts: model.map(p => [p[0], p[1]]), cl: '--e', w: 2, dash: [6, 3], label: 'prediction from the fitted K, τ' }], { title: INPUT + ' input: never tested, predicted', yl: d.y }); }
+    if (S === 6) { const P = Pl.panel(0, 0, .64, .64, [0, 6, 0, 1.15], false), pts = [...Array(121)].map((_, i) => [i / 20, 1 - Math.exp(-i / 20)]);
+      P.series([{ pts, cl: '--a', w: 3, label: 'y / (K·u) against t / τ: every dress' }], { title: 'one normalised curve' }); [1, 2, 3, 4].forEach(n => { P.dot([n, 1 - Math.exp(-n)], 5, '--c'); P.text([n, 1 - Math.exp(-n)], f(100 * (1 - Math.exp(-n)), 1) + ' %', '--c', -10, 18, { size: 11 }); }); }
+    /* right column: parameters */
+    const R = S <= 1 ? Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false) : Pl.panel(.65, 0, .35, .64, [0, 1, 0, 1], false);
+    R.frame(S <= 1 ? '' : 'the two numbers');
+    const L = (y, txt, cl) => R.label(R.x + 12, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    if (S <= 1) { L(.25, `${d.name}: store = ${d.store}, drain = ${d.drain}`, '--ink'); L(.5, `store · dy/dt = u − y/drain   ⇒   τ ẏ + y = K u`, '--a'); L(.75, `K = ${f(s.K, 3)},  τ = ${f(s.tau, 3)} s`, '--c'); }
+    else { L(.1, `true K   = ${f(s.K, 3)}`, '--ink'); L(.18, `true τ   = ${f(s.tau * 1000, 1)} ms`, '--ink');
+      if (S >= 4) { L(.32, `fitted K = ${f(s.K_hat, 3)}  (${f((s.K_hat / s.K - 1) * 100, 1)} %)`, '--e'); L(.4, `fitted τ = ${f(s.tau_hat * 1000, 1)} ms (${f((s.tau_hat / s.tau - 1) * 100, 1)} %)`, '--e'); }
+      L(.56, 'time      response', '--muted'); [1, 2, 3, 4, 5].forEach((n, i) => L(.64 + i * .07, `${n}τ = ${f(n * s.tau * 1000, 0).padStart(4)} ms  ${f(100 * (1 - Math.exp(-n)), 1)} %`, '--c')); }
+    if (S >= 2 && S <= 5) { const B = Pl.panel(0, .66, 1, .34, [0, s.Tend, -.1, 1.15], false), u = S === 5 ? inputFn(INPUT, s.tau) : (() => 1);
+      const sim = respond(s.K, s.tau, u, s.Tend);
+      B.series([{ pts: sim.map(p => [p[0], p[2]]), cl: '--b', w: 2, label: 'inflow (input u)' }, { pts: sim.map(p => [p[0], p[1] / s.K]), cl: '--e', w: 2.5, label: 'outflow y/K (drain ∝ level)' }, { pts: sim.map(p => [p[0], p[2] - p[1] / s.K]), cl: '--a', w: 1.5, dash: [4, 3], label: 'net = rate of filling × τ' }], { title: 'the balance that makes the shape: filling stops when outflow = inflow' }); }
+    if (S === 6) { const B = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); B.frame(); let y = .18;
+      Object.values(DRESS).forEach(dd => { B.label(B.x + 12, B.y + B.h * y, `${dd.name.padEnd(13)} store ${dd.store.padEnd(11)} drain ${dd.drain.padEnd(11)} K = ${f(dd.K(dd.p), 3)}  τ = ${f(dd.tau(dd.p), 3)} s`, dd === d ? '--a' : '--muted', { mono: true, size: 12 }); y += .2; }); }
+  },
+  math(S) {
+    const s = st(), d = DRESS[DR];
+    const head = `<p class="cg">${d.name}: K = ${f(s.K, 3)}, τ = ${f(s.tau, 3)} s, unit step input.</p>`;
+    const rows = [
+`<p>Think of a bucket with a hole: pour in at a steady rate. The deeper the water, the faster it leaks. The level rises quickly at first (little leak), then slower, and settles where leak = pour.</p>
+${ul(['<b>one store</b>: one place energy or material accumulates (water, charge, heat, angular momentum Jω);', '<b>one drain</b>: an outflow proportional to how full it is (hole, resistor, conduction, viscous friction).'])}
+<p>That combination always gives the same curve: fast start, smooth approach, no overshoot.</p>`,
+`${E(`store × dy/dt = inflow − outflow
+motor:  J ω̇ = τ − b ω
+        (J/b) ω̇ + ω = (1/b) τ
+        τ_c ẏ + y = K u,   τ_c = J/b = ${f(.04 / .4, 2)} s,  K = 1/b = ${f(1 / .4, 2)} rad/s per N·m`)}
+<p>Same for the others: RC (C v̇ = (v_in − v)/R), tank (A ḣ = q − h/R), thermal (C Ṫ = P − T/R).</p>`,
+`${E(`steady state (ẏ = 0):  y_ss = K u          — the drain decides where it stops
+time constant:          τ = store / (1/drain) — big store or weak drain = slow`)}
+${ul(['Double J at fixed b: τ doubles, the final speed does not change.', 'Double b: τ halves <b>and</b> the final speed halves (K = 1/b). Changing one parameter can move both numbers.'])}`,
+`${E(`y(t) = K u (1 − e^(−t/τ))
+y(τ)  = K u (1 − e⁻¹) = 0.632 K u
+ẏ(0)  = K u / τ        (the tangent at 0 reaches K u at t = τ)
+2 % settling ≈ 4τ = ${f(4 * s.tau, 3)} s  (exactly 3.91τ)`)}
+<p>No overshoot, ever: the slope K u e^(−t/τ)/τ is never negative.</p>`,
+`${E(`final value ≈ mean of the last 10 % = ${f(s.yf, 3)}  ⇒  K̂ = ${f(s.K_hat, 3)}
+63.2 % crossing (smoothed) at t = ${f(s.tau_hat, 4)} s  ⇒  τ̂ = ${f(s.tau_hat, 4)} s`)}
+<p>Errors: K ${f((s.K_hat / s.K - 1) * 100, 1)} %, τ ${f((s.tau_hat / s.tau - 1) * 100, 1)} %. Noise near the 63 % point moves τ̂ most; a least-squares fit of the whole curve is more robust.</p>`,
+`${E(`model:  τ̂ ẏ + y = K̂ u   — integrate it with any u(t)
+input:  ${INPUT}`)}
+<p>This is the payoff of a model: one step test, then the response to every input is a calculation. If the prediction misses badly, the system is not really first order (a second store, a delay, a nonlinearity).</p>`,
+`${E(Object.values(DRESS).map(dd => `${dd.name.padEnd(13)} τ = ${dd.store.split(' ')[0]}·${dd.drain.split(' ')[0]} = ${f(dd.tau(dd.p), 3)} s`).join('\n'))}
+<p>Measure time in units of τ and output in units of K u, and all four curves are the same curve 1 − e^(−t/τ). Learning one first-order system means learning all of them.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>K</b>${f(s.K, 2)}</span><span><b>τ</b>${f(s.tau * 1000, 0)} ms</span><span><b>4τ</b>${f(4 * s.tau, 2)} s</span>`; },
+});
+</script>
+</body></html>

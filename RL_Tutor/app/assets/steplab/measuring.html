@@ -1,0 +1,139 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Measuring a real joint</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* A bench joint with hidden true parameters; every experiment returns noisy data. */
+let TRUE = { J: .04, b: .4, k: 100, fc: .15 }, SEED = 1, SHOW = false;
+const rng = seed => { let s = seed * 9301 + 49297; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; };
+const gauss = r => { let u = 0; for (let i = 0; i < 6; i++) u += r(); return u - 3; };
+const linfit = pts => { const n = pts.length, sx = pts.reduce((a, p) => a + p[0], 0), sy = pts.reduce((a, p) => a + p[1], 0), sxx = pts.reduce((a, p) => a + p[0] * p[0], 0), sxy = pts.reduce((a, p) => a + p[0] * p[1], 0);
+  const m = (n * sxy - sx * sy) / (n * sxx - sx * sx); return { m, c: (sy - m * sx) / n }; };
+const experiments = () => {
+  const v = SL.v, noise = v.noise / 100, r = rng(SEED), T = TRUE, out = {};
+  /* 1 coast-down: free spin from 20 rad/s, motor off (viscous + Coulomb) */
+  out.coast = []; { let w = 20; const dt = .002; for (let i = 0; i < 400; i++) { out.coast.push([i * dt, w * (1 + noise * .5 * gauss(r))]); w += dt * (-(T.b * w + T.fc * Math.sign(w)) / T.J); if (w < 0) w = 0; } }
+  /* 2 constant-speed sweep */
+  out.sweep = [...Array(12)].map((_, i) => { const w = .5 + i * .45; return [w, T.b * w + T.fc + noise * .3 * gauss(r)]; });
+  /* 3 tap test on the spring: free decay */
+  const wn = Math.sqrt(T.k / T.J), z = T.b / (2 * Math.sqrt(T.J * T.k)), wd = wn * Math.sqrt(1 - z * z);
+  out.tap = [...Array(2400)].map((_, i) => { const t = i * .0005; return [t, Math.exp(-z * wn * t) * Math.cos(wd * t) + noise * .05 * gauss(r)]; });
+  /* 4 chirp regression: measured θ (noisy), τ commanded */
+  const fmax = v.chirp;
+  out.chirp = []; { const dt = .001, n = 3000; for (let i = 0; i < n; i++) { const t = i * dt, ph = 2 * Math.PI * (.5 * t + (fmax - .5) * t * t / (2 * 3)), f = .5 + (fmax - .5) * t / 3, wph = 2 * Math.PI * f, A = .2;
+    const th = A * Math.sin(ph), thd = A * wph * Math.cos(ph), thdd = -A * wph * wph * Math.sin(ph) + A * 2 * Math.PI * (fmax - .5) / 3 * Math.cos(ph);
+    out.chirp.push({ t, th: th + noise * .002 * gauss(r), thd, thdd, tau: T.J * thdd + T.b * thd + T.k * th + T.fc * Math.sign(thd) + noise * .05 * gauss(r) }); } }
+  return out;
+};
+const analyse = X => {
+  const A = {};
+  const cpts = X.coast.filter(p => p[1] > 3).map(p => [p[0], Math.log(p[1])]); A.coastFit = linfit(cpts); A.tau = -1 / A.coastFit.m; A.coastPts = cpts;
+  A.sweepFit = linfit(X.sweep); A.b = A.sweepFit.m; A.fc = A.sweepFit.c; A.J = A.b * A.tau;
+  const x = X.tap, peaks = []; for (let i = 20; i < x.length - 20; i++) { if (x[i][1] > .05 && x.slice(i - 20, i + 21).every(p => p[1] <= x[i][1])) { if (!peaks.length || x[i][0] - peaks[peaks.length - 1][0] > .02) peaks.push(x[i]); } }
+  A.peaks = peaks;
+  if (peaks.length >= 3) { const Td = (peaks[peaks.length - 1][0] - peaks[0][0]) / (peaks.length - 1), n = peaks.length - 1, delta = Math.log(peaks[0][1] / peaks[n][1]) / n;
+    A.wd = 2 * Math.PI / Td; A.delta = delta; A.zeta = delta / Math.sqrt(4 * Math.PI * Math.PI + delta * delta); A.wn = A.wd / Math.sqrt(1 - A.zeta * A.zeta); A.k = A.J * A.wn * A.wn; }
+  /* regression with numerically differentiated position (central differences on the measured θ) */
+  const c = X.chirp, rows = [], rhs = [];
+  for (let i = 5; i < c.length - 5; i += 3) { const dt = .001, thd = (c[i + 5].th - c[i - 5].th) / (10 * dt), thdd = (c[i + 5].th - 2 * c[i].th + c[i - 5].th) / (25 * dt * dt); rows.push([thdd, thd, c[i].th]); rhs.push(c[i].tau); }
+  const AtA = MR.mul(MR.T(rows), rows), Atb = MR.mv(MR.T(rows), rhs); A.reg = MR.solve(AtA, Atb);
+  A.regRes = Math.sqrt(rows.reduce((s, r, i) => s + (MR.dot(r, A.reg) - rhs[i]) ** 2, 0) / rows.length);
+  return A;
+};
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const err = (est, tru) => (est / tru - 1) * 100;
+SL.app({
+  title: 'Measuring a real joint: four bench experiments, then the arithmetic',
+  sub: 'The joint’s true J, b, k are hidden. Each experiment gives noisy data like a data logger would; the right panel does the arithmetic you would do afterwards. “New joint” hides different numbers.',
+  view: '2d',
+  legend: [['--b', 'measured data'], ['--a', 'fit / model'], ['--c', 'read-off points'], ['--bad', 'model error']],
+  controls: [
+    { id: 'noise', label: 'sensor noise', min: 0, max: 100, value: 30, fmt: x => x + ' %' },
+    { id: 'chirp', label: 'chirp top frequency (step 5)', min: 1, max: 15, step: .5, value: 8, fmt: x => f(x, 1) + ' Hz' },
+  ],
+  buttons: [{ label: 'New joint (hide new numbers)', onclick: () => { SEED++; const r = rng(SEED + 7); TRUE = { J: .02 + .06 * r(), b: .2 + .6 * r(), k: 60 + 120 * r(), fc: .05 + .25 * r() }; SL.redraw(); } },
+            { label: 'Reveal the truth', toggle: true, pressed: false, onclick: e => { SHOW = !SHOW; e.setAttribute('aria-pressed', SHOW); SL.redraw(); } }],
+  steps: [
+    ['Three numbers you cannot read off a datasheet', 'J (inertia, including N² × rotor), b (viscous friction) and k (transmission stiffness). CAD is 10–30 % off; friction depends on temperature and seals. You measure them.'],
+    ['Experiment 1: coast-down', 'Spin the joint up, cut the motor, log the speed. With viscous friction the speed decays exponentially, so ln ω against t is a straight line with slope −b/J. One number: the time constant τ = J/b.'],
+    ['Experiment 2: constant-speed sweep', 'Hold several speeds and record the steady torque. Torque = b·ω + f_c: the slope is b, the intercept is Coulomb friction, the part a linear model misses.'],
+    ['Combine: J = b · τ', 'The coast-down gave J/b, the sweep gave b. Multiply. Two simple experiments, one inertia, no CAD.'],
+    ['Experiment 3: tap test on the spring', 'Lock the output through its stiffness and tap it. The ringing frequency gives ω_d, the shrinking peaks give ζ (logarithmic decrement), and k = J·ω_n².'],
+    ['All at once: least-squares regression', 'Drive a chirp and log θ and τ. τ = J θ̈ + b θ̇ + k θ is linear in the three unknowns, so one least-squares solve gives all of them. The trajectory must excite every term: a slow chirp cannot see J.'],
+    ['What identification does not give you', 'Coulomb friction is a jump at zero speed, not a line: a pure b·ω model is wrong at every speed but the one it was fitted at. Identification gives the linear model; know where it stops being true.'],
+  ],
+  draw(Pl) {
+    const S = SL.st, t = SL.ease(SL.anim), X = experiments(), A = analyse(X);
+    const P = Pl.panel(0, 0, .64, .64, [0, 1, 0, 1], false);
+    if (S === 0) { P.frame('the bench rig'); const B = Pl.panel(0, 0, .64, .64, [-2, 2, -1.3, 1.3]);
+      B.circle([-.6, 0], .5, '--link', 3); B.text([-.6, 0], 'motor + rotor (J_m)', '--muted', -55, 4, { size: 12 }); B.line([-.1, 0], [.5, 0], '--link', 5); B.text([.2, 0], 'gearbox N', '--muted', -26, -12, { size: 12 });
+      for (let i = 0; i < 6; i++) B.line([.5 + i * .12, (i % 2 ? .15 : -.15)], [.62 + i * .12, (i % 2 ? -.15 : .15)], '--d', 2); B.text([.85, .3], 'stiffness k', '--d', -30, 0, { size: 12 });
+      B.circle([1.5, 0], .35, '--b', 3); B.text([1.5, -.5], 'link (J_link)', '--b', -40, 0, { size: 12 }); B.text([-1.9, -1.1], 'J = J_link + N²·J_m,   friction b·ω + f_c·sign ω', '--ink', 0, 0, { mono: true }); }
+    if (S === 1) { const Q = Pl.panel(0, 0, .32, .64, [0, .8, 0, 22], false); Q.series([{ pts: X.coast, cl: '--b', w: 1.5, label: 'ω(t) measured' }], { title: 'coast-down', yl: 'rad/s' });
+      const Q2 = Pl.panel(.32, 0, .32, .64, [0, .8, Math.log(2), Math.log(25)], false); Q2.series([{ pts: A.coastPts, cl: '--b', w: 1.5, label: 'ln ω' }, { pts: [[0, A.coastFit.c], [.8, A.coastFit.c + .8 * A.coastFit.m]], cl: '--a', w: 2.5, label: 'fit' }], { title: 'ln ω vs t: a line', yl: 'slope −b/J' }); }
+    if (S === 2 || S === 6) { const mx = Math.max(...X.sweep.map(p => p[1])) * 1.2, Q = Pl.panel(0, 0, .64, .64, [S === 6 ? -6 : 0, 6, S === 6 ? -mx : 0, mx], false);
+      const pts = S === 6 ? X.sweep.concat(X.sweep.map(p => [-p[0], -p[1]])) : X.sweep;
+      Q.series([{ pts: [[S === 6 ? -6 : 0, (S === 6 ? -6 : 0) * A.b + (S === 6 ? 0 : A.fc)], [6, 6 * A.b + (S === 6 ? 0 : A.fc)]], cl: S === 6 ? '--bad' : '--a', w: 2.5, label: S === 6 ? 'pure b·ω model' : 'fit: torque = b ω + f_c' }], { title: 'steady torque vs speed', yl: 'N·m' });
+      pts.forEach(p => Q.dot(p, 4, '--b'));
+      if (S === 6) { const tr = []; for (let w = -6; w <= 6; w += .05) tr.push([w, TRUE.b * w + TRUE.fc * Math.sign(w)]); Q.poly(tr, '--a', 2, [5, 3]); Q.text([-5.8, mx * .8], 'dashed: real friction, with the jump at zero', '--a', 0, 0, { size: 12 }); } }
+    if (S === 3) { P.frame('combine the two experiments'); const L = (y, s, c) => P.label(P.x + 20, P.y + P.h * y, s, c, { mono: true });
+      L(.2, `coast-down slope  −b/J = ${f(A.coastFit.m, 3)} 1/s`, '--b'); L(.32, `τ = J/b            = ${f(A.tau * 1000, 1)} ms`, '--b'); L(.48, `sweep slope        b = ${f(A.b, 4)} N·m·s`, '--b'); L(.64, `J = b · τ          = ${f(A.J, 4)} kg·m²`, '--a');
+      if (SHOW) L(.84, `true: J = ${f(TRUE.J, 4)}, b = ${f(TRUE.b, 4)}  →  errors ${f(err(A.J, TRUE.J), 1)} %, ${f(err(A.b, TRUE.b), 1)} %`, '--c'); }
+    if (S === 4) { const Q = Pl.panel(0, 0, .64, .64, [0, 1.2, -1.2, 1.2], false); Q.series([{ pts: X.tap, cl: '--b', w: 1.5, label: 'tap response' }], { title: 'free decay after a tap', yl: 'normalised' });
+      A.peaks.forEach((p, i) => { Q.dot(p, 5, '--c'); if (i < 4) Q.text(p, f(p[1], 3), '--c', 4, -8, { size: 11 }); });
+      if (A.wn) { const env = X.tap.map(p => [p[0], Math.exp(-A.zeta * A.wn * p[0])]); Q.poly(env, '--a', 1.5, [5, 3]); } }
+    if (S === 5) { const c = X.chirp, Q = Pl.panel(0, 0, .64, .64, [0, 3, -Math.max(...c.map(p => Math.abs(p.tau))) * 1.1, Math.max(...c.map(p => Math.abs(p.tau))) * 1.1], false);
+      Q.series([{ pts: c.filter((_, i) => i % 3 === 0).map(p => [p.t, p.tau]), cl: '--b', w: 1.2, label: 'measured τ' }, { pts: c.filter((_, i) => i % 3 === 0).map(p => [p.t, A.reg[0] * p.thdd + A.reg[1] * p.thd + A.reg[2] * p.th]), cl: '--a', w: 1.5, label: 'fitted model' }], { title: 'chirp: 0.5 → ' + SL.v.chirp + ' Hz in 3 s', yl: 'N·m' }); }
+    /* right: estimates table */
+    const R = Pl.panel(.65, 0, .35, .64, [0, 1, 0, 1], false); R.frame('estimates so far');
+    const L = (y, s, c) => R.label(R.x + 10, R.y + R.h * y, s, c, { mono: true, size: 12 });
+    const row = (y, name, est, tru, show) => L(y, `${name.padEnd(4)} ${est === undefined || !isFinite(est) ? '   —   ' : f(est, 4).padStart(8)}${SHOW ? '   true ' + f(tru, 4) + (est !== undefined && isFinite(est) && show ? `  (${f(err(est, tru), 1)} %)` : '') : ''}`, show ? '--ink' : '--muted');
+    L(.08, 'from the simple experiments:', '--muted');
+    row(.16, 'τ', S >= 1 ? A.tau : undefined, TRUE.J / TRUE.b, S >= 1); row(.24, 'b', S >= 2 ? A.b : undefined, TRUE.b, S >= 2); row(.32, 'f_c', S >= 2 ? A.fc : undefined, TRUE.fc, S >= 2);
+    row(.40, 'J', S >= 3 ? A.J : undefined, TRUE.J, S >= 3); row(.48, 'ζ', S >= 4 ? A.zeta : undefined, TRUE.b / (2 * Math.sqrt(TRUE.J * TRUE.k)), S >= 4); row(.56, 'k', S >= 4 ? A.k : undefined, TRUE.k, S >= 4);
+    L(.68, 'from one chirp regression:', '--muted');
+    row(.76, 'J', S >= 5 ? A.reg[0] : undefined, TRUE.J, S >= 5); row(.84, 'b', S >= 5 ? A.reg[1] : undefined, TRUE.b, S >= 5); row(.92, 'k', S >= 5 ? A.reg[2] : undefined, TRUE.k, S >= 5);
+    const Bt = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); Bt.frame();
+    Bt.label(Bt.x + 12, Bt.y + 26, SHOW ? `true values: J = ${f(TRUE.J, 4)} kg·m², b = ${f(TRUE.b, 4)} N·m·s, k = ${f(TRUE.k, 1)} N·m/rad, f_c = ${f(TRUE.fc, 3)} N·m` : 'true values hidden — press “Reveal the truth” to grade your estimates', SHOW ? '--c' : '--muted', { mono: true, size: 12 });
+    Bt.label(Bt.x + 12, Bt.y + 52, `noise ${SL.v.noise} %: raise it and watch which estimates degrade first (the ones built from derivatives)`, '--muted', { size: 12 });
+  },
+  math(S) {
+    const X = experiments(), A = analyse(X);
+    const head = `<p class="cg">Noise ${SL.v.noise} %. Joint #${SEED}. ${SHOW ? `True J = ${f(TRUE.J, 4)}, b = ${f(TRUE.b, 4)}, k = ${f(TRUE.k, 1)}, f_c = ${f(TRUE.fc, 3)}.` : 'True values hidden.'}</p>`;
+    const rows = [
+`${E(`model: J θ̈ + b θ̇ + k θ (+ f_c sign θ̇) = τ
+J = J_link + N² J_m     (on a geared joint the rotor term usually dominates)
+b: oil shear, seals, windage (N·m·s)
+k: harmonic drive, belts, long shafts (N·m/rad)`)}
+<p>Each experiment isolates one or two terms by choosing what to hold fixed.</p>`,
+`${E(`τ_motor = 0, no spring:   J ω̇ = −b ω  ⇒  ω(t) = ω₀ e^(−t b/J)
+ln ω = ln ω₀ − (b/J) t                 (a straight line)
+fitted slope = ${f(A.coastFit.m, 4)} 1/s  ⇒  τ = J/b = ${f(A.tau * 1000, 2)} ms`)}
+<p>Coulomb friction bends the tail of the line (the speed reaches zero in finite time), so only the part above 3 rad/s is fitted.</p>`,
+`${E(`steady speed ⇒ ω̇ = 0 ⇒ τ = b ω + f_c
+fit: slope b = ${f(A.b, 4)} N·m·s,  intercept f_c = ${f(A.fc, 4)} N·m`)}
+<p>The intercept is not noise: it is the Coulomb friction a pure b·ω model would leave out (step 6).</p>`,
+`${E(`J = b · τ = ${f(A.b, 4)} × ${f(A.tau, 4)} = ${f(A.J, 5)} kg·m²`)}
+<p>Errors multiply: a 5 % error in b and 5 % in τ can give up to 10 % in J. ${SHOW ? `Here: J error ${f(err(A.J, TRUE.J), 1)} %.` : ''}</p>`,
+A.wn ? `${E(`period between peaks T_d = ${f(2 * Math.PI / A.wd * 1000, 2)} ms  ⇒  ω_d = ${f(A.wd, 2)} rad/s
+log decrement δ = (1/n) ln(x₀/x_n) = ${f(A.delta, 4)}
+ζ = δ / √(4π² + δ²) = ${f(A.zeta, 4)}
+ω_n = ω_d / √(1 − ζ²) = ${f(A.wn, 2)} rad/s
+k = J ω_n² = ${f(A.J, 4)} × ${f(A.wn, 2)}² = ${f(A.k, 1)} N·m/rad`)}
+<p>Page 10 derives the logarithmic decrement. Using peaks n apart averages out noise; the ζ estimate is the most noise-sensitive number here.</p>` : '<p class="cbad">Too few clean peaks: lower the noise.</p>',
+`${E(`for each sample:  τᵢ = [θ̈ᵢ  θ̇ᵢ  θᵢ] · [J  b  k]ᵀ     (linear in the unknowns)
+stack:            τ = Φ p   ⇒   p = (ΦᵀΦ)⁻¹ Φᵀ τ
+estimates: J = ${f(A.reg[0], 4)},  b = ${f(A.reg[1], 4)},  k = ${f(A.reg[2], 2)}
+RMS residual = ${f(A.regRes, 4)} N·m`)}
+${ul(['θ̇, θ̈ come from differentiating a noisy θ: noise is amplified by ω and ω². That is why J (multiplying θ̈) suffers most.', 'Slow chirp (try 1 Hz): θ̈ is tiny, J hardly affects τ and its estimate wanders. Fast chirp: J is clear, but the k term shrinks relative to it.', 'The Coulomb term is not in the regression, so it shows up as bias in b.'])}`,
+`${E(`real: τ_f = b ω + f_c sign ω        (f_c = ${f(TRUE.fc, 3)} N·m)
+linear fit through the origin: τ_f ≈ b' ω  — too steep near zero, too flat at speed`)}
+${ul(['Stiction (larger than f_c) only appears at zero speed: the joint sticks, then jumps.', 'A first-order model is still useful: it describes the joint away from zero speed. Near zero, use friction compensation or accept a dead zone.', 'Identification gives the linear model and its validity range, not the truth.'])}`];
+    return head + rows[S];
+  },
+  stats() { const A = analyse(experiments()); return `<span><b>J</b>${f(A.J, 4)}</span><span><b>b</b>${f(A.b, 3)}</span><span><b>k</b>${A.k ? f(A.k, 1) : '—'}</span>`; },
+});
+</script>
+</body></html>

@@ -19,6 +19,22 @@ STEPLAB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets",
 
 #: page class name -> (html file, card title)
 STEP_LABS = {
+    # real-time + systems and stability
+    "RealTimePage": ("realtime.html", "one control cycle: sampling, aliasing, delay, deadline"),
+    "ControlProblemPage": ("control_problem.html", "every control problem in four steps, on one joint"),
+    "MeasuringPage": ("measuring.html", "identify J, b and k from four bench experiments"),
+    "SoftwarePhysicsPage": ("software_physics.html", "a steel spring and a software spring"),
+    "FirstOrderPage": ("first_order.html", "one store, one drain: the first-order system"),
+    "TimeConstantPage": ("time_constant.html", "the time constant and the pole"),
+    "IntegratorPage": ("integrator.html", "the pole at the origin: P vs PI, windup"),
+    "FirstOrderFreqPage": ("first_order_freq.html", "shake it: first order in frequency"),
+    "SPlanePage": ("splane.html", "the s-plane: e^(st), spirals and every motion"),
+    "FreeVibrationPage": ("free_vibration.html", "free vibration from initial conditions"),
+    "SecondOrderPage": ("second_order.html", "second order: energy, poles and the four metrics"),
+    "StabilityPage": ("stability.html", "stability: poles, Routh and a gain sweep"),
+    "BodePage": ("bode.html", "build a loop on a Bode plot and read the margins"),
+    "NyquistPage": ("nyquist.html", "the Nyquist plot: one curve, one point, one count"),
+    "ZerosPage": ("zeros.html", "what a zero does: the hole, the speed-up, the dip"),
     # kinematics
     "PoEPage": ("poe.html", "forward kinematics, one exponential at a time"),
     "JacobianPage": ("jacobian.html", "the space Jacobian, column by column"),
