@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The space Jacobian</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="three.min.js"></script><script src="mr.js"></script><script src="steplab.js"></script><script src="rrpr3d.js"></script>
+</head><body>
+<script>
+const SUB = '₁₂₃₄';
+const st = () => {
+  const v = SL.v, q = [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180, v.d3 / 100, v.q4 * Math.PI / 180];
+  const qd = [v.w1 / 10, v.w2 / 10, v.w3 / 100, v.w4 / 10];
+  const S = MR.RRPR.S, M = MR.RRPR.M, B = S.map(s => MR.mv(MR.adj(MR.invT(M)), s));
+  const Js = MR.jacSpace(S, q), Jb = MR.jacBody(B, q), T = MR.fkSpace(M, S, q), p = MR.pof(T);
+  const pre = [MR.eye(4)]; for (let i = 0; i < 3; i++) pre.push(MR.mul(pre[i], MR.expTwist(S[i], q[i])));
+  const Vs = MR.mv(MR.fromCols(Js), qd), Vb = MR.mv(MR.fromCols(Jb), qd);
+  const pdot = MR.add(Vs.slice(3), MR.cross(Vs.slice(0, 3), p));
+  /* finite-difference check of the tool-point velocity */
+  const h = 1e-6, pdotFD = MR.scl(MR.sub(MR.pof(MR.fkSpace(M, S, MR.add(q, MR.scl(qd, h)))), MR.pof(MR.fkSpace(M, S, MR.sub(q, MR.scl(qd, h))))), 1 / (2 * h));
+  const sv = MR.svd(MR.fromCols(Js)).sigma;
+  return { q, qd, S, B, Js, Jb, T, p, pre, Vs, Vb, pdot, pdotFD, sv };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'The space Jacobian, column by column',
+  sub: 'J_s(θ) has one column per joint: that joint’s screw axis where it is now, written in {s}. V_s = J_s(θ) θ̇. Drag to orbit.',
+  view: '3d', orbit: { az: -.9, el: .45, r: 5.2, tgt: [.7, 0, .6] },
+  legend: [['--b', 'J_s1'], ['--d', 'J_s2'], ['--f', 'J_s3'], ['--e', 'J_s4'], ['--a', 'tool-point velocity ṗ']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 35, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -60, max: 90, value: 30, fmt: x => x + '°' },
+    { id: 'd3', label: 'd₃', min: 0, max: 60, value: 25, fmt: x => f(x / 100) + ' m' },
+    { id: 'q4', label: 'θ₄', min: -180, max: 180, value: 60, fmt: x => x + '°' },
+    { id: 'w1', label: 'θ̇₁', min: -20, max: 20, value: 5, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'w2', label: 'θ̇₂', min: -20, max: 20, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'w3', label: 'ḋ₃', min: -50, max: 50, value: 0, fmt: x => f(x / 100) + ' m/s' },
+    { id: 'w4', label: 'θ̇₄', min: -20, max: 20, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+  ],
+  steps: [
+    ['What the Jacobian is for', 'Joint rates in, the tool’s twist out: V_s = J_s(θ) θ̇. Six numbers (spin ω_s and v_s) from four joint rates. Each column is what one joint does at unit rate.'],
+    ['Column 1: the base axis never moves', 'Nothing is upstream of joint 1, so its screw is always the home screw: J_s1 = S₁.'],
+    ['Column 2: S₂ carried by joint 1', 'Joint 1 has turned the shoulder axis with it. The current axis is S₂ moved by e^[S₁]θ₁: J_s2 = [Ad_(e^[S₁]θ₁)] S₂. Grey: the home axis; purple: where it is now.'],
+    ['Column 3: the slide, carried by joints 1 and 2', 'J_s3 = [Ad_(e^[S₁]θ₁ e^[S₂]θ₂)] S₃. For a prismatic joint ω = 0 and v is just the current slide direction.'],
+    ['Column 4: the roll axis, carried by joints 1–3', 'J_s4 = [Ad_(e^[S₁]θ₁ e^[S₂]θ₂ e^[S₃]θ₃)] S₄. Only the joints before i matter for column i.'],
+    ['Add the columns: V_s, then the tool-point velocity', 'V_s = Σ J_si θ̇ᵢ. V_s is the velocity of the body point at the origin of {s}; the tool point p moves at ṗ = v_s + ω_s × p (blue arrow). Checked by finite differences.'],
+    ['The body Jacobian', 'Same columns written in the tool frame: J_b = [Ad_(T⁻¹)] J_s. V_b = J_b θ̇ is the same motion seen from the tool.'],
+    ['Rank and singularities', 'J_s is 6 × 4: at most four independent tool motions. The singular values show how far the columns are from being dependent; when the smallest is 0 the arm loses a direction.'],
+  ],
+  draw(sc) {
+    const s = st(), Sx = SL.st, t = SL.anim;
+    sc.grid(4, 16); sc.frame(MR.eye(4), .45);
+    drawRRPR(sc, s.q, { alpha: Sx >= 1 && Sx <= 4 ? .55 : undefined });
+    const show = Sx === 0 ? [] : Sx <= 4 ? [Sx - 1] : Sx === 7 ? [0, 1, 2, 3] : [];
+    show.forEach(i => {
+      const col = RRPR_JC[i], Ji = s.Js[i];
+      if (i === 2) { const g = rrprGeometry(s.q), base = MR.add(g.shoulder, MR.scl(g.arm, .45)); sc.arrow(MR.add(base, [0, 0, .25]), MR.scl(Ji.slice(3), .6), col, 1, .12); sc.label(MR.add(base, [0, 0, .45]), 'J_s3: slide direction now', col); }
+      else drawAxis(sc, Ji, col, 'J_s' + SUB[i] + ' (now)');
+      if (Sx >= 2 && Sx <= 4 && i === Sx - 1 && i !== 2) { const home = s.S[i]; const w = home.slice(0, 3), qh = MR.cross(w, home.slice(3)); sc.line([MR.add(qh, MR.scl(w, -1)), MR.add(qh, MR.scl(w, 1.2))], '--grey', true); sc.label(MR.add(qh, MR.scl(w, 1.25)), 'home axis', '--grey'); }
+    });
+    if (Sx >= 5) { sc.arrow(s.p, MR.scl(s.pdot, 1.2), '--a', 1, .14); sc.label(MR.add(s.p, MR.scl(s.pdot, 1.3)), 'ṗ (×1.2)', '--a');
+      if (MR.norm(s.Vs.slice(0, 3)) > 1e-6) { const w = MR.unit(s.Vs.slice(0, 3)); const o = [0, -.9, 0]; sc.arrow(o, MR.scl(w, .8), '--c', 1, .12); sc.label(MR.add(o, MR.scl(w, .9)), 'ω_s direction', '--c'); } }
+  },
+  math(Sx) {
+    const s = st(), J = MR.fromCols(s.Js);
+    const head = `<p class="cg">θ = (${SL.deg(s.q[0])}, ${SL.deg(s.q[1])}, ${f(s.q[2])} m, ${SL.deg(s.q[3])}), θ̇ = (${f(s.qd[0], 1)}, ${f(s.qd[1], 1)}, ${f(s.qd[2])}, ${f(s.qd[3], 1)}).</p>`;
+    const colTxt = i => `J_s${SUB[i]} = ${vs(s.Js[i], 3)}`;
+    const rows = [
+`${E('V_s = J_s(θ) θ̇ = J_s1 θ̇₁ + J_s2 θ̇₂ + J_s3 ḋ₃ + J_s4 θ̇₄')}
+${E(SL.mat(J, 3, 'J_s(θ)'))}
+${ul(['Rows 1–3: angular velocity ω_s (rad/s per unit joint rate). Rows 4–6: v_s (m/s), the velocity of the body point that is at the origin of {s} right now.', 'Column i = the twist the tool would have if only joint i moved at unit rate = joint i’s screw axis in its current position.'])}
+<p>Formula: J_si(θ) = [Ad_(e^[S₁]θ₁ ⋯ e^[S_{i−1}]θ_{i−1})] Sᵢ.</p>`,
+`${E(colTxt(0) + '\nS₁       = ' + vs(s.S[0], 3))}
+<p>The waist axis is the z axis of {s} whatever the arm does.</p>`,
+`<p>Joint 1 has rotated the shoulder axis by θ₁ about z:</p>
+${E(SL.mat(s.pre[1], 3, 'e^[S₁]θ₁') + `\nS₂ (home) = ${vs(s.S[1], 3)}\n` + colTxt(1))}
+<p>[Ad_T] = [[R, 0], [[p]R, R]]: the ω part is R ω, the v part is R v + p × R ω. Here p = 0, so both parts are just rotated by θ₁.</p>`,
+`<p>Joints 1 and 2 have moved the slide:</p>
+${E(SL.mat(s.pre[2], 3, 'e^[S₁]θ₁e^[S₂]θ₂') + `\nS₃ (home) = ${vs(s.S[2], 3)}\n` + colTxt(2))}
+<p>ω = 0 stays 0 (a slide never spins anything); v = R·(1, 0, 0) is the slide direction now, ${vs(s.Js[2].slice(3), 3)}.</p>`,
+`<p>Joints 1–3 have moved the roll axis:</p>
+${E(SL.mat(s.pre[3], 3, 'T₃') + `\nS₄ (home) = ${vs(s.S[3], 3)}\n` + colTxt(3))}
+<p>Column 4 does not depend on θ₄ itself: a joint never moves its own axis. In general J_si depends only on θ₁ … θ_{i−1}.</p>`,
+`${E(`V_s = J_s θ̇ = ${vs(s.Vs, 3)}
+ω_s = ${vs(s.Vs.slice(0, 3), 3)} rad/s,  v_s = ${vs(s.Vs.slice(3), 3)} m/s
+tool point p = ${vs(s.p, 3)}
+ṗ = v_s + ω_s × p = ${vs(s.pdot, 4)} m/s
+finite difference of FK:  ${vs(s.pdotFD, 4)} m/s  ✓`)}
+<p>v_s is <b>not</b> the tool’s velocity: it is the velocity of the (imaginary) body point at the origin of {s}. That is the most common confusion with the space twist.</p>`,
+`${E(SL.mat(MR.fromCols(s.Jb), 3, 'J_b') + `\nV_b = J_b θ̇ = ${vs(s.Vb, 3)}\n[Ad_T] V_b  = ${vs(MR.mv(MR.adj(s.T), s.Vb), 3)} = V_s ✓`)}
+<p>In J_b, column i depends on θ_{i+1} … θ_n (joints between i and the tool), the mirror image of J_s. v_b is the tool origin’s velocity written in tool axes: |v_b| = |ṗ| = ${f(MR.norm(s.Vb.slice(3)), 4)} m/s.</p>`,
+`${E(`singular values of J_s: ${s.sv.map(x => f(x, 3)).join(', ')}
+rank = ${s.sv.filter(x => x > 1e-6).length} (at most 4 for 4 joints)`)}
+${ul(['Four joints can never produce all six twist directions: two are always missing. That is why the RRPR’s IK can only reach poses the arm itself can make (page 129).', 'A singularity is a pose where even fewer directions are available: the smallest σ hits 0, two columns become dependent.', 'Pages 126–128 turn these singular values into force ellipses and manipulability.'])}`];
+    return head + rows[Sx];
+  },
+  stats() { const s = st(); return `<span><b>ṗ</b>${vs(s.pdot, 3)} m/s</span><span><b>σ(J_s)</b>${s.sv.map(x => f(x, 2)).join(', ')}</span>`; },
+});
+</script>
+</body></html>

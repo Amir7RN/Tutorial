@@ -1,0 +1,99 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Product of exponentials</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="three.min.js"></script><script src="mr.js"></script><script src="steplab.js"></script><script src="rrpr3d.js"></script>
+</head><body>
+<script>
+const NAMES = ['θ₁ waist', 'θ₂ shoulder', 'd₃ slide', 'θ₄ roll'];
+const POINTS = [[0, 0, 0], [0, 0, 1], null, [1, 0, 1]];         // a point on each revolute axis at home
+const st = () => {
+  const v = SL.v, q = [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180, v.d3 / 100, v.q4 * Math.PI / 180];
+  const S = MR.RRPR.S, M = MR.RRPR.M, B = S.map(s => MR.mv(MR.adj(MR.invT(M)), s));
+  const E = S.map((s, i) => MR.expTwist(s, q[i]));
+  /* partial products from the right: P[k] = e^[S_k]θ_k ⋯ e^[S_4]θ_4 M */
+  const P = [M]; for (let k = 3; k >= 0; k--) P.unshift(MR.mul(E[k], P[0]));
+  const Tb = MR.fkBody(M, B, q);
+  return { q, S, M, B, E, P, T: P[0], Tb };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const partialQ = (q, k) => q.map((x, i) => i >= k ? x : 0);   // joints k..3 applied, earlier ones at zero
+SL.app({
+  title: 'Forward kinematics, one exponential at a time',
+  sub: 'The RRPR arm of the C++ workshops. T(θ) = e^[S₁]θ₁ e^[S₂]θ₂ e^[S₃]θ₃ e^[S₄]θ₄ M. Drag to orbit; the grey ghost is the home pose.',
+  view: '3d', orbit: { az: -.9, el: .45, r: 5.2, tgt: [.7, 0, .6] },
+  legend: [['--b', 'joint 1 (waist)'], ['--d', 'joint 2 (shoulder)'], ['--f', 'joint 3 (slide)'], ['--e', 'joint 4 (roll)']],
+  controls: [
+    { id: 'q1', label: 'θ₁ waist', min: -180, max: 180, value: 35, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂ shoulder', min: -60, max: 90, value: 30, fmt: x => x + '°' },
+    { id: 'd3', label: 'd₃ slide', min: 0, max: 60, value: 25, fmt: x => f(x / 100) + ' m' },
+    { id: 'q4', label: 'θ₄ roll', min: -180, max: 180, value: 60, fmt: x => x + '°' },
+  ],
+  steps: [
+    ['The home pose M', 'All joints at zero. M is where the tool frame {b} sits, seen from the base {s}: a rotation (its axes) and a position.'],
+    ['One screw axis per joint, at home', 'Each joint is a screw S = (ω, v): ω the axis direction, v = −ω × q for a point q on the axis (revolute), or ω = 0, v = slide direction (prismatic). All four are read off the home pose.'],
+    ['Apply the last joint first: e^[S₄]θ₄ M', 'Turn only joint 4. Its axis is where it was at home, so e^[S₄]θ₄ moves the tool correctly. No other joint has moved yet.'],
+    ['Then joint 3: e^[S₃]d₃ e^[S₄]θ₄ M', 'Slide joint 3. It carries joint 4 and the tool along with it. S₃ is still the home axis because joints 1 and 2 have not moved.'],
+    ['Then joint 2', 'Tilt the shoulder. Everything outboard rides along. Again S₂ is the home axis, because only joint 1 is upstream and it is still at zero.'],
+    ['Finally joint 1: the full T(θ)', 'Turn the waist. Now every joint is at its value. Going right to left meant every exponential could use its home screw axis: that is the whole trick.'],
+    ['Body form: T = M e^[B₁]θ₁ ⋯ e^[B₄]θ₄', 'Same pose, with the screws written in the tool frame at home: Bᵢ = [Ad_M⁻¹] Sᵢ. Exponentials now multiply M from the right, left to right.'],
+    ['Read the answer', 'The top-left 3×3 of T is the tool orientation (its columns are the tool axes in {s}); the last column is the tool position. Compare with the tool frame drawn in 3-D.'],
+  ],
+  draw(sc) {
+    const s = st(), Sx = SL.st;
+    sc.grid(4, 16); sc.frame(MR.eye(4), .45); sc.label([0, 0, -.05], '{s}', '--muted');
+    const k = Sx <= 1 ? 4 : Sx === 2 ? 3 : Sx === 3 ? 2 : Sx === 4 ? 1 : 0;
+    const qq = partialQ(s.q, k);
+    if (Sx >= 1) drawRRPR(sc, [0, 0, 0, 0], { ghost: true });
+    drawRRPR(sc, Sx === 0 ? [0, 0, 0, 0] : qq);
+    const Tcur = MR.fkSpace(s.M, s.S, qq);
+    sc.label(MR.pof(Tcur), Sx === 0 ? 'M' : Sx === 6 ? 'T = M e^[B]θ…' : 'T', '--ink');
+    if (Sx === 1) s.S.forEach((Si, i) => { if (i === 2) { sc.arrow([.3, -.25, 1], [.5, 0, 0], RRPR_JC[2], 1, .1); sc.label([.85, -.25, 1], 'S₃: slide along x', RRPR_JC[2]); } else drawAxis(sc, Si, RRPR_JC[i], 'S' + '₁₂₃₄'[i]); });
+    if (Sx >= 2 && Sx <= 5) { const j = k; const Si = s.S[j]; if (j === 2) { sc.arrow([.3, -.25, 1], [.5, 0, 0], RRPR_JC[2], 1, .1); sc.label([.85, -.25, 1], 'S₃ (home)', RRPR_JC[2]); } else drawAxis(sc, Si, RRPR_JC[j], NAMES[j] + ' axis (home)'); }
+    /* trace of the tool position as each factor is added */
+    if (Sx >= 2) { const pts = []; for (let kk = 4; kk >= k; kk--) pts.push(MR.pof(MR.fkSpace(s.M, s.S, partialQ(s.q, kk)))); sc.line(pts, '--a', false); pts.forEach(p => sc.sphere(p, .025, '--a')); }
+  },
+  math(Sx) {
+    const s = st(), q = s.q;
+    const head = `<p class="cg">θ = (${SL.deg(q[0])}, ${SL.deg(q[1])}, ${f(q[2])} m, ${SL.deg(q[3])}).</p>`;
+    const Tm = (T, n) => E(SL.mat(T, 3, n));
+    const fac = j => `e^[S${'₁₂₃₄'[j]}]${j === 2 ? 'd₃' : 'θ' + '₁₂₃₄'[j]}`;
+    const partial = k => { let str = ''; for (let j = k; j < 4; j++) str += fac(j) + ' '; return str + 'M'; };
+    const rows = [
+`<p>The <b>home configuration</b> M ∈ SE(3): tool frame {b} in base frame {s} when θ = 0.</p>
+${Tm(s.M, 'M')}
+${ul(['Columns 1–3: the tool’s x, y, z axes written in {s}. Here x_b = x_s, y_b = −y_s, z_b = −z_s: the tool points down.', 'Column 4: tool origin at (1.5, 0, 0.8) m.'])}`,
+`<p>Screw axes in {s} at home, Sᵢ = (ωᵢ, vᵢ):</p>
+${E(s.S.map((Si, i) => `S${'₁₂₃₄'[i]} = ${vs(Si, 1)}   ${i === 2 ? 'prismatic: ω = 0, v = slide direction x' : `ω = ${vs(Si.slice(0, 3), 0)}, through q = ${vs(POINTS[i], 0)}, v = −ω × q`}`).join('\n'))}
+<p>Example, joint 2: ω = (0, −1, 0), q = (0, 0, 1): −ω × q = −((0,−1,0) × (0,0,1)) = −(−1, 0, 0) = (1, 0, 0).</p>
+<p>Recipe for any arm: draw it at home, read ω and a point q for each joint. Nothing else is needed for forward kinematics.</p>`,
+`<p>Joint 4 alone, about its home axis:</p>
+${E(`e^[S₄]θ₄: rotation of θ₄ = ${SL.deg(q[3])} about x through (1, 0, 1)`)}
+${Tm(s.E[3], 'e^[S₄]θ₄')}
+${Tm(s.P[3], 'e^[S₄]θ₄ M')}
+<p>Blue dot path: where the tool point goes as factors are added, right to left.</p>`,
+`<p>Add joint 3 on the left:</p>
+${Tm(s.E[2], 'e^[S₃]d₃')}
+<p>(prismatic: R = I, p = d₃·(1, 0, 0) = ${vs([q[2], 0, 0])})</p>
+${Tm(s.P[2], partial(2))}`,
+`<p>Add joint 2 on the left (rotation θ₂ about −y through (0, 0, 1)):</p>
+${Tm(s.E[1], 'e^[S₂]θ₂')}
+${Tm(s.P[1], partial(1))}
+<p>e^[S]θ for a revolute screw = [[Rot(ω, θ), (Iθ + (1 − cos θ)[ω] + (θ − sin θ)[ω]²) v], [0, 1]] — Rodrigues for the rotation, G(θ)v for the position (page 122).</p>`,
+`<p>Add joint 1 on the left: the full product of exponentials.</p>
+${Tm(s.E[0], 'e^[S₁]θ₁')}
+${Tm(s.T, 'T(θ)')}
+<p><b>Why right to left works.</b> When e^[S₄]θ₄ is applied, joints 1–3 are still at zero, so S₄’s home axis is its true axis. Each new factor on the left moves everything to its right rigidly, axes included. So every exponential can use its home screw.</p>`,
+`<p>Body screws: the same axes written in the tool frame at home.</p>
+${E(s.B.map((Bi, i) => `B${'₁₂₃₄'[i]} = [Ad_M⁻¹] S${'₁₂₃₄'[i]} = ${vs(Bi, 2)}`).join('\n'))}
+${Tm(s.Tb, 'M e^[B₁]θ₁ ⋯ e^[B₄]θ₄')}
+<p>Difference from the space form: ${f(Math.max(...s.T.flat().map((x, i) => Math.abs(x - s.Tb.flat()[i]))), 10)} ✓. Why: e^[Ad_M⁻¹ S]θ = M⁻¹ e^[S]θ M, so each M⁻¹…M pair telescopes.</p>`,
+`${Tm(s.T, 'T')}
+${ul([`Tool position p = ${vs(MR.pof(s.T), 3)} m.`, `Tool x axis = ${vs(MR.col(MR.Rof(s.T), 0), 3)}, y = ${vs(MR.col(MR.Rof(s.T), 1), 3)}, z = ${vs(MR.col(MR.Rof(s.T), 2), 3)} (red, green, blue arrows at the tool).`,
+      `RᵀR = I and det R = ${f(MR.det(MR.Rof(s.T)), 4)}: a proper rotation.`, 'In the workshop (page 125) fkSpace and fkBody must both return this matrix.'])}`];
+    return head + rows[Sx];
+  },
+  stats() { const s = st(); return `<span><b>tool p</b>${vs(MR.pof(s.T), 3)} m</span>`; },
+});
+</script>
+</body></html>

@@ -52,10 +52,15 @@ class StepLab(Card):
         super().__init__("Step through the idea · " + title, parent)
         url = QUrl.fromLocalFile(lab_path(html))
         self.view = None
-        try:
-            from PySide6.QtWebEngineWidgets import QWebEngineView
-        except ImportError:
-            QWebEngineView = None
+        QWebEngineView = None
+        # QtWebEngine needs AA_ShareOpenGLContexts set before QApplication exists
+        # (app/main.py does that). Without it, show only the browser link.
+        from PySide6.QtCore import QCoreApplication
+        if QCoreApplication.testAttribute(Qt.AA_ShareOpenGLContexts):
+            try:
+                from PySide6.QtWebEngineWidgets import QWebEngineView
+            except ImportError:
+                pass
         if QWebEngineView is not None:
             self.view = QWebEngineView()
             self.view.setMinimumHeight(height)
@@ -65,7 +70,7 @@ class StepLab(Card):
             self.view.load(url)
             self.add(self.view)
         link = body(f"<a href='open' style='color:{theme.CYAN}'>Open this lab in the browser</a>"
-                    + ("" if self.view else " (Qt WebEngine is not installed)"))
+                    + ("" if self.view else " (the embedded view needs Qt WebEngine, started from app/main.py)"))
         link.setTextInteractionFlags(Qt.TextBrowserInteraction)
         link.linkActivated.connect(lambda _: QDesktopServices.openUrl(url))
         self.add(link)

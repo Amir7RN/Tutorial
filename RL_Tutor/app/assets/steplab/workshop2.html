@@ -1,0 +1,110 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Power iteration and deflation</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="three.min.js"></script><script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* A = J_bv J_bvᵀ (ex5: linearAAT), the bottom three rows of the RRPR body Jacobian. */
+const st = () => {
+  const v = SL.v, q = [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180, v.d3 / 100, v.q4 * Math.PI / 180];
+  const M = MR.RRPR.M, B = MR.RRPR.S.map(s => MR.mv(MR.adj(MR.invT(M)), s)), Jb = MR.jacBody(B, q);
+  const Jv = [3, 4, 5].map(r => Jb.map(col => col[r]));          // 3 × 4
+  const A = MR.mul(Jv, MR.T(Jv));
+  const x0 = MR.unit([Math.cos(v.a0 * Math.PI / 180), Math.sin(v.a0 * Math.PI / 180), .4]);
+  const iters = A_ => { const xs = [x0]; let x = x0; for (let k = 0; k < 40; k++) { x = MR.unit(MR.mv(A_, x)); xs.push(x); } return xs; };
+  const xs = iters(A), K = v.k, xk = xs[K], l1 = MR.dot(xk, MR.mv(A, xk));
+  const Ex = MR.eigSym(A);
+  const v1 = xs[40], L1 = MR.dot(v1, MR.mv(A, v1));
+  const A2 = MR.msub(A, MR.mscl(MR.outer(v1, v1), L1));
+  const ys = (() => { const out = [x0]; let y = x0; for (let k = 0; k < 40; k++) { y = MR.unit(MR.mv(A2, y)); out.push(y); } return out; })();
+  const v2 = ys[40], L2 = MR.dot(v2, MR.mv(A2, v2)), L3 = MR.trace(A) - L1 - L2, v3 = MR.unit(MR.cross(v1, v2));
+  return { q, Jb, Jv, A, x0, xs, xk, K, l1, Ex, v1, L1, A2, ys, v2, L2, L3, v3 };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const code = s => `<span class="eq" style="color:var(--f)">${s.replace(/</g, '&lt;')}</span>`;
+const align = (a, b) => Math.acos(Math.min(1, Math.abs(MR.dot(a, b)))) * 180 / Math.PI;
+SL.app({
+  title: 'Power iteration and deflation: what eigSym3 does',
+  sub: 'Workshop 2, exercises 3–6. A = J_bv J_bvᵀ is the 3×3 linear part of the RRPR’s JJᵀ (ex5). Its ellipsoid (translucent) is the tool’s linear-velocity ellipsoid. Drag to orbit.',
+  view: '3d', orbit: { az: .8, el: .5, r: 5.5, tgt: [0, 0, 0] },
+  legend: [['--a', 'iterate xₖ'], ['--d', 'v₁ (largest)'], ['--e', 'v₂'], ['--f', 'v₃ = v₁ × v₂'], ['--b', 'ellipsoid of A']],
+  controls: [
+    { id: 'k', label: 'iteration k', min: 0, max: 20, value: 0, fmt: x => x },
+    { id: 'a0', label: 'start vector angle', min: -180, max: 180, value: -170, fmt: x => x + '°' },
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 17, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -60, max: 90, value: 29, fmt: x => x + '°' },
+    { id: 'd3', label: 'd₃', min: 0, max: 60, value: 20, fmt: x => f(x / 100) + ' m' },
+    { id: 'q4', label: 'θ₄', min: -180, max: 180, value: -23, fmt: x => x + '°' },
+  ],
+  buttons: [{ label: 'Run k = 0 → 20', onclick: () => { let k = 0; SL.setControl('k', 0); const id = setInterval(() => { SL.setControl('k', ++k); SL.redraw(); if (k >= 20) clearInterval(id); }, 220); } }],
+  steps: [
+    ['The matrix: A = J_bv J_bvᵀ (ex5)', 'Keep the three linear-velocity rows of the body Jacobian (m/s per joint rate) and multiply by their transpose. A is 3×3, symmetric, positive (semi)definite: its eigenvalues are the squared half-axes of the tool’s velocity ellipsoid.'],
+    ['Start anywhere', 'Pick any unit vector x₀ (it only must not be exactly perpendicular to the top eigenvector). Write it in the eigenbasis: x₀ = c₁v₁ + c₂v₂ + c₃v₃.'],
+    ['Multiply and normalise, again and again', 'x ← A x / |A x|. Each multiplication scales the vᵢ part by λᵢ, so the v₁ part wins. Move the k slider (or Run): the arrow swings onto the long axis.'],
+    ['How fast: (λ₂/λ₁)ᵏ', 'The leftover angle shrinks like (λ₂/λ₁)ᵏ. When λ₂ is close to λ₁ (a round ellipsoid) power iteration is slow. The Rayleigh quotient xᵀAx gives λ₁.'],
+    ['Deflation: remove what you found', 'A₂ = A − λ₁v₁v₁ᵀ has the same eigenvectors but λ₁ replaced by 0. Power iteration on A₂ finds v₂ and λ₂.'],
+    ['The third one for free', 'λ₃ = trace(A) − λ₁ − λ₂ (the trace is the sum of eigenvalues), and v₃ = v₁ × v₂ (perpendicular to both). That is eigSym3.'],
+    ['ex6: manipulability from the eigenvalues', 'μ₁ = √(λmax/λmin), μ₂ = λmax/λmin, μ₃ = √det A = √(λ₁λ₂λ₃). ex2’s det3 must agree with the product of the eigenvalues.'],
+  ],
+  draw(sc) {
+    const s = st(), S = SL.st, Ev = s.Ex, sc0 = 1 / Math.sqrt(Ev.vals[0]);
+    sc.grid(4, 16, -1.6); sc.frame(MR.eye(4), .35);
+    /* ellipsoid: semi-axes √λᵢ along vᵢ, scaled so the longest is 1.5 */
+    const k = 1.5 / Math.sqrt(Ev.vals[0]), R = MR.fromCols(Ev.vecs.map(x => x.slice())); if (MR.det(R) < 0) R.forEach(r => r[2] *= -1);
+    sc.ellipsoid(MR.makeT(R, [0, 0, 0]), Ev.vals.map(l => Math.max(.02, Math.sqrt(Math.max(0, l)) * k)), '--b', { opacity: .1 });
+    Ev.vecs.forEach((w, i) => sc.line([MR.scl(w, -1.7), MR.scl(w, 1.7)], '--grey', true));
+    if (S >= 1 && S <= 3) { const n = S === 1 ? 0 : s.K; for (let j = 0; j < n; j++) sc.arrow([0, 0, 0], MR.scl(s.xs[j], 1.3), '--grey', 1, .08);
+      sc.arrow([0, 0, 0], MR.scl(S === 1 ? s.x0 : s.xk, 1.6), '--a', 1, .14); sc.label(MR.scl(S === 1 ? s.x0 : s.xk, 1.75), S === 1 ? 'x₀' : 'x' + s.K, '--a'); }
+    if (S >= 3) { sc.arrow([0, 0, 0], MR.scl(s.v1, 1.6), '--d', 1, .14); sc.label(MR.scl(s.v1, 1.75), 'v₁', '--d'); }
+    if (S >= 4) { sc.arrow([0, 0, 0], MR.scl(s.v2, 1.6), '--e', 1, .14); sc.label(MR.scl(s.v2, 1.75), 'v₂', '--e'); }
+    if (S >= 5) { sc.arrow([0, 0, 0], MR.scl(s.v3, 1.6), '--f', 1, .14); sc.label(MR.scl(s.v3, 1.75), 'v₃', '--f'); }
+  },
+  math(S) {
+    const s = st(), A = s.A, Ev = s.Ex;
+    const head = `<p class="cg">θ = (${SL.deg(s.q[0])}, ${SL.deg(s.q[1])}, ${f(s.q[2])} m, ${SL.deg(s.q[3])}). Reference eigenvalues (Jacobi): ${Ev.vals.map(x => f(x, 5)).join(', ')}.</p>`;
+    const c = Ev.vecs.map(w => MR.dot(w, s.x0));
+    const rows = [
+`${code(`Mat3 linearAAT(const Jac& Jb) {          // ex5
+  Mat3 A{};
+  for r, c in 0..2:  for i in 0..3:  A[r][c] += Jb[i][3 + r] * Jb[i][3 + c];
+  return A;  }`)}
+${E(SL.mat(s.Jv, 3, 'J_bv (3×4)') + '\n' + SL.mat(A, 4, 'A = J_bv J_bvᵀ'))}
+<p>Jb[i] is column i (a Vec6); entries 3–5 are its linear part. Symmetric: A[0][1] = A[1][0] = ${f(A[0][1], 4)}.</p>`,
+`${E(`x₀ = ${vs(s.x0, 4)}
+in the eigenbasis: c = (v₁·x₀, v₂·x₀, v₃·x₀) = ${vs(c, 4)}`)}
+<p>Power iteration needs c₁ ≠ 0. A random start almost surely has it; the workshop starts from (1, 1, 1)/√3. Try a start angle near 120°: c₁ ≈ 0, and the iterate first heads for v₂ before (very slowly) turning to v₁.</p>`,
+`${code(`Vec3 x = start;  double lam = 0;                     // ex3: powerIteration(A, x)
+for (int k = 0; k < 100; ++k) {
+  Vec3 y = A * x;   x = (1.0 / norm(y)) * y;   lam = dot(x, A * x);  }`)}
+${E(`k = ${s.K}:  x = ${vs(s.xk, 5)}
+xᵀAx = ${f(s.l1, 6)}   (λ₁ = ${f(Ev.vals[0], 6)})
+angle to v₁: ${f(align(s.xk, Ev.vecs[0]), 4)}°`)}
+<p>After k multiplications x ∝ λ₁ᵏc₁v₁ + λ₂ᵏc₂v₂ + λ₃ᵏc₃v₃: dividing by λ₁ᵏ, the other parts fade as (λ₂/λ₁)ᵏ and (λ₃/λ₁)ᵏ.</p>`,
+`${E(`λ₂/λ₁ = ${f(Ev.vals[1] / Ev.vals[0], 4)}
+predicted angle factor per step ≈ λ₂/λ₁; after k = ${s.K}: ${f(Math.pow(Ev.vals[1] / Ev.vals[0], s.K), 6)}
+measured angle now: ${f(align(s.xk, Ev.vecs[0]), 5)}°`)}
+${E(s.xs.slice(0, 11).map((x, k) => `k = ${String(k).padStart(2)}:  angle ${f(align(x, Ev.vecs[0]), 5).padStart(9)}°   xᵀAx = ${f(MR.dot(x, MR.mv(A, x)), 6)}`).join('\n'))}
+<p>The Rayleigh quotient converges twice as fast as the vector (its error ∝ angle²).</p>`,
+`${code(`Mat3 A2 = A - lam1 * outer(v1, v1);   v2 = powerIteration(A2, x);   // ex4, deflation`)}
+${E(SL.mat(s.A2, 4, 'A₂') + `\nA₂ v₁ = ${vs(MR.mv(s.A2, s.v1), 6)}   (≈ 0: v₁ deflated)\nλ₂ = ${f(s.L2, 6)},  v₂ = ${vs(s.v2, 5)},  v₁·v₂ = ${f(MR.dot(s.v1, s.v2), 6)}`)}
+<p>Deflation works because A is symmetric: its eigenvectors are perpendicular, so removing λ₁v₁v₁ᵀ leaves the others untouched.</p>`,
+`${E(`trace A = ${f(MR.trace(A), 6)} = λ₁ + λ₂ + λ₃
+λ₃ = trace − λ₁ − λ₂ = ${f(s.L3, 6)}    (Jacobi: ${f(Ev.vals[2], 6)})
+v₃ = v₁ × v₂ = ${vs(s.v3, 5)}
+A v₃ = ${vs(MR.mv(A, s.v3), 5)} = λ₃ v₃ ✓`)}
+<p>eigSym3 returns (λ₁, λ₂, λ₃) sorted largest first. A third power iteration is unnecessary and inaccurate (λ₃ is small); the trace is exact.</p>`,
+`${code(`Vec3 manipulability(const Joints& th) {     // ex6
+  const Mat3 A = linearAAT(jacobianBody(th));  const Vec3 l = eigSym3(A);
+  return {std::sqrt(l[0] / l[2]), l[0] / l[2], std::sqrt(det3(A))};  }`)}
+${E(`μ₁ = √(λ₁/λ₃) = ${f(Math.sqrt(s.L1 / s.L3), 4)}
+μ₂ = λ₁/λ₃     = ${f(s.L1 / s.L3, 4)}
+μ₃ = √det A    = ${f(Math.sqrt(Math.max(0, MR.det(A))), 5)}
+λ₁λ₂λ₃         = ${f(s.L1 * s.L2 * s.L3, 6)}   det3(A) = ${f(MR.det(A), 6)}`)}
+<p>Units: A is in (m/s)² per (joint rate)², so the μ’s describe the tool’s linear speed only. Angular rows are kept separate on purpose (page 128).</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>λ</b>${s.Ex.vals.map(x => f(x, 4)).join(', ')}</span><span><b>k</b>${s.K}</span><span><b>angle to v₁</b>${f(align(s.xk, s.Ex.vecs[0]), 3)}°</span>`; },
+});
+</script>
+</body></html>

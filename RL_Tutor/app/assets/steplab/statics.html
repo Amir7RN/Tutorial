@@ -1,0 +1,112 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Statics: tau = J^T F</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const L = [1, .8], KF = 1 / 40;          // force arrows: 40 N per metre on screen
+let PANEL = null;
+const st = () => {
+  const v = SL.v, q = [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180], phi = v.phi * Math.PI / 180;
+  const F = [v.F * Math.cos(phi), v.F * Math.sin(phi)], P = MR.points(L, q), tip = P[2];
+  const J = MR.tipJac(L, q), tau = MR.mv(MR.T(J), F), detJ = MR.det(J), sv = MR.svd(J);
+  const lev = [0, 1].map(i => { const r = MR.sub(tip, P[i]); return { r, tau: MR.cross2(r, F), d: Math.abs(MR.cross2(r, MR.unit(F))) }; });
+  return { q, phi, F, P, tip, J, tau, detJ, sv, lev };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+/* foot of the perpendicular from point a to the line through p with direction u */
+const foot = (a, p, u) => MR.add(p, MR.scl(u, MR.dot(MR.sub(a, p), u)));
+SL.app({
+  title: 'τ = Jᵀ F: from a hand force to joint torques',
+  sub: 'A 2R arm (L = 1, 0.8 m) pushes on the world with the force F (orange). Drag the arrow head or use the sliders. Gravity on the links is left out: only the hand force.',
+  view: '2d',
+  legend: [['--b', 'hand force F (on the world)'], ['--d', 'joint 1: moment arm'], ['--e', 'joint 2: moment arm'], ['--c', 'force ellipse'], ['--a', 'velocity ellipse']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 30, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -180, max: 180, value: 60, fmt: x => x + '°' },
+    { id: 'phi', label: 'force direction', min: -180, max: 180, value: -90, fmt: x => x + '°' },
+    { id: 'F', label: 'force size', min: 0, max: 40, value: 20, fmt: x => x + ' N' },
+  ],
+  buttons: [{ label: 'Straighten the elbow', onclick: () => { SL.setControl('q2', 0); SL.redraw(); } }, { label: 'Force along the arm', onclick: () => { const s = st(); SL.setControl('phi', Math.round(Math.atan2(s.tip[1], s.tip[0]) * 180 / Math.PI)); SL.redraw(); } }],
+  drag: () => [{ panel: () => PANEL, pos: () => { const s = st(); return MR.add(s.tip, MR.scl(s.F, KF)); },
+    set: p => { const s = st(), d = MR.scl(MR.sub(p, s.tip), 1 / KF); SL.setControl('phi', Math.round(Math.atan2(d[1], d[0]) * 180 / Math.PI)); SL.setControl('F', Math.min(40, Math.round(MR.norm(d)))); } }],
+  steps: [
+    ['The question', 'The hand pushes on the world with a force F. What torque must each motor supply to hold the arm still? No motion, no dynamics: pure statics.'],
+    ['Power gives the answer in one line', 'Whatever small motion θ̇ the joints make, the power they deliver τᵀθ̇ must equal the power at the hand Fᵀv = Fᵀ(Jθ̇). For every θ̇: so τ = JᵀF.'],
+    ['Joint 1: force × moment arm', 'Row 1 of JᵀF is column 1 of J dotted with F. Geometrically: the force times the perpendicular distance from joint 1 to the force’s line of action (purple).'],
+    ['Joint 2: the same, about the elbow', 'Joint 2 only feels the part of the force’s moment about the elbow (pink distance). A force whose line passes through a joint needs no torque at that joint.'],
+    ['At a singularity some forces cost nothing', 'Straighten the elbow and push along the arm: both moment arms are zero, so τ = 0. The structure carries the force. Those forces form the null space of Jᵀ.'],
+    ['The force ellipse', 'All torques with |τ| = 1 produce hand forces on an ellipse (green). Its half-axes are 1/σ along the same directions as the velocity ellipse (blue), whose half-axes are σ.'],
+    ['Strong where slow, fast where weak', 'The arm pushes hardest in the direction it moves slowest, like a lever or a low gear. Near a singularity the force ellipse stretches to infinity along the direction the velocity ellipse loses.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const A = Pl.panel(0, 0, .62, 1, [-2.2, 2.2, -2, 2.2]); PANEL = A; A.frame('the arm, the force and its moment arms'); A.grid(.5); A.axes();
+    A.arm(s.P);
+    const u = MR.unit(s.F.some(x => x) ? s.F : [1, 0]);
+    if (S >= 2 && S <= 4) A.line(MR.add(s.tip, MR.scl(u, -4)), MR.add(s.tip, MR.scl(u, 4)), '--b', 1, [6, 4]);
+    if (S === 2 || S === 4) { const ft = foot(s.P[0], s.tip, u); A.line(s.P[0], SL.lerp(s.P[0], ft, t), '--d', 3); A.text(SL.lerp(s.P[0], ft, .5), 'd₁ = ' + f(s.lev[0].d, 3) + ' m', '--d', 6, -6); A.arc(s.P[0], 26, .3, .3 + Math.max(-2.6, Math.min(2.6, s.tau[0] / 15)), '--d', 3, true, 'τ₁ = ' + f(s.tau[0], 2)); }
+    if (S === 3 || S === 4) { const ft = foot(s.P[1], s.tip, u); A.line(s.P[1], SL.lerp(s.P[1], ft, t), '--e', 3); A.text(SL.lerp(s.P[1], ft, .5), 'd₂ = ' + f(s.lev[1].d, 3) + ' m', '--e', 6, 14); A.arc(s.P[1], 22, s.q[0] + s.q[1] - .4, s.q[0] + s.q[1] - .4 + Math.max(-2.6, Math.min(2.6, s.tau[1] / 15)), '--e', 3, true, 'τ₂ = ' + f(s.tau[1], 2)); }
+    if (S >= 5) {
+      const { sigma, u: U } = s.sv;
+      if (sigma[1] > 1e-3) { const Fe = MR.fromCols(U.map((w, k) => MR.scl(w, Math.min(3, 1 / sigma[k]) * .5))); A.ellipse(s.tip, Fe, '--c', 2.5, null, '--c'); }
+      else A.line(MR.add(s.tip, MR.scl(U[1], -3)), MR.add(s.tip, MR.scl(U[1], 3)), '--c', 2.5);
+      const Ve = MR.fromCols(U.map((w, k) => MR.scl(w, sigma[k] * .5))); A.ellipse(s.tip, Ve, '--a', 2, [5, 3]);
+      U.forEach((w, k) => A.text(MR.add(s.tip, MR.scl(w, Math.min(1.4, (sigma[k] > 1e-3 ? 1 / sigma[k] : 3) * .5))), (k ? 'strong force' : 'fast motion'), k ? '--c' : '--a', 6, -6, { size: 12 }));
+    }
+    A.arrow(s.tip, MR.scl(s.F, KF), '--b', 3.5, 'F = ' + f(MR.norm(s.F), 0) + ' N');
+    /* right: torque bars */
+    const mx = 40 * 1.9;
+    const B = Pl.panel(.63, 0, .37, .55, [0, 2, -mx, mx], false); B.frame('τ = Jᵀ F (N·m)'); B.line([0, 0], [2, 0], '--grey', 1);
+    [0, 1].forEach(i => { const x = i + .5, h = s.tau[i] * (S <= 1 ? t : 1); B.poly([[x - .25, 0], [x + .25, 0], [x + .25, h], [x - .25, h]], i ? '--e' : '--d', 2, null, i ? '--e' : '--d');
+      B.text([x, h], f(s.tau[i], 2), '--ink', 0, h >= 0 ? -6 : 16, { align: 'center', mono: true }); B.text([x, -mx], 'joint ' + (i + 1), '--muted', 0, -6, { align: 'center', size: 12 }); });
+    const R = Pl.panel(.63, .57, .37, .43, [0, 1, 0, 1], false); R.frame();
+    const Ln = (y, txt, cl) => R.label(R.x + 10, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    Ln(.14, `J = [${f(s.J[0][0], 3)} ${f(s.J[0][1], 3)}; ${f(s.J[1][0], 3)} ${f(s.J[1][1], 3)}]`, '--ink');
+    Ln(.30, `det J = L₁L₂ sin θ₂ = ${f(s.detJ, 3)}`, Math.abs(s.detJ) < .02 ? '--bad' : '--muted');
+    Ln(.46, `F = ${vs(s.F, 2)} N`, '--b');
+    Ln(.62, `τ = JᵀF = ${vs(s.tau, 3)} N·m`, '--c');
+    Ln(.78, `σ = ${s.sv.sigma.map(x => f(x, 3)).join(', ')}   1/σ = ${s.sv.sigma.map(x => x > 1e-6 ? f(1 / x, 3) : '∞').join(', ')}`, '--a');
+  },
+  math(S) {
+    const s = st(), J = s.J, F = s.F;
+    const head = `<p class="cg">θ = (${s.q.map(SL.deg).join(', ')}), F = ${vs(F, 2)} N (on the world), L = (1, 0.8) m.</p>`;
+    const rows = [
+`<p>Joints at ${vs(s.P[0])}, ${vs(s.P[1])}; hand at ${vs(s.tip, 3)}.</p>
+<p>Holding still means: motor torques τ exactly balance the reaction of the world on the hand (−F). We want τ as a function of F.</p>
+<p>Two ways to get it: the free-body diagram of every link (forces at every joint), or one line of power balance (next step). Same answer, the second is far shorter.</p>`,
+`${E(`power at the joints = power at the hand, for every θ̇
+τᵀθ̇ = Fᵀ v = Fᵀ J θ̇      ⇒      τ = Jᵀ F`)}
+${E(SL.mat(J, 3, 'J') + '\n' + SL.mat(MR.T(J), 3, 'Jᵀ') + `\nτ = Jᵀ F = ${vs(s.tau, 3)} N·m`)}
+<p>The same Jacobian maps joint speeds to hand velocity, and (transposed) hand force to joint torques. Velocity forward, force backward. (Page 124 in 3-D: τ = J_sᵀ F_s = J_bᵀ F_b.)</p>`,
+`<p>Row 1 of Jᵀ is column 1 of J, the hand velocity per unit θ̇₁:</p>
+${E(`J col 1 = ẑ × (tip − joint 1) = ${vs(MR.col(J, 0), 3)}
+τ₁ = col1 · F = ${f(MR.col(J, 0)[0], 3)}·${f(F[0], 2)} + ${f(MR.col(J, 0)[1], 3)}·${f(F[1], 2)} = ${f(s.tau[0], 3)} N·m
+   = (tip − joint 1) × F = r₁ × F = ${f(s.lev[0].tau, 3)}
+   = |F| · d₁ = ${f(MR.norm(F), 2)} · ${f(s.lev[0].d, 3)} (with the sign of the turn)`)}
+<p>Dotting with the rotated arm and crossing with the arm are the same number: the moment of F about joint 1. The perpendicular distance d₁ to the dashed force line is the moment arm.</p>`,
+`${E(`J col 2 = ẑ × (tip − joint 2) = ${vs(MR.col(J, 1), 3)}
+τ₂ = col2 · F = r₂ × F = ${f(s.tau[1], 3)} N·m
+d₂ = ${f(s.lev[1].d, 3)} m`)}
+<p>Rotate the force direction until the dashed line passes through the elbow: τ₂ = 0, and only the shoulder works. Through the shoulder: τ₁ = 0.</p>`,
+`${E(`det J = L₁L₂ sin θ₂ = ${f(s.detJ, 4)}`)}
+${Math.abs(s.detJ) < .02 ? `<p>Singular: the columns of J are parallel, so the rows of Jᵀ are too. Jᵀ has a null space: forces F with JᵀF = 0. Direction: ${vs(s.sv.u[1], 3)} (along the arm). Press “Force along the arm”: τ = ${vs(s.tau, 4)}.</p>` : '<p>Press “Straighten the elbow”, then “Force along the arm”. Both moment arms become zero.</p>'}
+${ul(['The structure (links and bearings) carries such forces, not the motors.', 'That is why you lock your knees when standing: nearly straight legs hold your weight with little muscle torque.', 'The flip side: in that direction the hand cannot move at all (velocity ellipse is flat).'])}`,
+`<p>SVD of J (page 127): J = U Σ Vᵀ, σ = ${s.sv.sigma.map(x => f(x, 3)).join(', ')}.</p>
+${E(`velocity: |θ̇| = 1 → v = J θ̇
+          half-axes σᵢ along uᵢ
+force:    |τ| = 1 → F = J⁻ᵀ τ
+          half-axes 1/σᵢ along uᵢ
+u₁ = ${vs(s.sv.u[0], 3)},  u₂ = ${vs(s.sv.u[1], 3)}`)}
+<p>Same axes, reciprocal lengths. (Pages 127–128 build these ellipses from JJᵀ.)</p>`,
+`${ul([`Along u₁ the hand moves fastest (σ₁ = ${f(s.sv.sigma[0], 3)} m/s per rad/s) but can push only 1/σ₁ = ${f(1 / s.sv.sigma[0], 3)} N per N·m.`,
+  `Along u₂ it moves slowest (σ₂ = ${f(s.sv.sigma[1], 3)}) and pushes hardest (1/σ₂ = ${s.sv.sigma[1] > 1e-6 ? f(1 / s.sv.sigma[1], 3) : '∞'} N per N·m).`,
+  'Power is conserved: speed × force per unit joint effort stays the same, only the split changes. A lever, a gear, a bicycle in low gear.',
+  'For tasks like pressing or lifting you want the force direction along u₂; for fast motions along u₁.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>τ</b>${vs(s.tau, 2)} N·m</span><span><b>det J</b>${f(s.detJ, 3)}</span>`; },
+});
+</script>
+</body></html>

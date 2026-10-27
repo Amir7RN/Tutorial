@@ -1,0 +1,162 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inverse kinematics step by step</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const L = [1, .8];
+let PANEL = null, basin = null;
+const fk = q => MR.points(L, q)[2];
+const analytic = x => {
+  const r = MR.norm(x), g = Math.atan2(x[1], x[0]);
+  const ca = (r * r + L[0] * L[0] - L[1] * L[1]) / (2 * L[0] * r), cb = (L[0] * L[0] + L[1] * L[1] - r * r) / (2 * L[0] * L[1]);
+  if (Math.abs(ca) > 1 || Math.abs(cb) > 1) return { r, g, ok: false };
+  const a = Math.acos(ca), b = Math.acos(cb);
+  return { r, g, a, b, ok: true, righty: [g - a, Math.PI - b], lefty: [g + a, b - Math.PI] };
+};
+const newton = (x, q0, lam, n = 12) => {
+  const it = [{ q: q0.slice(), e: MR.sub(x, fk(q0)) }];
+  let q = q0.slice();
+  for (let k = 0; k < n; k++) {
+    const e = MR.sub(x, fk(q)); if (MR.norm(e) < 1e-13) break;
+    const J = MR.tipJac(L, q), dq = MR.mv(MR.pinv(J, lam), e);
+    q = MR.add(q, dq); it.push({ q: q.slice(), e: MR.sub(x, fk(q)), dq, J });
+  }
+  return it;
+};
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+const st = () => {
+  const v = SL.v, x = [v.tx / 100, v.ty / 100], q0 = [v.g1 * Math.PI / 180, v.g2 * Math.PI / 180], lam = v.lam / 100;
+  const an = analytic(x), it = newton(x, q0, lam);
+  const qf = it[it.length - 1].q, branch = !an.ok ? null : (Math.abs(wrap(qf[1] - an.righty[1])) < 1e-3 ? 'righty' : Math.abs(wrap(qf[1] - an.lefty[1])) < 1e-3 ? 'lefty' : null);
+  return { x, q0, lam, an, it, qf, branch };
+};
+const computeBasin = (x, lam) => {
+  const an = analytic(x), N = 64, cells = [];
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) {
+    const q0 = [-Math.PI + (i + .5) / N * 2 * Math.PI, -Math.PI + (j + .5) / N * 2 * Math.PI];
+    let q = q0.slice(), ok = false;
+    for (let k = 0; k < 25; k++) {              /* closed-form 2×2 damped step: (JᵀJ + λ²I)⁻¹ Jᵀ e */
+      const c1 = Math.cos(q[0]), s1 = Math.sin(q[0]), c12 = Math.cos(q[0] + q[1]), s12 = Math.sin(q[0] + q[1]);
+      const ex = x[0] - L[0] * c1 - L[1] * c12, ey = x[1] - L[0] * s1 - L[1] * s12;
+      if (ex * ex + ey * ey < 1e-14) { ok = true; break; }
+      const a = -L[0] * s1 - L[1] * s12, b = -L[1] * s12, c = L[0] * c1 + L[1] * c12, d = L[1] * c12;
+      const g1 = a * ex + c * ey, g2 = b * ex + d * ey, A11 = a * a + c * c + lam * lam, A12 = a * b + c * d, A22 = b * b + d * d + lam * lam, det = A11 * A22 - A12 * A12;
+      if (Math.abs(det) < 1e-14) break;
+      q[0] += (A22 * g1 - A12 * g2) / det; q[1] += (A11 * g2 - A12 * g1) / det;
+    }
+    let c = 0; if (ok && an.ok) c = Math.abs(wrap(q[1] - an.righty[1])) < 1e-3 ? 1 : 2; cells.push([q0, c]);
+  }
+  return { key: [x, lam].join(), cells, N };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Inverse kinematics: the triangle, then Newton step by step',
+  sub: 'A 2R arm with L = (1, 0.8) m. Drag the target (blue ring) or use the sliders. The guess sliders set where Newton starts.',
+  view: '2d',
+  legend: [['--a', 'target'], ['--c', 'righty (θ₂ > 0)'], ['--e', 'lefty (θ₂ < 0)'], ['--b', 'Newton iterates'], ['--grey', 'workspace ring']],
+  controls: [
+    { id: 'tx', label: 'target x', min: -180, max: 180, value: 120, fmt: x => f(x / 100) + ' m' },
+    { id: 'ty', label: 'target y', min: -180, max: 180, value: 60, fmt: x => f(x / 100) + ' m' },
+    { id: 'g1', label: 'guess θ₁⁰', min: -180, max: 180, value: 10, fmt: x => x + '°' },
+    { id: 'g2', label: 'guess θ₂⁰', min: -180, max: 180, value: 50, fmt: x => x + '°' },
+    { id: 'lam', label: 'damping λ', min: 0, max: 50, value: 0, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'Target at the edge (singular)', onclick: () => { SL.setControl('tx', 179); SL.setControl('ty', 10); SL.redraw(); } },
+            { label: 'Guess near the other branch', onclick: () => { SL.setControl('g1', 60); SL.setControl('g2', -60); SL.redraw(); } }],
+  drag: () => [{ panel: () => PANEL, pos: () => [SL.v.tx / 100, SL.v.ty / 100], set: p => { SL.setControl('tx', Math.round(Math.max(-1.8, Math.min(1.8, p[0])) * 100)); SL.setControl('ty', Math.round(Math.max(-1.8, Math.min(1.8, p[1])) * 100)); } }],
+  steps: [
+    ['Given the hand, find the joints', 'Forward kinematics always has one answer. Backwards: outside the ring no answer, on its edge one, inside two (elbow up or down). Drag the target around to see.'],
+    ['The analytic answer: one triangle, folded two ways', 'Shoulder, elbow and target make a triangle with sides L₁, L₂, r. The law of cosines gives its angles α and β; atan2 gives the direction γ. Two mirror triangles = two solutions.'],
+    ['Newton: guess and measure the error', 'Pretend we had no formula. Start from a guess θ⁰ (grey arm), compute where the hand really is, f(θ⁰), and the error e = x_d − f(θ⁰) (red arrow).'],
+    ['Linearise and correct: Δθ = J⁻¹ e', 'Near θ⁰ the hand moves like J(θ⁰)Δθ. Solve J Δθ = e for the correction and step: θ¹ = θ⁰ + Δθ. The dashed arm is θ¹: closer, not exact, because f is curved.'],
+    ['Repeat: the error collapses', 'Each iteration repeats the same two lines. Near the answer the number of correct digits roughly doubles each step (quadratic convergence): see the log plot.'],
+    ['Which answer you get depends on the guess', 'Every pixel is a starting guess (θ₁⁰, θ₂⁰), coloured by the branch Newton ends on: green righty, pink lefty, dark = failed. The white dot is your guess.'],
+    ['Near singular: damping keeps it calm', 'Put the target at the edge of reach. J is nearly singular, Δθ = J⁻¹e is huge and Newton jumps around. Damped least squares Δθ = Jᵀ(JJᵀ + λ²I)⁻¹e takes smaller, safer steps.'],
+    ['From points to full poses', 'For a 3-D pose the error is the body twist V_b from log(T_sb⁻¹ T_sd), and the step is θ ← θ + J_b⁺ V_b. Same loop, page 129’s RRPR lab runs it.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), R = 2.05;
+    const A = Pl.panel(0, 0, .6, 1, [-R, R, -R, R]); PANEL = A; A.frame('the arm, the target and the solutions'); A.grid(.5); A.axes();
+    A.circle([0, 0], L[0] + L[1], '--grey', 1.5, [5, 4]); A.circle([0, 0], Math.abs(L[0] - L[1]), '--grey', 1.5, [5, 4]);
+    if (S <= 1 || S === 5) { if (s.an.ok) { A.arm(MR.points(L, s.an.righty), { jc: ['--c', '--c'], col: '--c', w: 4 }); A.arm(MR.points(L, s.an.lefty), { jc: ['--e', '--e'], col: '--e', w: 4 }); } }
+    if (S === 1 && s.an.ok) { A.line([0, 0], s.x, '--a', 1.5, [4, 3]); A.text(MR.scl(s.x, .5), 'r = ' + f(s.an.r, 3), '--a', 6, 14);
+      A.arc([0, 0], 40, 0, s.an.g, '--a', 2, false, 'γ'); A.arc([0, 0], 58, s.an.g, s.an.g - s.an.a * t, '--c', 2, false, 'α');
+      const el = MR.points(L, s.an.righty)[1]; A.arc(el, 24, Math.atan2(-el[1], -el[0]), Math.atan2(-el[1], -el[0]) - s.an.b * t, '--c', 2, false, 'β'); }
+    if (S >= 2 && S <= 4 || S === 6) {
+      const it = s.it, n = S === 2 ? 1 : S === 3 ? 2 : it.length;
+      A.arm(MR.points(L, it[0].q), { ghost: true, w: 4 }); A.dot(fk(it[0].q), 5, '--grey');
+      if (S === 2) A.arrow(fk(it[0].q), MR.scl(it[0].e, t), '--bad', 3, 'e = ' + vs(it[0].e, 3));
+      for (let k = 1; k < n; k++) { const P = MR.points(L, it[k].q); if (k === n - 1) A.arm(P); else A.arm(P, { ghost: true, w: 2 }); A.dot(P[2], 4, '--b'); }
+      if (S >= 3) A.poly(it.slice(0, n).map(x => fk(x.q)), '--b', 1.5, [4, 3]);
+      if (S === 3) A.arrow(fk(it[0].q), MR.scl(it[0].e, 1), '--bad', 2, 'e');
+    }
+    if (S === 7) { A.arm(MR.points(L, s.qf)); A.text([-R + .1, -R + .25], 'see the math panel for the pose version', '--muted', 0, 0, { size: 12 }); }
+    A.circle(s.x, .06, '--a', 3); A.text(s.x, 'x_d', '--a', 8, -8);
+    /* right column */
+    if (S === 4 || S === 6) {
+      const pts = s.it.map((x, k) => [k, Math.log10(Math.max(1e-16, MR.norm(x.e)))]);
+      const B = Pl.panel(.61, 0, .39, .55, [0, Math.max(6, s.it.length - 1), -16, 1.5], false);
+      B.series([{ pts, cl: '--b', w: 2.5, label: 'log₁₀ |error| per iteration' }], { title: 'convergence (one unit = ten times smaller)' }); pts.forEach(p => B.dot(p, 4, '--b'));
+    }
+    if (S === 5) {
+      const key = [s.x, s.lam].join(); if (!basin || basin.key !== key) basin = computeBasin(s.x, s.lam);
+      const B = Pl.panel(.61, 0, .39, .62, [-Math.PI, Math.PI, -Math.PI, Math.PI]); B.frame('start guess (θ₁⁰ across, θ₂⁰ up) → branch');
+      const c = Pl.c, d = 2 * Math.PI / basin.N;
+      basin.cells.forEach(([q0, k]) => { const a = B.S([q0[0] - d / 2, q0[1] + d / 2]), b = B.S([q0[0] + d / 2, q0[1] - d / 2]); c.fillStyle = SL.css(k === 1 ? '--c' : k === 2 ? '--e' : '--inset'); c.globalAlpha = .55; c.fillRect(a[0], a[1], b[0] - a[0] + .5, b[1] - a[1] + .5); c.globalAlpha = 1; });
+      B.dot(s.q0, 5, '--ink'); if (s.an.ok) { B.dot([wrap(s.an.righty[0]), wrap(s.an.righty[1])], 6, '--c', true); B.dot([wrap(s.an.lefty[0]), wrap(s.an.lefty[1])], 6, '--e', true); }
+    }
+    if (S <= 3 || S === 7) {
+      const Rp = Pl.panel(.61, 0, .39, .55, [0, 1, 0, 1], false); Rp.frame('numbers');
+      const Ln = (y, txt, cl) => Rp.label(Rp.x + 10, Rp.y + Rp.h * y, txt, cl, { mono: true, size: 12 });
+      Ln(.12, `x_d = ${vs(s.x, 3)},  r = ${f(s.an.r, 3)}`, '--a');
+      Ln(.24, s.an.ok ? `righty θ = (${s.an.righty.map(a => SL.deg(wrap(a))).join(', ')})` : 'out of reach: no solution', s.an.ok ? '--c' : '--bad');
+      if (s.an.ok) Ln(.36, `lefty  θ = (${s.an.lefty.map(a => SL.deg(wrap(a))).join(', ')})`, '--e');
+      Ln(.52, `guess θ⁰ = (${s.q0.map(SL.deg).join(', ')})`, '--grey');
+      Ln(.64, `Newton → (${s.qf.map(a => SL.deg(wrap(a))).join(', ')}) in ${s.it.length - 1} steps`, '--b');
+      Ln(.76, `final |e| = ${MR.norm(s.it[s.it.length - 1].e).toExponential(1)} m  ${s.branch ? '(' + s.branch + ')' : ''}`, '--b');
+    }
+  },
+  math(S) {
+    const s = st(), an = s.an, it = s.it;
+    const head = `<p class="cg">Target x_d = ${vs(s.x, 3)} m, L = (1, 0.8), guess θ⁰ = (${s.q0.map(SL.deg).join(', ')}), λ = ${f(s.lam)}.</p>`;
+    const step = k => { const a = it[k], b = it[k + 1]; if (!b) return '(converged)'; return E(SL.mat(b.J, 4, 'J(θ' + 'ⁱ'.repeat(1) + ')') + `\ne = ${vs(a.e, 5)}\nΔθ = ${s.lam ? 'Jᵀ(JJᵀ+λ²I)⁻¹' : 'J⁻¹'} e = ${vs(b.dq, 5)}\nθ = ${vs(b.q, 5)}   new |e| = ${MR.norm(b.e).toExponential(2)}`); };
+    const rows = [
+`${E(`r = |x_d| = ${f(an.r, 4)} m,   ring: ${f(Math.abs(L[0] - L[1]), 2)} ≤ r ≤ ${f(L[0] + L[1], 2)}`)}
+${ul([`r &gt; L₁ + L₂ or r &lt; |L₁ − L₂|: <b>no</b> solution.`, 'r on either circle: <b>one</b> (arm straight or folded flat; a singularity).', 'strictly inside: <b>two</b> (righty / lefty).', 'A redundant arm (more joints than task numbers) has infinitely many (page 130).'])}
+<p>Now: ${an.ok ? (Math.abs(an.r - L[0] - L[1]) < 1e-3 ? 'one (edge)' : 'two solutions') : '<span class="cbad">out of reach</span>'}.</p>`,
+an.ok ? `${E(`γ = atan2(y, x)                       = ${SL.deg(an.g)}
+α = arccos((r² + L₁² − L₂²)/(2L₁r))     = ${SL.deg(an.a)}
+β = arccos((L₁² + L₂² − r²)/(2L₁L₂))    = ${SL.deg(an.b)}
+righty: θ₁ = γ − α = ${SL.deg(wrap(an.righty[0]))},  θ₂ = π − β = ${SL.deg(an.righty[1])}
+lefty:  θ₁ = γ + α = ${SL.deg(wrap(an.lefty[0]))},  θ₂ = β − π = ${SL.deg(an.lefty[1])}
+check: f(righty) = ${vs(fk(an.righty), 4)},  f(lefty) = ${vs(fk(an.lefty), 4)}`)}
+${ul(['atan2 keeps the quadrant; atan(y/x) cannot tell (1, 1) from (−1, −1).', 'arccos returns 0…180°, right for an angle inside a triangle; the ± choice of fold is made separately.', 'θ₂ = π − β because θ₂ is measured from link 1’s direction (the outside angle at the elbow).'])}` : '<p class="cbad">Target out of reach: cos α or cos β would exceed 1.</p>',
+`${E(`θ⁰ = (${s.q0.map(a => f(a, 4)).join(', ')}) rad
+f(θ⁰) = ${vs(fk(s.q0), 4)}
+e⁰ = x_d − f(θ⁰) = ${vs(it[0].e, 4)},  |e⁰| = ${f(MR.norm(it[0].e), 4)} m`)}
+<p>Inverse kinematics becomes root finding: solve g(θ) = x_d − f(θ) = 0.</p>`,
+`<p>Taylor: f(θ⁰ + Δθ) ≈ f(θ⁰) + J(θ⁰)Δθ. Ask that to equal x_d: J Δθ = e.</p>${step(0)}
+<p>J is square and invertible here (det = ${f(MR.det(MR.tipJac(L, s.q0)), 4)}), so J⁺ = J⁻¹. For a redundant or deficient arm J⁺ picks the least-motion or least-error step (page 130).</p>`,
+`${E(it.map((x, k) => `k = ${k}:  θ = ${vs(x.q, 5)}   |e| = ${MR.norm(x.e).toExponential(2)}`).join('\n'))}
+<p>Near the answer each step squares the error (10⁻² → 10⁻⁴ → 10⁻⁸): the log plot falls ever more steeply. In a controller the previous answer is the next guess, so 1–2 iterations per cycle are enough.</p>`,
+`<p>Newton returns <b>one</b> answer: the one whose basin the guess sits in.</p>
+${E(`your guess → ${s.branch || 'no convergence'} after ${it.length - 1} steps`)}
+${ul(['Big green and pink regions: guesses that land on righty or lefty.', 'Boundaries are where J is singular along the way (θ₂ ≈ 0 or π): the tangent is flat and the step is huge, so the next guess lands anywhere.', 'Press “Guess near the other branch” and watch it switch.'])}`,
+`${E(`det J(θ_final) = ${f(MR.det(MR.tipJac(L, s.qf)), 5)},  λ = ${f(s.lam)}
+Δθ = Jᵀ(JJᵀ + λ²I)⁻¹ e    (per singular direction: σ/(σ² + λ²) instead of 1/σ)
+steps used: ${it.length - 1},  final |e| = ${MR.norm(it[it.length - 1].e).toExponential(2)}`)}
+<p>Press “Target at the edge (singular)” and compare λ = 0 with λ = 0.1–0.3. Damping trades speed for safety: no wild leaps, a few more iterations, and a tiny leftover error if the target is unreachable.</p>`,
+`${E(`T_sb(θ)   = FK(θ)                     (where the hand is)
+T_bd      = T_sb⁻¹ T_sd               (the target seen from the hand)
+[V_b]     = log T_bd                  (twist that carries {b} onto {d} in 1 s)
+θ ← θ + J_b⁺(θ) V_b                   (same Newton step)
+stop when |ω_b| < ε_ω and |v_b| < ε_v (check spin and slide separately)`)}
+<p>The 2R case above is the 2-D shadow of this: e = x_d − f(θ) is the “twist” for a point target. For the 4-joint RRPR, J_b is 6 × 4, so unreachable target tilts end at the closest reachable pose. The 3-D lab further down this page does exactly that.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>Newton</b>${s.it.length - 1} steps</span><span><b>|e|</b>${MR.norm(s.it[s.it.length - 1].e).toExponential(1)} m</span><span><b>branch</b>${s.branch || '—'}</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,130 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A four-bar linkage</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+let BR = 1, DIR = 1;
+const e = t => [Math.cos(t), Math.sin(t)], ep = t => [-Math.sin(t), Math.cos(t)];
+const solve4 = (th, a, b, c, d, br) => {
+  const A = MR.scl(e(th), a), D = [d, 0], v = MR.sub(D, A), r = MR.norm(v);
+  if (r > b + c || r < Math.abs(b - c) || r < 1e-9) return null;
+  const x = (b * b - c * c + r * r) / (2 * r), h = Math.sqrt(Math.max(0, b * b - x * x)), u = MR.scl(v, 1 / r);
+  const B = MR.add(MR.add(A, MR.scl(u, x)), MR.scl(MR.perp(u), br * h));
+  return { A, B, D, phi: Math.atan2(B[1] - A[1], B[0] - A[0]), psi: Math.atan2(B[1], B[0] - d) };
+};
+const st = () => {
+  const v = SL.v, a = v.a / 10, b = v.b / 10, c = v.c / 10, d = v.d / 10, th = v.th * Math.PI / 180, w = v.w / 10;
+  const L = [a, b, c, d].slice().sort((x, y) => x - y), grashof = L[0] + L[3] <= L[1] + L[2];
+  const r = solve4(th, a, b, c, d, BR);
+  let rates = null;
+  if (r) { const K = [[b * ep(r.phi)[0], -c * ep(r.psi)[0]], [b * ep(r.phi)[1], -c * ep(r.psi)[1]]], rhs = MR.scl(ep(th), -a * w), det = MR.det(K);
+    rates = { K, rhs, det, x: Math.abs(det) > 1e-9 ? MR.solve(K, rhs) : [NaN, NaN] }; }
+  const sweep = [...Array(361)].map((_, i) => { const t = -Math.PI + i / 360 * 2 * Math.PI, s = solve4(t, a, b, c, d, BR); return [t, s]; });
+  return { a, b, c, d, th, w, grashof, r, rates, sweep, L };
+};
+const coupler = r => MR.add(MR.add(r.A, MR.scl(MR.sub(r.B, r.A), .5)), MR.scl(MR.perp(MR.sub(r.B, r.A)), .4));
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'A four-bar: close the loop, count the freedom',
+  sub: 'Crank a (driven) at the origin, ground d fixed, coupler b and rocker c follow. Same default lengths as the page lab. Play turns the crank.',
+  view: '2d',
+  legend: [['--b', 'crank a (actuated)'], ['--link', 'coupler b'], ['--f', 'rocker c'], ['--d', 'coupler-point curve'], ['--a', 'velocities']],
+  controls: [
+    { id: 'th', label: 'crank angle θ', min: -180, max: 180, value: 40, fmt: x => x + '°' },
+    { id: 'a', label: 'crank a', min: 3, max: 30, value: 10, fmt: x => f(x / 10, 1) },
+    { id: 'b', label: 'coupler b', min: 3, max: 40, value: 25, fmt: x => f(x / 10, 1) },
+    { id: 'c', label: 'rocker c', min: 3, max: 40, value: 20, fmt: x => f(x / 10, 1) },
+    { id: 'd', label: 'ground d', min: 3, max: 40, value: 30, fmt: x => f(x / 10, 1) },
+    { id: 'w', label: 'crank speed θ̇', min: -20, max: 20, value: 10, fmt: x => f(x / 10, 1) + ' rad/s' },
+  ],
+  buttons: [{ label: 'Other assembly (crossed)', toggle: true, pressed: false, onclick: e => { BR = -BR; e.setAttribute('aria-pressed', BR < 0); SL.redraw(); } }],
+  play: { tick(dt) { let th = SL.v.th + DIR * 60 * dt; const ok = t => solve4(t * Math.PI / 180, SL.v.a / 10, SL.v.b / 10, SL.v.c / 10, SL.v.d / 10, BR);
+    if (!ok(th)) { DIR = -DIR; th = SL.v.th; } if (th > 180) th -= 360; if (th < -180) th += 360; SL.setControl('th', th); } },
+  reset() { SL.setControl('th', 40); DIR = 1; },
+  steps: [
+    ['Open chain or closed loop?', 'A four-bar is four links joined in a ring by four revolute joints. The loop forces the joints to agree, so most of them are not free. Grübler’s formula counts what is left.'],
+    ['Loop closure: two equations', 'Walk round the loop: crank, coupler, back down the rocker, back along the ground. You must arrive where you started: a e(θ) + b e(φ) − c e(ψ) − d x̂ = 0. Two equations (x and y).'],
+    ['Solve: two circles meet', 'Given the crank angle, the coupler end B is b from A and c from D: the intersection of two circles. Usually two answers (the two assembly modes), sometimes none: the loop cannot close.'],
+    ['Velocities: the constraint on θ̇', 'Differentiate the loop equation. The passive rates (φ̇, ψ̇) follow from the crank rate by solving a 2×2 system. Blue arrows: velocities of A and B.'],
+    ['A whole turn: Grashof', 'If shortest + longest ≤ sum of the other two, some link can turn all the way round (a crank). Otherwise every link only rocks, and Play bounces back at the ends.'],
+    ['Singular poses', 'When the coupler and rocker line up, the 2×2 system is singular: the motor cannot drive the linkage through that pose (a dead point). The determinant −bc·sin(ψ − φ) shows how close it is. Separately, when crank and coupler line up the rocker stops and reverses.'],
+    ['Bigger parallel robots', 'The same counting and the same “easy one way, hard the other” story give the Stewart platform (6 DOF) and the Delta robot (3 DOF). For parallel robots IK is easy and FK is the hard one.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const span = Math.max(s.d + s.c, s.a + s.b) + .4;
+    const A = Pl.panel(0, 0, .6, 1, [-s.a - .6, span, -span * .7, span * .7]); A.frame('the linkage'); A.grid(.5);
+    A.line([0, 0], [s.d, 0], '--grey', 7); [[0, 0], [s.d, 0]].forEach(p => { A.poly([[p[0] - .15, p[1] - .2], [p[0] + .15, p[1] - .2], p], '--grey', 2, null, '--grey', true); });
+    if (S >= 4 || S === 0) { const pts = s.sweep.filter(x => x[1]).map(x => coupler(x[1])); A.poly(pts, '--d', 1.5); }
+    if (!s.r) { A.line([0, 0], MR.scl(e(s.th), s.a), '--b', 6); A.text([0, -span * .55], 'the loop cannot close at this crank angle', '--bad', 0, 0); }
+    else {
+      const r = s.r;
+      if (S === 2) { A.circle(r.A, s.b, '--link', 1.5, [5, 4]); A.circle(r.D, s.c, '--f', 1.5, [5, 4]); const o = solve4(s.th, s.a, s.b, s.c, s.d, -BR); if (o) A.dot(o.B, 6, '--grey', true); A.text(r.B, 'B', '--ink', 8, -8); if (o) A.text(o.B, 'other mode', '--grey', 8, 14, { size: 12 }); }
+      A.line([0, 0], r.A, '--b', 6); A.line(r.A, r.B, '--link', 6); A.line(r.D, r.B, '--f', 6);
+      [[0, 0], r.A, r.B, r.D].forEach((p, i) => A.dot(p, 6, ['--b', '--b', '--f', '--f'][i], true));
+      A.dot(coupler(r), 4, '--d');
+      if (S === 1) { A.arc([0, 0], 30, 0, s.th, '--b', 2, false, 'θ'); A.arc(r.A, 26, 0, r.phi, '--link', 2, false, 'φ'); A.arc(r.D, 30, 0, r.psi, '--f', 2, false, 'ψ'); }
+      if ((S === 3 || S === 5) && s.rates) { const k = .25; A.arrow(r.A, MR.scl(ep(s.th), s.a * s.w * k * t), '--a', 3, 'v_A'); const vB = MR.scl(ep(r.psi), s.c * s.rates.x[1]); if (isFinite(vB[0])) A.arrow(r.B, MR.scl(vB, k * t), '--a', 3, 'v_B'); }
+    }
+    /* right column */
+    if (S >= 4 && S <= 5) {
+      const pts = s.sweep.map(([th, r]) => [th, r ? r.psi : NaN]).filter(p => isFinite(p[1]));
+      const dets = s.sweep.map(([th, r]) => [th, r ? -s.b * s.c * Math.sin(r.psi - r.phi) : NaN]).filter(p => isFinite(p[1]));
+      const B = Pl.panel(.61, 0, .39, .48, [-Math.PI, Math.PI, -Math.PI, Math.PI], false);
+      B.series([{ pts, cl: '--f', w: 2.5, label: 'rocker angle ψ(θ)' }], { title: 'ψ over a crank turn (gaps: loop open)' }); B.line([s.th, -Math.PI], [s.th, Math.PI], '--a', 1.5, [4, 3]);
+      const mx = s.b * s.c * 1.1, C = Pl.panel(.61, .5, .39, .48, [-Math.PI, Math.PI, -mx, mx], false);
+      C.series([{ pts: dets, cl: '--bad', w: 2.5, label: 'det = −bc sin(ψ − φ)' }], { title: 'passive-joint determinant (0 = singular)' }); C.line([s.th, -mx], [s.th, mx], '--a', 1.5, [4, 3]);
+    } else {
+      const R = Pl.panel(.61, 0, .39, .55, [0, 1, 0, 1], false); R.frame('numbers');
+      const Ln = (y, txt, cl) => R.label(R.x + 10, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+      Ln(.12, `a, b, c, d = ${[s.a, s.b, s.c, s.d].map(x => f(x, 1)).join(', ')}`, '--ink');
+      Ln(.26, `Grashof: ${f(s.L[0], 1)} + ${f(s.L[3], 1)} ${s.grashof ? '≤' : '>'} ${f(s.L[1], 1)} + ${f(s.L[2], 1)} → ${s.grashof ? 'a link turns fully' : 'all links rock'}`, s.grashof ? '--c' : '--b');
+      if (s.r) { Ln(.42, `θ = ${SL.deg(s.th)}   φ = ${SL.deg(s.r.phi)}   ψ = ${SL.deg(s.r.psi)}`, '--ink'); Ln(.56, `B = ${vs(s.r.B, 3)}`, '--f');
+        if (s.rates) { Ln(.70, `φ̇ = ${f(s.rates.x[0], 3)}   ψ̇ = ${f(s.rates.x[1], 3)} rad/s`, '--a'); Ln(.84, `det = ${f(s.rates.det, 4)}`, Math.abs(s.rates.det) < .05 ? '--bad' : '--muted'); } }
+      else Ln(.42, 'loop open at this θ', '--bad');
+    }
+  },
+  math(S) {
+    const s = st(), r = s.r;
+    const head = `<p class="cg">a = ${f(s.a, 1)}, b = ${f(s.b, 1)}, c = ${f(s.c, 1)}, d = ${f(s.d, 1)}, θ = ${SL.deg(s.th)}, θ̇ = ${f(s.w, 1)} rad/s, assembly ${BR > 0 ? 'open' : 'crossed'}.</p>`;
+    const rows = [
+`<p><b>Grübler’s formula</b> (planar, m = 3 freedoms per body):</p>
+${E(`dof = m(N − 1 − J) + Σ fᵢ
+four-bar: N = 4 links (ground included), J = 4 joints, each f = 1
+dof = 3(4 − 1 − 4) + 4 = 1`)}
+${ul(['Four joint angles, three loop-closure equations (x, y and the orientation going round the loop): 4 − 3 = 1 freedom. One motor drives it.', 'An open 3R arm: N = 4, J = 3: 3(4 − 1 − 3) + 3 = 3.', 'Grübler assumes the constraints are independent; special geometry (parallel links) can break that.'])}`,
+`${E(`a e(θ) + b e(φ) − c e(ψ) − d x̂ = 0        e(α) = (cos α, sin α)
+x:  a cos θ + b cos φ − c cos ψ − d = ${r ? f(s.a * Math.cos(s.th) + s.b * Math.cos(r.phi) - s.c * Math.cos(r.psi) - s.d, 8) : '—'}
+y:  a sin θ + b sin φ − c sin ψ     = ${r ? f(s.a * Math.sin(s.th) + s.b * Math.sin(r.phi) - s.c * Math.sin(r.psi), 8) : '—'}`)}
+<p>Unknowns φ (coupler angle) and ψ (rocker angle); θ is chosen by the motor. Two equations, two unknowns: in principle solvable, but non-linear (cosines), so there can be 0, 1 or 2 answers.</p>`,
+r ? `${E(`A = a e(θ) = ${vs(r.A, 3)},   D = (d, 0)
+|AD| = ${f(MR.norm(MR.sub(r.D, r.A)), 4)};  need |b − c| ≤ |AD| ≤ b + c, i.e. ${f(Math.abs(s.b - s.c), 2)} ≤ ${f(MR.norm(MR.sub(r.D, r.A)), 3)} ≤ ${f(s.b + s.c, 2)}
+B = intersection of circle(A, b) and circle(D, c) = ${vs(r.B, 4)}
+φ = atan2(B − A) = ${SL.deg(r.phi)},   ψ = atan2(B − D) = ${SL.deg(r.psi)}`)}
+<p>The other intersection (grey) is the crossed assembly: same lengths, assembled the other way. Switching between them needs disassembly or passing through a singular pose.</p>` : '<p class="cbad">|AD| is outside [|b − c|, b + c]: the circles do not meet. The loop cannot be closed at this crank angle.</p>',
+r && s.rates ? `${E(`d/dt: a θ̇ e⊥(θ) + b φ̇ e⊥(φ) − c ψ̇ e⊥(ψ) = 0        e⊥(α) = (−sin α, cos α)
+[ b e⊥(φ)   −c e⊥(ψ) ] [φ̇; ψ̇] = −a θ̇ e⊥(θ)
+` + SL.mat(s.rates.K, 4, 'K') + `
+rhs = ${vs(s.rates.rhs, 4)}
+[φ̇; ψ̇] = K⁻¹ rhs = ${vs(s.rates.x, 4)} rad/s`)}
+<p>This is the closed-chain version of A(q)q̇ = 0 (page 139): active rate in, passive rates out. The rocker tip moves at |v_B| = c|ψ̇| = ${f(s.c * Math.abs(s.rates.x[1]), 3)}.</p>` : '<p>(loop open: no velocities)</p>',
+`${E(`sorted lengths: ${s.L.map(x => f(x, 1)).join(', ')}
+s + l = ${f(s.L[0] + s.L[3], 2)}   p + q = ${f(s.L[1] + s.L[2], 2)}   → ${s.grashof ? 'Grashof: the shortest link can rotate fully' : 'non-Grashof: triple rocker'}`)}
+${ul(['Crank-rocker (shortest link is the crank, as here): motor turns continuously, rocker swings: windscreen wipers, pumps.', 'Double crank (shortest is ground), double rocker (shortest is the coupler).', 'Purple curve: the path of a point on the coupler. Four-bars are chosen for these curves (Watt’s straight-line linkage, walking machines).'])}`,
+`${E(`det K = −b c sin(ψ − φ) = ${s.rates ? f(s.rates.det, 5) : '—'}`)}
+${ul(['det = 0 when coupler and rocker are in line (ψ = φ or φ + π). There the passive rates from step 3 blow up: the crank cannot push the rocker (transmission angle 0° or 180°), a dead point.',
+  'A good crank-rocker (Grashof, crank shortest, as at the defaults) never reaches det = 0 while the crank drives: the red curve stays away from zero. Make the rocker short or the coupler long and watch it touch zero.',
+  'The rocker reversing (ψ̇ = 0, the ends of its swing) is a different event: crank and coupler in line. That is harmless for the motor.',
+  'Parallel robots have such actuator singularities inside their workspace; serial arms have them only at the boundary or where axes line up.'])}`,
+`${E(`spatial: dof = 6(N − 1 − J) + Σ fᵢ
+Stewart platform: N = 14, J = 18, Σf = 36 → 6(14 − 1 − 18) + 36 = 6
+Delta: 3 identical parallelogram legs → 3 translations`)}
+${ul(['IK (pose → leg lengths) is easy: each leg length is a distance.', 'FK (leg lengths → pose) is hard: solve loop-closure equations like step 2, with up to 40 solutions for a general Stewart platform.', 'Motors sit on the base: light, fast and stiff, but a small workspace.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>dof</b>1</span><span><b>Grashof</b>${s.grashof ? 'yes' : 'no'}</span><span><b>loop</b>${s.r ? 'closed' : 'open'}</span>`; },
+});
+</script>
+</body></html>

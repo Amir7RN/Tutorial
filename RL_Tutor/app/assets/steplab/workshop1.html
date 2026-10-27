@@ -1,0 +1,123 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Workshop 1, step by step</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="three.min.js"></script><script src="mr.js"></script><script src="steplab.js"></script><script src="rrpr3d.js"></script>
+</head><body>
+<script>
+const SUB = '₁₂₃₄';
+const st = () => {
+  const v = SL.v, q = [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180, v.d3 / 100, v.q4 * Math.PI / 180];
+  const S = MR.RRPR.S, M = MR.RRPR.M, B = S.map(s => MR.mv(MR.adj(MR.invT(M)), s));
+  const run = [MR.eye(4)]; S.forEach((s, i) => run.push(MR.mul(run[i], MR.expTwist(s, q[i]))));
+  const T = MR.mul(run[4], M), Js = MR.jacSpace(S, q), Jb = MR.jacBody(B, q), Tb = MR.fkBody(M, B, q);
+  return { q, S, M, B, run, T, Js, Jb, Tb };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const code = s => `<span class="eq" style="color:var(--f)">${s.replace(/</g, '&lt;')}</span>`;
+const maxdiff = (A, B) => Math.max(...A.flat().map((x, i) => Math.abs(x - B.flat()[i])));
+SL.app({
+  title: 'Workshop 1: what each of your C++ functions computes',
+  sub: 'Every step shows the reference code (cpp/workshop/rrpr_lib.hpp), the numbers it produces for the sliders, and what that means on the arm. Use it to check your own my_rrpr.cpp line by line.',
+  view: '3d', orbit: { az: -.9, el: .45, r: 5.2, tgt: [.7, 0, .6] },
+  legend: [['--b', 'joint 1'], ['--d', 'joint 2'], ['--f', 'joint 3'], ['--e', 'joint 4']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 30, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -60, max: 90, value: 20, fmt: x => x + '°' },
+    { id: 'd3', label: 'd₃', min: 0, max: 60, value: 20, fmt: x => f(x / 100) + ' m' },
+    { id: 'q4', label: 'θ₄', min: -180, max: 180, value: 45, fmt: x => x + '°' },
+  ],
+  steps: [
+    ['The data: four screws and the home pose', 'rrprScrewsSpace() and rrprHome() are the whole robot description. Everything else is computed from them.'],
+    ['skew and unskew', 'skew(ω) is the 3×3 matrix with skew(ω)·x = ω × x. unskew reads ω back out. Rodrigues, the adjoint and expTwist are all built from it.'],
+    ['expRot: Rodrigues', 'R = I + sin θ [ω] + (1 − cos θ)[ω]². Rotation by θ about the unit axis ω. Shown for joint 1 (about z).'],
+    ['expTwist: e^[S]θ as a 4×4', 'Rotation part from expRot; position part G(θ)v. For a prismatic screw (ω = 0) it is a pure translation θ·v. Shown for joint 2, an axis that does not pass through the origin.'],
+    ['fkSpace: the loop', 'T starts at I, gets multiplied on the right by e^[Sᵢ]θᵢ for i = 1…4, then by M. The ghosts show T·M after each pass of the loop.'],
+    ['adjoint: moving twists between frames', 'Ad_T = [[R, 0], [[p]R, R]] (6×6). It moves a twist from one frame to another. Shown for the running T after joint 1.'],
+    ['jacobianSpace: column i before multiplying', 'J[i] = adjoint(T) · S[i] uses T = e^[S₁]θ₁⋯e^[S_{i−1}]θ_{i−1}; only then is T updated. Swapping those two lines is the classic bug.'],
+    ['fkBody, jacobianBody, toolPosition', 'The body versions start from M and walk the other way (with −Bᵢ in the Jacobian loop). They must agree with the space versions.'],
+    ['Your own bugs, explained', 'The mistakes from your earlier attempts, and why the fix works: invert once, Jac stores columns, wrenches move with Adᵀ, and units.'],
+  ],
+  draw(sc) {
+    const s = st(), Sx = SL.st;
+    sc.grid(4, 16); sc.frame(MR.eye(4), .45);
+    if (Sx === 4) { for (let i = 0; i < 4; i++) { const qq = s.q.map((x, j) => j <= i ? x : 0); drawRRPR(sc, qq, { ghost: i < 3 }); sc.frame(MR.mul(s.run[i + 1], s.M), .22); sc.label(MR.pof(MR.mul(s.run[i + 1], s.M)), 'after i = ' + i, '--muted'); } drawRRPR(sc, [0, 0, 0, 0], { ghost: true }); sc.label(MR.pof(s.M), 'M (before the loop)', '--muted'); return; }
+    drawRRPR(sc, s.q);
+    if (Sx === 1 || Sx === 2) drawAxis(sc, s.S[0], '--b', 'ω = ẑ (joint 1)');
+    if (Sx === 3) { drawAxis(sc, MR.mv(MR.adj(s.run[1]), s.S[1]), '--d', 'joint 2 axis'); }
+    if (Sx === 5 || Sx === 6) s.Js.forEach((J, i) => { if (i !== 2) drawAxis(sc, J, RRPR_JC[i], 'J[' + i + ']'); });
+    if (Sx === 7) sc.label(MR.pof(s.T), 'toolPosition', '--ink');
+  },
+  math(Sx) {
+    const s = st(), q = s.q;
+    const head = `<p class="cg">th = {${f(q[0], 4)}, ${f(q[1], 4)}, ${f(q[2], 4)}, ${f(q[3], 4)}}  (rad, rad, m, rad)</p>`;
+    const w2 = s.S[1].slice(0, 3), K = MR.skew(w2);
+    const rows = [
+`${code(`std::array<Vec6,4> rrprScrewsSpace() {
+  return {Vec6{0,0,1, 0,0,0},  Vec6{0,-1,0, 1,0,0},
+          Vec6{0,0,0, 1,0,0},  Vec6{1,0,0, 0,1,0}};  }
+Mat4 rrprHome() { return makeT({{{1,0,0},{0,-1,0},{0,0,-1}}}, {1.5, 0.0, 0.8}); }`)}
+${ul(['Each Vec6 is (ω, v) of one joint at home: waist z through the origin; shoulder −y through (0, 0, 1); slide along x; roll x through (1, 0, 1).', '<b>Jac</b> = std::array&lt;Vec6, 4&gt;: it stores the four <b>columns</b>. Remember that at step 8.'])}`,
+`${code(`Mat3 skew(const Vec3& w) { return {{{0,-w[2],w[1]}, {w[2],0,-w[0]}, {-w[1],w[0],0}}}; }
+Vec3 unskew(const Mat3& W) { return {W[2][1], W[0][2], W[1][0]}; }`)}
+${E(`skew(ω₂) for ω₂ = ${vs(w2, 0)}:\n` + SL.mat(K, 0, '[ω₂]') + `\ncheck: [ω₂]·(1, 0, 0) = ${vs(MR.mv(K, [1, 0, 0]), 0)} = ω₂ × (1, 0, 0) = ${vs(MR.cross(w2, [1, 0, 0]), 0)}\nunskew([ω₂]) = ${vs(MR.unskew(K), 0)}`)}
+<p>[ω] is skew-symmetric: [ω]ᵀ = −[ω]. Test idea for your code: skew(w)·x == cross(w, x) for random vectors.</p>`,
+`${code(`Mat3 expRot(const Vec3& w, double th) {
+  const Mat3 K = skew(w);
+  return eye<3>() + std::sin(th) * K + (1.0 - std::cos(th)) * (K * K);  }`)}
+${(() => { const W = MR.skew([0, 0, 1]), R = MR.expRot([0, 0, 1], q[0]); return E(SL.mat(W, 0, 'K') + '\n' + SL.mat(MR.mul(W, W), 0, 'K²') + `\nsin θ₁ = ${f(Math.sin(q[0]), 4)},  1 − cos θ₁ = ${f(1 - Math.cos(q[0]), 4)}\n` + SL.mat(R, 4, 'R') + `\nRᵀR − I max error: ${f(maxdiff(MR.mul(MR.T(R), R), MR.eye(3)), 12)},  det R = ${f(MR.det(R), 6)}`); })()}
+<p>ω must be a <b>unit</b> vector here; θ carries the angle.</p>`,
+`${code(`Mat4 expTwist(const Vec6& S, double th) {
+  const Vec3 w = top(S), v = bottom(S);
+  if (norm(w) < 1e-12) return makeT(eye<3>(), th * v);          // prismatic
+  const Mat3 K = skew(w);
+  const Mat3 G = th*eye<3>() + (1-cos(th))*K + (th-sin(th))*(K*K);
+  return makeT(expRot(w, th), G * v);  }`)}
+${(() => { const th = q[1], G = MR.madd(MR.madd(MR.mscl(MR.eye(3), th), MR.mscl(K, 1 - Math.cos(th))), MR.mscl(MR.mul(K, K), th - Math.sin(th))); const Te = MR.expTwist(s.S[1], th);
+  return E(`S₂ = ${vs(s.S[1], 0)},  θ₂ = ${f(th, 4)}\n` + SL.mat(G, 4, 'G(θ₂)') + `\nG·v = ${vs(MR.mv(G, s.S[1].slice(3)), 4)}\n` + SL.mat(Te, 4, 'e^[S₂]θ₂')); })()}
+<p>Sanity check: the point (0, 0, 1) is on joint 2’s axis, so e^[S₂]θ₂ must leave it where it is: ${vs(MR.add(MR.mv(MR.Rof(MR.expTwist(s.S[1], q[1])), [0, 0, 1]), MR.pof(MR.expTwist(s.S[1], q[1]))), 4)} ✓.</p>`,
+`${code(`Mat4 fkSpace(const Joints& th) {
+  const auto S = rrprScrewsSpace();
+  Mat4 T = eye<4>();
+  for (int i = 0; i < 4; ++i) T = T * expTwist(S[i], th[i]);
+  return T * rrprHome();  }`)}
+${E(s.run.slice(1).map((R, i) => `after i = ${i}:  p(T·M) = ${vs(MR.pof(MR.mul(R, s.M)), 3)}`).join('\n') + '\n' + SL.mat(s.T, 4, 'fkSpace(th)'))}
+<p>Multiplying on the right left-to-right builds e^[S₁]θ₁ e^[S₂]θ₂ e^[S₃]θ₃ e^[S₄]θ₄, the same product as page 123. The ghosts are “first i joints moved, the rest at zero”.</p>`,
+`${code(`Mat6 adjoint(const Mat4& T) {
+  const Mat3 R = rotPart(T), pR = skew(posPart(T)) * R;
+  Mat6 A{};   // [R 0; [p]R R]
+  for i, j:  A[i][j] = R[i][j];  A[i+3][j+3] = R[i][j];  A[i+3][j] = pR[i][j];
+  return A;  }`)}
+${E(SL.mat(MR.adj(s.run[1]), 3, 'Ad(e^[S₁]θ₁)'))}
+<p>Twist rule: V_a = [Ad_T_ab] V_b. Top-right block zero: a pure translation (ω = 0) stays a pure translation in every frame. Bottom-left block [p]R: a spin about an axis away from the origin shows up as a velocity at the origin, p × (Rω). For e^[S₁]θ₁, p = 0 (joint 1 sits at the origin), so that block is zero here.</p>`,
+`${code(`Jac jacobianSpace(const Joints& th) {
+  const auto S = rrprScrewsSpace();
+  Jac J{};  Mat4 T = eye<4>();
+  for (int i = 0; i < 4; ++i) {
+    J[i] = adjoint(T) * S[i];          // 1st: column with joints 0..i-1
+    T = T * expTwist(S[i], th[i]);     // 2nd: then include joint i
+  }
+  return J;  }`)}
+${E(s.Js.map((J, i) => `J[${i}] = ${vs(J, 4)}`).join('\n'))}
+<p>Swap the two lines and column i would include joint i’s own motion: every column shifts by one joint and the test “J[0] = S₁” fails first.</p>`,
+`${code(`Mat4 fkBody(th):        T = M;  for i: T = T * expTwist(B[i], th[i]);
+Jac jacobianBody(th):  T = I;  for i = 3..0: { J[i] = adjoint(T) * B[i];  T = T * expTwist(-B[i], th[i]); }
+Vec3 toolPosition(th): return posPart(fkSpace(th));`)}
+${E(`fkBody − fkSpace, max |entry| = ${f(maxdiff(s.Tb, s.T), 12)}
+J_b columns:\n` + s.Jb.map((J, i) => `  J_b[${i}] = ${vs(J, 4)}`).join('\n') + `
+Ad(T) J_b[i] − J_s[i], max = ${f(Math.max(...s.Jb.map((J, i) => Math.max(...MR.sub(MR.mv(MR.adj(s.T), J), s.Js[i]).map(Math.abs)))), 12)}
+toolPosition = ${vs(MR.pof(s.T), 4)} m`)}
+<p>In jacobianBody the running T is e^[−B₄]θ₄ ⋯: you multiply by the <b>negative</b> screw, never call invT inside the loop.</p>`,
+`${ul([
+  '<b>jacobianBody — invert once.</b> Your version inverted the accumulated transform every pass. Build T with expTwist(−B[i], th[i]) (or compute the config forward and take adjoint(invT(config)) once per column). Inverting a product reverses the order, which is what broke it.',
+  '<b>handTwistSpace — J θ̇ with a column-stored Jac.</b> Jac is 4 columns of Vec6, i.e. in memory it is the 4×6 matrix Jᵀ. So <span class="m">J * thdot</span> does not compile or means the wrong thing; the twist is <span class="m">transpose(J) * thdot</span> = Σ J[i]·θ̇ᵢ.',
+  '<b>jointTorques — Jᵀ F.</b> With the same layout, <span class="m">J * F</span> (Mat&lt;4,6&gt; × Vec6) already is Jᵀ F. No transpose there.',
+  '<b>wrenchToBody — wrenches use Adᵀ.</b> Twists: V_s = Ad_Tsb V_b. Wrenches (power must match): F_b = Ad_Tsbᵀ F_s, i.e. <span class="m">transpose(adjoint(Tsb)) * Fs</span>.',
+  '<b>holdPayload — units and order.</b> Build the wrench (moment, force) with the force as Vec3, use one value of g = 9.81 everywhere, and return <span class="m">jac_spatial * wrench</span> (= Jᵀ F by the layout).'])}
+<p>Test numbers for this pose: J_s θ̇ for θ̇ = (1, 0, 0, 0) must equal J[0] = ${vs(s.Js[0], 3)}.</p>`];
+    return head + rows[Sx];
+  },
+  stats() { const s = st(); return `<span><b>toolPosition</b>${vs(MR.pof(s.T), 3)} m</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,121 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>A matrix as a machine</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const PRESETS = {
+  'symmetric [2 1; 1 2]': [2, 1, 1, 2],
+  'stretch [2 0; 0 0.5]': [2, 0, 0, .5],
+  'shear [1 1; 0 1]': [1, 1, 0, 1],
+  'rotation 90°': [0, -1, 1, 0],
+  '2R Jacobian at (0°, 90°)': null,
+  'singular [1 2; 0.5 1]': [1, 2, .5, 1],
+};
+PRESETS['2R Jacobian at (0°, 90°)'] = (() => { const J = MR.tipJac([1, .8], [0, Math.PI / 2]); return [J[0][0], J[0][1], J[1][0], J[1][1]]; })();
+const st = () => {
+  const v = SL.v, A = [[v.a / 100, v.b / 100], [v.c / 100, v.d / 100]], phi = v.phi * Math.PI / 180, x = [Math.cos(phi), Math.sin(phi)];
+  const tr = A[0][0] + A[1][1], det = MR.det(A), disc = tr * tr - 4 * det;
+  let eig = null;
+  if (disc >= -1e-12) { const r = Math.sqrt(Math.max(0, disc)); eig = [(tr + r) / 2, (tr - r) / 2].map(l => {
+    let w = Math.abs(A[0][1]) > 1e-9 || Math.abs(l - A[0][0]) > 1e-9 ? [A[0][1], l - A[0][0]] : [l - A[1][1], A[1][0]];
+    if (MR.norm(w) < 1e-9) w = Math.abs(A[1][0]) > 1e-9 ? [l - A[1][1], A[1][0]] : [1, 0];
+    if (MR.norm(w) < 1e-9) w = [0, 1];
+    return { l, v: MR.unit(w) }; }); }
+  const sv = MR.svd(A), sym = Math.abs(A[0][1] - A[1][0]) < 1e-9;
+  return { A, phi, x, Ax: MR.mv(A, x), tr, det, disc, eig, sv, sym };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const ang = (a, b) => { const c = MR.cross2(a, b), d = MR.dot(a, b); return Math.atan2(c, d) * 180 / Math.PI; };
+SL.app({
+  title: 'A matrix as a machine: eigenvectors and the SVD',
+  sub: 'Set the four numbers of A (or pick a preset). Every arrow x goes in, A x comes out. Turn the test arrow with φ. Page 127’s 3-D labs do the same in three dimensions.',
+  view: '2d',
+  legend: [['--a', 'test arrow x'], ['--b', 'A x'], ['--c', 'eigenvector lines'], ['--d', 'v (input axes)'], ['--e', 'σu (output axes)']],
+  controls: [
+    { id: 'a', label: 'a (row 1, col 1)', min: -250, max: 250, step: 5, value: 200, fmt: x => f(x / 100) },
+    { id: 'b', label: 'b (row 1, col 2)', min: -250, max: 250, step: 5, value: 100, fmt: x => f(x / 100) },
+    { id: 'c', label: 'c (row 2, col 1)', min: -250, max: 250, step: 5, value: 100, fmt: x => f(x / 100) },
+    { id: 'd', label: 'd (row 2, col 2)', min: -250, max: 250, step: 5, value: 200, fmt: x => f(x / 100) },
+    { id: 'phi', label: 'test arrow φ', min: -180, max: 180, value: 20, fmt: x => x + '°' },
+  ],
+  buttons: Object.keys(PRESETS).map(k => ({ label: k, onclick: () => { const p = PRESETS[k]; ['a', 'b', 'c', 'd'].forEach((id, i) => SL.setControl(id, Math.round(p[i] * 100))); SL.redraw(); } }))
+    .concat([{ label: 'Sweep φ', onclick: () => { let n = 0; const id = setInterval(() => { SL.setControl('phi', ((SL.v.phi + 3 + 180) % 360) - 180); SL.redraw(); if ((n += 3) >= 360) clearInterval(id); }, 30); } }]),
+  steps: [
+    ['A matrix moves every arrow', 'Columns of A are where the two unit axes go. Every other arrow goes to the same combination of those columns. The unit circle becomes an ellipse (or a line, if A is singular).'],
+    ['Most arrows turn. A few do not.', 'Sweep φ and watch A x: usually it points somewhere else. Where it stays on the same line as x, x is an eigenvector: A v = λ v. λ is how much it is stretched (negative: flipped).'],
+    ['Finding λ: det(A − λI) = 0', 'A v = λ v means (A − λI) v = 0 with v ≠ 0, so A − λI must squash something to zero: its determinant is 0. For 2×2 that is a quadratic in λ.'],
+    ['Finding v for each λ', 'Plug each λ back in and solve (A − λI) v = 0. That v belongs to that λ because you built it from that λ. If the quadratic has no real roots (a rotation) there is no real eigenvector.'],
+    ['Trace and determinant', 'λ₁ + λ₂ = trace (a + d) and λ₁λ₂ = det A. det A is the area factor: the unit square becomes a parallelogram of area |det A|.'],
+    ['Symmetric matrices are special', 'If A = Aᵀ the eigenvalues are real and the eigenvectors perpendicular: A = QΛQᵀ, and the ellipse axes are exactly the eigenvectors. JJᵀ and the mass matrix are always symmetric.'],
+    ['Not symmetric: the SVD instead', 'For a general A (like a Jacobian) the ellipse axes are not eigenvectors. The SVD gives them: perpendicular inputs vᵢ go to perpendicular outputs σᵢuᵢ. A vᵢ = σᵢuᵢ.'],
+    ['SVD = turn, stretch, turn', 'A = U Σ Vᵀ: Vᵀ turns the input so the vᵢ line up with the axes, Σ stretches by σ₁, σ₂, U turns the result into place. σᵢ² are the eigenvalues of AᵀA and of AAᵀ.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), A = s.A;
+    const R = Math.max(2, ...s.sv.sigma) * 1.15;
+    const P = Pl.panel(0, 0, .6, 1, [-R, R, -R, R]); P.frame('input x and output A x (same plane)');
+    /* image of the grid */
+    for (let k = -3; k <= 3; k++) { P.clip(() => { P.line(MR.mv(A, [k * .5, -3]), MR.mv(A, [k * .5, 3]), '--line', 1); P.line(MR.mv(A, [-3, k * .5]), MR.mv(A, [3, k * .5]), '--line', 1); }); }
+    P.axes(); P.circle([0, 0], 1, '--grey', 1.5, [4, 3]);
+    P.ellipse([0, 0], S === 0 ? [[1 + (A[0][0] - 1) * t, A[0][1] * t], [A[1][0] * t, 1 + (A[1][1] - 1) * t]] : A, '--b', 2, null, '--b');
+    if (S === 0) { P.arrow([0, 0], [A[0][0], A[1][0]], '--d', 2.5, 'A e₁ = column 1'); P.arrow([0, 0], [A[0][1], A[1][1]], '--e', 2.5, 'A e₂ = column 2', null, 8, 14); }
+    if (S >= 1 && S <= 5 && s.eig) s.eig.forEach((e, k) => { P.line(MR.scl(e.v, -R), MR.scl(e.v, R), '--c', 1.5, [7, 4]); P.text(MR.scl(e.v, Math.min(R * .9, Math.abs(e.l) + .3)), 'λ' + (k + 1) + ' = ' + f(e.l, 2), '--c', 6, -6, { size: 12 }); });
+    if (S === 4) { const c1 = [A[0][0], A[1][0]], c2 = [A[0][1], A[1][1]]; P.poly([[0, 0], c1, MR.add(c1, c2), c2], '--f', 2, null, '--f', true); P.poly([[0, 0], [1, 0], [1, 1], [0, 1]], '--grey', 1, [3, 3], null, true);
+      P.text(MR.scl(MR.add(c1, c2), .5), 'area |det A| = ' + f(Math.abs(s.det), 2), '--f', -40, 0, { size: 12 }); }
+    if (S >= 6) s.sv.v.forEach((v, k) => { P.arrow([0, 0], v, '--d', 2.5, 'v' + (k + 1)); P.arrow([0, 0], MR.scl(s.sv.u[k], s.sv.sigma[k]), '--e', 3, 'σ' + (k + 1) + 'u' + (k + 1) + ' = A v' + (k + 1), null, 8, 14); });
+    if (S >= 1 && S <= 3) { P.arrow([0, 0], s.x, '--a', 3, 'x'); P.arrow([0, 0], s.Ax, '--b', 3, 'A x'); }
+    /* right column */
+    if (S >= 1 && S <= 3) {
+      const pts = []; for (let i = 0; i <= 180; i++) { const a = -Math.PI + i / 180 * 2 * Math.PI, x = [Math.cos(a), Math.sin(a)]; pts.push([a, ang(x, MR.mv(A, x))]); }
+      const B = Pl.panel(.61, 0, .39, .5, [-Math.PI, Math.PI, -180, 180], false);
+      B.series([{ pts, cl: '--b', w: 2, label: 'turn from x to A x (deg)' }], { title: 'how much A turns each direction' });
+      B.dot([s.phi, ang(s.x, s.Ax)], 5, '--a'); B.line([-Math.PI, 0], [Math.PI, 0], '--c', 1.5);
+      B.label(B.x + 8, B.y + 34, 'zero crossings (green line) = eigenvectors; ±180° = flipped (λ < 0)', '--muted', { size: 11, bold: false });
+    }
+    if (S === 7) {
+      const { u, v, sigma } = s.sv, Vt = [v[0], v[1]], Sg = [[sigma[0], 0], [0, sigma[1]]], U = MR.fromCols(u), stages = [MR.eye(2), Vt, MR.mul(Sg, Vt), MR.mul(U, MR.mul(Sg, Vt))], names = ['x', 'Vᵀ x  (turn)', 'Σ Vᵀ x  (stretch)', 'U Σ Vᵀ x = A x  (turn)'];
+      stages.forEach((M, k) => { const r = Math.max(1.2, ...sigma) * 1.15, B = Pl.panel(.61 + (k % 2) * .195, (k > 1 ? .5 : 0), .19, .48, [-r, r, -r, r]); B.frame(names[k]); B.axes();
+        B.ellipse([0, 0], M, '--b', 2, null, '--b'); B.arrow([0, 0], MR.mv(M, v[0]), '--d', 2.5); B.arrow([0, 0], MR.mv(M, v[1]), '--e', 2.5); });
+    }
+  },
+  math(S) {
+    const s = st(), A = s.A, [[a, b], [c, d]] = A;
+    const head = `<p class="cg">A = [${f(a)} ${f(b)}; ${f(c)} ${f(d)}], x = (cos φ, sin φ) = ${vs(s.x, 3)}.</p>`;
+    const eigTxt = s.eig ? s.eig.map((e, k) => `λ${k + 1} = ${f(e.l, 4)},  v${k + 1} = ${vs(e.v, 4)},  A v${k + 1} = ${vs(MR.mv(A, e.v), 4)} = λ${k + 1} v${k + 1}`).join('\n') : 'no real eigenvalues (complex pair)';
+    const rows = [
+`${E(SL.mat(A, 2, 'A') + `\nA e₁ = (${f(a)}, ${f(c)})   (column 1)\nA e₂ = (${f(b)}, ${f(d)})   (column 2)\nA x = x₁·(column 1) + x₂·(column 2) = ${vs(s.Ax, 3)}`)}
+<p>That is all a matrix does: it is a machine that takes an arrow and returns a combination of its columns. The faint lines are the image of the square grid: straight lines stay straight, evenly spaced lines stay evenly spaced.</p>`,
+`${E(`x = ${vs(s.x, 3)},  A x = ${vs(s.Ax, 3)}\nturn from x to A x: ${f(ang(s.x, s.Ax), 1)}°,  stretch |A x| = ${f(MR.norm(s.Ax), 3)}`)}
+<p>Definition: <b>A v = λ v</b>, v ≠ 0. The machine only scales v; it does not turn it. Each eigenvector is really a whole line of arrows (any multiple of v works).</p>
+<p>${s.eig ? `This A has two real eigen-directions (green lines); sweep φ and the turn reads 0° (or ±180° if λ &lt; 0) exactly there.` : 'This A turns every arrow (no zero crossing): no real eigenvector.'}</p>`,
+`${E(`A − λI = [${f(a)}−λ  ${f(b)};  ${f(c)}  ${f(d)}−λ]
+det = (a−λ)(d−λ) − bc = λ² − (a+d) λ + (ad − bc) = 0
+    = λ² − ${f(s.tr, 3)} λ + ${f(s.det, 3)} = 0
+discriminant = tr² − 4 det = ${f(s.disc, 4)}
+λ = (tr ± √disc) / 2 = ${s.eig ? s.eig.map(e => f(e.l, 4)).join(', ') : 'complex: ' + f(s.tr / 2, 3) + ' ± ' + f(Math.sqrt(-s.disc) / 2, 3) + 'i'}`)}
+<p>The characteristic equation gives <b>only</b> the eigenvalues. The vectors come next.</p>`,
+`${E(eigTxt)}
+<p>Recipe: for λ, take a row of A − λI, say (a − λ, b), and pick v perpendicular to it: v = (b, λ − a), then normalise. Check A v = λ v.</p>
+${s.eig ? '' : '<p>A rotation (or any matrix with tr² &lt; 4 det) turns every arrow: complex λ means “no direction survives unturned”. That happens for J itself on page 127 (eig J = −0.4 ± 0.8i) — one reason the Jacobian needs the SVD instead.</p>'}`,
+`${E(`trace  = a + d = ${f(s.tr, 4)}${s.eig ? `   λ₁ + λ₂ = ${f(s.eig[0].l + s.eig[1].l, 4)}` : ''}
+det A  = ad − bc = ${f(s.det, 4)}${s.eig ? `   λ₁ · λ₂ = ${f(s.eig[0].l * s.eig[1].l, 4)}` : ''}`)}
+${ul(['det A = signed area of the parallelogram spanned by the columns (teal). Negative: the plane is flipped.', 'det A = 0: the columns are parallel, the circle collapses to a line, some arrow goes to zero (λ = 0). For a Jacobian: a singularity.'])}`,
+`${s.sym ? '' : '<p class="cb">This A is not symmetric. Pick “symmetric [2 1; 1 2]” to see the property.</p>'}
+${E(`A − Aᵀ = [0 ${f(b - c)}; ${f(c - b)} 0]\n` + eigTxt + (s.eig ? `\nv₁ · v₂ = ${f(MR.dot(s.eig[0].v, s.eig[1].v), 4)}` : ''))}
+${ul(['Symmetric ⇒ real λ and perpendicular eigenvectors (spectral theorem): A = Q Λ Qᵀ with Q = [v₁ v₂].', 'Then the image ellipse’s axes lie exactly on the eigenvectors, half-lengths |λ|.', 'Positive definite (both λ &gt; 0): xᵀAx &gt; 0 for every x. JJᵀ, AᵀA and M(θ) are symmetric and (away from singularities) positive definite.'])}`,
+`${E(`A Aᵀ eigenvalues: ${MR.eigSym(MR.mul(A, MR.T(A))).vals.map(x => f(x, 4)).join(', ')}
+σ = √(those) = ${s.sv.sigma.map(x => f(x, 4)).join(', ')}
+v₁ = ${vs(s.sv.v[0], 4)} → A v₁ = ${vs(MR.mv(A, s.sv.v[0]), 4)} = σ₁ u₁
+v₂ = ${vs(s.sv.v[1], 4)} → A v₂ = ${vs(MR.mv(A, s.sv.v[1]), 4)} = σ₂ u₂
+v₁·v₂ = ${f(MR.dot(s.sv.v[0], s.sv.v[1]), 4)},  u₁·u₂ = ${f(MR.dot(s.sv.u[0], s.sv.u[1]), 4)}`)}
+<p>The ellipse’s long half-axis is σ₁u₁, the short one σ₂u₂, and the inputs that land there are v₁, v₂. Unlike eigenvectors, input and output directions differ. For a Jacobian: vᵢ are joint-speed mixes, σᵢuᵢ the hand velocities they make (page 128).</p>`,
+`${E(SL.mat(MR.fromCols(s.sv.u), 3, 'U') + '\n' + SL.mat([[s.sv.sigma[0], 0], [0, s.sv.sigma[1]]], 3, 'Σ') + '\n' + SL.mat([s.sv.v[0], s.sv.v[1]], 3, 'Vᵀ') + '\n' + SL.mat(MR.mul(MR.fromCols(s.sv.u), MR.mul([[s.sv.sigma[0], 0], [0, s.sv.sigma[1]]], [s.sv.v[0], s.sv.v[1]])), 3, 'U Σ Vᵀ'))}
+${ul(['Vᵀ: rotate (maybe reflect) so v₁, v₂ land on the x and y axes.', 'Σ: stretch x by σ₁ and y by σ₂ (the circle becomes an axis-aligned ellipse).', 'U: rotate that ellipse into its final place.', 'A⁺ = V Σ⁺ Uᵀ runs it backwards, dividing by each σ (page 130).'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>tr</b>${f(s.tr, 3)}</span><span><b>det</b>${f(s.det, 3)}</span><span><b>λ</b>${s.eig ? s.eig.map(e => f(e.l, 3)).join(', ') : 'complex'}</span><span><b>σ</b>${s.sv.sigma.map(x => f(x, 3)).join(', ')}</span>`; },
+});
+</script>
+</body></html>

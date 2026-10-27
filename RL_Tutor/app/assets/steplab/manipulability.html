@@ -1,0 +1,113 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Manipulability</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const st = () => {
+  const v = SL.v, L = [v.L1 / 100, v.L2 / 100], q = [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180], mix = v.mix * Math.PI / 180;
+  const J = MR.tipJac(L, q), JJt = MR.mul(J, MR.T(J)), E = MR.eigSym(JJt), sv = MR.svd(J), P = MR.points(L, q);
+  const sig = E.vals.map(x => Math.sqrt(Math.max(0, x)));
+  const mu1 = sig[1] > 1e-9 ? sig[0] / sig[1] : Infinity, mu3 = sig[0] * sig[1];
+  const w = [Math.cos(mix), Math.sin(mix)];
+  return { L, q, J, JJt, E, sv, sig, mu1, mu2: mu1 * mu1, mu3, P, tip: P[2], w, Jw: MR.mv(J, w), mix };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const KV = .8;   // on-screen metres per m/s
+SL.app({
+  title: 'From J to the manipulability ellipse',
+  sub: 'A 2R arm (default L = 1, 0.8 m: page 128’s numbers). Every joint-speed mix of size 1 gives a hand velocity; together they draw the ellipse. Its shape says how close the arm is to singular.',
+  view: '2d',
+  legend: [['--a', 'joint-speed mix θ̇ (|θ̇| = 1)'], ['--b', 'hand velocity J θ̇'], ['--d', 'v₁ / σ₁u₁ (best)'], ['--e', 'v₂ / σ₂u₂ (worst)'], ['--c', 'force ellipse']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 0, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -180, max: 180, value: 90, fmt: x => x + '°' },
+    { id: 'mix', label: 'mix angle a', min: -180, max: 180, value: 60, fmt: x => x + '°' },
+    { id: 'L1', label: 'L₁', min: 30, max: 150, value: 100, fmt: x => f(x / 100) + ' m' },
+    { id: 'L2', label: 'L₂', min: 30, max: 150, value: 80, fmt: x => f(x / 100) + ' m' },
+  ],
+  buttons: [{ label: 'Sweep the mix', onclick: () => { let n = 0; const id = setInterval(() => { SL.setControl('mix', ((SL.v.mix + 3 + 180) % 360) - 180); SL.redraw(); if ((n += 3) >= 360) clearInterval(id); }, 30); } },
+            { label: 'Straighten (singular)', onclick: () => { SL.setControl('q2', 2); SL.redraw(); } },
+            { label: 'Isotropic pose', onclick: () => { SL.setControl('L2', Math.round(SL.v.L1 / Math.SQRT2)); SL.setControl('q2', 135); SL.redraw(); } }],
+  steps: [
+    ['A circle of joint speeds', 'Take every joint-speed mix θ̇ = (cos a, sin a): total joint speed 1 rad/s. Push each one through J. The hand velocities trace an ellipse at the hand.'],
+    ['JJᵀ describes that ellipse', 'The ellipse is {v : vᵀ(JJᵀ)⁻¹v = 1}. JJᵀ is 2×2 and symmetric, so its eigenvectors are perpendicular: they are the ellipse axes u₁, u₂, and the half-lengths are σᵢ = √λᵢ.'],
+    ['Best and worst mixes', 'Which joint-speed mix lands on the long axis? v₁, the top eigenvector of JᵀJ: J v₁ = σ₁u₁. The worst mix v₂ lands on the short axis. Sweep the mix and watch the hand speed rise and fall.'],
+    ['Three numbers for “how round”', 'μ₁ = σ₁/σ₂ (1 = perfectly round, ∞ = singular), μ₂ = μ₁², μ₃ = σ₁σ₂ = √det(JJᵀ) (proportional to the ellipse area). Different questions, same ellipse.'],
+    ['Over the whole elbow range', 'For a 2R arm, μ₃ = L₁L₂|sin θ₂|: biggest at θ₂ = ±90°, zero straight or folded. The base angle θ₁ never matters.'],
+    ['The force ellipse', 'Hand forces from unit joint torques: same axes, half-lengths 1/σᵢ. Where the arm is fast it is weak, where it is slow it is strong.'],
+    ['At a singularity', 'Straighten the arm: σ₂ → 0, the ellipse flattens to a line, μ₃ → 0 and μ₁ → ∞. The hand cannot move along the arm, and the force ellipse becomes infinitely long that way.'],
+    ['Round is possible: the isotropic pose', 'μ₁ = 1 needs L₁ = √2·L₂ and θ₂ = ±135° for a 2R arm. There the hand moves (and pushes) equally well in every direction.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), R = s.L[0] + s.L[1] + .3;
+    const A = Pl.panel(0, 0, .58, 1, [-R, R, -R, R]); A.frame('the arm and its hand-velocity ellipse (×' + KV + ' m per m/s)'); A.grid(.5);
+    A.arm(s.P);
+    const u = s.E.vecs, sig = s.sig, Ell = MR.fromCols(u.map((w, k) => MR.scl(w, sig[k] * KV)));
+    if (S === 0) { const n = Math.round(48 * t); for (let i = 0; i < n; i++) { const a = i / 48 * 2 * Math.PI, w = [Math.cos(a), Math.sin(a)]; A.dot(MR.add(s.tip, MR.scl(MR.mv(s.J, w), KV)), 2.5, '--b'); } }
+    if (S >= 1) A.ellipse(s.tip, Ell, '--b', 2.5, null, '--b');
+    if (S >= 1 && S !== 5) u.forEach((w, k) => { A.arrow(s.tip, MR.scl(w, sig[k] * KV), k ? '--e' : '--d', 3, S === 2 ? '' : (k ? 'σ₂u₂' : 'σ₁u₁') + ' (' + f(sig[k], 3) + ')'); });
+    if (S === 5 || S === 6) { if (sig[1] > 1e-3) A.ellipse(s.tip, MR.fromCols(u.map((w, k) => MR.scl(w, Math.min(3, 1 / sig[k]) * .5))), '--c', 2.5, [6, 3]); else A.line(MR.add(s.tip, MR.scl(u[1], -3)), MR.add(s.tip, MR.scl(u[1], 3)), '--c', 2.5, [6, 3]);
+      A.text([-R + .1, -R + .2], 'dashed green: force ellipse (×0.5 m per N/(N·m))', '--c', 0, 0, { size: 12 }); }
+    if (S === 0 || S === 2) A.arrow(s.tip, MR.scl(s.Jw, KV), '--a', 3.5, '|J θ̇| = ' + f(MR.norm(s.Jw), 3));
+    /* right: joint-speed circle or plots */
+    if (S <= 2) {
+      const B = Pl.panel(.59, 0, .41, .55, [-1.5, 1.5, -1.5, 1.5]); B.frame('joint speeds (θ̇₁, θ̇₂)'); B.axes(); B.circle([0, 0], 1, '--a', 2);
+      B.arrow([0, 0], s.w, '--a', 3, 'θ̇');
+      if (S === 2) s.sv.v.forEach((v, k) => { B.arrow([0, 0], v, k ? '--e' : '--d', 2.5, 'v' + (k + 1)); B.line(MR.scl(v, -1.4), MR.scl(v, 1.4), k ? '--e' : '--d', 1, [4, 3]); });
+      if (S === 2) { const pts = []; for (let i = 0; i <= 120; i++) { const a = -Math.PI + i / 120 * 2 * Math.PI; pts.push([a, MR.norm(MR.mv(s.J, [Math.cos(a), Math.sin(a)]))]); }
+        const C = Pl.panel(.59, .57, .41, .43, [-Math.PI, Math.PI, 0, sig[0] * 1.15], false); C.series([{ pts, cl: '--b', w: 2.5, label: 'hand speed |J θ̇| vs mix angle' }], { title: 'max σ₁ at v₁, min σ₂ at v₂', yl: 'm/s' }); C.dot([s.mix, MR.norm(s.Jw)], 5, '--a'); }
+    }
+    if (S === 3 || S === 4 || S >= 6) {
+      const qs = [...Array(181)].map((_, i) => -Math.PI + i / 180 * 2 * Math.PI), m3 = qs.map(a => [a, s.L[0] * s.L[1] * Math.abs(Math.sin(a))]);
+      const inv1 = qs.map(a => { const e = MR.eigSym((J => MR.mul(J, MR.T(J)))(MR.tipJac(s.L, [0, a]))).vals; return [a, Math.sqrt(Math.max(0, e[1]) / e[0])]; });
+      const mx = Math.max(1, s.L[0] * s.L[1]) * 1.1;
+      const C = Pl.panel(.59, 0, .41, .55, [-Math.PI, Math.PI, 0, mx], false);
+      C.series([{ pts: m3, cl: '--b', w: 2.5, label: 'μ₃ = σ₁σ₂' }, { pts: inv1, cl: '--c', w: 2, label: '1/μ₁ = σ₂/σ₁' }], { title: 'measures vs elbow angle θ₂' });
+      C.line([s.q[1], 0], [s.q[1], mx], '--a', 1.5, [4, 3]);
+    }
+    const Rp = Pl.panel(.59, S <= 2 && S !== 2 ? .57 : (S === 2 ? 2 : .57), .41, .43, [0, 1, 0, 1], false);
+    if (S !== 2) { Rp.frame(); const Ln = (y, txt, cl) => Rp.label(Rp.x + 10, Rp.y + Rp.h * y, txt, cl, { mono: true, size: 12 });
+      Ln(.14, `J = [${f(s.J[0][0], 3)} ${f(s.J[0][1], 3)}; ${f(s.J[1][0], 3)} ${f(s.J[1][1], 3)}]`, '--ink');
+      Ln(.30, `JJᵀ = [${f(s.JJt[0][0], 3)} ${f(s.JJt[0][1], 3)}; ${f(s.JJt[1][0], 3)} ${f(s.JJt[1][1], 3)}]`, '--b');
+      Ln(.46, `λ(JJᵀ) = ${s.E.vals.map(x => f(x, 3)).join(', ')}   σ = ${sig.map(x => f(x, 3)).join(', ')}`, '--d');
+      Ln(.62, `μ₁ = ${f(s.mu1, 3)}   μ₂ = ${f(s.mu2, 3)}   μ₃ = ${f(s.mu3, 3)}`, '--c');
+      Ln(.78, `det J = L₁L₂ sin θ₂ = ${f(MR.det(s.J), 3)}`, Math.abs(MR.det(s.J)) < .02 ? '--bad' : '--muted'); }
+  },
+  math(S) {
+    const s = st(), J = s.J, M = s.JJt, sig = s.sig;
+    const head = `<p class="cg">θ = (${s.q.map(SL.deg).join(', ')}), L = (${f(s.L[0])}, ${f(s.L[1])}) m.</p>`;
+    const rows = [
+`${E(SL.mat(J, 3, 'J'))}
+<p>Joint-speed mix θ̇ = (cos a, sin a) (slider “mix angle a”) = ${vs(s.w, 3)} → hand velocity J θ̇ = ${vs(s.Jw, 3)} m/s, speed ${f(MR.norm(s.Jw), 3)} m/s.</p>
+<p>Every mix on the unit circle gives one dot at the hand; together they make the ellipse. The circle is “the same effort in every joint direction”; the ellipse is “what the hand gets for it”.</p>`,
+`${E(SL.mat(M, 3, 'JJᵀ') + `\nλ₁ = ${f(s.E.vals[0], 4)}, u₁ = ${vs(s.E.vecs[0], 3)}  →  σ₁ = √λ₁ = ${f(sig[0], 4)}\nλ₂ = ${f(s.E.vals[1], 4)}, u₂ = ${vs(s.E.vecs[1], 3)}  →  σ₂ = √λ₂ = ${f(sig[1], 4)}`)}
+${ul(['Why the square root: JJᵀ multiplies by J twice (once forward, once transposed), so its eigenvalues are lengths squared.', 'Why JJᵀ and not eig(J): J is not symmetric (and not even square for most robots). JJᵀ is always symmetric with real, non-negative eigenvalues and perpendicular eigenvectors.', 'Entry (1,1) = total squared x-leverage of all joints, (2,2) = y-leverage, off-diagonal = how x and y are coupled.'])}`,
+`${E(`v₁ = ${vs(s.sv.v[0], 4)}  →  J v₁ = ${vs(MR.mv(J, s.sv.v[0]), 4)} = σ₁u₁,  |·| = ${f(sig[0], 4)}
+v₂ = ${vs(s.sv.v[1], 4)}  →  J v₂ = ${vs(MR.mv(J, s.sv.v[1]), 4)} = σ₂u₂,  |·| = ${f(sig[1], 4)}
+your mix (${f(s.mix * 180 / Math.PI, 0)}°): |J θ̇| = ${f(MR.norm(s.Jw), 4)}`)}
+<p>v₁, v₂ are the eigenvectors of JᵀJ (2×2 here, joint side). At the default pose: v₁ ≈ (0.899, 0.438) gives 1.397 m/s, v₂ ≈ (0.438, −0.899) gives 0.573 m/s — the page-128 numbers.</p>`,
+`${E(`μ₁ = σ₁/σ₂ = √(λmax/λmin) = ${f(s.mu1, 4)}      (isotropy; 1 = round)
+μ₂ = μ₁² = λmax/λmin    = ${f(s.mu2, 4)}      (condition number of JJᵀ)
+μ₃ = σ₁σ₂ = √det(JJᵀ)   = ${f(s.mu3, 4)}      (∝ ellipse area)`)}
+${ul(['μ₁, μ₂ ask “how unequal are the directions?” — scale-free.', 'μ₃ asks “how much hand velocity overall?” — grows with arm size.', 'For a 6-D spatial Jacobian, compute them separately for the angular rows and the linear rows: mixing rad/s with m/s makes the numbers meaningless.'])}`,
+`${E(`det J = L₁L₂ sin θ₂ = ${f(MR.det(J), 4)}
+μ₃ = |det J| = ${f(s.mu3, 4)}    (2×2: √det(JJᵀ) = |det J|)
+best μ₃ = L₁L₂ = ${f(s.L[0] * s.L[1], 4)} at θ₂ = ±90°`)}
+<p>Blue: μ₃ over the elbow range; green: 1/μ₁ (1 = round, 0 = singular). They peak at different elbow angles when L₁ ≠ L₂: “biggest” and “roundest” are different goals.</p>`,
+`${E(`force ellipse half-axes: 1/σ₁ = ${f(1 / sig[0], 4)},  1/σ₂ = ${sig[1] > 1e-9 ? f(1 / sig[1], 4) : '∞'}   (N per N·m)
+same directions u₁, u₂`)}
+<p>Unit joint torques → hand forces F = J⁻ᵀτ (page 126). Along u₂ the hand is slow but strong; along u₁ fast but weak. The two ellipses are reciprocal: one can never be round when the other is not.</p>`,
+`${E(`σ₂ = ${f(sig[1], 5)},  μ₁ = ${f(s.mu1, 2)},  μ₃ = ${f(s.mu3, 5)}`)}
+<p>Press “Straighten (singular)”. The velocity ellipse flattens onto the line across the arm; the force ellipse shoots off along the arm. A controller near here asks for huge joint speeds (J⁻¹ blows up) — damping (page 129) or the null space (page 130) keep it away.</p>`,
+`${E(`JJᵀ = [L₁² + L₂² + 2L₁L₂c₂ ...]  isotropic when JJᵀ = k I
+2R condition: L₁ = √2 L₂ and θ₂ = ±135°
+now: L₁/L₂ = ${f(s.L[0] / s.L[1], 3)},  θ₂ = ${SL.deg(s.q[1])},  μ₁ = ${f(s.mu1, 4)}`)}
+<p>Press “Isotropic pose”: L₂ becomes L₁/√2 and θ₂ = 135°, and μ₁ = 1: the ellipse is a circle. Designers pick link ratios and working poses with this in mind.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>σ</b>${s.sig.map(x => f(x, 3)).join(', ')}</span><span><b>μ₁</b>${f(s.mu1, 2)}</span><span><b>μ₃</b>${f(s.mu3, 3)}</span>`; },
+});
+</script>
+</body></html>

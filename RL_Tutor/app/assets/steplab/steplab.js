@@ -116,7 +116,7 @@ class Panel {
   /* a planar serial arm: links + joint rings */
   arm(P, o = {}) {
     const jc = o.jc || ['--d', '--e', '--c', '--f'];
-    for (let i = 0; i < P.length - 1; i++) this.line(P[i], P[i + 1], o.ghost ? '--grey' : '--link', o.w || 6, o.ghost ? [5, 4] : null);
+    for (let i = 0; i < P.length - 1; i++) this.line(P[i], P[i + 1], o.ghost ? '--grey' : (o.col || '--link'), o.w || 6, o.ghost ? [5, 4] : null);
     if (o.ghost) return;
     P.slice(0, -1).forEach((p, i) => this.dot(p, 7, jc[i % jc.length], true));
     this.dot(P[P.length - 1], 4.5, '--ink');
