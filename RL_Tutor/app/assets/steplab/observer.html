@@ -1,0 +1,102 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Observers</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* The joint J θ̈ + b θ̇ = τ − τ_load, J = 0.04, b = 0.4. Only a quantised, noisy encoder angle is measured at 1 kHz. */
+const J = .04, b = .4, Ts = .001, A = [[0, 1], [0, -b / J]], B = [0, 1 / J], Cm = [1, 0];
+const rng = s => () => (s = (s * 9301 + 49297) % 233280) / 233280 - .5;
+const st = () => { const v = SL.v; return { wo: v.wo, cpr: Math.pow(2, v.bits), noise: v.noise / 1e4, load: v.load / 10 }; };
+const obsGain = wo => { const L = CTL.acker(MR.T(A), Cm, [[-wo, 0], [-wo * 1.1, 0]]); return L; };
+const dobGain = wo => { const Aa = [[0, 1, 0], [0, -b / J, -1 / J], [0, 0, 0]], Ca = [1, 0, 0]; return { Aa, L: CTL.acker(MR.T(Aa), Ca, [[-wo, 0], [-wo * 1.1, 0], [-wo * 1.2, 0]]) }; };
+/* run 2 s: τ = 0.3 sin(3t) + 0.15 sin(11t); load step at 1 s */
+const run = s => { const r = rng(5), L = obsGain(s.wo), D = dobGain(s.wo), q = 2 * Math.PI / s.cpr, out = []; let x = [0, 0], xh = [0, 0], xd = [0, 0, 0], yPrev = 0;
+  for (let i = 0; i <= 2000; i++) { const t = i * Ts, u = .3 * Math.sin(3 * t) + .15 * Math.sin(11 * t), d = t >= 1 ? s.load : 0;
+    const y = Math.round((x[0] + s.noise * 6 * r()) / q) * q, fd = i ? (y - yPrev) / Ts : 0; yPrev = y;
+    out.push({ t, th: x[0], w: x[1], y, fd, wh: xh[1], thh: xh[0], wd: xd[1], dh: xd[2], d });
+    const e = y - xh[0], dxh = MR.add(MR.add(MR.mv(A, xh), MR.scl(B, u)), MR.scl(L, e)); xh = MR.add(xh, MR.scl(dxh, Ts));
+    const ed = y - xd[0], dxd = MR.add(MR.add(MR.mv(D.Aa, xd), [0, u / J, 0]), MR.scl(D.L, ed)); xd = MR.add(xd, MR.scl(dxd, Ts));
+    const sub = 10, h = Ts / sub; for (let k = 0; k < sub; k++) { const a = (u - d - b * x[1]) / J; x = [x[0] + h * x[1], x[1] + h * a]; } }
+  return out; };
+const rms = a => Math.sqrt(a.reduce((s, x) => s + x * x, 0) / a.length);
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Observers: estimate what you did not measure',
+  sub: 'The joint (J = 0.04, b = 0.4) driven by a known torque, an encoder that reads angle only (quantised, noisy, 1 kHz), and a load torque that appears at t = 1 s. Recover speed and load.',
+  view: '2d',
+  legend: [['--ink', 'true'], ['--grey', 'finite difference'], ['--a', 'observer estimate'], ['--e', 'load estimate'], ['--d', 'observer poles']],
+  controls: [
+    { id: 'wo', label: 'observer bandwidth ω_o', min: 5, max: 400, value: 60, fmt: x => x + ' rad/s' },
+    { id: 'bits', label: 'encoder resolution', min: 8, max: 18, value: 12, fmt: x => Math.pow(2, x) + ' counts/rev' },
+    { id: 'noise', label: 'electrical noise', min: 0, max: 50, value: 5, fmt: x => f(x / 10, 1) + ' mrad' },
+    { id: 'load', label: 'load torque at 1 s', min: 0, max: 30, value: 10, fmt: x => f(x / 10, 1) + ' N·m' },
+  ],
+  steps: [
+    ['The problem', 'The controller needs angle, speed and the load torque. The encoder gives only a quantised angle every millisecond. Speed and load have to be computed.'],
+    ['The naive answer: differentiate', 'ω ≈ (θ_k − θ_{k−1})/T. One count of quantisation divided by 1 ms is a huge speed jump: the estimate is mostly noise. Filtering it adds lag.'],
+    ['A simulation that is corrected', 'Run the model alongside the robot: x̂̇ = A x̂ + B u, using the torque you command. Then correct it with the measurement: + L(y − ŷ). The model supplies smoothness, the sensor supplies truth.'],
+    ['Choose how fast it corrects', 'The estimate error obeys ė = (A − LC) e: its poles are yours to place. Fast observer: tracks quickly, passes more noise. Slow: smooth, but lags and trusts a wrong model longer. Note the bias after 1 s: the model does not know about the load (step 6 fixes that).'],
+    ['Duality: an observer is a controller in a mirror', 'Finding L for (A, C) is pole placement for (Aᵀ, Cᵀ). Same Ackermann formula, transposed. Observability (C, CA independent) plays the role of controllability.'],
+    ['The separation principle', 'Feed the estimate to a state-feedback controller: the closed loop’s poles are the controller poles plus the observer poles, unchanged. Design each separately.'],
+    ['Estimate the thing nobody measured', 'Add the load torque as a third state that is constant (ḋ = 0). The same observer recovers it from the angle alone: a disturbance observer, a torque sensor made of software.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, r = run(s), T = 2;
+    const wm = Math.max(...r.map(p => Math.abs(p.w))) * 1.6, Ap = Pl.panel(0, 0, .62, .44, [0, T, -wm, wm], false);
+    const list = [{ pts: r.map(p => [p.t, p.w]), cl: '--ink', w: 2, label: 'true speed' }];
+    if (S === 1 || S === 3) list.unshift({ pts: r.map(p => [p.t, Math.max(-wm, Math.min(wm, p.fd))]), cl: '--grey', w: 1, label: 'finite difference' });
+    if (S >= 2) list.push({ pts: r.map(p => [p.t, p.wh]), cl: '--a', w: 2, dash: S === 6 ? [5, 3] : null, label: 'observer ω̂' });
+    if (S === 6) list.push({ pts: r.map(p => [p.t, p.wd]), cl: '--e', w: 2, label: 'disturbance observer ω̂' });
+    Ap.series(list, { title: 'speed (rad/s)' });
+    if (S === 0) { const zoom = r.filter(p => p.t < .2), B2 = Pl.panel(0, .45, .62, .22, [0, .2, Math.min(...zoom.map(p => p.y)) - .002, Math.max(...zoom.map(p => p.y)) + .002], false);
+      B2.series([{ pts: zoom.map(p => [p.t, p.th]), cl: '--ink', w: 1.5, label: 'true θ' }, { pts: zoom.map(p => [p.t, p.y]), cl: '--b', w: 1.5, label: 'encoder reading (steps)' }], { title: 'first 0.2 s, zoomed' }); }
+    else if (S === 6) { const dm = Math.max(.5, s.load) * 1.5, B2 = Pl.panel(0, .45, .62, .22, [0, T, -dm * .5, dm], false); B2.series([{ pts: r.map(p => [p.t, p.d]), cl: '--ink', w: 2, label: 'true load' }, { pts: r.map(p => [p.t, p.dh]), cl: '--e', w: 2, label: 'estimated load τ̂_load' }], { title: 'load torque (N·m)' }); }
+    else { const em = Math.max(.05, ...r.map(p => Math.abs(p.wh - p.w))) * 1.2, B2 = Pl.panel(0, .45, .62, .22, [0, T, -em, em], false); B2.series([{ pts: r.map(p => [p.t, p.wh - p.w]), cl: '--a', w: 1.5, label: 'observer error ω̂ − ω' }], {}); }
+    /* right: poles */
+    const L = obsGain(s.wo), pw = Math.max(80, s.wo * 1.6), P = Pl.panel(.63, 0, .37, .67, [-pw, pw * .15, -pw * .5, pw * .5]); P.frame(S === 5 ? 'controller × and observer ○ poles' : 'observer poles: eig(A − LC)'); P.axes();
+    CTL.eig(MR.msub(A, MR.outer(L, Cm))).forEach(p => P.circle(p, pw * .025, '--d', 3));
+    if (S === 5) { const Kc = CTL.acker(A, B, [[-20, 15], [-20, -15]]); CTL.eig(MR.msub(A, MR.outer(B, Kc))).forEach(p => { const d = pw * .025; P.line([p[0] - d, p[1] - d], [p[0] + d, p[1] + d], '--a', 3); P.line([p[0] - d, p[1] + d], [p[0] + d, p[1] - d], '--a', 3); }); }
+    const R = Pl.panel(0, .69, 1, .31, [0, 1, 0, 1], false); R.frame(); const Ln = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    const ss = r.filter(p => p.t > .3 && p.t < 1);
+    Ln(.02, .22, `encoder step = 2π/${s.cpr} = ${f(2 * Math.PI / s.cpr * 1000, 3)} mrad  → one count in 1 ms = ${f(2 * Math.PI / s.cpr / Ts, 2)} rad/s of fake speed`, '--ink');
+    Ln(.02, .46, `speed error RMS (0.3–1 s): finite difference ${f(rms(ss.map(p => p.fd - p.w)), 3)}   observer ${f(rms(ss.map(p => p.wh - p.w)), 4)} rad/s`, '--a');
+    Ln(.02, .7, `L = [${f(L[0], 1)}, ${f(L[1], 1)}]  →  observer poles ${CTL.eig(MR.msub(A, MR.outer(L, Cm))).map(p => f(p[0], 1)).join(', ')} 1/s`, '--d');
+    if (S === 6) Ln(.02, .92, `load estimate after 1 s: ${f(r[r.length - 1].dh, 3)} N·m (true ${f(s.load, 2)})`, '--e');
+  },
+  math(S) {
+    const s = st(), L = obsGain(s.wo);
+    const head = `<p class="cg">x = (θ, ω), A = [0 1; 0 −10], B = [0; 25], C = [1 0]. ω_o = ${s.wo} rad/s.</p>`;
+    const rows = [
+`${ul(['Measured: y = θ + quantisation + noise, every T = 1 ms.', 'Known: the torque you commanded, u.', 'Wanted: ω for the D term, and the load torque for feedforward or contact detection.'])}
+<p>Zoomed trace: the encoder reading is a staircase; between steps it says nothing about how fast the joint moves.</p>`,
+`${E(`ω̂_k = (y_k − y_{k−1}) / T
+one count: Δθ = 2π/${s.cpr} = ${f(2 * Math.PI / s.cpr, 5)} rad  ⇒  ${f(2 * Math.PI / s.cpr / Ts, 3)} rad/s jump`)}
+<p>Differentiation amplifies high-frequency noise in proportion to frequency. A low-pass filter cures the noise and costs phase (delay) — exactly what the D term did not want.</p>`,
+`${E(`model:      x̂̇ = A x̂ + B u
+corrected:  x̂̇ = A x̂ + B u + L (y − C x̂)
+L = [${f(L[0], 2)}, ${f(L[1], 2)}]`)}
+<p>Between samples the model predicts the motion from the torque you know you applied; the innovation y − Cx̂ pulls it back whenever it drifts. A Luenberger observer is “a simulation that is corrected”.</p>`,
+`${E(`error e = x − x̂:   ė = (A − L C) e
+A − LC = [−L₁ 1; −L₂ −10]
+char. poly s² + (10 + L₁) s + (10 L₁ + L₂) = (s + ω_o)(s + 1.1 ω_o)`)}
+<p>Rule of thumb: observer 3–10× faster than the controller, slower than the noise. Raise ω_o: the error dies faster but the high-frequency jitter grows. Lower the resolution and watch the trade move.</p>`,
+`${E(`controller: K = acker(A, B, poles)        → eig(A − B K)
+observer:   L = acker(Aᵀ, Cᵀ, poles)ᵀ     → eig(Aᵀ − Cᵀ Lᵀ) = eig(A − L C)
+observability matrix [C; CA] = [1 0; 0 1]: full rank ✓`)}
+<p>If you could only measure ω (C = [0 1]), [C; CA] = [0 1; 0 −10] is singular: the angle is unobservable — no algorithm can recover an offset that never affects the output.</p>`,
+`${E(`u = −K x̂,   closed loop in (x, e):
+[ẋ; ė] = [A − BK   BK; 0   A − LC] [x; e]
+block triangular ⇒ eigenvalues = eig(A − BK) ∪ eig(A − LC)`)}
+<p>Controller and observer can be designed independently. The catch: guaranteed robustness margins of state feedback (e.g. LQR) are lost once the observer is in the loop — check margins of the combined system.</p>`,
+`${E(`augmented state (θ, ω, τ_load), τ̇_load = 0
+A_a = [0 1 0; 0 −b/J −1/J; 0 0 0],  C_a = [1 0 0]
+observer poles at −ω_o, −1.1 ω_o, −1.2 ω_o`)}
+<p>The load is the part of the motion the model cannot explain with the commanded torque. The observer attributes it to τ̂_load. That is how robots detect collisions and estimate payloads without a torque sensor.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(), L = obsGain(s.wo); return `<span><b>L</b>[${f(L[0], 0)}, ${f(L[1], 0)}]</span><span><b>ω_o</b>${s.wo}</span>`; },
+});
+</script>
+</body></html>

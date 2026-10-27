@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Making it stable</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Joint position loop: plant 1/(J s² + b s), J = 0.04, b = 0.4. Controller K_p + K_d s + K_i/s. Steps 4–5: inverted pendulum. */
+const J = .04, b = .4, g = 9.81;
+const st = () => { const v = SL.v; return { Kp: v.kp / 10, Kd: v.kd / 100, Ki: v.ki, l: v.l / 100, fs: v.fs }; };
+const charP = (Kp, Kd, Ki) => Ki ? [J, b + Kd, Kp, Ki] : [J, b + Kd, Kp];
+const fmt = r => f(r[0], 1) + (r[1] ? (r[1] > 0 ? '+' : '−') + f(Math.abs(r[1]), 1) + 'j' : '');
+/* pendulum on a motor: m l² θ̈ = m g l sin θ + τ, τ = −K_p θ − K_d θ̇ sampled at f_s */
+const pend = (Kp, Kd, l, fs, T = 3) => { const m = 1, I = m * l * l, dt = 1e-4, Ts = 1 / fs; let th = .1, w = 0, tau = 0, next = 0; const out = [];
+  for (let i = 0; i <= T / dt; i++) { const t = i * dt; if (t >= next) { tau = -Kp * th - Kd * w; next += Ts; } if (i % 50 === 0) out.push([t, th]); w += dt * (m * g * l * Math.sin(th) + tau) / I; th += dt * w; if (Math.abs(th) > 3) { out.push([t, Math.sign(th) * 3]); break; } } return out; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Making it stable: feedback relocates poles',
+  sub: 'Steps 0–3: the joint’s position loop, plant 1/(0.04 s² + 0.4 s). Steps 4–5: a pendulum balanced upright (mass 1 kg on length l). The plant never changes; the controller decides where the closed-loop poles sit.',
+  view: '2d',
+  legend: [['--d', 'closed-loop poles'], ['--b', 'root locus as K_p sweeps'], ['--f', 'controller zero'], ['--a', 'response'], ['--bad', 'unstable']],
+  controls: [
+    { id: 'kp', label: 'K_p', min: 1, max: 1500, value: 150, fmt: x => f(x / 10, 1) },
+    { id: 'kd', label: 'K_d', min: 0, max: 400, value: 0, fmt: x => f(x / 100, 2) },
+    { id: 'ki', label: 'K_i', min: 0, max: 400, value: 0, fmt: x => x },
+    { id: 'l', label: 'pendulum length (4–5)', min: 5, max: 200, value: 100, fmt: x => f(x / 100, 2) + ' m' },
+    { id: 'fs', label: 'loop rate (step 5)', min: 10, max: 2000, step: 10, value: 500, fmt: x => x + ' Hz' },
+  ],
+  buttons: [{ label: 'P only', onclick: () => { SL.setControl('kd', 0); SL.setControl('ki', 0); SL.redraw(); } }, { label: 'add D', onclick: () => { SL.setControl('kd', 120); SL.redraw(); } }, { label: 'add I', onclick: () => { SL.setControl('ki', 150); SL.redraw(); } },
+            { label: 'pendulum: K_p 20, K_d 3', onclick: () => { SL.setControl('kp', 200); SL.setControl('kd', 300); SL.redraw(); } }],
+  steps: [
+    ['One equation: den(s) + K·num(s) = 0', 'Close a loop around L = num/den: the closed-loop poles are the roots of den + K·num. At K = 0 they are the open-loop poles; turn K up and they move. Controller design is choosing where they end up.'],
+    ['P alone: faster, but less damped', 'With τ = K_p e the two poles (0 and −10) meet at −5 and then split vertically. More K_p: faster, but ζ = b/(2√(J K_p)) falls. P can trade speed for ringing, nothing else.'],
+    ['D: a zero that pulls the locus left', 'K_p + K_d s has a zero at −K_p/K_d. Branches end at zeros, so the zero drags the poles left: damping without slowing down. Press “add D”.'],
+    ['I: removes steady error, costs stability', 'K_i/s puts a pole at the origin (and a zero). The extra pole pushes the locus toward the right: zero steady error to constant loads, but more overshoot and eventually instability.'],
+    ['The inverted pendulum: why P can never do it', 'Upright, gravity pushes away: m l² θ̈ − m g l θ = τ has a pole at +√(g/l). P control gives at best ±j: it oscillates about upright forever. Stable needs K_p > m g l AND K_d > 0.'],
+    ['Be faster than the instability', 'The pendulum diverges at rate √(g/l): short pendulums run away faster. A sampled controller must react well inside that time. Shorten the pendulum or slow the loop and the balance fails.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    if (S <= 3) {
+      const Kd = S === 1 ? 0 : s.Kd, Ki = S <= 2 ? 0 : s.Ki, roots = CTL.roots(charP(s.Kp, Kd, Ki));
+      const P = Pl.panel(0, 0, .5, .66, [-40, 10, -30, 30]); P.frame('s-plane: root locus as K_p goes 0 → 150'); P.poly([[0, -30], [10, -30], [10, 30], [0, 30]], null, 0, null, '--bad', true); P.axes();
+      P.clip(() => { for (let k = 0; k <= 240; k++) { const K = Math.pow(10, -1 + k / 240 * 3.2); CTL.roots(charP(K, Kd, Ki ? Ki : 0)).forEach(r => P.dot(r, 1.2, '--b')); } });
+      [[0, 0], [-10, 0]].concat(Ki ? [[0, 0]] : []).forEach(p => P.circle(p, .8, '--grey', 2));
+      if (Kd > 0) P.circle([-s.Kp / Kd, 0], 1, '--f', 3);
+      roots.forEach(r => { const c = r[0] > 0 ? '--bad' : '--d'; P.line([r[0] - 1, r[1] - 1], [r[0] + 1, r[1] + 1], c, 3); P.line([r[0] - 1, r[1] + 1], [r[0] + 1, r[1] - 1], c, 3); });
+      const T = 1.5, res = CTL.ode((tt, x) => { const e = 1 - x[0]; return [x[1], (s.Kp * e - Kd * x[1] + Ki * x[2] - b * x[1] - (tt > .8 ? .5 : 0)) / J, e]; }, [0, 0, 0], T, 5e-4, 4);
+      const ym = Math.min(3, Math.max(1.4, ...res.map(p => Math.abs(p[1][0])))) * 1.05, A = Pl.panel(.51, 0, .49, .66, [0, T, -.1, ym], false);
+      A.series([{ pts: res.map(p => [p[0], Math.max(-ym, Math.min(ym, p[1][0]))]), cl: roots.some(r => r[0] > 0) ? '--bad' : '--a', w: 2.5, label: 'θ (target 1 rad, load 0.5 N·m from 0.8 s)' }], { title: S === 1 ? 'P' : S === 2 ? 'PD' : 'PID' }); A.line([0, 1], [T, 1], '--grey', 1, [4, 3]); A.line([.8, -.1], [.8, ym], '--b', 1, [3, 3]);
+      const R = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); R.frame(); const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+      const cp = charP(s.Kp, Kd, Ki); L(.02, .25, `characteristic polynomial: ${cp.map((c, i) => f(c, 3) + (cp.length - 1 - i ? ' s' + (cp.length - 1 - i > 1 ? '^' + (cp.length - 1 - i) : '') : '')).join(' + ')}`, '--ink');
+      L(.02, .5, `closed-loop poles: ${roots.map(fmt).join(', ')}`, roots.some(r => r[0] > 0) ? '--bad' : '--d');
+      L(.02, .75, `K_p = ${f(s.Kp, 1)}${Kd ? `, K_d = ${f(Kd, 2)} (zero at ${f(-s.Kp / Kd, 1)})` : ''}${Ki ? `, K_i = ${Ki}` : ''};  error after load: ${f(1 - res[res.length - 1][1][0], 3)} rad`, '--muted');
+    } else {
+      const mgl = g * s.l, wpole = Math.sqrt(g / s.l), Kp = s.Kp, Kd = s.Kd, r = pend(Kp, Kd, s.l, S === 5 ? s.fs : 20000);
+      const pm = Math.min(3.1, Math.max(.15, ...r.map(q => Math.abs(q[1]))) * 1.2), A = Pl.panel(0, 0, .62, .66, [0, 3, -pm, pm], false); A.series([{ pts: r, cl: Math.abs(r[r.length - 1][1]) > 1 ? '--bad' : '--a', w: 2.5, label: 'θ from upright (starts at 0.1 rad)' }], { title: Math.abs(r[r.length - 1][1]) >= 3 ? 'falls' : 'balancing', yl: 'rad' });
+      const roots = CTL.roots([s.l * s.l, Kd, Kp - mgl]); const pr = Math.max(6, wpole * 1.5, ...roots.map(q => Math.hypot(q[0], q[1]) * 1.3)), P = Pl.panel(.63, 0, .37, .66, [-pr * 1.4, pr * .6, -pr, pr]); P.frame('linearised closed-loop poles'); P.poly([[0, -pr], [pr * .6, -pr], [pr * .6, pr], [0, pr]], null, 0, null, '--bad', true); P.axes();
+      P.circle([wpole, 0], pr * .03, '--grey', 2); P.text([wpole, 0], 'open loop +√(g/l)', '--grey', -30, -10, { size: 11 }); roots.forEach(rr => { const c = rr[0] > 1e-6 ? '--bad' : '--d', d = pr * .04; P.line([rr[0] - d, rr[1] - d], [rr[0] + d, rr[1] + d], c, 3); P.line([rr[0] - d, rr[1] + d], [rr[0] + d, rr[1] - d], c, 3); });
+      const R = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); R.frame(); const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+      L(.02, .22, `m l² = ${f(s.l * s.l, 3)} kg·m², m g l = ${f(mgl, 2)} N·m, instability rate √(g/l) = ${f(wpole, 2)} 1/s (×e every ${f(1000 / wpole, 0)} ms)`, '--ink');
+      L(.02, .46, `K_p ${Kp > mgl ? '>' : '≤'} m g l: ${Kp > mgl ? 'pushes back harder than gravity ✓' : 'gravity wins ✗'}     K_d ${Kd > 0 ? '> 0 ✓ removes energy' : '= 0 ✗ nothing removes energy'}`, Kp > mgl && Kd > 0 ? '--c' : '--bad');
+      L(.02, .7, `poles: ${roots.map(fmt).join(', ')}`, '--d'); if (S === 5) L(.02, .92, `loop period ${f(1000 / s.fs, 1)} ms vs instability time ${f(1000 / wpole, 0)} ms: ratio ${f(s.fs / wpole, 0)}×`, s.fs / wpole > 20 ? '--c' : '--bad');
+    }
+  },
+  math(S) {
+    const s = st();
+    const head = S <= 3 ? `<p class="cg">Plant 1/(0.04 s² + 0.4 s): open-loop poles 0 and −10. K_p = ${f(s.Kp, 1)}, K_d = ${f(s.Kd, 2)}, K_i = ${s.Ki}.</p>` : `<p class="cg">Pendulum m = 1 kg, l = ${f(s.l, 2)} m. K_p = ${f(s.Kp, 1)}, K_d = ${f(s.Kd, 2)}.</p>`;
+    const rows = [
+`${E(`unity loop around L(s) = K·num(s)/den(s):  1 + L = 0  ⇔  den(s) + K·num(s) = 0
+K → 0: roots → roots of den   (every branch starts at an open-loop pole)
+K → ∞: roots → roots of num   (every branch ends at a zero, or at ∞)`)}
+<p>Feedback leaves the plant model unchanged and moves the closed-loop poles. Each controller term adds poles or zeros to L, i.e. changes where the branches go.</p>`,
+`${E(`τ = K_p (θ_d − θ):   0.04 s² + 0.4 s + K_p = 0
+s = −5 ± √(25 − 25 K_p)     (real for K_p ≤ 1, then −5 ± j…)
+ω_n = √(K_p/J) = ${f(Math.sqrt(s.Kp / J), 2)},  ζ = b/(2√(J K_p)) = ${f(b / (2 * Math.sqrt(J * s.Kp)), 3)}`)}
+<p>The real part is stuck at −5: settling time ≈ 0.8 s whatever K_p. Gain only makes it ring faster. And a constant load leaves an error τ_load/K_p.</p>`,
+`${E(`τ = K_p e − K_d θ̇:  0.04 s² + (0.4 + K_d) s + K_p = 0
+zero of K_p + K_d s at s = −K_p/K_d = ${s.Kd ? f(-s.Kp / s.Kd, 2) : '—'}
+ζ = (b + K_d)/(2√(J K_p)) = ${f((b + s.Kd) / (2 * Math.sqrt(J * s.Kp)), 3)}`)}
+<p>A zero is a destination: it reaches out and pulls the locus toward itself. In the left half-plane that means damping. Physically: K_d is a virtual damper (page 4).</p>`,
+`${E(`τ = K_p e − K_d θ̇ + K_i ∫e:  0.04 s³ + (0.4 + K_d) s² + K_p s + K_i = 0
+Routh (page 12): stable ⇔ (0.4 + K_d) K_p > 0.04 K_i
+now: ${f((b + s.Kd) * s.Kp, 2)} vs ${f(J * s.Ki, 2)} → ${(b + s.Kd) * s.Kp > J * s.Ki ? 'stable' : 'UNSTABLE'}`)}
+<p>The integrator wins the steady state (page 7) and taxes the transient: too much K_i for the damping available and the loop goes unstable.</p>`,
+`${E(`linearised upright: m l² θ̈ − m g l θ = τ   ⇒ open-loop s = ±√(g/l) = ±${f(Math.sqrt(g / s.l), 3)}
+P only: m l² s² + (K_p − m g l) = 0 ⇒ s = ±j√((K_p − mgl)/(m l²)) at best: marginal
+PD:     m l² s² + K_d s + (K_p − m g l) = 0 ⇒ stable ⇔ K_p > m g l = ${f(g * s.l, 2)} and K_d > 0`)}
+<p>Two physically obvious conditions: push back harder than gravity pulls, and remove energy. For a balancing robot D is not a tuning nicety; without it the robot falls or rocks forever.</p>`,
+`${E(`instability time constant 1/√(g/l) = ${f(1000 / Math.sqrt(g / s.l), 0)} ms
+loop period 1/f_s = ${f(1000 / s.fs, 1)} ms   →   ${f(s.fs / Math.sqrt(g / s.l), 0)} samples per e-fold`)}
+${ul(['A broomstick (1 m) is easy by hand; a pencil (0.1 m) is not: √(g/l) is 3× larger.', 'The controller must see and react to the fall many times per e-folding time: rule of thumb ≥ 10–20 samples.', 'Delay is worse than slow sampling for the same reason (page 1).'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>K_p</b>${f(s.Kp, 1)}</span><span><b>K_d</b>${f(s.Kd, 2)}</span><span><b>K_i</b>${s.Ki}</span>`; },
+});
+</script>
+</body></html>

@@ -56,7 +56,7 @@ SL.app({
       poles.forEach(p => { P.line([p[0] - 1, p[1] - 1], [p[0] + 1, p[1] + 1], '--d', 3); P.line([p[0] - 1, p[1] + 1], [p[0] + 1, p[1] - 1], '--d', 3); }); zeros.forEach(z => P.circle(z, 1.2, '--f', 3));
     } else if (S === 4) {
       const num = s.z ? [1 / s.z, 1] : [1], Ks = [...Array(201)].map((_, i) => Math.pow(10, -2 + i / 40)), P = Pl.panel(0, 0, .62, .64, [-45, 25, -25, 25]); P.frame('closed-loop poles of K·G as K grows'); P.poly([[0, -25], [25, -25], [25, 25], [0, 25]], null, 0, null, '--bad', true); P.axes();
-      Ks.forEach(k => CTL.roots(CTL.padd(DEN, CTL.pscl(num, k * WN * WN))).forEach(r => P.dot(r, 1.4, '--b')));
+      P.clip(() => Ks.forEach(k => CTL.roots(CTL.padd(DEN, CTL.pscl(num, k * WN * WN))).forEach(r => P.dot(r, 1.4, '--b'))));
       poles.forEach(p => { P.line([p[0] - 1, p[1] - 1], [p[0] + 1, p[1] + 1], '--d', 3); P.line([p[0] - 1, p[1] + 1], [p[0] + 1, p[1] - 1], '--d', 3); }); zeros.forEach(z => P.circle(z, 1.4, '--f', 3));
       const now = CTL.roots(CTL.padd(DEN, CTL.pscl(num, s.K * WN * WN))); now.forEach(r => P.dot(r, 6, r[0] > 0 ? '--bad' : '--a'));
       const Gc = CTL.tf(CTL.pscl(num, s.K * WN * WN), CTL.padd(DEN, CTL.pscl(num, s.K * WN * WN))), T = 1.5, r = CTL.step(Gc, T, 1e-3), ym = Math.min(4, Math.max(1.3, ...r.map(p => Math.abs(p[1])))) * 1.05;

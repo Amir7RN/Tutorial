@@ -1,0 +1,114 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>State feedback and pole placement</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Mass–spring–damper m ẍ + b ẋ + k x = u, m = 5 kg, b = 0.6 N·s/m, k = 20 N/m (the page's defaults). */
+let PLANE = null;
+const m = 5, b = .6, k0 = 20;
+const st = () => { const v = SL.v, wn = v.wn / 10, z = v.z / 100, fmax = v.fmax, kerr = v.kerr / 100;
+  const k1 = m * wn * wn - k0, k2 = 2 * z * wn * m - b, N = k0 + k1; return { wn, z, fmax, kerr, k1, k2, N, kp: v.kp }; };
+const A = [[0, 1], [-k0 / m, -b / m]], B = [0, 1 / m];
+/* simulate the MSD under u = −k1 x − k2 v + N r, saturated at ±fmax, with true spring k_true */
+const run = (k1, k2, N, fmax, ktrue = k0, T = 3) => CTL.ode((t, x) => { const u = Math.max(-fmax, Math.min(fmax, -k1 * x[0] - k2 * x[1] + N * .1)); return [x[1], (u - b * x[1] - ktrue * x[0]) / m, u]; }, [0, 0, 0], T, 1e-3, 5)
+  .map(([t, x], i, arr) => [t, x[0], i ? (x[2] - arr[i - 1][1][2]) / (t - arr[i - 1][0]) : 0]);
+/* 4-state motor–spring–load for step 5 (page values): J_m = 0.02, J_L = 0.25, k_s = 400 */
+const four = (bw, zz) => { const Jm = .02, JL = .25, ks = 400, A4 = [[0, 1, 0, 0], [-ks / Jm, 0, ks / Jm, 0], [0, 0, 0, 1], [ks / JL, 0, -ks / JL, 0]], B4 = [0, 1 / Jm, 0, 0];
+  const wd = bw * Math.sqrt(1 - zz * zz), poles = [[-zz * bw, wd], [-zz * bw, -wd], [-1.5 * zz * bw, wd * .6], [-1.5 * zz * bw, -wd * .6]];
+  const K = CTL.acker(A4, B4, poles), Ct = MR.fromCols([B4, MR.mv(A4, B4), MR.mv(A4, MR.mv(A4, B4)), MR.mv(A4, MR.mv(A4, MR.mv(A4, B4)))]);
+  return { A4, B4, K, poles, olp: CTL.eig(A4), det: MR.det(Ct) }; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'State feedback: choose the response, solve for the gains',
+  sub: 'A 5 kg mass on a 20 N/m spring with 0.6 N·s/m damping, commanded to move 0.1 m. Drag the desired pole (or use ω_n and ζ); the gains follow in closed form.',
+  view: '2d',
+  legend: [['--grey', 'open loop / P only'], ['--a', 'state feedback'], ['--d', 'desired poles'], ['--b', 'force'], ['--bad', 'force limit / model error']],
+  controls: [
+    { id: 'wn', label: 'desired ω_n', min: 5, max: 400, value: 120, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'z', label: 'desired ζ', min: 10, max: 200, value: 90, fmt: x => f(x / 100, 2) },
+    { id: 'fmax', label: 'force limit', min: 5, max: 600, value: 600, fmt: x => x + ' N' },
+    { id: 'kp', label: 'P gain (step 0)', min: 0, max: 2000, value: 600, fmt: x => x + ' N/m' },
+    { id: 'kerr', label: 'spring model error (step 6)', min: -50, max: 50, value: 20, fmt: x => (x > 0 ? '+' : '') + x + ' %' },
+  ],
+  drag: () => [{ panel: () => PLANE, pos: () => { const s = st(); return [-s.z * s.wn, s.z < 1 ? s.wn * Math.sqrt(1 - s.z * s.z) : 0]; }, set: q => { const wn = Math.hypot(q[0], q[1]); SL.setControl('wn', Math.max(5, Math.min(400, Math.round(wn * 10)))); SL.setControl('z', Math.max(10, Math.min(100, Math.round(-q[0] / Math.max(wn, 1e-6) * 100)))); } }],
+  steps: [
+    ['Why position alone is not enough', 'P control u = K_p(r − x) only adds stiffness. The damping is still the tiny b = 0.6: ζ = b/(2√(m(k + K_p))) falls as K_p grows. Faster, but it rings for seconds.'],
+    ['Write the state', 'x = (position, velocity). ẋ = A x + B u with A = [0 1; −k/m −b/m], B = [0; 1/m]. Two numbers describe everything the mass will do next.'],
+    ['The control law literally computes this', 'u = −k₁ x − k₂ v + N r: two multiplications and an addition every tick, using measured position and velocity. k₁ is a virtual spring, k₂ a virtual damper.'],
+    ['Pole placement by hand', 'A − BK has characteristic polynomial s² + ((b + k₂)/m) s + (k + k₁)/m. Match it to s² + 2ζω_n s + ω_n²: k₁ = mω_n² − k, k₂ = 2ζω_n m − b. Two equations, two unknowns.'],
+    ['Drag the poles — then check the force', 'Any pole location is reachable on paper. The motor is not: faster poles need more force. Lower the force limit and watch saturation bend the response away from the design.'],
+    ['Four states, four poles: motor, spring, load', 'With a spring between motor and load the plant has four states and four poles. Controllable (det of [B AB A²B A³B] ≠ 0) means every pole can be placed; Ackermann’s formula gives the four gains.'],
+    ['The honest cost: you need the model', 'k₁ = mω_n² − k subtracts the spring you think you have. If the real spring differs, the poles land somewhere else. Model error becomes pole error.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const desired = CTL.roots([1, 2 * s.z * s.wn, s.wn * s.wn]);
+    if (S !== 5) {
+      const T = 3, ol = CTL.ode((tt, x) => [x[1], (k0 * .1 * (S === 0 ? 0 : 1) + (S === 0 ? s.kp * (.1 - x[0]) : 0) - b * x[1] - k0 * x[0]) / m], [0, 0], T, 1e-3, 5);
+      const sf = run(s.k1, s.k2, s.N, s.fmax, S === 6 ? k0 * (1 + s.kerr) : k0), sfn = S === 4 ? run(s.k1, s.k2, s.N, 1e9) : null;
+      const ym = Math.max(.15, ...ol.map(p => Math.abs(p[1][0])), ...sf.map(p => Math.abs(p[1]))) * 1.1, Ap = Pl.panel(0, 0, .62, .66, [0, T, -.02, ym], false);
+      const list = [{ pts: ol.map(p => [p[0], p[1][0]]), cl: '--grey', w: 1.5, label: S === 0 ? 'P only, K_p = ' + s.kp : 'open loop (u = k·r)' }];
+      if (S >= 2) list.push({ pts: sf.map(p => [p[0], p[1]]).slice(0, Math.max(2, Math.round(sf.length * (S === 3 ? t : 1)))), cl: '--a', w: 2.5, label: 'state feedback' });
+      if (sfn) list.push({ pts: sfn.map(p => [p[0], p[1]]), cl: '--d', w: 1.2, dash: [5, 3], label: 'unlimited force' });
+      if (S === 6) list.push({ pts: run(s.k1, s.k2, s.N, s.fmax).map(p => [p[0], p[1]]), cl: '--d', w: 1.2, dash: [5, 3], label: 'with the right model' });
+      Ap.series(list, { title: 'position, target 0.1 m', yl: 'm' }); Ap.line([0, .1], [T, .1], '--grey', 1, [4, 3]);
+      const P = Pl.panel(.63, 0, .37, .4, [-45, 5, -30, 30]); PLANE = P; P.frame('s-plane (drag the pole)'); P.axes();
+      CTL.eig(A).forEach(r => P.circle(r, .9, '--grey', 2));
+      const shown = S === 6 ? CTL.roots([1, (b + s.k2) / m, (k0 * (1 + s.kerr) + s.k1) / m]) : desired;
+      if (S >= 3) shown.forEach(r => { const c = S === 6 ? '--bad' : '--d'; P.line([r[0] - 1.2, r[1] - 1.2], [r[0] + 1.2, r[1] + 1.2], c, 3); P.line([r[0] - 1.2, r[1] + 1.2], [r[0] + 1.2, r[1] - 1.2], c, 3); });
+      if (S === 6) desired.forEach(r => P.circle(r, 1.2, '--d', 2));
+      if (S === 0) CTL.roots([m, b, k0 + s.kp]).forEach(r => { P.line([r[0] - 1.2, r[1] - 1.2], [r[0] + 1.2, r[1] + 1.2], '--grey', 3); P.line([r[0] - 1.2, r[1] + 1.2], [r[0] + 1.2, r[1] - 1.2], '--grey', 3); });
+      const um = Math.max(10, ...sf.map(p => Math.abs(p[2]))) * 1.15, F = Pl.panel(.63, .42, .37, .24, [0, T, -um, um], false);
+      F.series([{ pts: sf.map(p => [p[0], p[2]]), cl: '--b', w: 2, label: 'force u (N)' }], {}); F.clip(() => { F.line([0, s.fmax], [T, s.fmax], '--bad', 1, [4, 3]); F.line([0, -s.fmax], [T, -s.fmax], '--bad', 1, [4, 3]); });
+    } else {
+      const bw = s.wn * 3, fr = four(bw, Math.min(.95, s.z)), T = 1, res = CTL.ode((tt, x) => { const u = -MR.dot(fr.K, x) + fr.K[0] * .1 + fr.K[2] * .1; return MR.add(MR.mv(fr.A4, x), MR.scl(fr.B4, u)); }, [0, 0, 0, 0], T, 1e-4, 10);
+      const Ap = Pl.panel(0, 0, .62, .66, [0, T, -.02, .16], false); Ap.series([{ pts: res.map(p => [p[0], p[1][0]]), cl: '--grey', w: 1.5, label: 'motor angle' }, { pts: res.map(p => [p[0], p[1][2]]), cl: '--a', w: 2.5, label: 'load angle (target 0.1 rad)' }], { title: 'motor → spring → load, 4 states' });
+      const R4 = Math.max(60, ...fr.olp.map(r => Math.abs(r[1])), ...fr.poles.map(r => Math.hypot(r[0], r[1]))) * 1.1, P = Pl.panel(.63, 0, .37, .66, [-R4 * 1.3, R4 * .3, -R4, R4]); P.frame('open-loop ○ and placed × poles'); P.axes();
+      fr.olp.forEach(r => P.circle(r, R4 * .03, '--grey', 2)); fr.poles.forEach(r => { const d = R4 * .04; P.line([r[0] - d, r[1] - d], [r[0] + d, r[1] + d], '--d', 3); P.line([r[0] - d, r[1] + d], [r[0] + d, r[1] - d], '--d', 3); });
+    }
+    const R = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); R.frame(); const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    if (S === 5) { const fr = four(s.wn * 3, Math.min(.95, s.z)); L(.02, .25, `K = [${fr.K.map(x => f(x, 2)).join(', ')}]  (motor angle, motor speed, load angle, load speed)`, '--a'); L(.02, .5, `det [B AB A²B A³B] = ${fr.det.toExponential(2)} ≠ 0  → controllable: all four poles placeable`, '--c'); L(.02, .75, `open-loop poles: ${fr.olp.map(r => f(r[0], 1) + (r[1] ? '±' + f(Math.abs(r[1]), 1) + 'j' : '')).filter((x, i, a) => a.indexOf(x) === i).join(', ')}  (two at 0, one spring pair)`, '--grey'); }
+    else { L(.02, .2, `P only: ζ = b/(2√(m(k + K_p))) = ${f(b / (2 * Math.sqrt(m * (k0 + s.kp))), 3)}   (with K_p = ${s.kp} N/m)`, S === 0 ? '--grey' : '--muted');
+      L(.02, .44, `desired ω_n = ${f(s.wn, 1)}, ζ = ${f(s.z, 2)}  →  k₁ = mω_n² − k = ${f(s.k1, 1)} N/m,  k₂ = 2ζω_n m − b = ${f(s.k2, 2)} N·s/m,  N = k + k₁ = ${f(s.N, 1)}`, '--a');
+      const sf = run(s.k1, s.k2, s.N, s.fmax); L(.02, .68, `peak force ${f(Math.max(...run(s.k1, s.k2, s.N, 1e9).map(p => Math.abs(p[2]))), 1)} N (limit ${s.fmax} N)`, '--b');
+      if (S === 6) L(.02, .92, `real k = ${f(k0 * (1 + s.kerr), 1)} N/m: actual ω_n = √((k_true + k₁)/m) = ${f(Math.sqrt((k0 * (1 + s.kerr) + s.k1) / m), 2)} vs designed ${f(s.wn, 2)}`, '--bad'); }
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">m = 5 kg, b = 0.6 N·s/m, k = 20 N/m. Desired ω_n = ${f(s.wn, 2)} rad/s, ζ = ${f(s.z, 2)}.</p>`;
+    const rows = [
+`${E(`u = K_p (r − x):   m ẍ + b ẋ + (k + K_p) x = K_p r
+ω_n = √((k + K_p)/m) = ${f(Math.sqrt((k0 + s.kp) / m), 2)},   ζ = b/(2√(m(k + K_p))) = ${f(b / (2 * Math.sqrt(m * (k0 + s.kp))), 4)}`)}
+<p>One knob, one number changed (stiffness). Damping needs the velocity, which a position-only controller does not use. That is the whole idea of state feedback.</p>`,
+`${E(`x₁ = x, x₂ = ẋ
+ẋ = [0 1; −k/m −b/m] x + [0; 1/m] u = [0 1; −4 −0.12] x + [0; 0.2] u
+open-loop poles: ${CTL.eig(A).map(r => f(r[0], 3) + (r[1] ? ' ± ' + f(Math.abs(r[1]), 3) + 'j' : '')).filter((x, i, a) => a.indexOf(x) === i).join(', ')}`)}`,
+`${E(`u = −K x + N r = −k₁ x − k₂ ẋ + N r
+k₁ = ${f(s.k1, 2)},  k₂ = ${f(s.k2, 3)},  N = ${f(s.N, 2)}
+e.g. at x = 0.05 m, ẋ = 0.2 m/s, r = 0.1: u = ${f(-s.k1 * .05 - s.k2 * .2 + s.N * .1, 2)} N`)}
+<p>N scales the reference so the steady state lands on r: at rest, (k + k₁) x = N r ⇒ N = k + k₁.</p>`,
+`${E(`A − BK = [0 1; −(k + k₁)/m  −(b + k₂)/m]
+char. poly: s² + ((b + k₂)/m) s + (k + k₁)/m  =!  s² + 2ζω_n s + ω_n²
+⇒ k₁ = m ω_n² − k = 5·${f(s.wn, 1)}² − 20 = ${f(s.k1, 2)}
+⇒ k₂ = 2ζω_n m − b = 2·${f(s.z, 2)}·${f(s.wn, 1)}·5 − 0.6 = ${f(s.k2, 3)}`)}
+<p>For n = 12 the same matching is Ackermann’s formula: K = [0 … 0 1] 𝒞⁻¹ φ(A).</p>`,
+`${E(`peak force ≈ m·(initial acceleration) ≈ k₁·0.1 + … = ${f(Math.max(...run(s.k1, s.k2, s.N, 1e9).map(p => Math.abs(p[2]))), 1)} N
+force limit = ${s.fmax} N`)}
+<p>Doubling ω_n quadruples k₁ and the force for the same step. When the motor saturates, the closed loop is no longer the linear system you designed: slower, possibly overshooting. Check force limits before trusting a pole plot.</p>`,
+`${(() => { const fr = four(s.wn * 3, Math.min(.95, s.z)); return E(`states: θ_m, ω_m, θ_L, ω_L     (J_m = 0.02, J_L = 0.25, k_s = 400)
+controllability matrix 𝒞 = [B AB A²B A³B],  det 𝒞 = ${fr.det.toExponential(3)}
+placed poles: ${fr.poles.map(r => f(r[0], 1) + (r[1] > 0 ? '+' : '−') + f(Math.abs(r[1]), 1) + 'j').join(', ')}
+K (Ackermann) = [${fr.K.map(x => f(x, 3)).join(', ')}]`); })()}
+<p>Theorem: if 𝒞 has full rank, every pole set is achievable. The honest version: achievable on paper; the gains (and force, and sensor noise through them) decide whether it is achievable on hardware.</p>`,
+`${E(`k_true = ${f(k0 * (1 + s.kerr), 2)} N/m (model said 20)
+actual: s² + ((b + k₂)/m) s + (k_true + k₁)/m
+ω_n,actual = ${f(Math.sqrt((k0 * (1 + s.kerr) + s.k1) / m), 3)},  ζ_actual = ${f((b + s.k2) / m / (2 * Math.sqrt((k0 * (1 + s.kerr) + s.k1) / m)), 3)}`)}
+<p>Model-based design replaces the plant’s stiffness with the one you asked for — using the plant’s stiffness you believe. Integral action (LQI, next page) and robust design exist because of this line.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>k₁</b>${f(s.k1, 1)}</span><span><b>k₂</b>${f(s.k2, 2)}</span>`; },
+});
+</script>
+</body></html>

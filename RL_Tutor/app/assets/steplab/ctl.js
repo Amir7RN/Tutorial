@@ -95,6 +95,31 @@ C.routh = p => {
   const col = rows.map(r => r[0]); let changes = 0; for (let i = 1; i < col.length; i++) if (Math.sign(col[i]) !== Math.sign(col[i - 1])) changes++;
   return { rows, col, changes };
 };
+
+/* ---------- state space (needs MR from mr.js) ---------- */
+/* characteristic polynomial det(sI − A) by Faddeev–LeVerrier, highest power first */
+C.charpoly = A => { const n = A.length, M = root.MR; let Mk = M.zeros(n), c = [1];
+  for (let k = 1; k <= n; k++) { Mk = M.madd(M.mul(A, Mk), M.mscl(M.eye(n), c[k - 1])); const ck = -M.trace(M.mul(A, Mk)) / k; c.push(ck); } return c; };
+C.eig = A => C.roots(C.charpoly(A));
+/* Ackermann: K such that eig(A − B K) = poles (single input, B a column as an n-vector) */
+C.acker = (A, B, poles) => { const M = root.MR, n = A.length, p = C.fromRoots(poles);
+  const cols = [B]; for (let i = 1; i < n; i++) cols.push(M.mv(A, cols[i - 1])); const Ct = M.fromCols(cols);
+  let phi = M.zeros(n), Ap = M.eye(n); for (let i = n; i >= 0; i--) { phi = M.madd(phi, M.mscl(Ap, p[i])); Ap = M.mul(Ap, A); }
+  const e = new Array(n).fill(0); e[n - 1] = 1; const row = M.solve(M.T(Ct), e); return M.mv(M.T(phi), row); };
+/* Lyapunov: solve Aᵀ P + P A + Q = 0 (Kronecker form, n ≤ 6) */
+C.lyap = (A, Q) => { const M = root.MR, n = A.length, N = n * n, K = M.zeros(N);
+  for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) for (let k = 0; k < n; k++) { K[i * n + j][k * n + j] += A[k][i]; K[i * n + j][i * n + k] += A[k][j]; }
+  const x = M.solve(K, Q.flat().map(v => -v)); return [...Array(n)].map((_, i) => x.slice(i * n, i * n + n)); };
+/* continuous LQR, single input, by Newton–Kleinman from a stabilising start. Returns { K, P } */
+C.lqr = (A, B, Q, R) => { const M = root.MR, n = A.length, r = Math.max(1, ...C.eig(A).map(z => Math.hypot(z[0], z[1])));
+  let K = C.acker(A, B, [...Array(n)].map((_, i) => [-2 * r - i * .37 * r, 0])), P = null;
+  for (let it = 0; it < 60; it++) { const Ac = M.msub(A, M.outer(B, K)), Qk = M.madd(Q, M.mscl(M.outer(K, K), R)); P = C.lyap(Ac, Qk); P = M.mscl(M.madd(P, M.T(P)), .5);
+    const Kn = M.mv(M.T(P), B).map(x => x / R), d = Math.max(...Kn.map((x, i) => Math.abs(x - K[i]))); K = Kn; if (d < 1e-10 * Math.max(1, ...K.map(Math.abs))) break; }
+  return { K, P }; };
+/* RK4 for ẋ = f(t, x); returns [[t, x], ...] every `every` steps */
+C.ode = (f, x0, T, dt, every = 1) => { let x = x0.slice(); const out = [[0, x.slice()]], n = Math.round(T / dt);
+  for (let i = 0; i < n; i++) { const t = i * dt, k1 = f(t, x), k2 = f(t + dt / 2, x.map((v, j) => v + dt / 2 * k1[j])), k3 = f(t + dt / 2, x.map((v, j) => v + dt / 2 * k2[j])), k4 = f(t + dt, x.map((v, j) => v + dt * k3[j]));
+    x = x.map((v, j) => v + dt / 6 * (k1[j] + 2 * k2[j] + 2 * k3[j] + k4[j])); if ((i + 1) % every === 0) out.push([(i + 1) * dt, x.slice()]); } return out; };
 root.CTL = C;
 if (typeof module !== 'undefined') module.exports = C;
 })(typeof window !== 'undefined' ? window : globalThis);

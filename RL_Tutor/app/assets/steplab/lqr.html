@@ -1,0 +1,102 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LQR and optimal control</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Same mass–spring–damper (m = 5, b = 0.6, k = 20). Regulate from x₀ = 20 mm back to 0. */
+const m = 5, b = .6, k = 20, A = [[0, 1], [-k / m, -b / m]], B = [0, 1 / m], X0 = [.02, 0];
+let cache = {};
+const design = (xmax, vmax, umax, rho) => { const key = [xmax, vmax, umax, rho].join(); if (cache[key]) return cache[key];
+  const Q = [[1 / (xmax * xmax), 0], [0, 1 / (vmax * vmax)]], R = rho / (umax * umax), r = CTL.lqr(A, B, Q, R); return cache[key] = Object.assign({ Q, R }, r); };
+const st = () => { const v = SL.v, xmax = v.xmax / 1000, vmax = v.vmax / 100, umax = v.umax / 10, rho = Math.pow(10, v.lr / 10), d = design(xmax, vmax, umax, rho); return { xmax, vmax, umax, rho, dist: v.dist / 10, ...d }; };
+const sim = (K, Q, R, T = 3, dist = 0, Ki = 0) => CTL.ode((t, x) => { const u = -K[0] * x[0] - K[1] * x[1] - Ki * x[3]; const dd = t > 1 ? dist : 0;
+  return [x[1], (u + dd - b * x[1] - k * x[0]) / m, Q[0][0] * x[0] * x[0] + Q[1][1] * x[1] * x[1] + R * u * u, x[0]]; }, [...X0, 0, 0], T, 1e-3, 5)
+  .map(([t, x]) => ({ t, x: x[0], v: x[1], J: x[2], u: -K[0] * x[0] - K[1] * x[1] - Ki * x[3] }));
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'LQR: say what you care about, get the optimal gains',
+  sub: 'The 5 kg mass–spring–damper again, released 20 mm from rest and regulated back to 0. Weights come from Bryson’s rule: the largest error and force you are willing to tolerate.',
+  view: '2d',
+  legend: [['--a', 'LQR'], ['--grey', 'hand-tuned K = [200, 20]'], ['--e', 'pole placement, same speed'], ['--b', 'force u'], ['--c', 'running cost J(t)']],
+  controls: [
+    { id: 'xmax', label: 'acceptable position error', min: 2, max: 200, value: 20, fmt: x => x + ' mm' },
+    { id: 'vmax', label: 'acceptable speed', min: 2, max: 300, value: 30, fmt: x => f(x / 100, 2) + ' m/s' },
+    { id: 'umax', label: 'acceptable force', min: 1, max: 400, value: 100, fmt: x => f(x / 10, 1) + ' N' },
+    { id: 'lr', label: 'extra price on force ρ', min: -30, max: 30, value: 0, fmt: x => '×' + f(Math.pow(10, x / 10), 2) },
+    { id: 'dist', label: 'constant push from 1 s (step 6)', min: 0, max: 50, value: 20, fmt: x => f(x / 10, 1) + ' N' },
+  ],
+  steps: [
+    ['The cost functional: a running bill', 'J = ∫ (xᵀQx + uᵀRu) dt. Every instant you are off target costs Q, every newton you spend costs R. LQR finds the gains with the smallest total bill. The green curve is the bill accumulating.'],
+    ['Units: Bryson’s rule', 'Position in metres and force in newtons cannot be added. Scale each by the largest value you will accept: Q = diag(1/x_max², 1/v_max²), R = 1/u_max². Now every term is “fraction of acceptable”.'],
+    ['The answer: K = R⁻¹BᵀP', 'P solves the algebraic Riccati equation AᵀP + PA − PBR⁻¹BᵀP + Q = 0. It is a 2×2 matrix here; K follows in one line, and the closed loop is guaranteed stable with good margins.'],
+    ['The one dial: price of force', 'Scale R up (expensive force): gentle, slow. Scale it down (cheap force): fast, aggressive, saturation risk. The poles walk along a curve as ρ changes.'],
+    ['What each weight means on hardware', 'q_x large: stiff, small error. q_v large: damped, no overshoot. R large: low current, cool motor, quiet. You trade these, not ω_n and ζ.'],
+    ['Head to head with pole placement', 'Place poles for the same speed as LQR and compare: similar settling, but LQR spends its force where it buys the most. Same plant, different philosophy.'],
+    ['LQI: the I term, the optimal way', 'A constant push leaves LQR off target (it has no integrator). Add the integral of position as a third state and solve LQR again: the error goes to zero, exactly like PID’s I term.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const Khand = [200, 20], T = 3, lq = sim(s.K, s.Q, s.R, T), hd = sim(Khand, s.Q, s.R, T);
+    const clp = CTL.eig(MR.msub(A, MR.outer(B, s.K)));
+    let list = [], ulist = [];
+    if (S === 6) { const Aa = [[0, 1, 0], [-k / m, -b / m, 0], [1, 0, 0]], Ba = [0, 1 / m, 0], Qa = [[s.Q[0][0], 0, 0], [0, s.Q[1][1], 0], [0, 0, s.Q[0][0] * 25]], la = CTL.lqr(Aa, Ba, Qa, s.R);
+      const r1 = sim(s.K, s.Q, s.R, 4, s.dist), r2 = sim([la.K[0], la.K[1]], s.Q, s.R, 4, s.dist, la.K[2]); list = [{ pts: r1.map(p => [p.t, p.x * 1000]), cl: '--a', w: 2.5, label: 'LQR' }, { pts: r2.map(p => [p.t, p.x * 1000]), cl: '--e', w: 2.5, label: 'LQI' }];
+      ulist = [{ pts: r1.map(p => [p.t, p.u]), cl: '--a', w: 1.5 }, { pts: r2.map(p => [p.t, p.u]), cl: '--e', w: 1.5 }]; }
+    else if (S === 5) { const wn = Math.hypot(clp[0][0], clp[0][1]) || 10, Kpp = CTL.acker(A, B, [[-.7 * wn, .714 * wn], [-.7 * wn, -.714 * wn]]), pp = sim(Kpp, s.Q, s.R, T);
+      list = [{ pts: lq.map(p => [p.t, p.x * 1000]), cl: '--a', w: 2.5, label: 'LQR' }, { pts: pp.map(p => [p.t, p.x * 1000]), cl: '--e', w: 2.5, label: 'poles at ω_n=' + f(wn, 1) + ', ζ=0.7' }];
+      ulist = [{ pts: lq.map(p => [p.t, p.u]), cl: '--a', w: 1.5 }, { pts: pp.map(p => [p.t, p.u]), cl: '--e', w: 1.5 }]; }
+    else { list = [{ pts: lq.map(p => [p.t, p.x * 1000]), cl: '--a', w: 2.5, label: 'LQR' }]; if (S <= 1) list.push({ pts: hd.map(p => [p.t, p.x * 1000]), cl: '--grey', w: 1.5, label: 'hand-tuned' }); ulist = [{ pts: lq.map(p => [p.t, p.u]), cl: '--a', w: 1.5 }].concat(S <= 1 ? [{ pts: hd.map(p => [p.t, p.u]), cl: '--grey', w: 1.2 }] : []); }
+    const ym = Math.max(5, ...list.flatMap(c => c.pts.map(p => Math.abs(p[1])))) * 1.1, Ap = Pl.panel(0, 0, .62, .44, [0, S === 6 ? 4 : T, -ym * .5, ym], false);
+    Ap.series(list, { title: 'position (mm)', yl: 'released at 20 mm' });
+    const um = Math.max(1, ...ulist.flatMap(c => c.pts.map(p => Math.abs(p[1])))) * 1.1, U = Pl.panel(0, .45, .62, .22, [0, S === 6 ? 4 : T, -um, um], false);
+    U.series(ulist.map((c, i) => Object.assign(c, i ? {} : { label: 'force u (N)' })), {}); U.clip(() => { U.line([0, s.umax], [6, s.umax], '--bad', 1, [3, 3]); U.line([0, -s.umax], [6, -s.umax], '--bad', 1, [3, 3]); });
+    if (S <= 1) { const jm = Math.max(lq[lq.length - 1].J, hd[hd.length - 1].J) * 1.15, C = Pl.panel(.63, 0, .37, .67, [0, T, 0, jm], false);
+      C.series([{ pts: lq.map(p => [p.t, p.J]), cl: '--a', w: 2.5, label: 'LQR bill' }, { pts: hd.map(p => [p.t, p.J]), cl: '--grey', w: 1.5, label: 'hand-tuned bill' }], { title: 'J(t) = ∫ xᵀQx + Ru² dt' }); }
+    else if (S === 3 || S === 4) { const P = Pl.panel(.63, 0, .37, .67, [-60, 10, -40, 40]); P.frame('closed-loop poles as ρ goes 0.001 → 1000'); P.axes();
+      P.clip(() => { for (let i = 0; i <= 60; i++) { const rr = Math.pow(10, -3 + i / 10), d = design(s.xmax, s.vmax, s.umax, rr); CTL.eig(MR.msub(A, MR.outer(B, d.K))).forEach(p => P.dot(p, 1.6, '--b')); } });
+      CTL.eig(A).forEach(p => P.circle(p, 1.2, '--grey', 2)); clp.forEach(p => { P.line([p[0] - 1.5, p[1] - 1.5], [p[0] + 1.5, p[1] + 1.5], '--d', 3); P.line([p[0] - 1.5, p[1] + 1.5], [p[0] + 1.5, p[1] - 1.5], '--d', 3); }); }
+    else { const P = Pl.panel(.63, 0, .37, .67, [0, 1, 0, 1], false); P.frame('the numbers');
+      const L = (y, txt, cl) => P.label(P.x + 10, P.y + P.h * y, txt, cl, { mono: true, size: 12 });
+      L(.1, `Q = diag(${f(s.Q[0][0], 0)}, ${f(s.Q[1][1], 2)})`, '--ink'); L(.18, `R = ${f(s.R, 5)}`, '--ink'); L(.3, `P = [${f(s.P[0][0], 2)} ${f(s.P[0][1], 3)};`, '--d'); L(.38, `     ${f(s.P[1][0], 3)} ${f(s.P[1][1], 4)}]`, '--d');
+      L(.5, `K = R⁻¹BᵀP = [${f(s.K[0], 1)}, ${f(s.K[1], 2)}]`, '--a'); L(.62, `poles: ${clp.map(r => f(r[0], 2) + (r[1] ? (r[1] > 0 ? '+' : '−') + f(Math.abs(r[1]), 2) + 'j' : '')).join(', ')}`, '--d');
+      L(.74, `total cost J = ${f(lq[lq.length - 1].J, 3)}`, '--c'); L(.82, `peak force ${f(Math.max(...lq.map(p => Math.abs(p.u))), 2)} N`, '--b'); }
+    const R = Pl.panel(0, .69, 1, .31, [0, 1, 0, 1], false); R.frame(); const Ln = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    Ln(.02, .22, `Bryson: x_max = ${f(s.xmax * 1000, 0)} mm, v_max = ${f(s.vmax, 2)} m/s, u_max = ${f(s.umax, 1)} N, ρ = ${f(s.rho, 3)}`, '--ink');
+    Ln(.02, .46, `K = [${f(s.K[0], 1)}, ${f(s.K[1], 2)}]   closed-loop ω_n = ${f(Math.hypot(clp[0][0], clp[0][1]), 2)} rad/s, ζ = ${f(-clp[0][0] / Math.hypot(clp[0][0], clp[0][1]), 3)}`, '--a');
+    Ln(.02, .7, `bills: LQR J = ${f(lq[lq.length - 1].J, 3)}   hand-tuned J = ${f(hd[hd.length - 1].J, 3)}   (LQR is the minimum over all linear state feedbacks)`, '--c');
+  },
+  math(S) {
+    const s = st(), clp = CTL.eig(MR.msub(A, MR.outer(B, s.K)));
+    const head = `<p class="cg">A = [0 1; −4 −0.12], B = [0; 0.2]. Q = diag(${f(s.Q[0][0], 1)}, ${f(s.Q[1][1], 3)}), R = ${f(s.R, 5)}.</p>`;
+    const rows = [
+`${E(`J = ∫₀^∞ (xᵀ Q x + uᵀ R u) dt
+  = ∫ (q_x x² + q_v ẋ² + R u²) dt`)}
+${ul(['Being off target costs money every second; so does using force.', 'Any K gives some bill. The hand-tuned K = [200, 20] costs ' + f(sim([200, 20], s.Q, s.R)[600].J, 3) + '; LQR costs ' + f(sim(s.K, s.Q, s.R)[600].J, 3) + '.', 'No K does better than LQR for this Q and R: that is the definition of the result.'])}`,
+`${E(`q_x = 1/x_max² = 1/${f(s.xmax, 3)}² = ${f(s.Q[0][0], 1)}
+q_v = 1/v_max² = ${f(s.Q[1][1], 3)}
+R   = ρ/u_max² = ${f(s.R, 6)}`)}
+<p>Bryson’s rule: “20 mm of error costs as much as 10 N of force”. Weights stop being arbitrary numbers and start being engineering limits.</p>`,
+`${E(`AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0        (algebraic Riccati equation)
+P = [${f(s.P[0][0], 3)}  ${f(s.P[0][1], 4)};  ${f(s.P[1][0], 4)}  ${f(s.P[1][1], 5)}]
+K = R⁻¹ Bᵀ P = [${f(s.K[0], 2)}, ${f(s.K[1], 3)}]
+poles of A − BK: ${clp.map(r => f(r[0], 3) + (r[1] ? (r[1] > 0 ? '+' : '−') + f(Math.abs(r[1]), 3) + 'j' : '')).join(', ')}`)}
+<p>xᵀPx is the bill still to come from state x: here ${f(MR.dot(X0, MR.mv(s.P, X0)), 4)} from x₀ (compare the simulated total). Guarantees for single-input LQR: at least 60° phase margin and infinite gain margin upward.</p>`,
+`${E(`ρ = ${f(s.rho, 3)}   →   K = [${f(s.K[0], 1)}, ${f(s.K[1], 2)}],  peak force ${f(Math.max(...sim(s.K, s.Q, s.R).map(p => Math.abs(p.u))), 2)} N`)}
+<p>As ρ → 0 the poles run off to infinity along 45° lines (a Butterworth pattern); as ρ → ∞ they settle onto the open-loop poles (or their mirror images if unstable): the least effort that still stabilises.</p>`,
+`${ul(['<b>q_x ↑</b> (smaller x_max): stiffer servo, smaller error, more force.', '<b>q_v ↑</b> (smaller v_max): more damping, no overshoot, slower approach.', '<b>R ↑</b> (smaller u_max or larger ρ): lower current, cooler motor, less noise in the command, slower.', 'Off-diagonal Q terms are rarely needed; start diagonal.'])}
+<p>Move the three Bryson sliders and watch K, the poles and the force trace respond.</p>`,
+`${E(`LQR poles: ${clp.map(r => f(r[0], 2) + (r[1] ? '±' + f(Math.abs(r[1]), 2) + 'j' : '')).filter((x, i, a) => a.indexOf(x) === i).join(', ')}
+placement at the same ω_n with ζ = 0.7: K_pp = [${CTL.acker(A, B, [[-.7 * Math.hypot(clp[0][0], clp[0][1]), .714 * Math.hypot(clp[0][0], clp[0][1])], [-.7 * Math.hypot(clp[0][0], clp[0][1]), -.714 * Math.hypot(clp[0][0], clp[0][1])]]).map(x => f(x, 1)).join(', ')}]`)}
+<p>Pole placement asks “where should the poles be?”. LQR asks “what does it cost?” and lets the poles fall where the cost says. On multi-input systems LQR is far easier: placement has many solutions, LQR picks one.</p>`,
+`${E(`augment: x_I = ∫ x dt,  ẋ_I = x
+state (x, ẋ, x_I),  Q_I = 25 q_x on the integral state
+u = −k₁ x − k₂ ẋ − k_I x_I`)}
+<p>With a constant ${f(s.dist, 1)} N push, LQR settles at x = ${f(s.dist / (k + s.K[0]) * 1000, 2)} mm off (the push divided by total stiffness); LQI drives it to zero — the same trick that gives PID its I term, now with optimal gains.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>K</b>[${f(s.K[0], 0)}, ${f(s.K[1], 1)}]</span><span><b>ρ</b>${f(s.rho, 2)}</span>`; },
+});
+</script>
+</body></html>

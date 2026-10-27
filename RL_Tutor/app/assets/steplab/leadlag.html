@@ -1,0 +1,118 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lead, lag and notch</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Plant: the joint's position, P(s) = 1/(s(τs + 1)), τ = J/b = 0.1 s. Steps 6: a resonance added. */
+const TAU = .1, PNUM = [1], PDEN = [TAU, 1, 0];
+const design = (wc, pm) => {
+  const phiP = -90 - Math.atan(wc * TAU) * 180 / Math.PI, need = Math.max(0, pm - (180 + phiP) + 5), sn = Math.sin(Math.min(80, need) * Math.PI / 180);
+  const a = (1 + sn) / (1 - sn), z = wc / Math.sqrt(a), p = wc * Math.sqrt(a), Pm = 1 / (wc * Math.hypot(1, wc * TAU)), Kc = 1 / (Pm * Math.sqrt(a));
+  return { phiP, need, a, z, p, Kc, Pm };
+};
+const st = () => { const v = SL.v, wc = v.wc / 10, pm = v.pm, d = design(wc, pm); return Object.assign({ wc, pm, beta: v.beta / 10, wr: v.wr, wn: v.wn, pz: v.pz / 10 }, d); };
+const L = (num, den) => CTL.tf(num, den), mul = (a, b) => CTL.pmul(a, b);
+const leadNum = s => CTL.pscl([1 / s.z, 1], s.Kc), leadDen = s => [1 / s.p, 1];
+const lagNum = s => [s.beta / (s.wc / 10), 1].map((x, i) => i ? s.beta : x), lagDen = s => [s.beta / (s.wc / 10), 1].map((x, i) => i ? 1 : x);
+/* lag C = (s + wc/10)/(s + wc/(10β)) · ... normalised to gain β at DC, ≈ 1 at ωc */
+const lag = s => { const zl = s.wc / 10, pl = zl / s.beta; return { num: [1, zl], den: [1, pl] }; };
+const bode = (G, ws) => { const H = ws.map(w => CTL.freq(G, w)); return { mag: H.map(h => CTL.db(CTL.cabs(h))), ph: CTL.unwrapPhase(H.map(CTL.carg)).map(x => x * 180 / Math.PI) }; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Lead, lag and notch: buy phase where you need it, gain where you need it',
+  sub: 'Plant: the joint position, P(s) = 1/(s(0.1 s + 1)). State a crossover ω_c and a phase margin; the lab designs the lead in one pass, then adds a lag and a notch.',
+  view: '2d',
+  legend: [['--grey', 'plant only (gain-matched)'], ['--c', 'with lead'], ['--e', 'with lead + lag'], ['--b', 'compensator C'], ['--bad', 'target / limit']],
+  controls: [
+    { id: 'wc', label: 'target crossover ω_c', min: 20, max: 600, value: 150, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'pm', label: 'target phase margin', min: 15, max: 80, value: 50, fmt: x => x + '°' },
+    { id: 'beta', label: 'lag ratio β (step 4)', min: 10, max: 300, value: 100, fmt: x => f(x / 10, 1) },
+    { id: 'pz', label: 'pole / zero ratio (step 5)', min: 1, max: 300, value: 100, fmt: x => f(x / 10, 2) },
+    { id: 'wr', label: 'resonance ω_r (step 6)', min: 30, max: 200, value: 80, fmt: x => x + ' rad/s' },
+    { id: 'wn', label: 'notch frequency (step 6)', min: 30, max: 200, value: 80, fmt: x => x + ' rad/s' },
+  ],
+  steps: [
+    ['What the spec asks for', 'Crossover ω_c sets speed; phase margin sets damping (page 13). At the target ω_c the plant alone has some phase; the gap to the wanted margin is what the compensator must buy.'],
+    ['The lead: a zero below a pole', 'C(s) = K_c (s/z + 1)/(s/p + 1) with z < p. Between z and p it adds phase, at most φ_m = asin((α − 1)/(α + 1)) at √(zp), α = p/z.'],
+    ['Design in one pass', 'Put the peak at ω_c: α from the phase needed, z = ω_c/√α, p = ω_c√α, K_c so that |CP| = 1 at ω_c. No iteration. The margin and the step response follow.'],
+    ['The cost: high-frequency gain', 'Above p the lead amplifies by α: sensor noise goes straight into the motor command. Phase is bought with noise.'],
+    ['Lag: buys low-frequency gain', 'A zero above a pole, a decade below ω_c: gain ×β at low frequency, almost nothing at ω_c. Steady error to a ramp drops by β; a few degrees of margin are spent.'],
+    ['One compensator, not four', 'The same formula is a lead when the pole is above the zero and a lag when it is below. Slide the ratio through 1 and watch the phase bump flip. PD = lead with p → ∞; PI = lag with pole at 0.'],
+    ['Notch: cancel a resonance you cannot remove', 'A structural resonance near crossover rings. A notch (two zeros near it, two poles further out) cancels the peak — until the resonance moves (payload, temperature) and the notch misses.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), ws = CTL.logspace(-.5, 3, 400), lw = ws.map(Math.log10);
+    const Kplain = 1 / s.Pm, P0 = L(CTL.pscl(PNUM, Kplain), PDEN);                     /* plant scaled to cross at ω_c */
+    const Llead = L(mul(leadNum(s), PNUM), mul(leadDen(s), PDEN));
+    const lg = lag(s), Llag = L(mul(mul(leadNum(s), lg.num), PNUM), mul(mul(leadDen(s), lg.den), PDEN));
+    let curves = [], Cplot = null;
+    if (S <= 3) curves = [[P0, '--grey', 'plant × gain'], ...(S >= 2 ? [[Llead, '--c', 'lead × plant']] : [])];
+    if (S === 4) curves = [[Llead, '--c', 'lead'], [Llag, '--e', 'lead + lag']];
+    if (S === 1 || S === 3) Cplot = L(leadNum(s), leadDen(s));
+    if (S === 5) { const z = 10, p = z * s.pz; Cplot = L([1 / z, 1], [1 / p, 1]); curves = []; }
+    let res = null;
+    if (S === 6) { const zr = .03, R = [s.wr * s.wr], Rd = [1, 2 * zr * s.wr, s.wr * s.wr], Nn = [1, 2 * .05 * s.wn, s.wn * s.wn], Nd = [1, 2 * .7 * s.wn, s.wn * s.wn];
+      const Lr = L(mul(mul(leadNum(s), PNUM), R), mul(mul(leadDen(s), PDEN), Rd)), Ln = L(mul(mul(mul(leadNum(s), PNUM), R), Nn), mul(mul(mul(leadDen(s), PDEN), Rd), Nd));
+      curves = [[Lr, '--bad', 'lead × plant with resonance'], [Ln, '--c', '… plus notch']]; res = [Lr, Ln]; }
+    const A = Pl.panel(0, 0, .62, .36, [-.5, 3, -50, 50], false), B = Pl.panel(0, .37, .62, .3, [-.5, 3, -270, 90], false);
+    const ml = [], pl = [];
+    curves.forEach(([G, cl, lab]) => { const bd = bode(G, ws); ml.push({ pts: lw.map((x, i) => [x, bd.mag[i]]), cl, w: 2.5, label: lab }); pl.push({ pts: lw.map((x, i) => [x, Math.max(-270, bd.ph[i])]), cl, w: 2.5 }); });
+    if (Cplot) { const bd = bode(Cplot, ws); ml.push({ pts: lw.map((x, i) => [x, bd.mag[i]]), cl: '--b', w: 2, dash: [6, 3], label: 'C(s)' }); pl.push({ pts: lw.map((x, i) => [x, bd.ph[i]]), cl: '--b', w: 2, dash: [6, 3] }); }
+    A.series(ml, { title: 'magnitude (dB) vs log₁₀ ω' }); A.line([-.5, 0], [3, 0], '--grey', 1);
+    B.series(pl, {}); B.line([-.5, -180], [3, -180], '--bad', 1.2, [5, 3]); B.line([-.5, -180 + s.pm], [3, -180 + s.pm], '--bad', 1, [2, 4]);
+    const lx = Math.log10(s.wc); A.line([lx, -50], [lx, 50], '--bad', 1, [3, 3]); B.line([lx, -270], [lx, 90], '--bad', 1, [3, 3]);
+    if (S === 1 || S === 3) { const xm = Math.log10(Math.sqrt(s.z * s.p)); B.dot([xm, Math.asin((s.a - 1) / (s.a + 1)) * 180 / Math.PI], 5, '--b'); }
+    /* right: step responses */
+    const T = Math.min(3, 12 / s.wc), Rp = Pl.panel(.63, 0, .37, .67, [0, T, -.1, 1.8], false);
+    const stp = (G, cl, lab) => { const Tg = CTL.feedback(G), r = CTL.step(Tg, T, T / 1500); return { pts: r.map(p => [p[0], Math.max(-.1, Math.min(1.8, p[1]))]), cl, w: 2.5, label: lab }; };
+    if (S === 3) { const Cn = L(leadNum(s), leadDen(s)), rng = (i => () => (i = (i * 9301 + 49297) % 233280) / 233280 - .5)(7), N = 800, noise = [...Array(N)].map(() => .01 * rng());
+      const dt = T / N, sim = CTL.sim(Cn, tt => noise[Math.min(N - 1, Math.floor(tt / dt))], T, dt / 2), mx = Math.max(...sim.map(p => Math.abs(p[1])), .02) * 1.2, Rq = Pl.panel(.63, 0, .37, .67, [0, T, -mx, mx], false);
+      Rq.series([{ pts: noise.map((v, i) => [i * dt, v]), cl: '--grey', w: 1, label: 'sensor noise (±0.005 rad)' }, { pts: sim.filter((_, i) => i % 2 === 0).map(p => [p[0], p[1]]), cl: '--b', w: 1.2, label: 'what C sends to the motor' }], { title: 'noise through the lead: ×' + f(s.Kc * s.a, 1) + ' at high ω' }); }
+    else if (S === 4) { const Tend = 2, ramp = G => { const Tg = CTL.feedback(G); return CTL.sim(Tg, tt => tt, Tend, 1e-3).map(p => [p[0], p[0] - p[1]]); }, e1 = ramp(Llead), e2 = ramp(Llag), em = Math.max(...e1.map(p => Math.abs(p[1]))) * 1.2;
+      const Rq = Pl.panel(.63, 0, .37, .67, [0, Tend, -em * .2, em], false); Rq.series([{ pts: e1, cl: '--c', w: 2.5, label: 'ramp error, lead' }, { pts: e2, cl: '--e', w: 2.5, label: 'lead + lag' }], { title: 'following a ramp θ_d = t' }); }
+    else if (S === 6) { Rp.series([stp(res[0], '--bad', 'resonance, no notch'), stp(res[1], '--c', 'with notch')], { title: 'closed-loop step' }); Rp.line([0, 1], [T, 1], '--grey', 1, [4, 3]); }
+    else if (S !== 5) { const list = [stp(P0, '--grey', 'gain only')]; if (S >= 2) list.push(stp(Llead, '--c', 'lead')); Rp.series(list, { title: 'closed-loop step' }); Rp.line([0, 1], [T, 1], '--grey', 1, [4, 3]); }
+    else { const Rq = Pl.panel(.63, 0, .37, .67, [0, 1, 0, 1], false); Rq.frame('which one is it?'); const lbl = s.pz > 1 ? 'pole above zero → LEAD (phase bump up)' : s.pz < 1 ? 'pole below zero → LAG (phase dip down)' : 'pole = zero → nothing at all'; Rq.label(Rq.x + 12, Rq.y + 40, lbl, s.pz > 1 ? '--c' : s.pz < 1 ? '--e' : '--muted', { size: 13 }); Rq.label(Rq.x + 12, Rq.y + 70, `zero 10 rad/s, pole ${f(10 * s.pz, 1)} rad/s`, '--ink', { mono: true, size: 12 }); }
+    const Rb = Pl.panel(0, .69, 1, .31, [0, 1, 0, 1], false); Rb.frame(); const Ln = (x, y, txt, cl) => Rb.label(Rb.x + Rb.w * x, Rb.y + Rb.h * y, txt, cl, { mono: true, size: 12 });
+    const m0 = CTL.margins(P0, -1, 4, 2000), m1 = CTL.margins(Llead, -1, 4, 2000), m2 = CTL.margins(Llag, -1, 4, 2000);
+    Ln(.02, .2, `plant phase at ω_c = ${f(s.phiP, 1)}° → available margin ${f(180 + s.phiP, 1)}°, need ${s.pm}° → lead must add ${f(s.need, 1)}° (incl. 5° spare)`, '--ink');
+    Ln(.02, .44, `α = ${f(s.a, 2)},  z = ${f(s.z, 2)},  p = ${f(s.p, 2)} rad/s,  K_c = ${f(s.Kc, 3)}`, '--b');
+    Ln(.02, .68, `PM: gain only ${f(m0.pm, 1)}°   lead ${f(m1.pm, 1)}° at ω_c ${f(m1.wc, 1)}   lead+lag ${f(m2.pm, 1)}°`, '--c');
+    if (S === 6) Ln(.02, .92, `resonance ${s.wr} rad/s, notch ${s.wn} rad/s: ${Math.abs(s.wr - s.wn) < 4 ? 'aligned' : 'MISSED by ' + Math.abs(s.wr - s.wn) + ' rad/s'}`, Math.abs(s.wr - s.wn) < 4 ? '--c' : '--bad');
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">P(s) = 1/(s(0.1s + 1)). Target ω_c = ${f(s.wc, 1)} rad/s, PM = ${s.pm}°.</p>`;
+    const rows = [
+`${E(`∠P(jω_c) = −90° − atan(ω_c τ) = ${f(s.phiP, 2)}°
+margin if you just scale the gain: 180° + ∠P = ${f(180 + s.phiP, 2)}°
+needed: ${s.pm}°  →  gap ${f(s.pm - 180 - s.phiP, 2)}° (+5° spare)`)}
+<p>“Tuned” would be: try gains until it looks right. “Designed”: compute the phase deficit at the frequency you care about, and buy exactly that.</p>`,
+`${E(`C(s) = K_c (s/z + 1)/(s/p + 1),   α = p/z = ${f(s.a, 3)}
+max phase φ_m = asin((α − 1)/(α + 1)) = ${f(Math.asin((s.a - 1) / (s.a + 1)) * 180 / Math.PI, 2)}° at ω = √(zp) = ${f(Math.sqrt(s.z * s.p), 2)}
+gain rises by α between z and p: 20 log α = ${f(CTL.db(s.a), 1)} dB`)}`,
+`${E(`α = (1 + sin φ)/(1 − sin φ) with φ = ${f(s.need, 2)}°  →  α = ${f(s.a, 3)}
+z = ω_c/√α = ${f(s.z, 3)},   p = ω_c √α = ${f(s.p, 3)}
+|C(jω_c)| = K_c √α  and we need |C P| = 1:  K_c = 1/(|P(jω_c)| √α) = ${f(s.Kc, 4)}`)}
+<p>Every number is a closed-form consequence of the two specs. Above ~65° of added phase one lead stage gets impractical (α explodes): use two stages.</p>`,
+`${E(`|C(j∞)| = K_c α = ${f(s.Kc * s.a, 3)}   vs  |C(0)| = K_c = ${f(s.Kc, 3)}
+noise gain ratio = α = ${f(s.a, 2)} (${f(CTL.db(s.a), 1)} dB)`)}
+<p>Encoder quantisation and electrical noise sit at high frequency: the lead passes them to the motor amplified, as audible buzz and heat. That is the price of phase.</p>`,
+`${E(`C_lag(s) = (s + z_l)/(s + z_l/β),  z_l = ω_c/10 = ${f(s.wc / 10, 2)}, β = ${f(s.beta, 1)}
+DC gain ×β → ramp error ÷β;  phase lost at ω_c ≈ atan(0.1) − atan(0.1/β) ≈ ${f((Math.atan(.1) - Math.atan(.1 / s.beta)) * 180 / Math.PI, 1)}°`)}
+<p>A constant is a signal of zero frequency: steady-state accuracy is just gain at ω = 0. Lag buys it there and leaves the crossover nearly untouched.</p>`,
+`${E(`C(s) = (s/z + 1)/(s/p + 1),   z = 10, p = ${f(10 * s.pz, 2)}
+p > z: lead (phase +, gain rises)     p < z: lag (phase −, gain falls)
+PD = lead with p → ∞     PI = lag with p → 0`)}
+<p>Families: pure D, PD, lead — and pure I, PI, lag. Each pair differs only in where the extra pole sits; they agree near crossover and part ways far from it.</p>`,
+`${E(`resonance R(s) = ω_r²/(s² + 2·0.03·ω_r s + ω_r²),  ω_r = ${s.wr}
+notch N(s) = (s² + 2·0.05·ω_n s + ω_n²)/(s² + 2·0.7·ω_n s + ω_n²),  ω_n = ${s.wn}`)}
+${ul(['Aligned: the notch zeros sit on the resonance poles; the peak disappears from L.', 'Misaligned by a few % (payload changes ω_r): the peak comes back next to the notch, and the notch’s own phase lag can make it worse.', 'Cancellation is fragile (page 15): only cancel well-damped, well-known dynamics, and check robustness.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>α</b>${f(s.a, 2)}</span><span><b>z, p</b>${f(s.z, 1)}, ${f(s.p, 1)}</span><span><b>K_c</b>${f(s.Kc, 2)}</span>`; },
+});
+</script>
+</body></html>

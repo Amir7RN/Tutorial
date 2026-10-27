@@ -19,6 +19,21 @@ STEPLAB_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets",
 
 #: page class name -> (html file, card title)
 STEP_LABS = {
+    # controller design, nonlinear, actuators
+    "StabilisingPage": ("stabilising.html", "feedback relocates poles: P, D, I and the upright pendulum"),
+    "LeadLagPage": ("leadlag.html", "design a lead from a spec, then lag and notch"),
+    "StateFeedbackPage": ("state_feedback.html", "state feedback: choose the poles, solve for the gains"),
+    "LQRPage": ("lqr.html", "LQR: weights in, optimal gains out"),
+    "ObserverPage": ("observer.html", "observers: speed and load from an encoder"),
+    "NonlinearSystemsPage": ("nonlinear_systems.html", "what breaks when superposition goes"),
+    "NonlinearControlPage": ("nonlinear_control.html", "six ways to control a nonlinear pendulum"),
+    "EffectiveInertiaPage": ("effective_inertia.html", "effective inertia: what the world feels at the joint"),
+    "SEAPage": ("sea.html", "series elastic: two bodies and a frequency-dependent inertia"),
+    "PEAPage": ("pea.html", "parallel elastic: a spring that carries the load"),
+    "ActuatorCompare": ("actuator_compare.html", "direct drive vs SEA vs PEA on one axis"),
+    "GearingPage": ("gearing.html", "gearing: torque, speed, N² and transparency"),
+    "BipedActuatorsPage": ("biped_actuators.html", "size an actuator for each biped joint"),
+    "ArmActuatorsPage": ("arm_actuators.html", "size the arm's three joints, distal first"),
     # real-time + systems and stability
     "RealTimePage": ("realtime.html", "one control cycle: sampling, aliasing, delay, deadline"),
     "ControlProblemPage": ("control_problem.html", "every control problem in four steps, on one joint"),
