@@ -1,0 +1,88 @@
+In the previous video, we derived these equations
+of motion for a rigid body, for wrenches,
+twists, and accelerations defined in a body
+frame {b}.
+In this video, we express these equations
+in a form analogous to the equations of motion
+for a body that only rotates.
+To do this, we define the 6-by-6 spatial inertia
+matrix G_b.
+The top left 3-by-3 submatrix is the inertia
+matrix I_b, and the bottom right 3-by-3 submatrix
+is a diagonal matrix, the mass of the body
+multiplied by the 3-by-3 identity matrix.
+With this, the kinetic energy of a rotating
+and translating rigid body can be written
+as the sum of the rotational kinetic energy
+and the linear kinetic energy, or simply one-half
+times the body twist transpose times G_b times
+the body twist.
+Also, just like the mass matrix of a robot
+and the rotational inertia matrix I_b, the
+spatial inertia matrix G_b is symmetric and
+positive definite.
+Before proceeding further, we need to define
+an operation on 6-dimensional twists that
+is analogous to the cross-product operation
+on 3-dimensional vectors.
+Remember that we use the bracket notation
+to write the cross product of omega_1 and
+omega_2 in R3.
+The result is a 3-vector.
+The 3-by-3 little so(3) matrix form of this
+cross product is bracket-omega_1 times bracket-omega_2
+minus bracket-omega_2 times bracket-omega_1.
+For 6-dimensional twists, our analogy to the
+cross product is bracket-V_1 times bracket-V_2
+minus bracket-V_2 times bracket-V_1, a 4-by-4
+matrix in little se(3).
+In vector form, this is little-adV_1 times
+V_2, where the little adjoint of a twist V
+is defined by the 6-by-6 matrix shown here.
+Little-adV_1 times V_2 is called the Lie bracket
+of V_1 and V_2.
+The Lie bracket of V_1 and V_2 is an acceleration,
+measuring how motion along the twist V_2 would
+change if the body follows the twist V_1.
+The matrix form of the Lie bracket is analogous
+to the matrix form of the cross product.
+Returning now to our equations of motion,
+after a little manipulation we find that these
+equations can be expressed as this 6-vector
+equation: the wrench F_b equals G_b times
+V_b-dot minus little-adV_b-transpose times
+G_b times V_b.
+Notice that the second term is a velocity-product
+term.
+This equation is analogous to the equation
+for a rotating rigid body, replacing the rotational
+inertia matrix I_b with the spatial inertia
+matrix G_b, the angular velocity omega_b with
+the twist V_b, and the cross product with
+omega_b with a Lie bracket with V_b.
+Now that we have the equation of motion in
+the {b} frame, we could ask what the equation
+of motion is in a different frame, {a}.
+Equating the kinetic energy expressed in each
+frame, we find an expression for the 6-by-6
+spatial inertia matrix expressed in the {a}
+frame, G_a, in terms of the G_b matrix and
+the transform T_ba expressing the {a} frame
+in the {b} frame.
+With this inertia matrix, we find that the
+equation of motion in terms of the wrench
+F_a, the spatial inertia matrix G_a, and the
+twist V_a has the same form as it does in
+the {b} frame.
+We usually prefer to write the equations in
+terms of a center of mass frame {b}, however.
+To wrap up, we have derived the inverse dynamics
+for a rigid body: given the twist and acceleration,
+we can calculate the wrench needed to generate
+this motion.
+We can also write fsthe forward dynamics,
+which takes the current twist and the applied
+wrench and calculates the acceleration.
+In the next video we will use these results
+to derive the recursive Newton-Euler algorithm
+for the inverse dynamics of a robot.

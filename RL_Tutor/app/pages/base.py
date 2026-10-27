@@ -67,7 +67,13 @@ class Page(QWidget):
         from ..widgets.lesson_stories import STORIES
         story = STORIES.get(type(self).__name__)
         from ..widgets.rigid_arm_lab import LAB_PAGES
-        if story is not None and type(self).__name__ not in LAB_PAGES:
+        from ..widgets.step_lab import STEP_LABS, StepLab, lab_path
+        import os
+        lab = STEP_LABS.get(type(self).__name__)
+        if lab is not None and os.path.exists(lab_path(lab[0])):
+            self.step_lab = StepLab(*lab)
+            self.content.addWidget(self.step_lab)
+        elif story is not None and type(self).__name__ not in LAB_PAGES:
             from ..widgets.lesson_animation import LessonAnimation
             self.lesson_animation = LessonAnimation(story)
             self.content.addWidget(self.lesson_animation)

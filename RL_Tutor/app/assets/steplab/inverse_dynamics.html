@@ -1,0 +1,171 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inverse dynamics along a move</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Same arm and move as the page-136 lab: A = (−1.2, 1.6) rad → B = (0.9, 0.4) rad, quintic. */
+const BASE = { L: [1, .8], m: [2, 1.5], r: [.5, .4], I: [.17, .08] };
+const qA = [-1.2, 1.6], qB = [.9, .4], dq = MR.sub(qB, qA);
+const withPayload = pay => {
+  const m2 = BASE.m[1] + pay, r2 = (BASE.m[1] * BASE.r[1] + pay * BASE.L[1]) / m2;
+  return MR.arm({ L: BASE.L, m: [BASE.m[0], m2], r: [BASE.r[0], r2], I: [BASE.I[0], BASE.I[1] + BASE.m[1] * (BASE.r[1] - r2) ** 2 + pay * (BASE.L[1] - r2) ** 2] });
+};
+const terms = (arm, T, t) => {
+  const [s, sd, sdd] = MR.quintic(t, T), q = MR.add(qA, MR.scl(dq, s)), qd = MR.scl(dq, sd), qdd = MR.scl(dq, sdd);
+  const g = MR.gravityVec(arm, q), c = MR.sub(MR.hVec(arm, q, qd), g), Mq = MR.mv(MR.massMatrix(arm, q), qdd);
+  return { s, sd, sdd, q, qd, qdd, g, c, Mq, tau: MR.add(MR.add(Mq, c), g) };
+};
+const sweep = (arm, T, N = 120) => [...Array(N + 1)].map((_, k) => { const t = k / N * T; return Object.assign({ t }, terms(arm, T, t)); });
+const peak = (arm, T, j) => Math.max(...sweep(arm, T, 60).map(x => Math.abs(x.tau[j])));
+let cache = null;
+const st = () => {
+  const v = SL.v, T = v.T / 10, pay = v.pay / 10, extra = v.extra / 10, j = v.j - 1;
+  const key = [T, pay, extra].join();
+  if (!cache || cache.key !== key) {
+    const arm = withPayload(pay), real = withPayload(pay + extra);
+    const S = sweep(arm, T), R = sweep(real, T);
+    const Ts = [...Array(24)].map((_, k) => .4 + k * .2);
+    const peaks = Ts.map(TT => [TT, peak(arm, TT, 0), peak(arm, TT, 1)]);
+    cache = { key, arm, real, S, R, peaks };
+  }
+  const t = v.u / 100 * T, now = terms(cache.arm, T, t), nowR = terms(cache.real, T, t);
+  return Object.assign({ T, pay, extra, j, t, now, nowR, tmax: v.tmax }, cache);
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const JC = ['--d', '--e'];
+SL.app({
+  title: 'Inverse dynamics: the torque a planned move needs, term by term',
+  sub: 'Plan a motion, then ask the dynamics what torque it takes at every instant. Scrub time with the “now” slider or press Play.',
+  view: '2d',
+  legend: [['--b', 'M(q) q̈'], ['--d', 'c(q, q̇)'], ['--c', 'g(q)'], ['--ink', 'total τ'], ['--bad', 'torque limit']],
+  controls: [
+    { id: 'u', label: 'now: t / T', min: 0, max: 100, value: 30, fmt: x => x + ' %' },
+    { id: 'T', label: 'move duration T', min: 4, max: 40, value: 12, fmt: x => f(x / 10, 1) + ' s' },
+    { id: 'pay', label: 'payload (model)', min: 0, max: 50, value: 10, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'j', label: 'joint plotted', min: 1, max: 2, value: 1, fmt: x => x === 1 ? 'shoulder' : 'elbow' },
+    { id: 'tmax', label: 'motor limit (step 6)', min: 10, max: 120, value: 60, fmt: x => x + ' N·m' },
+    { id: 'extra', label: 'unmodelled mass (step 7)', min: 0, max: 30, value: 0, fmt: x => f(x / 10, 1) + ' kg' },
+  ],
+  play: { tick(dt) { const T = SL.v.T / 10; let u = SL.v.u + dt / T * 100; if (u > 100) u = 0; SL.setControl('u', u); } },
+  reset() { SL.setControl('u', 0); },
+  steps: [
+    ['The question', 'A controller wants the arm to go from A to B in T seconds. What torque must each motor give at every instant? That is inverse dynamics: motion in, torque out.'],
+    ['Time scaling s(t)', 'First decide how fast to move along the path: s goes from 0 to 1. The quintic starts and ends with zero speed and zero acceleration, so the motors are not jerked.'],
+    ['Joint position, speed and acceleration', 'Straight line in joint space: q = q_A + s(q_B − q_A). Differentiate: q̇ = ṡ Δq and q̈ = s̈ Δq. Now the motion is known at every instant.'],
+    ['One call: τ = M(q)q̈ + c(q, q̇) + g(q)', 'Feed (q, q̇, q̈) at this instant to the dynamics (Newton–Euler, page 135). Out come the three parts of the torque for each joint.'],
+    ['The whole move', 'Do it at every instant. Early: accelerating (M q̈ pushes). Late: braking (M q̈ pulls). Gravity changes slowly with the pose; c peaks where the speed peaks.'],
+    ['Faster costs 1/T²', 'Run the same path in half the time: speeds double, accelerations quadruple. Inertial and velocity torques grow like 1/T², gravity does not change at all.'],
+    ['Peak, RMS and the motor limit', 'Peak torque must stay under the motor limit; RMS torque decides how hot the motor gets. Find the shortest T this motor can do.'],
+    ['What it is used for: feedforward and detection', 'Feedforward: send τ_ID so feedback only fixes small errors. Detection: measured torque − predicted torque = what the world did to the arm (an extra mass, or a collision).'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), j = s.j;
+    const A = Pl.panel(0, 0, .42, .62, [-2.1, 2.1, -1.8, 2.1]); A.frame('the move A → B'); A.grid(.5);
+    for (let k = 0; k <= 10; k++) A.arm(MR.points(BASE.L, MR.add(qA, MR.scl(dq, MR.quintic(k / 10 * s.T, s.T)[0]))), { ghost: true, w: 2 });
+    A.arm(MR.points(BASE.L, qA), { ghost: true, w: 4 }); A.text(MR.points(BASE.L, qA)[2], 'A', '--muted', 6, 0);
+    A.arm(MR.points(BASE.L, qB), { ghost: true, w: 4 }); A.text(MR.points(BASE.L, qB)[2], 'B', '--muted', 6, 0);
+    const P = MR.points(BASE.L, s.now.q); A.arm(P);
+    const tipPath = s.S.map(x => MR.points(BASE.L, x.q)[2]); A.poly(tipPath, '--a', 1.5, [4, 3]);
+    if (S >= 3) [0, 1].forEach(i => { const tau = s.now.tau[i], a0 = s.now.q.slice(0, i + 1).reduce((a, b) => a + b) - .5; A.arc(P[i], 30, a0, a0 + Math.max(-2.6, Math.min(2.6, tau / 20)) * t, '--c', 3, true, 'τ' + (i + 1) + '=' + f(tau, 1)); });
+    const ts = s.S.map(x => x.t), T = s.T;
+    const right = (title, list, b, yl) => { const B = Pl.panel(.43, 0, .57, .62, b, false); B.series(list, { title, yl }); B.line([s.t, b[2]], [s.t, b[3]], '--a', 1.5, [4, 3]); return B; };
+    if (S <= 1) {
+      right('time scaling: s (×1), ṡ (×T), s̈ (×T²/6)', [
+        { pts: s.S.map(x => [x.t, x.s]), cl: '--a', label: 's' }, { pts: s.S.map(x => [x.t, x.sd * T / 1.875]), cl: '--f', label: 'ṡ (scaled)' }, { pts: s.S.map(x => [x.t, x.sdd * T * T / 5.77]), cl: '--e', label: 's̈ (scaled)' }],
+        [0, T, -1.15, 1.15], 'unitless');
+    } else if (S === 2) {
+      const mx = Math.max(...s.S.flatMap(x => [...x.q.map(Math.abs), ...x.qd.map(Math.abs)])) * 1.1;
+      right('q (solid) and q̇ (dashed), both joints', [
+        { pts: s.S.map(x => [x.t, x.q[0]]), cl: '--d', label: 'q₁' }, { pts: s.S.map(x => [x.t, x.q[1]]), cl: '--e', label: 'q₂' },
+        { pts: s.S.map(x => [x.t, x.qd[0]]), cl: '--d', dash: [5, 3], label: 'q̇₁' }, { pts: s.S.map(x => [x.t, x.qd[1]]), cl: '--e', dash: [5, 3], label: 'q̇₂' }], [0, T, -mx, mx], 'rad, rad/s');
+    } else if (S === 3) {
+      const B = Pl.panel(.43, 0, .57, .62, [0, 2, -1, 1], false); B.frame('this instant: the three parts, per joint');
+      const parts = [[s.now.Mq, '--b'], [s.now.c, '--d'], [s.now.g, '--c']]; let mx = 1;
+      [0, 1].forEach(i => { let p = 0, n = 0; parts.forEach(([v]) => v[i] > 0 ? p += v[i] : n += v[i]); mx = Math.max(mx, p, -n); });
+      const B2 = Pl.panel(.43, .05, .57, .55, [0, 2, -mx * 1.2, mx * 1.2], false); B2.line([0, 0], [2, 0], '--grey', 1);
+      [0, 1].forEach(i => { let pos = 0, neg = 0; const x = i + .5; parts.forEach(([v, cl]) => { const h = v[i] * t; const b0 = h > 0 ? pos : neg;
+        B2.poly([[x - .25, b0], [x + .25, b0], [x + .25, b0 + h], [x - .25, b0 + h]], cl, 1.5, null, cl); h > 0 ? pos += h : neg += h; });
+        B2.dot([x, s.now.tau[i] * t], 6, '--ink'); B2.text([x, s.now.tau[i] * t], f(s.now.tau[i], 1) + ' N·m', '--ink', 30, 4, { mono: true }); B2.text([x, -mx * 1.2], i ? 'elbow' : 'shoulder', '--muted', 0, -6, { align: 'center', size: 12 }); });
+    } else if (S === 4 || S === 7) {
+      const src = S === 7 ? s.R : s.S;
+      const vals = s.S.flatMap(x => [x.Mq[j], x.c[j], x.g[j], x.tau[j]]).concat(src.map(x => x.tau[j])); const mx = Math.max(...vals.map(Math.abs)) * 1.15;
+      const list = S === 4 ? [{ pts: s.S.map(x => [x.t, x.Mq[j]]), cl: '--b', label: 'Mq̈' }, { pts: s.S.map(x => [x.t, x.c[j]]), cl: '--d', label: 'c' }, { pts: s.S.map(x => [x.t, x.g[j]]), cl: '--c', label: 'g' }, { pts: s.S.map(x => [x.t, x.tau[j]]), cl: '--ink', w: 3, label: 'τ' }]
+        : [{ pts: s.S.map(x => [x.t, x.tau[j]]), cl: '--ink', w: 2.5, label: 'τ_ID (model)' }, { pts: s.R.map(x => [x.t, x.tau[j]]), cl: '--b', w: 2, dash: [6, 3], label: 'τ needed (real arm)' }, { pts: s.R.map((x, k) => [x.t, x.tau[j] - s.S[k].tau[j]]), cl: '--bad', label: 'residual' }];
+      right((j ? 'elbow' : 'shoulder') + (S === 4 ? ': torque parts over the move' : ': model vs reality'), list, [0, T, -mx, mx], 'N·m');
+    } else if (S === 5) {
+      const mx = Math.min(Math.max(...s.peaks.map(p => p[1 + j])), 4 * Math.max(...s.S.map(x => Math.abs(x.g[j])), 5)) * 1.05;
+      const B = right('peak |τ| vs duration T (' + (j ? 'elbow' : 'shoulder') + ')', [{ pts: s.peaks.map(p => [p[0], p[1 + j]]), cl: '--b', w: 3, label: 'peak |τ|' },
+        { pts: s.peaks.map(p => [p[0], Math.max(...s.S.map(x => Math.abs(x.g[j])))]), cl: '--c', dash: [5, 3], label: 'gravity alone' }], [.4, 5, 0, mx], 'N·m');
+      B.line([s.T, 0], [s.T, mx], '--a', 1.5, [4, 3]);
+    } else if (S === 6) {
+      const mx = s.tmax * 1.8;
+      const B = Pl.panel(.43, 0, .57, .62, [.4, 5, 0, mx], false);
+      B.series([{ pts: s.peaks.map(p => [p[0], p[1]]), cl: '--d', w: 3, label: 'shoulder peak' }, { pts: s.peaks.map(p => [p[0], p[2]]), cl: '--e', w: 3, label: 'elbow peak' }], { title: 'peak |τ| vs T, and the motor limit', yl: 'N·m' });
+      B.line([.4, s.tmax], [5, s.tmax], '--bad', 2, [6, 4]);
+      const ok = s.peaks.find(p => Math.max(p[1], p[2]) <= s.tmax); if (ok) { B.line([ok[0], 0], [ok[0], mx], '--c', 2); B.text([ok[0], mx * .9], 'shortest T ≈ ' + f(ok[0], 1) + ' s', '--c', 6, 0, { size: 12 }); }
+    }
+    /* bottom: three mini plots of s, q, τ over time always visible */
+    const Bt = Pl.panel(0, .64, 1, .36, [0, 1, 0, 1], false); Bt.frame();
+    const n = s.now, line = (x, y, txt, cl) => Bt.label(Bt.x + x * Bt.w, Bt.y + y * Bt.h, txt, cl, { mono: true });
+    line(.02, .18, `t = ${f(s.t, 2)} s of ${f(T, 1)} s     s = ${f(n.s, 3)}   ṡ = ${f(n.sd, 3)} 1/s   s̈ = ${f(n.sdd, 3)} 1/s²`, '--a');
+    line(.02, .36, `q = ${vs(n.q, 3)} rad     q̇ = ${vs(n.qd, 3)} rad/s     q̈ = ${vs(n.qdd, 3)} rad/s²`, '--ink');
+    line(.02, .54, `M q̈ = ${vs(n.Mq, 2)}    c = ${vs(n.c, 2)}    g = ${vs(n.g, 2)}  N·m`, '--muted');
+    line(.02, .72, `τ = ${vs(n.tau, 2)} N·m`, '--c');
+    if (s.extra > 0) line(.02, .9, `real arm (+${f(s.extra, 1)} kg unmodelled) needs ${vs(s.nowR.tau, 2)}: residual ${vs(MR.sub(s.nowR.tau, n.tau), 2)} N·m`, '--bad');
+  },
+  math(S) {
+    const s = st(), n = s.now, T = s.T, j = s.j;
+    const head = `<p class="cg">Arm of page 135 with ${f(s.pay, 1)} kg payload at the tip. A = (−1.20, 1.60) rad, B = (0.90, 0.40) rad, T = ${f(T, 1)} s, now t = ${f(s.t, 2)} s.</p>`;
+    const pk = j => Math.max(...s.S.map(x => Math.abs(x.tau[j]))), rms = j => Math.sqrt(s.S.reduce((a, x) => a + x.tau[j] ** 2, 0) / s.S.length);
+    const rows = [
+`<p><b>Inverse dynamics</b> answers: for this motion q(t), what τ(t)?</p>
+${E('τ(t) = M(q) q̈ + c(q, q̇) + g(q)        evaluated along q(t)')}
+${ul(['A <b>controller</b> uses it as feedforward: most of the torque is known in advance; feedback only corrects.', 'A <b>designer</b> uses it to size motors: peak and RMS torque over the task.', 'A <b>safety</b> layer uses it to spot collisions: measured − predicted torque.'])}
+<p>Recipe: (1) plan the path and its timing, (2) get q, q̇, q̈, (3) evaluate the dynamics at each instant.</p>`,
+`<p>Quintic time scaling, x = t/T:</p>
+${E(`s(t)  = 10x³ − 15x⁴ + 6x⁵                    = ${f(n.s, 4)}
+ṡ(t)  = (30x² − 60x³ + 30x⁴) / T             = ${f(n.sd, 4)} 1/s
+s̈(t)  = (60x − 180x² + 120x³) / T²           = ${f(n.sdd, 4)} 1/s²`)}
+${ul(['s(0) = 0, s(T) = 1; ṡ and s̈ are zero at both ends (no jump in torque at the start).', `Peak speed ṡ = 1.875/T = ${f(1.875 / T, 3)} at mid-move; peak |s̈| = 5.77/T² = ${f(5.77 / T / T, 3)}.`])}`,
+`<p>A straight line in joint space, timed by s:</p>
+${E(`Δq = q_B − q_A = ${vs(dq, 2)} rad
+q  = q_A + s·Δq  = ${vs(n.q, 3)} rad
+q̇  = ṡ·Δq        = ${vs(n.qd, 3)} rad/s
+q̈  = s̈·Δq        = ${vs(n.qdd, 3)} rad/s²`)}
+<p>(The tip does not move on a straight line: dashed blue path. A straight hand line would use IK at each instant, page 129.)</p>`,
+`<p>At t = ${f(s.t, 2)} s, one inverse-dynamics call:</p>
+${E(SL.mat(MR.massMatrix(s.arm, n.q), 3, 'M(q)') + `
+M q̈ = ${vs(n.Mq, 3)}
+c    = ${vs(n.c, 3)}      (velocity products, page 133)
+g    = ${vs(n.g, 3)}      (holding torque)
+τ    = ${vs(n.tau, 3)} N·m`)}
+<p>On a robot this is RNEA (page 135): O(n), no matrix needed. Here it is split into parts so you can see who asks for what.</p>`,
+`<p>${j ? 'Elbow' : 'Shoulder'}, whole move (choose the joint with the slider):</p>
+${ul([`<b>M q̈</b> follows s̈: positive while speeding up, negative while braking. Peak ${f(Math.max(...s.S.map(x => Math.abs(x.Mq[j]))), 2)} N·m.`,
+      `<b>c</b> follows ṡ², so it peaks mid-move: ${f(Math.max(...s.S.map(x => Math.abs(x.c[j]))), 2)} N·m.`,
+      `<b>g</b> only depends on the pose; it runs from ${f(s.S[0].g[j], 2)} to ${f(s.S[s.S.length - 1].g[j], 2)} N·m.`])}
+<p>Total: peak |τ| = ${f(pk(j), 2)} N·m, RMS = ${f(rms(j), 2)} N·m.</p>`,
+`<p>Same path in time T instead of T₀: ṡ scales like 1/T and s̈ like 1/T². So</p>
+${E(`M(q) q̈  ∝ 1/T²
+c(q, q̇)  ∝ 1/T²      (q̇ appears squared)
+g(q)     ∝ T⁰        (independent of speed)`)}
+${ul([`Half the time → 4× the inertial and velocity torques.`, `Slow moves are gravity-dominated (flat dashed line); fast moves are inertia-dominated (the 1/T² curve).`,
+      `Now: peak ${f(pk(j), 2)} N·m at T = ${f(T, 1)} s; gravity alone needs ${f(Math.max(...s.S.map(x => Math.abs(x.g[j]))), 2)} N·m.`])}`,
+`<p>Two numbers decide whether a motor can do the job:</p>
+${E(`peak |τ|: shoulder ${f(pk(0), 2)}, elbow ${f(pk(1), 2)} N·m   (limit ${s.tmax} N·m)
+RMS τ  : shoulder ${f(rms(0), 2)}, elbow ${f(rms(1), 2)} N·m   (heating ∝ current² ∝ τ²)`)}
+${(() => { const ok = s.peaks.find(p => Math.max(p[1], p[2]) <= s.tmax); return ok ? `<p>Shortest duration within the limit (on a 0.2 s grid): <b>T ≈ ${f(ok[0], 1)} s</b>. Faster than that and some instant asks for more than the motor has: the plan must be slowed down (time scaling, playlist 8).</p>` : '<p class="cbad">Even the slowest move tried exceeds this limit: gravity alone is too much. A bigger motor or gearbox is needed.</p>'; })()}`,
+`<p><b>Feedforward + feedback</b> (page 143):</p>
+${E('τ = τ_ID(q_d, q̇_d, q̈_d) + K_p e + K_d ė')}
+<p><b>Detection.</b> Add an unmodelled mass with the slider. The real arm needs τ_real; the model predicts τ_ID:</p>
+${E(`τ_real − τ_ID = ${vs(MR.sub(s.nowR.tau, n.tau), 3)} N·m   (now)
+max |residual| over the move: ${f(Math.max(...s.R.map((x, k) => Math.abs(x.tau[j] - s.S[k].tau[j]))), 3)} N·m (${j ? 'elbow' : 'shoulder'})`)}
+<p>A residual that is zero when the model is right and jumps when something touches the arm: τ_measured − τ_ID = Jᵀ F_ext. That is collision detection without a skin.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>τ now</b>${vs(s.now.tau, 2)} N·m</span><span><b>T</b>${f(s.T, 1)} s</span>`; },
+});
+</script>
+</body></html>

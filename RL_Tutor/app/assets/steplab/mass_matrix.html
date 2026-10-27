@@ -1,0 +1,179 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The mass matrix</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Same point-mass 2R arm as page 133 (masses at the elbow and the tip). */
+const st = () => {
+  const v = SL.v, L1 = v.L1 / 100, L2 = v.L2 / 100, m1 = v.m1 / 10, m2 = v.m2 / 10;
+  const q1 = v.q1 * Math.PI / 180, q2 = v.q2 * Math.PI / 180, phi = v.phi * Math.PI / 180;
+  const d = [v.d1 / 10, v.d2 / 10];
+  const arm = MR.arm({ L: [L1, L2], m: [m1, m2], r: [L1, L2], I: [0, 0] });
+  const q = [q1, q2], M = MR.massMatrix(arm, q), E = MR.eigSym(M), Mi = MR.inv(M);
+  const u = [Math.cos(phi), Math.sin(phi)];
+  const b = m2 * L1 * L2, s2 = Math.sin(q2);
+  const Md = MR.Mdot(arm, q, d), C = MR.coriolis(arm, q, d), S = MR.msub(Md, MR.mscl(C, 2));
+  const J = MR.tipJac([L1, L2], q), detJ = MR.det(J);
+  let Lam = null, Lam_i = MR.mul(MR.mul(J, Mi), MR.T(J));
+  if (Math.abs(detJ) > 1e-3) Lam = MR.inv(Lam_i);
+  const P = MR.points([L1, L2], q);
+  return { L1, L2, m1, m2, q1, q2, phi, d, arm, q, M, E, Mi, u, b, s2, Md, C, S, J, detJ, Lam, Lam_i, P };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul, mat = SL.mat;
+const shade = (A, p, M, t, cl, lab) => {     // map the unit circle through M, growing with t
+  A.circle(p, 1, '--grey', 1.2, [4, 3]);
+  const Mt = [[1 + (M[0][0] - 1) * t, M[0][1] * t], [M[1][0] * t, 1 + (M[1][1] - 1) * t]];
+  A.ellipse(p, Mt, cl, 2.5, null, cl); if (lab) A.text([p[0], p[1]], lab, cl, 0, 0);
+};
+SL.app({
+  title: 'The mass matrix: circles, ellipses and energy',
+  sub: 'Point masses at the elbow and the tip, as on page 133. Gravity and speed are left out except in step 6: here M is on its own.',
+  view: '2d',
+  legend: [['--a', 'joint acceleration θ̈'], ['--b', 'torque τ = Mθ̈'], ['--c', 'eigen-directions of M'], ['--d', 'hand acceleration / force']],
+  controls: [
+    { id: 'q2', label: 'elbow θ₂', min: -180, max: 180, value: 60, fmt: x => x + '°' },
+    { id: 'q1', label: 'shoulder θ₁', min: -180, max: 180, value: 20, fmt: x => x + '°' },
+    { id: 'phi', label: 'test direction φ', min: -180, max: 180, value: 30, fmt: x => x + '°' },
+    { id: 'm1', label: 'm₁', min: 1, max: 50, value: 10, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'm2', label: 'm₂', min: 1, max: 50, value: 10, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'L1', label: 'L₁', min: 30, max: 150, value: 100, fmt: x => f(x / 100) + ' m' },
+    { id: 'L2', label: 'L₂', min: 30, max: 150, value: 100, fmt: x => f(x / 100) + ' m' },
+    { id: 'd1', label: 'θ̇₁ (step 6)', min: -40, max: 40, value: 12, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd2', label: 'θ̇₂ (step 6)', min: -40, max: 40, value: -7, fmt: x => f(x / 10, 1) + ' rad/s' },
+  ],
+  buttons: [{ label: 'Sweep φ', onclick: e => { let a = SL.v.phi; const id = setInterval(() => { a += 3; SL.setControl('phi', ((a + 180) % 360) - 180); SL.redraw(); if (a - SL.v.phi > 360 || a > 900) clearInterval(id); }, 30); setTimeout(() => clearInterval(id), 3700); } }],
+  steps: [
+    ['Kinetic energy has a mass matrix in it', 'One point mass: K = ½ m v² = ½ vᵀ m v. A whole arm: K = ½ θ̇ᵀ M(θ) θ̇. M is the arm’s “mass”, but it is a matrix and it changes with posture.'],
+    ['Three properties', 'M is symmetric, positive definite (K > 0 for every motion, like a mass can only be positive), and it depends on θ. Turn φ: K is positive in every direction.'],
+    ['A circle of accelerations → an ellipse of torques', 'At rest and without gravity, τ = M θ̈. Take every θ̈ of size 1 (circle). The torques they need form an ellipse: some directions are “heavier” than others.'],
+    ['Principal axes: eigenvectors and eigenvalues', 'Along an eigenvector of M the torque points the same way as the acceleration; the half-axes are the eigenvalues. Anywhere else, τ and θ̈ point in different directions.'],
+    ['The other way: torques → accelerations (M⁻¹)', 'M is always invertible, so a circle of unit torques maps to an ellipse of accelerations, with half-axes 1/λ. Forward dynamics is never singular.'],
+    ['M changes with the configuration', 'Only the elbow matters: θ₁ rotates the whole arm and changes nothing inertially. Straight arm: the shoulder feels the most inertia (skater with arms out).'],
+    ['Velocity products come from how M changes', 'For a scalar mass that depends on position, d(m ẋ)/dt = m ẍ + (dm/dx) ẋ². The robot version: c = C(θ, θ̇) θ̇ built from ∂M/∂θ (Christoffel symbols), and Ṁ − 2C is skew-symmetric.'],
+    ['Grab the hand: the end-effector mass Λ', 'Equal kinetic energies give Λ = J⁻ᵀ M J⁻¹. Push the hand along x: in general it accelerates partly along y too. The hand does not feel like a point mass.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const R = s.L1 + s.L2 + .25;
+    const A = Pl.panel(0, 0, .34, .74, [-R, R, -R, R]); A.frame('the arm');
+    A.grid(.5); A.arm(s.P); A.dot(s.P[1], 9, '--d'); A.dot(s.P[2], 9, '--e');
+    A.arc([0, 0], 26, 0, s.q1, '--d', 2, true, 'θ₁'); A.arc(s.P[1], 22, s.q1, s.q1 + s.q2, '--e', 2, true, 'θ₂');
+    const lmax = s.E.vals[0], u = s.u;
+    if (S <= 1) {
+      const vd = u, K = .5 * MR.dot(vd, MR.mv(s.M, vd));
+      const B = Pl.panel(.35, 0, .32, .74, [-1.6, 1.6, -1.6, 1.6]); B.frame('joint velocity θ̇ (rad/s)'); B.axes();
+      B.circle([0, 0], 1, '--grey', 1.2, [4, 3]); B.arrow([0, 0], vd, '--a', 3, 'θ̇', null, -18, -8);
+      /* K = 1/2 ellipse: θ̇ with K = 0.5 J */
+      const W = s.E.vecs, sc = s.E.vals.map(l => Math.sqrt(1 / l)); B.ellipse([0, 0], MR.fromCols([MR.scl(W[0], sc[0]), MR.scl(W[1], sc[1])]), '--c', 2);
+      B.text([-1.5, -1.45], 'green: all θ̇ with K = ½ J', '--c', 0, 0, { size: 12 });
+      const C = Pl.panel(.68, 0, .32, .74, [0, 1, 0, 1], false); C.frame('kinetic energy around the circle');
+      const pts = []; let kmax = 0; for (let i = 0; i <= 120; i++) { const a = -Math.PI + i / 120 * 2 * Math.PI, w = [Math.cos(a), Math.sin(a)]; const k = .5 * MR.dot(w, MR.mv(s.M, w)); kmax = Math.max(kmax, k); pts.push([a, k]); }
+      const C2 = Pl.panel(.68, .06, .32, .62, [-Math.PI, Math.PI, 0, kmax * 1.15], false);
+      C2.poly(pts, '--c', 2.5); C2.dot([s.phi, K], 6, '--a'); C2.line([-Math.PI, 0], [Math.PI, 0], '--grey', 1);
+      C2.text([s.phi, K], 'K = ' + f(K, 2) + ' J', '--a', 8, -8, { mono: true }); C2.text([-Math.PI, 0], 'φ = −180°', '--muted', 4, -6, { size: 11 }); C2.text([Math.PI, 0], '180°', '--muted', -30, -6, { size: 11 });
+    } else if (S <= 4) {
+      const inv = S === 4, Mmap = inv ? s.Mi : s.M, big = inv ? 1 / s.E.vals[1] : lmax, b = Math.max(1.5, big * 1.25);
+      const B = Pl.panel(.35, 0, .32, .74, [-1.6, 1.6, -1.6, 1.6]); B.frame(inv ? 'torques τ (unit circle)' : 'joint accelerations θ̈ (unit circle)'); B.axes();
+      B.circle([0, 0], 1, inv ? '--b' : '--a', 2); B.arrow([0, 0], u, inv ? '--b' : '--a', 3, inv ? 'τ' : 'θ̈');
+      const C = Pl.panel(.68, 0, .32, .74, [-b, b, -b, b]); C.frame(inv ? 'accelerations θ̈ = M⁻¹τ' : 'torques τ = M θ̈'); C.axes();
+      shade(C, [0, 0], Mmap, t, inv ? '--a' : '--b');
+      const img = MR.mv(Mmap, u); C.arrow([0, 0], MR.scl(img, t), inv ? '--a' : '--b', 3, inv ? 'θ̈' : 'τ'); C.arrow([0, 0], MR.scl(u, Math.min(b * .9, MR.norm(img))), '--grey', 1.5, null, [4, 3]);
+      if (S >= 3 && S !== 6) s.E.vecs.forEach((w, k) => { const l = inv ? 1 / s.E.vals[k] : s.E.vals[k]; C.line(MR.scl(w, -l), MR.scl(w, l), '--c', 1.5, [6, 4]); B.line(MR.scl(w, -1.5), MR.scl(w, 1.5), '--c', 1.2, [6, 4]);
+        C.text(MR.scl(w, l), (inv ? '1/λ' : 'λ') + (k + 1) + ' = ' + f(l, 2), '--c', k ? 6 : -6, k ? 14 : -8, { size: 12, align: k ? 'left' : 'right' }); });
+    } else if (S === 6) {
+      const d = s.d, Sd = MR.mv(s.S, d), c = MR.mv(s.C, d), mx = Math.max(.5, MR.norm(d), MR.norm(Sd), MR.norm(c)) * 1.25;
+      const B = Pl.panel(.35, 0, .65, .74, [-mx * 1.6, mx * 1.6, -mx, mx]); B.frame('joint space: θ̇, c = Cθ̇ and (Ṁ − 2C)θ̇'); B.axes();
+      B.arrow([0, 0], MR.scl(d, t), '--a', 3.5, 'θ̇');
+      B.arrow([0, 0], MR.scl(c, t), '--d', 2.5, 'c = Cθ̇ (N·m)');
+      B.arrow([0, 0], MR.scl(Sd, t), '--e', 3, '(Ṁ − 2C)θ̇: always ⟂ θ̇');
+      B.text([-mx * 1.55, -mx * .9], 'skew-symmetric matrices turn every vector by 90° (and scale it), so θ̇ᵀ(Ṁ − 2C)θ̇ = 0', '--muted', 0, 0, { size: 12, bold: false });
+    } else if (S === 5) {
+      const B = Pl.panel(.35, .04, .64, .66, [-Math.PI, Math.PI, Math.min(0, -.2), 1], false);
+      const arm = s.arm, Ms = []; let mx = 0; for (let i = 0; i <= 120; i++) { const a = -Math.PI + i / 120 * 2 * Math.PI, M = MR.massMatrix(arm, [0, a]); Ms.push([a, M]); mx = Math.max(mx, M[0][0]); }
+      const mn = Math.min(0, ...Ms.map(x => x[1][0][1]));
+      const B2 = Pl.panel(.35, .04, .64, .66, [-Math.PI, Math.PI, mn * 1.1 - .1, mx * 1.1], false);
+      B2.series([{ pts: Ms.map(([a, M]) => [a, M[0][0]]), cl: '--b', label: 'M₁₁' }, { pts: Ms.map(([a, M]) => [a, M[0][1]]), cl: '--d', label: 'M₁₂ = M₂₁' }, { pts: Ms.map(([a, M]) => [a, M[1][1]]), cl: '--f', label: 'M₂₂' }], { title: 'M entries vs elbow angle θ₂ (θ₁ has no effect)', yl: 'kg·m²' });
+      B2.line([s.q2, mn * 1.1 - .1], [s.q2, mx * 1.1], '--a', 1.5, [4, 3]);
+      [[s.M[0][0], '--b'], [s.M[0][1], '--d'], [s.M[1][1], '--f']].forEach(([y, c]) => B2.dot([s.q2, y], 5, c));
+    } else if (S === 7) {
+      const tip = s.P[2];
+      const B = Pl.panel(.35, 0, .32, .74, [-1.6, 1.6, -1.6, 1.6]); B.frame('hand force F (unit circle, N)'); B.axes();
+      B.circle([0, 0], 1, '--b', 2); B.arrow([0, 0], u, '--b', 3, 'F');
+      if (!s.Lam) { B.text([-1.5, -1.4], 'arm singular here: Λ undefined', '--bad', 0, 0, { size: 12 }); }
+      else {
+        const acc = MR.mv(s.Lam_i, u), big = Math.max(...MR.eigSym(s.Lam_i).vals) * 1.25, b = Math.max(.5, big);
+        const C = Pl.panel(.68, 0, .32, .74, [-b, b, -b, b]); C.frame('hand acceleration ẍ = Λ⁻¹F (m/s²)'); C.axes();
+        shade(C, [0, 0], s.Lam_i, t, '--d'); C.arrow([0, 0], MR.scl(acc, t), '--d', 3, 'ẍ'); C.arrow([0, 0], MR.scl(u, MR.norm(acc)), '--grey', 1.5, null, [4, 3]);
+        A.arrow(tip, MR.scl(u, .5), '--b', 2.5, 'F'); A.arrow(tip, MR.scl(MR.unit(acc), .5 * t), '--d', 2.5, 'ẍ');
+      }
+    }
+    /* bottom strip: the matrix itself, drawn as numbers */
+    const Bt = Pl.panel(0, .76, 1, .24, [0, 1, 0, 1], false); Bt.frame();
+    const M = s.M, col = (x, y, txt, cl, sz) => Bt.label(Bt.x + x * Bt.w, Bt.y + y * Bt.h, txt, cl, { mono: true, size: sz });
+    col(.02, .25, 'M(θ) =', '--muted'); col(.1, .25, '[ ' + f(M[0][0], 3).padStart(7) + '  ' + f(M[0][1], 3).padStart(7) + ' ]', '--b'); col(.1, .45, '[ ' + f(M[1][0], 3).padStart(7) + '  ' + f(M[1][1], 3).padStart(7) + ' ]', '--b');
+    col(.34, .25, 'eigenvalues ' + f(s.E.vals[0], 3) + ', ' + f(s.E.vals[1], 3), '--c'); col(.34, .45, 'det M = ' + f(MR.det(M), 3) + ' > 0', '--c');
+    col(.62, .25, 'M⁻¹ = [ ' + f(s.Mi[0][0], 3) + '  ' + f(s.Mi[0][1], 3) + ' ]', '--a'); col(.62, .45, '      [ ' + f(s.Mi[1][0], 3) + '  ' + f(s.Mi[1][1], 3) + ' ]', '--a');
+    col(.02, .7, S === 6 ? 'Ṁ − 2C = [ ' + f(s.S[0][0], 3) + '  ' + f(s.S[0][1], 3) + ' ;  ' + f(s.S[1][0], 3) + '  ' + f(s.S[1][1], 3) + ' ]   (skew: entries mirror with opposite sign)' : 'Sweep φ to walk the test direction round the circle. Drag nothing: the sliders below set the arm.', S === 6 ? '--e' : '--muted');
+    col(.02, .9, S === 7 && s.Lam ? 'Λ = J⁻ᵀ M J⁻¹ = [ ' + f(s.Lam[0][0], 3) + '  ' + f(s.Lam[0][1], 3) + ' ;  ' + f(s.Lam[1][0], 3) + '  ' + f(s.Lam[1][1], 3) + ' ] kg' : '', '--d');
+  },
+  math(S) {
+    const s = st(), M = s.M, u = s.u, b = s.b;
+    const head = `<p class="cg">θ = (${SL.deg(s.q1)}, ${SL.deg(s.q2)}), L = (${f(s.L1)}, ${f(s.L2)}) m, m = (${f(s.m1, 1)}, ${f(s.m2, 1)}) kg, test direction φ = ${SL.deg(s.phi)}.</p>`;
+    const Mu = MR.mv(M, u), ang = (a, c) => Math.acos(Math.max(-1, Math.min(1, MR.dot(a, c) / MR.norm(a) / MR.norm(c)))) * 180 / Math.PI;
+    const rows = [
+`<p><b>One point mass</b>: K = ½ m v², and for a velocity vector K = ½ vᵀ m v.</p>
+<p><b>A robot arm</b> has exactly the same form:</p>
+${E('K = ½ θ̇ᵀ M(θ) θ̇')}
+<p>For this arm (point masses, from page 133):</p>
+${E(`M₁₁ = m₁L₁² + m₂(L₁² + 2L₁L₂cos θ₂ + L₂²) = ${f(M[0][0], 3)}
+M₁₂ = M₂₁ = m₂(L₁L₂cos θ₂ + L₂²)       = ${f(M[0][1], 3)}
+M₂₂ = m₂L₂²                            = ${f(M[1][1], 3)}   kg·m²`)}
+<p>For θ̇ = (cos φ, sin φ) = ${vs(u)}: K = ½θ̇ᵀMθ̇ = ${f(.5 * MR.dot(u, Mu), 3)} J.</p>`,
+`${ul([`<b>Symmetric</b>: M₁₂ = M₂₁ = ${f(M[0][1], 3)}. Only the symmetric part of M changes ½θ̇ᵀMθ̇, so M can always be taken symmetric.`,
+      `<b>Positive definite</b>: K = ½θ̇ᵀMθ̇ &gt; 0 for every θ̇ ≠ 0 (the curve on the right never touches zero). Equivalent tests: both eigenvalues positive (${f(s.E.vals[0], 3)}, ${f(s.E.vals[1], 3)}), or M₁₁ &gt; 0 and det M = ${f(MR.det(M), 3)} &gt; 0.`,
+      `<b>Depends on θ</b>: change the elbow and every entry except M₂₂ changes (step 5).`])}
+<p>Green ellipse: every joint velocity with exactly ½ J of kinetic energy. Its long axis is the “light” direction (easy to move), its short axis the “heavy” one.</p>`,
+`<p>At rest (θ̇ = 0) and with gravity left out, τ = M θ̈ + 0 + 0 = M θ̈.</p>
+<p>Unit acceleration θ̈ = ${vs(u, 3)}:</p>
+${E(`τ = M θ̈ = [${f(M[0][0], 3)}·${f(u[0], 3)} + ${f(M[0][1], 3)}·${f(u[1], 3)},  ${f(M[1][0], 3)}·${f(u[0], 3)} + ${f(M[1][1], 3)}·${f(u[1], 3)}]
+  = ${vs(Mu, 3)} N·m,   |τ| = ${f(MR.norm(Mu), 3)}`)}
+<p>Angle between θ̈ and τ: <b>${f(ang(u, Mu), 1)}°</b>. Sweep φ: the torque point runs round the ellipse, and τ is usually <b>not</b> parallel to θ̈.</p>
+<p>The ellipse is a direction-dependent “mass”: certain acceleration directions need more torque than others.</p>`,
+`<p><b>Eigen-decomposition</b> of the symmetric M (page 127):</p>
+${E(`λ₁ = ${f(s.E.vals[0], 3)},  v₁ = ${vs(s.E.vecs[0], 3)}
+λ₂ = ${f(s.E.vals[1], 3)},  v₂ = ${vs(s.E.vecs[1], 3)}
+check: v₁·v₂ = ${f(MR.dot(s.E.vecs[0], s.E.vecs[1]), 4)} (perpendicular)`)}
+${ul(['Principal axes of the torque ellipse = eigenvectors of M.', 'Semi-axes = eigenvalues: the heaviest direction needs λ₁ N·m per rad/s², the lightest λ₂.',
+      `Set φ = ${f(Math.atan2(s.E.vecs[0][1], s.E.vecs[0][0]) * 180 / Math.PI, 0)}° (along v₁): τ = λ₁θ̈, angle 0°.`])}
+<p>Ratio λ₁/λ₂ = ${f(s.E.vals[0] / s.E.vals[1], 2)}: how unequal the arm feels in different joint directions.</p>`,
+`<p>M is positive definite, so it is always invertible: <b>forward dynamics</b> θ̈ = M⁻¹(τ − c − g) never fails, unlike J⁻¹.</p>
+${E(SL.mat(s.Mi, 3, 'M⁻¹') + `\nθ̈ = M⁻¹τ for τ = ${vs(u, 2)}:  ${vs(MR.mv(s.Mi, u), 3)} rad/s²`)}
+<p>Same axes as before, half-lengths 1/λ: 1/λ₁ = ${f(1 / s.E.vals[0], 3)} (heavy direction moves least), 1/λ₂ = ${f(1 / s.E.vals[1], 3)}.</p>
+<p>Ellipses in joint space are hard to feel intuitively, which is why step 7 looks at the hand instead.</p>`,
+`<p><b>M depends on θ₂ only.</b> Move θ₁: nothing changes. Rotating the whole arm about the shoulder does not change how the masses are arranged around the joints.</p>
+${E(`M₁₁(θ₂) = m₁L₁² + m₂(L₁² + L₂²) + 2m₂L₁L₂cos θ₂
+straight (θ₂ = 0):  ${f(MR.massMatrix(s.arm, [0, 0])[0][0], 3)}
+folded (θ₂ = 180°): ${f(MR.massMatrix(s.arm, [0, Math.PI])[0][0], 3)}
+now:                ${f(M[0][0], 3)}`)}
+<p>Mass 2 is L₁² + 2L₁L₂cos θ₂ + L₂² away from the shoulder, squared: biggest straight out (skater with arms out spins slowly), smallest folded in.</p>`,
+`<p><b>Scalar warm-up.</b> Momentum p = m(x) ẋ. Force = dp/dt = m ẍ + (dm/dx) ẋ². If the mass changes with position, a velocity-squared force appears, even with ẍ = 0.</p>
+<p><b>Robot version.</b> The changes of M with θ give the velocity products:</p>
+${E(`∂M/∂θ₂ = −m₂L₁L₂ sin θ₂ [2 1; 1 0] = ${f(-b * s.s2, 3)}·[2 1; 1 0]
+Γᵢⱼₖ = ½(∂Mᵢⱼ/∂θₖ + ∂Mᵢₖ/∂θⱼ − ∂Mⱼₖ/∂θᵢ)
+Cᵢⱼ = Σₖ Γᵢⱼₖ θ̇ₖ,   c = C θ̇ = θ̇ᵀΓθ̇`)}
+<p>At θ̇ = ${vs(s.d, 1)} (sliders θ̇₁, θ̇₂):</p>
+${E(SL.mat(s.Md, 3, 'Ṁ') + '\n' + SL.mat(s.C, 3, 'C') + '\n' + SL.mat(s.S, 3, 'Ṁ − 2C') + `\nθ̇ᵀ(Ṁ − 2C)θ̇ = ${f(MR.dot(s.d, MR.mv(s.S, s.d)), 6)}`)}
+<p><b>Why it matters</b>: d/dt(½θ̇ᵀMθ̇) = θ̇ᵀ(τ − g) + ½θ̇ᵀ(Ṁ − 2C)θ̇, and the last term is zero. The velocity-product forces only pass energy between joints; they never create it. Every passivity-based stability proof uses this.</p>`,
+`<p>Grab the hand. With hand velocity ẋ = J θ̇, equate the kinetic energies:</p>
+${E(`½ẋᵀΛẋ = ½θ̇ᵀMθ̇,  θ̇ = J⁻¹ẋ   ⇒   Λ(θ) = J⁻ᵀ M J⁻¹`)}
+${s.Lam ? E(SL.mat(s.J, 3, 'J') + `\ndet J = ${f(s.detJ, 3)}\n` + SL.mat(s.Lam, 3, 'Λ') + `\nΛ⁻¹ = J M⁻¹ Jᵀ`) : '<p class="cbad">det J ≈ 0: the arm is singular and Λ does not exist (it is infinitely heavy along the arm).</p>'}
+${s.Lam ? `<p>Hand force F = ${vs(u, 2)} N gives ẍ = Λ⁻¹F = ${vs(MR.mv(s.Lam_i, u), 3)} m/s². Angle between F and ẍ: <b>${f(ang(u, MR.mv(s.Lam_i, u)), 1)}°</b>.</p>` : ''}
+${ul(['The apparent mass depends on direction: λ(Λ) = ' + (s.Lam ? MR.eigSym(s.Lam).vals.map(x => f(x, 2)).join(', ') + ' kg' : '—') + '.', 'Force and acceleration line up only along the principal axes.', 'And it all changes with the configuration. A robot hand never feels like a point mass. Page 138 builds the full task-space equation on this.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>λ(M)</b>${f(s.E.vals[0], 3)}, ${f(s.E.vals[1], 3)}</span><span><b>det M</b>${f(MR.det(s.M), 3)}</span><span><b>det J</b>${f(s.detJ, 3)}</span>`; },
+});
+</script>
+</body></html>

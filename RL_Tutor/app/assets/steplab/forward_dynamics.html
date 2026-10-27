@@ -1,0 +1,146 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forward dynamics and simulation</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const arm = MR.arm({ L: [1, .8], m: [2, 1.5], r: [.5, .4], I: [.17, .08] });
+let METHOD = 'semi';
+const sim = { q: null, qd: null, t: 0, trail: [], E: [] };
+const init = () => { const v = SL.v; return { q: [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180], qd: [v.d1 / 10, v.d2 / 10] }; };
+const tauOf = () => [SL.v.t1 / 10, SL.v.t2 / 10];
+const qdd = (q, qd, tau) => MR.forwardDyn(arm, q, qd, tau);
+const energy = (q, qd) => { const e = MR.energy(arm, q, qd); return e.K + e.P; };
+const step = (q, qd, tau, dt, m) => {
+  if (m === 'euler') { const a = qdd(q, qd, tau); return [MR.add(q, MR.scl(qd, dt)), MR.add(qd, MR.scl(a, dt))]; }
+  if (m === 'semi') { const a = qdd(q, qd, tau), v = MR.add(qd, MR.scl(a, dt)); return [MR.add(q, MR.scl(v, dt)), v]; }
+  const F = (q, v) => [v, qdd(q, v, tau)];
+  const [a1, b1] = F(q, qd), [a2, b2] = F(MR.add(q, MR.scl(a1, dt / 2)), MR.add(qd, MR.scl(b1, dt / 2)));
+  const [a3, b3] = F(MR.add(q, MR.scl(a2, dt / 2)), MR.add(qd, MR.scl(b2, dt / 2))), [a4, b4] = F(MR.add(q, MR.scl(a3, dt)), MR.add(qd, MR.scl(b3, dt)));
+  return [q.map((x, i) => x + dt / 6 * (a1[i] + 2 * a2[i] + 2 * a3[i] + a4[i])), qd.map((x, i) => x + dt / 6 * (b1[i] + 2 * b2[i] + 2 * b3[i] + b4[i]))];
+};
+const resetSim = () => { const s0 = init(); sim.q = s0.q; sim.qd = s0.qd; sim.t = 0; sim.trail = []; sim.E = [[0, energy(s0.q, s0.qd)]]; };
+let drift = null;
+const driftRuns = () => {           // 6 s passive runs with the three integrators
+  const s0 = init(), dt = SL.v.dt / 1000, key = [s0.q, s0.qd, dt].join();
+  if (drift && drift.key === key) return drift;
+  const E0 = energy(s0.q, s0.qd), out = { key, E0 };
+  ['euler', 'semi', 'rk4'].forEach(m => { let q = s0.q, v = s0.qd; const pts = [[0, 0]];
+    for (let k = 1, N = Math.round(6 / dt); k <= N; k++) { [q, v] = step(q, v, [0, 0], dt, m); if (k % Math.max(1, Math.round(N / 300)) === 0) pts.push([k * dt, energy(q, v) - E0]); }
+    out[m] = pts; });
+  return drift = out;
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const NAMES = { euler: 'explicit Euler', semi: 'semi-implicit Euler', rk4: 'RK4' };
+SL.app({
+  title: 'Forward dynamics: one simulation tick, then many',
+  sub: 'Torque in, acceleration out, then integrate. The numbers on the right are the current simulated state; Play runs it, Reset puts it back at the slider values.',
+  view: '2d',
+  legend: [['--c', 'h = c + g (from RNEA with q̈ = 0)'], ['--b', 'M columns'], ['--a', 'q̈ = M⁻¹(τ − h)'], ['--d', 'tip trail']],
+  controls: [
+    { id: 'q1', label: 'start θ₁', min: -180, max: 180, value: 100, fmt: x => x + '°' },
+    { id: 'q2', label: 'start θ₂', min: -180, max: 180, value: 0, fmt: x => x + '°' },
+    { id: 'd1', label: 'start θ̇₁', min: -40, max: 40, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd2', label: 'start θ̇₂', min: -40, max: 40, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 't1', label: 'motor τ₁', min: -400, max: 400, value: 0, fmt: x => f(x / 10, 1) + ' N·m' },
+    { id: 't2', label: 'motor τ₂', min: -200, max: 200, value: 0, fmt: x => f(x / 10, 1) + ' N·m' },
+    { id: 'dt', label: 'time step dt', min: 1, max: 30, value: 5, fmt: x => x + ' ms' },
+  ],
+  onControl(id) { if (id !== 't1' && id !== 't2') resetSim(); },
+  buttons: ['euler', 'semi', 'rk4'].map(m => ({ label: NAMES[m], toggle: true, pressed: m === METHOD, onclick: e => { METHOD = m;
+    [...e.parentNode.children].forEach(b => b.getAttribute('aria-pressed') !== null && b.setAttribute('aria-pressed', b === e)); } })),
+  play: { tick(dt) { const h = SL.v.dt / 1000; let n = Math.max(1, Math.round(dt / h)); while (n--) { [sim.q, sim.qd] = step(sim.q, sim.qd, tauOf(), h, METHOD); sim.t += h; }
+    sim.trail.push(MR.points(arm.L, sim.q)[2]); if (sim.trail.length > 400) sim.trail.shift(); sim.E.push([sim.t, energy(sim.q, sim.qd)]); if (sim.E.length > 2000) sim.E.shift(); } },
+  reset() { resetSim(); },
+  setup() { resetSim(); },
+  steps: [
+    ['The question: what happens next?', 'Forward dynamics: given where the arm is (q), how fast it moves (q̇) and the motor torques τ, find the acceleration q̈. Integrate q̈ over time and you have a simulator.'],
+    ['h: everything except M q̈', 'Call inverse dynamics (RNEA) with q̈ = 0. What comes out is the torque needed just for gravity and the velocity products: h = c + g.'],
+    ['M, one column at a time', 'Call RNEA with q̇ = 0, no gravity and q̈ = e₁, then e₂. Each answer is one column of M. n calls give the whole n × n mass matrix.'],
+    ['Solve M q̈ = τ − h', 'M is positive definite, so this always has exactly one answer. That is the acceleration the arm will have right now.'],
+    ['One tick of integration', 'Move the state forward by dt. Explicit Euler uses the old speed to move; semi-implicit Euler first updates the speed, then moves with the new one; RK4 averages four slopes.'],
+    ['Many ticks: is the integrator honest?', 'With τ = 0 and no friction the energy must stay constant. Any drift is the integrator lying. Compare the three methods on the same 6 s run.'],
+    ['Cost and better algorithms', 'Each tick here costs n + 1 RNEA calls plus a linear solve: O(n³). Featherstone’s articulated-body algorithm does forward dynamics in O(n). RK4 needs four evaluations per tick.'],
+  ],
+  draw(Pl) {
+    const S = SL.st, t = SL.ease(SL.anim), q = sim.q, qd = sim.qd, tau = tauOf();
+    const P = MR.points(arm.L, q);
+    const A = Pl.panel(0, 0, .45, 1, [-2.1, 2.1, -2.3, 2.3]); A.frame('the simulated arm (t = ' + f(sim.t, 2) + ' s)'); A.grid(.5);
+    A.poly(sim.trail, '--d', 1.5); A.arm(P); MR.coms(arm, q).forEach(c => A.dot(c, 4, '--ink'));
+    const h = MR.hVec(arm, q, qd), M = MR.massMatrix(arm, q), a = MR.solve(M, MR.sub(tau, h));
+    const arcT = (i, val, cl, k, lab) => { const a0 = q.slice(0, i + 1).reduce((x, y) => x + y) - .4; A.arc(P[i], 26 + 12 * k, a0, a0 + Math.max(-2.8, Math.min(2.8, val)) * t, cl, 2.5, true, lab); };
+    if (S === 1) [0, 1].forEach(i => arcT(i, h[i] / 15, '--c', 0, 'h' + (i + 1) + '=' + f(h[i], 1)));
+    if (S === 3 || S === 4) [0, 1].forEach(i => arcT(i, a[i] / 10, '--a', 1, 'q̈' + (i + 1) + '=' + f(a[i], 1)));
+    if (S === 4) { const [q1] = step(q, qd, tau, SL.v.dt / 1000 * 20, METHOD); A.arm(MR.points(arm.L, q1), { ghost: true, w: 3 }); A.text([-2, -2.1], 'ghost: state after 20 ticks of ' + NAMES[METHOD], '--muted', 0, 0, { size: 12 }); }
+    const R = Pl.panel(.46, 0, .54, 1, [0, 1, 0, 1], false);
+    if (S === 2) {
+      const B = Pl.panel(.46, 0, .54, .5, [-1, 3, -1.5, 1.5]); B.frame('RNEA(q, 0, e₁) and RNEA(q, 0, e₂), no gravity'); B.axes();
+      B.arrow([0, 0], MR.scl(MR.col(M, 0), t), '--b', 3, 'column 1 = ' + vs(MR.col(M, 0), 2)); B.arrow([0, 0], MR.scl(MR.col(M, 1), t), '--e', 3, 'column 2 = ' + vs(MR.col(M, 1), 2), null, 8, 16);
+    }
+    if (S === 5 || S === 6) {
+      const d = driftRuns(), all = ['euler', 'semi', 'rk4'].flatMap(m => d[m].map(p => p[1])), mx = Math.max(.5, ...all.map(Math.abs)) * 1.1;
+      const B = Pl.panel(.46, 0, .54, .55, [0, 6, -mx, mx], false);
+      B.series([{ pts: d.euler, cl: '--bad', label: 'explicit Euler' }, { pts: d.semi, cl: '--b', label: 'semi-implicit' }, { pts: d.rk4, cl: '--c', w: 3, label: 'RK4' }], { title: 'energy error over 6 s, τ = 0, dt = ' + SL.v.dt + ' ms', yl: 'J' });
+    }
+    if (S === 0 || S === 1 || S === 3 || S === 4) {
+      const E0 = sim.E[0][1], es = sim.E.map(p => [p[0], p[1] - E0]), mx = Math.max(.2, ...es.map(p => Math.abs(p[1]))) * 1.2, T = Math.max(2, sim.t);
+      const B = Pl.panel(.46, 0, .54, .55, [Math.max(0, T - 10), T, -mx, mx], false);
+      B.series([{ pts: es, cl: '--d', label: 'E(t) − E(0), ' + NAMES[METHOD] }], { title: 'energy of the running simulation (press Play)', yl: 'J' });
+    }
+    const n = MR.vs, L = (x, y, s, c) => R.label(R.x + 10, R.y + R.h * y, s, c, { mono: true });
+    L(0, .64, `q  = ${vs(q, 3)} rad    q̇ = ${vs(qd, 3)} rad/s`, '--ink');
+    L(0, .70, `τ  = ${vs(tau, 2)} N·m`, '--muted');
+    L(0, .76, `h  = ${vs(h, 3)} N·m`, '--c');
+    L(0, .82, `M  = [${f(M[0][0], 3)} ${f(M[0][1], 3)}; ${f(M[1][0], 3)} ${f(M[1][1], 3)}]`, '--b');
+    L(0, .88, `q̈  = M⁻¹(τ − h) = ${vs(a, 3)} rad/s²`, '--a');
+    L(0, .94, `E  = ${f(energy(q, qd), 3)} J   (start ${f(sim.E[0][1], 3)} J)`, '--d');
+  },
+  math(S) {
+    const q = sim.q, qd = sim.qd, tau = tauOf(), h = MR.hVec(arm, q, qd), g = MR.gravityVec(arm, q), M = MR.massMatrix(arm, q), rhs = MR.sub(tau, h), a = MR.solve(M, rhs), dt = SL.v.dt / 1000;
+    const head = `<p class="cg">Arm of page 135 (no payload). State now: q = ${vs(q, 3)}, q̇ = ${vs(qd, 3)}, τ = ${vs(tau, 2)}, t = ${f(sim.t, 2)} s. Integrator: ${NAMES[METHOD]}, dt = ${SL.v.dt} ms.</p>`;
+    const dm = MR.det(M);
+    const rows = [
+`<p>Same equation as inverse dynamics, solved for the other unknown:</p>
+${E(`M(q) q̈ + c(q, q̇) + g(q) = τ          ⇒          q̈ = M(q)⁻¹ (τ − c − g)`)}
+${ul(['<b>Inverse</b> (control): direct evaluation, O(n).', '<b>Forward</b> (simulation): needs M and a linear solve, then an integrator to step time.'])}
+<p>Recipe per tick: (1) h = c + g, (2) M, (3) solve for q̈, (4) step q and q̇ by dt. Repeat.</p>`,
+`<p>RNEA with the actual q, q̇ but q̈ = 0 returns exactly the non-inertial torques:</p>
+${E(`h = RNEA(q, q̇, 0) = c(q, q̇) + g(q) = ${vs(h, 3)} N·m
+     of which g = RNEA(q, 0, 0) = ${vs(g, 3)}
+              c = h − g        = ${vs(MR.sub(h, g), 3)}`)}
+<p>No derivatives of M needed: the recursion gets c for free.</p>`,
+`<p>With q̇ = 0 and gravity off, RNEA returns M q̈. Choose q̈ = e₁ = (1, 0): the answer is M e₁, the first column.</p>
+${E(`RNEA(q, 0, e₁) = ${vs(MR.col(M, 0), 4)}   → column 1
+RNEA(q, 0, e₂) = ${vs(MR.col(M, 1), 4)}   → column 2
+` + SL.mat(M, 4, 'M'))}
+<p>Symmetric (M₁₂ = M₂₁) and positive definite (det = ${f(dm, 4)} &gt; 0), as page 134 promised. For n joints: n calls, O(n²) work. (The composite rigid-body algorithm is faster.)</p>`,
+`<p>Right-hand side and solve (2×2 by Cramer’s rule):</p>
+${E(`τ − h = ${vs(tau, 3)} − ${vs(h, 3)} = ${vs(rhs, 3)}
+det M = ${f(dm, 4)}
+q̈₁ = (M₂₂·r₁ − M₁₂·r₂)/det = (${f(M[1][1], 3)}·${f(rhs[0], 3)} − ${f(M[0][1], 3)}·${f(rhs[1], 3)})/${f(dm, 3)} = ${f(a[0], 4)}
+q̈₂ = (M₁₁·r₂ − M₂₁·r₁)/det = (${f(M[0][0], 3)}·${f(rhs[1], 3)} − ${f(M[1][0], 3)}·${f(rhs[0], 3)})/${f(dm, 3)} = ${f(a[1], 4)}  rad/s²`)}
+<p>Because M is positive definite this never fails, at any pose. (Contrast J, which goes singular.)</p>`,
+`<p>One tick of dt = ${SL.v.dt} ms from the current state:</p>
+${E((() => { const e = step(q, qd, tau, dt, 'euler'), s = step(q, qd, tau, dt, 'semi'), r = step(q, qd, tau, dt, 'rk4');
+  return `explicit Euler:  q̇⁺ = q̇ + dt·q̈,  q⁺ = q + dt·q̇      (old speed)
+  q⁺ = ${vs(e[0], 5)}   q̇⁺ = ${vs(e[1], 5)}
+semi-implicit:   q̇⁺ = q̇ + dt·q̈,  q⁺ = q + dt·q̇⁺     (new speed)
+  q⁺ = ${vs(s[0], 5)}   q̇⁺ = ${vs(s[1], 5)}
+RK4:             average of 4 slopes (4 forward-dynamics calls)
+  q⁺ = ${vs(r[0], 5)}   q̇⁺ = ${vs(r[1], 5)}`; })())}
+<p>The differences look tiny for one tick, but they add up over thousands of ticks (next step).</p>`,
+(() => { const d = driftRuns(), last = m => d[m][d[m].length - 1][1];
+  return `<p>Passive run from the start sliders, τ = 0, 6 s at dt = ${SL.v.dt} ms. Energy should stay ${f(d.E0, 3)} J.</p>
+${E(`explicit Euler:  ΔE(6 s) = ${f(last('euler'), 3)} J
+semi-implicit:   ΔE(6 s) = ${f(last('semi'), 3)} J
+RK4:             ΔE(6 s) = ${f(last('rk4'), 4)} J`)}
+${ul(['Explicit Euler <b>pumps energy in</b>: the pendulum swings higher every cycle.', 'Semi-implicit Euler is symplectic for a constant mass; with a pose-dependent M(q) it is not exactly, so it drifts a little (here it loses energy).', 'RK4 is accurate per step (error ∝ dt⁵) but costs 4× the work. Halve dt: Euler errors halve, RK4 errors drop ≈ 16×.'])}`; })(),
+`${ul(['Per tick here: h (1 RNEA) + M (n RNEA) + solve (O(n³)) → O(n³) overall.', '<b>Articulated-body algorithm</b> (Featherstone): forward dynamics in O(n), three passes, no M at all. Used by Pinocchio, RBDL, Drake, MuJoCo-style engines.', 'RK4 = 4 forward-dynamics calls per tick; a cheaper semi-implicit step at a smaller dt is often preferred in real-time simulators.', 'Chaos: change start θ₁ by 1° and after a few seconds the motion is completely different. A simulator can be exact per step and still unpredictable long-term.'])}
+<p><b>Interview line</b>: “ID is O(n) direct evaluation for control; FD needs M⁻¹ (or ABA) plus an integrator for simulation; check energy to trust the integrator.”</p>`];
+    return head + rows[S];
+  },
+  stats() { return `<span><b>t</b>${f(sim.t, 2)} s</span><span><b>E</b>${f(energy(sim.q, sim.qd), 3)} J</span><span><b>method</b>${NAMES[METHOD]}</span>`; },
+});
+</script>
+</body></html>

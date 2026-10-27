@@ -1,0 +1,143 @@
+Starting in Chapter 8.2, we learn the Newton-Euler
+method for deriving the dynamics of a robot.
+Whereas the Lagrangian formulation starts
+with the potential and kinetic energy and
+applies a variational approach based on derivatives,
+the Newton-Euler method is derived directly
+from f equals m-a for the rigid bodies that
+make up the robot.
+One advantage of this approach is that we
+can derive an efficient recursive algorithm
+for computing the dynamics of open-chain robots.
+Let's start with the dynamics for a single
+rigid body.
+You can think of a rigid body as a collection
+of point masses that are rigidly attached
+to each other.
+We define the center of mass to be the unique
+point at the centroid of the mass distribution,
+and we fix a frame {b} to the rigid body at
+the center of mass.
+The definition of the center of mass is that
+the sum of the mass-weighted vectors to the
+point masses in the {b} frame is zero.
+We define the twist of the rigid body, expressed
+in the {b} frame, as V_b, consisting of an
+angular velocity omega_b and a linear velocity
+v_b.
+Then the linear velocity of mass i is p_i-dot
+equals v_b plus omega_b cross p_i.
+We define the acceleration of the rigid body
+to be V_b-dot, and using this we can take
+the derivative of p_i-dot to get p_i-double-dot.
+Notice that the last term is omega-b cross
+the time derivative of p_i, so we can substitute
+in the expression above to get this equation
+for p_i-double-dot.
+Notice that it has velocity-product terms
+in the form of omega_b cross v_b and omega_b
+cross omega_b cross p_i.
+Now, taking as a given that f equals m-a,
+we get the force f_i needed to move the mass
+m_i using the expression for p_i-double-dot
+we just derived.
+The corresponding moment in the {b} frame
+is m_i equals p_i cross f_i, written here
+with our bracket notation.
+The total wrench F_b, consisting of a moment
+m_b and a force f_b, needed to accelerate
+the body with acceleration V_b-dot when it
+is moving with a twist V_b is just the sum
+of forces and moments needed for the individual
+point masses.
+If we define m to be the total mass of the
+body, then using the fact that we defined
+the frame {b} to be at the center of mass
+of the body, the total force f_b is just m
+times v_b-dot plus bracket-omega_b times v_b.
+The total moment m_b is I_b times omega_b-dot
+plus bracket-omega_b times I_b times omega_b,
+where I_b is called the inertia matrix.
+The inertia matrix is the negative of the
+sum of each mass times the bracket of its
+position squared.
+We can write the 3-by-3 inertia matrix in
+terms of its nine components, with the diagonal
+terms Ixx, Iyy, and Izz, as well as the off-diagonal
+components Ixy, Ixz, and Iyz.
+These components are calculated as shown here.
+As an example, the top left element of the
+matrix, Ixx, is called the moment of inertia
+about the x-axis.
+This inertia gets larger if the mass m_i is
+further from the x-axis, where the square
+of the distance from the x-axis is given by
+y_i-squared plus z_i-squared.
+Basically, if the mass of the body is far
+from the x-axis, it takes more torque to accelerate
+about the x-axis.
+The off-diagonal elements are called products
+of inertia.
+Now imagine that we replace the individual
+point masses of the rigid body by a continuous
+mass density rho as a function of position.
+Then the elements of the inertia matrix are
+calculated as volume integrals instead of
+summations, but conceptually there is no difference.
+In the book you can see some simplified formulas
+for calculating the inertia matrix of some
+common bodies.
+Just like the mass matrix for a robot, the
+inertia matrix I_b for a rigid body is symmetric
+and positive definite.
+Also similar to the mass matrix for a robot,
+the kinetic energy for a rotating rigid body
+is one-half omega_b-transpose times I_b times
+omega_b.
+Now let's consider a particular rigid body,
+an ellipsoid, with a frame {b} at its center
+of mass and the inertia matrix I_b shown here.
+Now consider the same body but with a frame
+{p}, also at the center of mass, with a different
+orientation.
+In this frame {p}, the inertia matrix has
+a particularly simple form, with all off-diagonal
+elements zero.
+When the off-diagonal elements are zero, the
+{p}-frame coordinate axes are called principal
+axes of inertia, and the scalar inertias about
+those axes are called the principal moments
+of inertia.
+You can find the principal axes of inertia
+from the inertia matrix for any frame {b}
+at the center of mass by evaluating the eigenvectors
+and eigenvalues of the inertia matrix I_b.
+The principal axes of inertia are aligned
+with the eigenvectors, which are expressed
+in the {b} frame, and the principal moments
+of inertia are the eigenvalues.
+The rotation matrix expressing the {p} frame
+in the {b} frame, R_bp, has the eigenvectors
+as its columns.
+If we equate the kinetic energy expressed
+in the {p} and {b} frames, we can calculate
+the inertia matrix in the {p} frame as R_bp-transpose
+times I_b times R_bp.
+When possible, it is preferable to choose
+the body frame to be aligned with the principal
+axes of inertia, to simplify the inertia matrix.
+This also simplifies the rotational equations
+of motion.
+For an arbitrary {b} frame at the center of
+mass, the rotational equations of motion are
+what we derived before.
+If the {b} frame is aligned with the principal
+axes of inertia, however, the equations can
+be expressed more simply, as you see here.
+This form involves many fewer multiplications,
+additions, and subtractions.
+To summarize, these are our equations of motion
+for a single rigid body.
+In the next video we will study these equations
+further, in preparation for using them for
+the dynamics of a robot.

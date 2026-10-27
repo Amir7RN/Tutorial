@@ -1,0 +1,134 @@
+In the last video we derived the equations
+of motion for a 2R robot.
+In this video we focus on the velocity-product
+terms, c of (theta, theta-dot).
+In particular, terms that have the square
+of a single joint velocity are called centripetal
+terms.
+Terms that have a product of two different
+joint velocities are called Coriolis terms.
+To gain some intuition as to the physical
+meaning of these terms, let's continue to
+use the 2R arm.
+To focus on the velocity-product terms, let's
+assume that gravity and the joint accelerations
+are zero.
+Then the force needed to move mass_1 is f_1
+equals m_1 times the x-y-z linear acceleration
+of the mass.
+We can write these accelerations in terms
+of joint one's velocity and acceleration as
+you see here, where c_1 means cosine of theta_1
+and s_1 means sine of theta_1.
+Notice that there are joint velocity squared
+terms.
+In other words, zero acceleration of the joints
+does not mean zero acceleration of the mass
+in the linear coordinates x, y, and z.
+We could do the same thing for mass_2 and
+get this expression for f_2 in terms of the
+joint velocities and accelerations.
+C_1,2 means cosine of theta_1-plus-theta_2
+and s_1,2 means sine of theta_1-plus-theta_2.
+Now let's put the robot at theta_1 equal to
+zero and theta_2 equal to pi over 2.
+At this configuration, the velocity-product
+acceleration terms for mass_2 are given here.
+Now consider the case where theta_1-dot is
+positive but theta_2-dot is zero.
+Then the mass travels around a circle with
+its center at the first joint.
+The centripetal acceleration of the mass is
+proportional to theta_1-dot-squared toward
+joint 1.
+Without that centripetal acceleration, the
+mass would fly off on a straight-line tangent
+to the circle.
+Also notice that the line of acceleration
+of mass_2 passes through the first joint,
+and therefore the line of force needed to
+create that acceleration creates no moment
+about joint 1.
+So joint 1 does not have to apply a torque
+at this configuration and velocity.
+Joint 2, on the other hand, has to apply a
+positive torque to keep the mass moving along
+the circle.
+Next, consider the case where theta_1-dot
+is zero but theta_2-dot is positive.
+Now the mass travels around a circle with
+its center at the second joint, and the centripetal
+acceleration is proportional to theta_2-dot-squared.
+Finally, consider the case where both theta_1-dot
+and theta_2-dot are positive.
+In addition to the centripetal accelerations,
+there is now a Coriolis acceleration toward
+joint 2.
+Mass_2 times this Coriolis acceleration is
+a force that creates negative moment about
+joint 1.
+In other words, to keep both joint velocities
+constant, we must apply a negative torque
+to joint 1.
+If zero torque were applied to joint 1, joint
+1 would accelerate.
+This is what happens to a skater in a spin
+when he pulls in his outstretched arms--since
+his inertia decreases, his spinning velocity
+increases.
+In summary, we can write a robot's equations
+of motion this way, but we can also write
+the velocity-product terms as theta-dot-transposed
+times Gamma of theta times theta-dot.
+I personally like this way of writing the
+velocity-product terms, as it emphasizes the
+fact that the terms are quadratic in the joint
+velocities.
+Also, it emphasizes that Gamma of theta depends
+only on the joint values theta.
+You can think of Gamma as a three-dimensional
+n-by-n-by-n matrix, whose entries are called
+the Christoffel symbols of the mass matrix.
+Viewed this way, Gamma_i is an n-by-n matrix
+constructed of components Gamma_i,j,k.
+The Christoffel symbols Gamma_i,j,k are calculated
+from the derivatives of the mass matrix with
+respect to the joint variables, and the velocity-product
+vector can be calculated as shown here.
+Although this looks complex, the main point
+is that the velocity-product term can be written
+explicitly as a quadratic in the joint velocity
+vector.
+Just keep in mind this simple example.
+A mass m with a scalar velocity x-dot has
+a scalar momentum p.
+The force acting on the mass is the time derivative
+of the momentum.
+If we assume the mass is constant, then f
+equals m x-double-dot.
+If the mass changes with the configuration,
+though, as it does for an articulated robot,
+then by the chain rule for derivatives, the
+time derivative of the momentum has a term
+depending on d_m d_x, the derivative of the
+mass with respect to the configuration.
+D_m d_x plays the same role as the Christoffel
+symbols of a mass matrix.
+Back to our list of ways to compactly represent
+a robot's dynamics, another common way to
+write the velocity-product term is to express
+it as the product of a Coriolis matrix and
+the joint velocity vector.
+The elements c_i,j of the Coriolis matrix
+can be constructed from the Christoffel symbols
+and the joint velocity vector.
+Finally, we sometimes lump all the terms not
+dependent on theta-double-dot into a single
+vector, h of (theta, theta-dot).
+To any of these forms of the equations of
+motion, we can add the joint forces and torques
+needed to create a desired wrench F_tip at
+the end-effector.
+Now that we have a better understanding of
+the velocity-product terms, in the next video
+we will focus on the mass matrix.

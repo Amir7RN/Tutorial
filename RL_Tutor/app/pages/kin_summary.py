@@ -6,16 +6,8 @@ planar 3R arm with unit links at θ = (0°, 90°, −90°): joints at (0, 0), (1
 """
 from __future__ import annotations
 
-import os
-
-from PySide6.QtCore import Qt, QUrl
-from PySide6.QtGui import QDesktopServices
-
-from .. import theme
 from ..widgets import Card, body, math_label
 from .robo_common import plain
-
-PINV_HTML = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "pinv_steps.html")
 
 
 def _ul(*items):
@@ -36,29 +28,8 @@ def intro_card() -> Card:
 
 def pinv_steps_card() -> Card:
     """The interactive 'pseudo-inverse step by step' page, embedded."""
-    c = Card("interactive: the pseudoinverse step by step on the arm (fat, tall, SVD, summary)")
-    c.add(plain(
-        "Tabs: fat (3 joints, 2 demands, θ̇ = Jᵀ(JJᵀ)⁻¹V), tall (fewer joints than "
-        "demands, θ̇ = (JᵀJ)⁻¹JᵀV, the RRPR case), the same via SVD, and a summary. "
-        "Step through with 'Next step', drag the blue arrow, open 'Show the math'."))
-    url = QUrl.fromLocalFile(PINV_HTML)
-    try:
-        from PySide6.QtWebEngineWidgets import QWebEngineView
-    except ImportError:
-        QWebEngineView = None
-    if QWebEngineView is not None:
-        view = QWebEngineView()
-        view.setMinimumHeight(1000)
-        view.loadFinished.connect(
-            lambda ok: view.page().runJavaScript("document.documentElement.dataset.theme='dark'"))
-        view.load(url)
-        c.add(view)
-        c.view = view
-    link = body(f"<a href='open' style='color:{theme.CYAN}'>Open it in the browser instead</a>")
-    link.setTextInteractionFlags(Qt.TextBrowserInteraction)
-    link.linkActivated.connect(lambda _: QDesktopServices.openUrl(url))
-    c.add(link)
-    return c
+    from ..widgets.step_lab import StepLab
+    return StepLab("pinv_steps.html", "the pseudoinverse on the arm: fat, tall, SVD, summary", 1000)
 
 
 def spaces_card() -> Card:

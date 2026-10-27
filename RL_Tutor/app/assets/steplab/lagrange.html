@@ -1,0 +1,202 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lagrange on the 2R arm</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* The video's 2R arm: all mass in two points, m1 at the elbow and m2 at the tip. */
+const G = 9.81;
+const st = () => {
+  const v = SL.v, L1 = v.L1 / 100, L2 = v.L2 / 100, m1 = v.m1 / 10, m2 = v.m2 / 10;
+  const q1 = v.q1 * Math.PI / 180, q2 = v.q2 * Math.PI / 180, d1 = v.d1 / 10, d2 = v.d2 / 10, a1 = v.a1 / 10, a2 = v.a2 / 10;
+  const c1 = Math.cos(q1), s1 = Math.sin(q1), c2 = Math.cos(q2), s2 = Math.sin(q2), c12 = Math.cos(q1 + q2), s12 = Math.sin(q1 + q2);
+  const p1 = [L1 * c1, L1 * s1], p2 = [p1[0] + L2 * c12, p1[1] + L2 * s12];
+  const v1 = [-L1 * s1 * d1, L1 * c1 * d1];
+  const v2 = [-L1 * s1 * d1 - L2 * s12 * (d1 + d2), L1 * c1 * d1 + L2 * c12 * (d1 + d2)];
+  const K1 = .5 * m1 * MR.dot(v1, v1), K2 = .5 * m2 * MR.dot(v2, v2), P1 = m1 * G * p1[1], P2 = m2 * G * p2[1];
+  const b = m2 * L1 * L2;
+  const M = [[m1 * L1 * L1 + m2 * (L1 * L1 + 2 * L1 * L2 * c2 + L2 * L2), m2 * (L1 * L2 * c2 + L2 * L2)],
+             [m2 * (L1 * L2 * c2 + L2 * L2), m2 * L2 * L2]];
+  const c = [-b * s2 * (2 * d1 * d2 + d2 * d2), b * s2 * d1 * d1];
+  const g = [(m1 + m2) * L1 * G * c1 + m2 * G * L2 * c12, m2 * G * L2 * c12];
+  const qdd = [a1, a2], Ma = MR.mv(M, qdd), tau = MR.add(MR.add(Ma, c), g);
+  const arm = MR.arm({ L: [L1, L2], m: [m1, m2], r: [L1, L2], I: [0, 0], g: G });
+  const rnea = MR.rnea(arm, [q1, q2], [d1, d2], qdd);
+  /* velocity-product acceleration of mass 2, split as in the video */
+  const u12 = [c12, s12];
+  const cen1 = MR.scl(p2, -d1 * d1), cen2 = MR.scl(u12, -L2 * d2 * d2), cor = MR.scl(u12, -2 * L2 * d1 * d2);
+  return { L1, L2, m1, m2, q1, q2, d1, d2, a1, a2, c1, s1, c2, s2, c12, s12, p1, p2, v1, v2, K1, K2, P1, P2, b, M, c, g, Ma, tau, rnea, arm, cen1, cen2, cor, qdd };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+let simT = 0;
+SL.app({
+  title: 'Lagrange on the 2R arm: energy in, torques out',
+  sub: 'The video’s arm: point mass m₁ at the elbow, m₂ at the tip. Every number on the right is computed from the sliders.',
+  view: '2d',
+  legend: [['--a', 'velocity of a mass'], ['--b', 'M θ̈ (inertial)'], ['--d', 'c (velocity products)'], ['--c', 'g (gravity)'], ['--e', 'centripetal / Coriolis acceleration']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 0, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -180, max: 180, value: 90, fmt: x => x + '°' },
+    { id: 'd1', label: 'θ̇₁', min: -60, max: 60, value: 15, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd2', label: 'θ̇₂', min: -60, max: 60, value: 10, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'a1', label: 'θ̈₁', min: -400, max: 400, value: 20, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'a2', label: 'θ̈₂', min: -400, max: 400, value: 0, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'm1', label: 'm₁', min: 1, max: 50, value: 10, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'm2', label: 'm₂', min: 1, max: 50, value: 10, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'L1', label: 'L₁', min: 30, max: 150, value: 100, fmt: x => f(x / 100) + ' m' },
+    { id: 'L2', label: 'L₂', min: 30, max: 150, value: 100, fmt: x => f(x / 100) + ' m' },
+  ],
+  play: {
+    /* zero joint torque: the arm swings freely; θ̈ sliders show the accelerations that make τ = 0 */
+    tick(dt) {
+      let s = st(), q = [s.q1, s.q2], qd = [s.d1, s.d2];
+      const n = 8, h = dt / n;
+      for (let k = 0; k < n; k++) {
+        const fd = (q, qd) => MR.forwardDyn(s.arm, q, qd, [0, 0]);
+        const k1v = fd(q, qd), k1q = qd;
+        const k2v = fd(MR.add(q, MR.scl(k1q, h / 2)), MR.add(qd, MR.scl(k1v, h / 2))), k2q = MR.add(qd, MR.scl(k1v, h / 2));
+        const k3v = fd(MR.add(q, MR.scl(k2q, h / 2)), MR.add(qd, MR.scl(k2v, h / 2))), k3q = MR.add(qd, MR.scl(k2v, h / 2));
+        const k4v = fd(MR.add(q, MR.scl(k3q, h)), MR.add(qd, MR.scl(k3v, h))), k4q = MR.add(qd, MR.scl(k3v, h));
+        q = q.map((x, i) => x + h / 6 * (k1q[i] + 2 * k2q[i] + 2 * k3q[i] + k4q[i]));
+        qd = qd.map((x, i) => x + h / 6 * (k1v[i] + 2 * k2v[i] + 2 * k3v[i] + k4v[i]));
+      }
+      const wrap = a => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      SL.setControl('q1', wrap(q[0]) * 180 / Math.PI); SL.setControl('q2', wrap(q[1]) * 180 / Math.PI);
+      SL.setControl('d1', Math.max(-60, Math.min(60, qd[0] * 10))); SL.setControl('d2', Math.max(-60, Math.min(60, qd[1] * 10)));
+      const acc = MR.forwardDyn(s.arm, q, qd, [0, 0]);
+      SL.setControl('a1', Math.max(-400, Math.min(400, acc[0] * 10))); SL.setControl('a2', Math.max(-400, Math.min(400, acc[1] * 10)));
+    }
+  },
+  reset() { SL.setControl('q1', 0); SL.setControl('q2', 90); SL.setControl('d1', 15); SL.setControl('d2', 10); SL.setControl('a1', 20); SL.setControl('a2', 0); },
+  steps: [
+    ['The problem: torques from motion', 'Inverse dynamics: given where the arm is (θ), how fast it moves (θ̇) and the acceleration you want (θ̈), find the joint torques τ. Forward dynamics is the reverse (simulation). Lagrange gets τ from energy alone.'],
+    ['Where the two masses are', 'Write each mass position from the joint angles. Mass 1 rides at the elbow, mass 2 at the tip, which depends on θ₁ + θ₂.'],
+    ['How fast each mass moves', 'Differentiate the positions in time (chain rule). Blue arrows: the velocities. Mass 2 feels both joints.'],
+    ['Kinetic energy K', 'K = ½m v² for each mass, added. Expand it and it is a quadratic in θ̇: K = ½ θ̇ᵀ M(θ) θ̇. The matrix in the middle is the mass matrix.'],
+    ['Potential energy P and the Lagrangian', 'P = m g (height) for each mass. The Lagrangian is L = K − P: a single number that depends on θ and θ̇.'],
+    ['The Euler–Lagrange recipe, on one term', 'τᵢ = d/dt(∂L/∂θ̇ᵢ) − ∂L/∂θᵢ. Do it for one piece of L, the video’s L_comp = m₂L₁L₂ θ̇₁θ̇₂ cos θ₂, and watch two terms cancel.'],
+    ['Collect the θ̈ terms: M(θ) θ̈', 'All terms linear in θ̈ form M(θ)θ̈. Orange bars: the torque each joint needs just to accelerate the masses.'],
+    ['Velocity products c(θ, θ̇)', 'Terms with θ̇ᵢ² are centripetal, θ̇₁θ̇₂ Coriolis. They exist because joint angles are not inertial coordinates: even with θ̈ = 0, mass 2 accelerates (pink arrows).'],
+    ['Gravity g(θ)', 'Terms with no θ̇ or θ̈: the torque that holds the masses up. Only horizontal distance to a mass makes a lever arm for its weight.'],
+    ['Add up: τ = M θ̈ + c + g', 'Total torque per joint (white diamond). Checked against the recursive Newton–Euler algorithm, a completely different method. Press Play: with τ = 0 the arm swings freely and the θ̈ sliders show the accelerations that make τ zero.'],
+  ],
+  draw(P) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), R = s.L1 + s.L2 + .3;
+    const A = P.panel(0, 0, .62, 1, [-R, R, -R, R]);
+    A.grid(.5); A.axes();
+    const pts = [[0, 0], s.p1, s.p2];
+    A.arm(pts);
+    const rad = m => 5 + 3 * Math.sqrt(m);
+    A.dot(s.p1, rad(s.m1), '--d'); A.dot(s.p2, rad(s.m2), '--e');
+    A.text(s.p1, 'm₁', '--d', 10, -10); A.text(s.p2, 'm₂', '--e', 10, -10);
+    if (S === 1) { A.line([s.p2[0], 0], s.p2, '--grey', 1, [4, 3]); A.line([0, s.p2[1]], s.p2, '--grey', 1, [4, 3]);
+      A.text([s.p2[0], 0], 'x₂ = ' + f(s.p2[0]), '--muted', -20, 16); A.text([0, s.p2[1]], 'y₂ = ' + f(s.p2[1]), '--muted', 6, -6); }
+    const kv = .25;
+    if (S >= 2 && S <= 4) { A.arrow(s.p1, MR.scl(s.v1, kv * t), '--a', 3, '|v₁| = ' + f(MR.norm(s.v1))); A.arrow(s.p2, MR.scl(s.v2, kv * t), '--a', 3, '|v₂| = ' + f(MR.norm(s.v2))); }
+    if (S === 4) { A.line([-R, 0], [R, 0], '--c', 1, [6, 4]); A.text([-R + .1, 0], 'P = 0 here', '--c', 0, -6); }
+    if (S === 7) { const mx = Math.max(1e-6, MR.norm(s.cen1), MR.norm(s.cen2), MR.norm(s.cor)), ka = .9 / mx * t;
+      const tip = (v, cl, lab) => { if (MR.norm(v) < 1e-6) return; const e = MR.add(s.p2, MR.scl(v, ka)); A.arrow(s.p2, MR.scl(v, ka), cl, 3);
+        A.text(e, lab, cl, v[0] < 0 ? -8 : 8, v[1] < 0 ? 16 : -8, { align: v[0] < 0 ? 'right' : 'left', size: 12 }); };
+      tip(s.cen1, '--e', 'θ̇₁²: toward joint 1'); tip(s.cen2, '--b', 'θ̇₂²: toward joint 2'); tip(s.cor, '--d', '2θ̇₁θ̇₂: Coriolis');
+      A.text([-R + .1, -R + .2], 'arrows scaled to fit (lengths in the math panel)', '--muted', 0, 0, { size: 11, bold: false }); }
+    if (S === 8) { A.arrow(s.p1, [0, -.35 * t], '--c', 2.5, 'm₁g'); A.arrow(s.p2, [0, -.35 * t], '--c', 2.5, 'm₂g');
+      A.line([s.p1[0], 0], s.p1, '--c', 1, [3, 3]); A.line([s.p2[0], 0], s.p2, '--c', 1, [3, 3]); }
+    if (S >= 1 && S !== 7) A.arc([0, 0], 30, 0, s.q1, '--d', 2, true, 'θ₁');
+    if (S >= 1 && S !== 7) A.arc(s.p1, 26, s.q1, s.q1 + s.q2, '--e', 2, true, 'θ₂');
+    /* right column: energy (steps 3-5) or torque bars (6-9) */
+    if (S >= 3 && S <= 5) {
+      const vals = [['K₁', s.K1, '--a'], ['K₂', s.K2, '--a'], ['P₁', s.P1, '--c'], ['P₂', s.P2, '--c'], ['L = K − P', s.K1 + s.K2 - s.P1 - s.P2, '--b']];
+      const mx = Math.max(1, ...vals.map(x => Math.abs(x[1])));
+      const B = P.panel(.64, .06, .35, .6, [0, 5, -mx * 1.15, mx * 1.15], false); B.frame('energy (J)'); B.line([0, 0], [5, 0], '--grey', 1);
+      vals.forEach(([n, x, cl], i) => { const xx = i + .5; B.poly([[xx - .3, 0], [xx + .3, 0], [xx + .3, x * t], [xx - .3, x * t]], null, 0, null, cl);
+        B.line([xx - .3, x * t], [xx + .3, x * t], cl, 3); B.text([xx, 0], n, '--muted', 0, x >= 0 ? 16 : -8, { align: 'center', size: 12 }); B.text([xx, x * t], f(x, 1), cl, 0, x >= 0 ? -6 : 14, { align: 'center', mono: true }); });
+    }
+    if (S >= 6) {
+      const parts = [[s.Ma, '--b', 'Mθ̈'], [S >= 7 ? s.c : [0, 0], '--d', 'c'], [S >= 8 ? s.g : [0, 0], '--c', 'g']];
+      let mx = 1; [0, 1].forEach(j => { let p = 0, n = 0; parts.forEach(([v]) => v[j] > 0 ? p += v[j] : n += v[j]); mx = Math.max(mx, p, -n, Math.abs(s.tau[j])); });
+      const B = P.panel(.64, .06, .35, .6, [0, 2, -mx * 1.15, mx * 1.15], false); B.frame('torque per joint (N·m)'); B.line([0, 0], [2, 0], '--grey', 1);
+      [0, 1].forEach(j => { let pos = 0, neg = 0; const x = j + .5;
+        parts.forEach(([v, cl]) => { const h = v[j] * (S === 6 || cl !== '--b' ? t : 1); if (!h) return; const b0 = h > 0 ? pos : neg;
+          B.poly([[x - .28, b0], [x + .28, b0], [x + .28, b0 + h], [x - .28, b0 + h]], cl, 1.5, null, cl); if (h > 0) pos += h; else neg += h; });
+        B.text([x, -mx * 1.15], 'joint ' + (j + 1), '--muted', 0, -6, { align: 'center', size: 12 });
+        if (S === 9) { B.dot([x, s.tau[j]], 6, '--ink'); B.text([x, s.tau[j]], f(s.tau[j], 1), '--ink', 34, 4, { mono: true }); } });
+    }
+  },
+  math(S) {
+    const s = st(), d1 = f(s.d1), d2 = f(s.d2);
+    const head = `<p class="cg">State: θ = (${SL.deg(s.q1)}, ${SL.deg(s.q2)}), θ̇ = (${d1}, ${d2}) rad/s, θ̈ = (${f(s.a1)}, ${f(s.a2)}) rad/s², L = (${f(s.L1)}, ${f(s.L2)}) m, m = (${f(s.m1, 1)}, ${f(s.m2, 1)}) kg, g = 9.81.</p>`;
+    const M = s.M;
+    const rows = [
+`<p><b>Two problems, one equation.</b></p>
+${ul(['<b>Inverse dynamics</b> (for control): given θ, θ̇, θ̈ → find τ.', '<b>Forward dynamics</b> (for simulation): given θ, θ̇, τ → find θ̈.'])}
+<p>Both use the same equation of motion. Lagrange builds it from two scalars: kinetic energy K(θ, θ̇) and potential energy P(θ).</p>
+${E('L(θ, θ̇) = K(θ, θ̇) − P(θ)\nτᵢ = d/dt (∂L/∂θ̇ᵢ) − ∂L/∂θᵢ')}
+<p>τ and θ̇ are <b>dual</b>: τ·θ̇ is the power the motors deliver. Here τ·θ̇ = ${f(MR.dot(s.tau, [s.d1, s.d2]))} W.</p>`,
+`<p><b>Positions</b> (c₁ = cos θ₁, c₁₂ = cos(θ₁+θ₂), …):</p>
+${E(`x₁ = L₁c₁ = ${f(s.p1[0], 3)}        y₁ = L₁s₁ = ${f(s.p1[1], 3)}
+x₂ = L₁c₁ + L₂c₁₂ = ${f(s.p2[0], 3)}
+y₂ = L₁s₁ + L₂s₁₂ = ${f(s.p2[1], 3)}`)}
+<p>Mass 2’s position depends on <b>both</b> angles; mass 1’s only on θ₁. That is where all the coupling between the joints will come from.</p>`,
+`<p><b>Differentiate with the chain rule</b> (d/dt cos θ₁ = −sin θ₁ · θ̇₁):</p>
+${E(`ẋ₁ = −L₁s₁θ̇₁ = ${f(s.v1[0], 3)}     ẏ₁ = L₁c₁θ̇₁ = ${f(s.v1[1], 3)}
+ẋ₂ = −L₁s₁θ̇₁ − L₂s₁₂(θ̇₁+θ̇₂) = ${f(s.v2[0], 3)}
+ẏ₂ =  L₁c₁θ̇₁ + L₂c₁₂(θ̇₁+θ̇₂) = ${f(s.v2[1], 3)}`)}
+<p>|v₁|² = ${f(MR.dot(s.v1, s.v1), 3)}, |v₂|² = ${f(MR.dot(s.v2, s.v2), 3)} (m/s)².</p>
+<p>Note (θ̇₁+θ̇₂): link 2’s absolute spin rate is the sum of both joint rates.</p>`,
+`<p><b>Kinetic energy of each mass</b>, K = ½m(ẋ² + ẏ²):</p>
+${E(`K₁ = ½m₁L₁²θ̇₁² = ${f(s.K1, 3)} J
+K₂ = ½m₂[(L₁² + 2L₁L₂c₂ + L₂²)θ̇₁² + 2(L₂² + L₁L₂c₂)θ̇₁θ̇₂ + L₂²θ̇₂²] = ${f(s.K2, 3)} J`)}
+<p>(sin² + cos² = 1 removed θ₁ entirely; only the elbow angle survives through cos θ₂.)</p>
+<p><b>Read off the matrix:</b> K = ½ θ̇ᵀ M(θ) θ̇ with</p>
+${E(SL.mat(M, 3, 'M(θ)'))}
+<p>Check: ½θ̇ᵀMθ̇ = ${f(.5 * MR.dot([s.d1, s.d2], MR.mv(M, [s.d1, s.d2])), 3)} J = K₁ + K₂ = ${f(s.K1 + s.K2, 3)} J ✓</p>`,
+`<p><b>Potential energy</b> = m g × height:</p>
+${E(`P₁ = m₁ g y₁ = ${f(s.P1, 3)} J
+P₂ = m₂ g y₂ = ${f(s.P2, 3)} J`)}
+<p><b>Lagrangian</b>:</p>
+${E(`L = K₁ + K₂ − P₁ − P₂ = ${f(s.K1 + s.K2 - s.P1 - s.P2, 3)} J`)}
+<p>P depends only on θ; K depends on θ and θ̇. A spring at a joint would simply add ½kθ² to P (and later appear in g).</p>`,
+`<p><b>Take one piece of L</b> (it sits inside K₂):</p>
+${E(`L_comp = m₂L₁L₂ θ̇₁θ̇₂ cos θ₂        (= ${f(s.b * s.d1 * s.d2 * s.c2, 3)} J now)`)}
+<p>Its contribution to joint 2:</p>
+${E(`∂L_comp/∂θ̇₂ = m₂L₁L₂ θ̇₁ cos θ₂
+d/dt(…)      = m₂L₁L₂ (θ̈₁ cos θ₂ − θ̇₁θ̇₂ sin θ₂)
+∂L_comp/∂θ₂  = −m₂L₁L₂ θ̇₁θ̇₂ sin θ₂
+τ₂,comp = d/dt(…) − ∂L_comp/∂θ₂
+        = m₂L₁L₂ θ̈₁ cos θ₂ − m₂L₁L₂θ̇₁θ̇₂ sin θ₂ + m₂L₁L₂θ̇₁θ̇₂ sin θ₂
+        = m₂L₁L₂ θ̈₁ cos θ₂ = ${f(s.b * s.a1 * s.c2, 3)} N·m`)}
+<p>The last two terms cancel. Doing this for every piece of L by hand is tedious; the result is collected in the next three steps.</p>`,
+`<p><b>Every term that is linear in θ̈</b> collects into M(θ)θ̈:</p>
+${E(SL.mat(M, 3, 'M') + `\n\nM θ̈ = ${vs(s.Ma, 3)} N·m`)}
+${ul(['M₁₁ = m₁L₁² + m₂(L₁² + 2L₁L₂c₂ + L₂²): mass 2’s squared distance from joint 1 is L₁² + 2L₁L₂c₂ + L₂². Straight arm → biggest.',
+      'M₂₂ = m₂L₂²: joint 2 only swings mass 2.',
+      'M₁₂ = M₂₁ = m₂(L₁L₂c₂ + L₂²): coupling. Accelerating one joint loads the other.',
+      `The joint-2 term from step 5 (m₂L₁L₂c₂ θ̈₁ = ${f(s.b * s.c2 * s.a1, 3)}) is part of M₂₁θ̈₁ = ${f(M[1][0] * s.a1, 3)}.`])}
+<p>M is n × n (here 2 × 2), symmetric, and depends only on θ₂.</p>`,
+`<p><b>Terms with products of joint speeds</b>:</p>
+${E(`c₁ = −m₂L₁L₂ s₂ (2θ̇₁θ̇₂ + θ̇₂²) = ${f(s.c[0], 3)} N·m
+c₂ =  m₂L₁L₂ s₂ θ̇₁²             = ${f(s.c[1], 3)} N·m`)}
+${ul(['θ̇₁², θ̇₂² terms: <b>centripetal</b>. θ̇₁θ̇₂ terms: <b>Coriolis</b>.', 'They carry sin θ₂: zero when the arm is straight or folded.'])}
+<p><b>Why they exist</b>: with θ̈ = 0, mass 2 still accelerates (pink arrows):</p>
+${E(`toward joint 1:  −θ̇₁² p₂          = ${vs(s.cen1, 2)}
+toward joint 2:  −θ̇₂² L₂ u₁₂      = ${vs(s.cen2, 2)}
+Coriolis:        −2θ̇₁θ̇₂ L₂ u₁₂    = ${vs(s.cor, 2)}`)}
+<p>At θ = (0°, 90°) with only θ̇₁: the force line of the θ̇₁² term passes through joint 1, so joint 1 needs no torque, joint 2 does. Add θ̇₂ and the Coriolis force needs a <b>negative</b> joint-1 torque, like a skater pulling in the arms. Compact form: c = θ̇ᵀΓ(θ)θ̇ (Christoffel symbols of M).</p>`,
+`<p><b>Terms with no θ̇ and no θ̈</b>: gravity. g = ∂P/∂θ:</p>
+${E(`g₁ = (m₁+m₂) L₁ g c₁ + m₂ g L₂ c₁₂ = ${f(s.g[0], 3)} N·m
+g₂ = m₂ g L₂ c₁₂                   = ${f(s.g[1], 3)} N·m`)}
+<p>Each weight mg pulls straight down, so its moment arm about a joint is the <b>horizontal</b> distance: x₁ = ${f(s.p1[0])} m for m₁, and for m₂ x₂ = ${f(s.p2[0])} m about joint 1 and x₂ − x₁ = ${f(s.p2[0] - s.p1[0])} m about joint 2.</p>`,
+`<p><b>The equation of motion</b>:</p>
+${E(`τ = M(θ) θ̈ + c(θ, θ̇) + g(θ)
+τ₁ = ${f(s.Ma[0], 3)} + ${f(s.c[0], 3)} + ${f(s.g[0], 3)} = ${f(s.tau[0], 3)} N·m
+τ₂ = ${f(s.Ma[1], 3)} + ${f(s.c[1], 3)} + ${f(s.g[1], 3)} = ${f(s.tau[1], 3)} N·m`)}
+<p><b>Cross-check</b> with recursive Newton–Euler (page 135, no energy, no derivatives): τ = ${vs(s.rnea, 3)} → difference ${f(MR.norm(MR.sub(s.tau, s.rnea)), 6)} ✓</p>
+<p>Looks like f = ma + gravity, except the accelerations of the masses also contain velocity products, because joint coordinates are not inertial. If the hand pushes on the world with a wrench F_tip, add <b>Jᵀ F_tip</b> to the right side (page 126).</p>
+<p><b>Play</b>: τ = 0 is applied, so the θ̈ sliders become the free accelerations: M θ̈ + c + g = 0 and τ stays ≈ 0.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>τ</b>${vs(s.tau, 2)} N·m</span><span><b>K</b>${f(s.K1 + s.K2, 2)} J</span><span><b>P</b>${f(s.P1 + s.P2, 2)} J</span><span><b>K + P</b>${f(s.K1 + s.K2 + s.P1 + s.P2, 2)} J</span>`; },
+});
+</script>
+</body></html>

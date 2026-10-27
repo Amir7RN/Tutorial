@@ -1,0 +1,149 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Recursive Newton–Euler</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* The page-135 arm: rods with centres of mass r_i and inertias I_i (ctrlcore ARM). */
+let NL = 2;
+const ARMS = {
+  2: { L: [1, .8], m: [2, 1.5], r: [.5, .4], I: [.17, .08] },
+  3: { L: [1, .8, .5], m: [2, 1.5, .8], r: [.5, .4, .25], I: [2 / 12, 1.5 * .64 / 12, .8 * .25 / 12] },
+};
+const st = () => {
+  const v = SL.v, arm = MR.arm(ARMS[NL]);
+  const q = [v.q1, v.q2, v.q3].slice(0, NL).map(x => x * Math.PI / 180);
+  const qd = [v.d1, v.d2, v.d3].slice(0, NL).map(x => x / 10), qdd = [v.a1, v.a2, v.a3].slice(0, NL).map(x => x / 10);
+  const ftip = [v.fx, v.fy];
+  const tr = MR.rnea(arm, q, qd, qdd, { trace: true, ftip });
+  const P = MR.points(arm.L, q), C = MR.coms(arm, q);
+  let lag = null;
+  if (NL === 2) { const M = MR.massMatrix(arm, q); lag = MR.add(MR.add(MR.mv(M, qdd), MR.cVec(arm, q, qd)), MR.gravityVec(arm, q));
+    lag = MR.add(lag, MR.mv(MR.T(MR.tipJac(arm.L, q)), ftip)); }
+  return { arm, q, qd, qdd, ftip, tr, P, C, lag };
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+const sub = ['₁', '₂', '₃', '₄'];
+SL.app({
+  title: 'Recursive Newton–Euler, one pass at a time',
+  sub: 'Out from the base: speeds and accelerations. Back from the tip: forces and moments. The joint torque is the moment a link needs from the link before it.',
+  view: '2d',
+  legend: [['--d', 'a_c: centre-of-mass acceleration (includes fake +g)'], ['--f', 'a: joint-origin acceleration'], ['--bad', 'f: force from the previous link'], ['--b', 'tip force on the world'], ['--c', 'τ: joint torque']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 20, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -180, max: 180, value: 50, fmt: x => x + '°' },
+    { id: 'q3', label: 'θ₃ (3 links)', min: -180, max: 180, value: -35, fmt: x => x + '°' },
+    { id: 'd1', label: 'θ̇₁', min: -40, max: 40, value: 10, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd2', label: 'θ̇₂', min: -40, max: 40, value: 10, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd3', label: 'θ̇₃', min: -40, max: 40, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'a1', label: 'θ̈₁', min: -100, max: 100, value: 0, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'a2', label: 'θ̈₂', min: -100, max: 100, value: 0, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'a3', label: 'θ̈₃', min: -100, max: 100, value: 0, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'fx', label: 'tip pushes world, fₓ', min: -30, max: 30, value: 0, fmt: x => x + ' N' },
+    { id: 'fy', label: 'tip pushes world, f_y', min: -30, max: 30, value: 0, fmt: x => x + ' N' },
+  ],
+  buttons: [
+    { label: '2 links', toggle: true, pressed: true, onclick: e => { NL = 2; [...e.parentNode.children].forEach(b => b.getAttribute('aria-pressed') !== null && b.setAttribute('aria-pressed', b === e)); SL.redraw(); } },
+    { label: '3 links', toggle: true, pressed: false, onclick: e => { NL = 3; [...e.parentNode.children].forEach(b => b.getAttribute('aria-pressed') !== null && b.setAttribute('aria-pressed', b === e)); SL.redraw(); } },
+  ],
+  steps: [
+    ['One rigid body: f = m a, n = I α + ω × Iω', 'Each link is one rigid body. Its centre of mass needs force m·a_c; its rotation needs moment I·α (+ ω × Iω, which is zero in the plane). Everything else is bookkeeping between neighbouring links.'],
+    ['The gravity trick', 'Instead of hanging a weight on every link, pretend the base accelerates upward at g. Every link then “feels” its weight through a_c, exactly like in a lift accelerating up.'],
+    ['Outward pass: link 1', 'Spin rate and angular acceleration add up joint by joint. The centre of mass accelerates with its joint origin, plus a tangential part α × r, plus a centripetal part −ω² r pointing back to the joint.'],
+    ['Outward pass: the next links', 'Same rule, starting from the acceleration of the previous link’s far end. The last link’s numbers depend on every joint before it: that is the recursion.'],
+    ['Backward pass: start at the tip', 'The last link must supply its own m·a_c plus whatever force the tip pushes on the world. The force it needs from the previous link is f = f_tip + m a_c, and the moment n includes the moments of both about its joint.'],
+    ['Backward pass: back to the base', 'Each link passes its force and moment on to its parent, adding its own needs. Each joint torque is the moment its link needs from the link before it.'],
+    ['Result, check and cost', 'Compare with the Lagrangian M θ̈ + c + g + Jᵀf_tip: same torques, but no derivatives and only O(n) work. Two loops, used at 1 kHz in every real robot controller.'],
+    ['The 6-D version for any body', 'For a 3-D rigid body the two equations become one with the 6×6 spatial inertia G_b and the Lie bracket ad_V. The recursion is the same with twists and wrenches.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), n = NL, tr = s.tr;
+    const R = s.arm.L.reduce((a, b) => a + b, 0) + .3;
+    const A = Pl.panel(0, 0, 1, 1, [-R, R, -R * .9, R * .9]);
+    A.grid(.5); A.axes();
+    A.arm(s.P);
+    s.C.forEach((c, i) => A.dot(c, 5, '--ink'));
+    const ka = .04, kf = 1 / 60;
+    const outDone = S <= 1 ? 0 : S === 2 ? 1 : n;          // links whose forward quantities are shown
+    const inFrom = S === 4 ? n - 1 : S >= 5 ? 0 : n;       // links whose backward quantities are shown (index ≥ inFrom)
+    if (S === 0) s.C.forEach((c, i) => { A.text(c, 'm' + sub[i] + ' = ' + s.arm.m[i] + ' kg, I' + sub[i] + ' = ' + f(s.arm.I[i], 3), '--muted', 8, -8, { size: 12 }); });
+    if (S === 1) { A.arrow([0, 0], [0, .9 * t], '--d', 3.5, 'a₀ = (0, +g)'); A.text([0, -.25], 'base “accelerates up” at 9.81 m/s²', '--muted', 8, 0, { size: 12 }); }
+    for (let i = 0; i < outDone; i++) {
+      const g = (S === 2 || (S === 3 && i > 0)) ? t : 1;
+      A.arrow(s.C[i], MR.scl(tr.accC[i], ka * g), '--d', 3, 'a_c' + sub[i]);
+      A.arrow(s.P[i + 1], MR.scl(tr.accJ[i + 1], ka * g), '--f', 2, null, [5, 3]);
+      if (S <= 3) A.arc(s.P[i], 20 + 6 * i, s.q.slice(0, i).reduce((a, b) => a + b, 0), s.q.slice(0, i + 1).reduce((a, b) => a + b, 0), '--d', 1.5, true, 'ω' + sub[i] + '=' + f(tr.omega[i], 1));
+    }
+    if (S >= 4) {
+      if (MR.norm(s.ftip) > 0) A.arrow(s.P[n], MR.scl(s.ftip, kf * 2), '--b', 3, 'f_tip');
+      for (let i = n - 1; i >= inFrom; i--) {
+        const g = (S === 4 || (S === 5 && i < n - 1)) ? t : 1;
+        A.arrow(s.P[i], MR.scl(tr.force[i], kf * g), '--bad', 3.5, 'f' + sub[i], null, 8, 16);
+        const tau = tr.tau[i], a0 = s.q.slice(0, i + 1).reduce((a, b) => a + b, 0) - .6;
+        A.arc(s.P[i], 34, a0, a0 + Math.max(-2.6, Math.min(2.6, tau / 12)) * g, '--c', 3, true, 'τ' + sub[i] + '=' + f(tau, 2));
+      }
+    }
+    if (S === 7) A.text([-R + .1, -R * .8], 'see the math panel: F_b = G_b V̇_b − [ad_Vb]ᵀ G_b V_b', '--muted', 0, 0, { size: 13 });
+  },
+  math(S) {
+    const s = st(), tr = s.tr, n = NL, a = s.arm;
+    const head = `<p class="cg">${n} links: L = ${vs(a.L)}, m = ${vs(a.m, 1)}, r = ${vs(a.r)}, I = ${vs(a.I, 3)}. θ = (${s.q.map(SL.deg).join(', ')}), θ̇ = ${vs(s.qd, 1)}, θ̈ = ${vs(s.qdd, 1)}, f_tip = ${vs(s.ftip, 0)} N.</p>`;
+    const u = tr.u, I = i => sub[i];
+    const fwd = i => {
+      const prevA = tr.accJ[i], r = a.r[i], L = a.L[i], w = tr.omega[i], al = tr.alpha[i];
+      return E(`ω${I(i)} = ${i ? 'ω' + I(i - 1) + ' + ' : ''}θ̇${I(i)} = ${f(w, 3)} rad/s        α${I(i)} = ${i ? 'α' + I(i - 1) + ' + ' : ''}θ̈${I(i)} = ${f(al, 3)} rad/s²
+unit vector along link ${i + 1}: u${I(i)} = ${vs(u[i], 3)}
+a_c${I(i)} = a${I(i)} + α${I(i)}·r${I(i)}·(ẑ×u${I(i)}) − ω${I(i)}²·r${I(i)}·u${I(i)}
+     = ${vs(prevA, 3)} + ${f(al * r, 3)}·${vs(MR.perp(u[i]), 3)} − ${f(w * w * r, 3)}·${vs(u[i], 3)}
+     = ${vs(tr.accC[i], 3)} m/s²
+a${I(i + 1)} (far end) = a${I(i)} + α${I(i)}L${I(i)}(ẑ×u${I(i)}) − ω${I(i)}²L${I(i)}u${I(i)} = ${vs(tr.accJ[i + 1], 3)} m/s²`);
+    };
+    const bwd = i => {
+      const m = a.m[i], mac = MR.scl(tr.accC[i], m), fn = i === n - 1 ? s.ftip : tr.force[i + 1], nn = i === n - 1 ? 0 : tr.moment[i + 1];
+      const Lu = MR.scl(u[i], a.L[i]), ru = MR.scl(u[i], a.r[i]);
+      return E(`f${I(i)} = ${i === n - 1 ? 'f_tip' : 'f' + I(i + 1)} + m${I(i)}a_c${I(i)} = ${vs(fn, 3)} + ${vs(mac, 3)} = ${vs(tr.force[i], 3)} N
+n${I(i)} = ${i === n - 1 ? '0' : 'n' + I(i + 1)} + (L${I(i)}u${I(i)}) × ${i === n - 1 ? 'f_tip' : 'f' + I(i + 1)} + (r${I(i)}u${I(i)}) × m${I(i)}a_c${I(i)} + I${I(i)}α${I(i)}
+   = ${f(nn, 3)} + ${f(MR.cross2(Lu, fn), 3)} + ${f(MR.cross2(ru, mac), 3)} + ${f(a.I[i] * tr.alpha[i], 3)} = ${f(tr.moment[i], 3)} N·m
+τ${I(i)} = n${I(i)} = ${f(tr.tau[i], 3)} N·m`);
+    };
+    const rows = [
+`<p><b>Newton</b> (translation of the centre of mass) and <b>Euler</b> (rotation about it), for one link:</p>
+${E(`f = m a_c
+n_c = I α + ω × (I ω)        (in the plane ω ∥ ẑ, so ω × Iω = 0)`)}
+<p>A link is pushed by two neighbours: the previous link (force f_i, moment n_i at joint i) and the next link (−f_{i+1}, −n_{i+1}). So for link i:</p>
+${E(`f_i = f_{i+1} + m_i a_ci
+n_i = n_{i+1} + (L_i u_i) × f_{i+1} + (r_i u_i) × m_i a_ci + I_i α_i`)}
+<p>To use these we need every a_ci and α_i first: that is the outward pass. Then the forces: the backward pass.</p>`,
+`<p>Gravity pulls every link down with m_i g. Moving to a frame that accelerates up at g adds an upward inertial acceleration everywhere, which is the same as adding the weights.</p>
+${E(`a₀ = (0, +g) = (0, 9.81) m/s²      (the base “acceleration”)`)}
+<p>So with θ̇ = θ̈ = 0 the algorithm returns exactly the holding torques g(θ). Try it: set all speeds and accelerations to 0 and read τ at step 6.</p>`,
+`<p><b>Link 1</b> (it starts from the base, a₀ = (0, 9.81)):</p>${fwd(0)}
+<p>Tangential part: α r, perpendicular to the link. Centripetal part: ω² r, pointing back along the link toward the joint.</p>`,
+`<p>${n === 2 ? '<b>Link 2</b>' : '<b>Links 2 and 3</b>'}, each starting where the previous one ended:</p>${[...Array(n - 1)].map((_, k) => fwd(k + 1)).join('')}
+<p>The outward pass is now complete: every link’s ω, α and a_c is known. Cost so far: a fixed amount of work per link.</p>`,
+`<p><b>Link ${n}</b> (the last). Its far end pushes on the world with f_tip, so it must receive that much extra from its parent:</p>${bwd(n - 1)}
+<p>(2-D cross product: (a, b) × (c, d) = a d − b c.)</p>`,
+`<p>${n === 2 ? '<b>Link 1</b>' : '<b>Links 2, then 1</b>'}: add the child’s force and moment, then this link’s own needs:</p>${[...Array(n - 1)].map((_, k) => bwd(n - 2 - k)).join('')}
+<p>f₁ = ${vs(tr.force[0], 2)} N is what the base must push on link 1. Its vertical part includes the whole arm’s weight ${f(a.m.reduce((x, y) => x + y, 0) * 9.81, 2)} N when nothing moves.</p>`,
+`${E(`τ (RNEA) = ${vs(tr.tau, 3)} N·m`)}
+${s.lag ? `<p><b>Check</b> against the Lagrangian form (page 133): M θ̈ + c + g + Jᵀ f_tip = ${vs(s.lag, 3)} → difference ${f(MR.norm(MR.sub(s.lag, tr.tau)), 8)} ✓</p>` : '<p>(Switch to 2 links to compare with the closed-form Lagrangian.)</p>'}
+${ul(['<b>No derivatives</b>: only multiplications and additions, link by link.', '<b>O(n)</b>: one loop out, one loop back. A symbolic Lagrangian grows like n³–n⁴.',
+      'A tip force shows up in every joint torque: that is τ = Jᵀf from page 126, without ever building J.', 'M(θ) column i = RNEA with θ̇ = 0, θ̈ = eᵢ, no gravity: n calls give the whole mass matrix (page 137).'])}`,
+`<p><b>Single rigid body in 3-D</b> (video 8.2). Body frame {b} at the centre of mass, twist V_b = (ω_b, v_b), acceleration V̇_b:</p>
+${E(`f_b = m (v̇_b + ω_b × v_b)
+m_b = I_b ω̇_b + ω_b × (I_b ω_b)
+I_b = −Σ mᵢ [pᵢ]²   (Ixx = Σ mᵢ(yᵢ² + zᵢ²), …, products of inertia off the diagonal)`)}
+<p>Pack them with the 6×6 <b>spatial inertia</b> G_b = [[I_b, 0], [0, m·I₃]]:</p>
+${E(`F_b = G_b V̇_b − [ad_Vb]ᵀ G_b V_b,      [ad_V] = [[ [ω], 0 ], [ [v], [ω] ]]
+K = ½ V_bᵀ G_b V_b`)}
+${ul(['[ad_V₁]V₂ is the <b>Lie bracket</b>: the 6-D version of ω₁ × ω₂, how motion along V₂ changes if the body follows V₁.',
+      'Principal axes of inertia = eigenvectors of I_b; principal moments = eigenvalues; I_p = R_bpᵀ I_b R_bp.',
+      'In another frame {a}: G_a = [Ad_Tba]ᵀ G_b [Ad_Tba], same form of equation.',
+      'For our planar arm ω ∥ ẑ, so ω × Iω = 0 and the 2-D formulas on the left are exactly this equation.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>τ</b>${vs(s.tr.tau, 3)} N·m</span>` + (s.lag ? `<span><b>Lagrange</b>${vs(s.lag, 3)}</span>` : ''); },
+});
+</script>
+</body></html>

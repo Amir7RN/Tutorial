@@ -25,6 +25,7 @@ from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from .base import Page
+from . import robo_dyn_ch8 as ch8
 from .robo_common import (
     SEC_DYN,
     deg,
@@ -72,6 +73,8 @@ class LagrangePage(Page):
             "up against gravity). Lagrange's method gets all three from "
             "energy alone: write the kinetic and potential energy, "
             "differentiate, done."))
+
+        self.add(ch8.fwd_inv_card())
 
         e = Card("the Euler–Lagrange equations")
         e.add(math_label(r"\mathcal{L}(q,\dot q)=K-P=\frac{1}{2}\dot q^TM(q)\dot q-P(q),\qquad "
@@ -123,6 +126,8 @@ class LagrangePage(Page):
             "the horizontal distance to each centre of mass makes a lever arm "
             "for gravity."))
         self.add(r)
+        self.add(ch8.point_mass_2r_card())
+        self.add(ch8.velocity_products_card())
 
         lab = Card("evaluate every term at a state")
         self.q1 = labelled_slider(lab, "q₁", -180, 180, 30, deg, self._draw)
@@ -221,6 +226,8 @@ class MassMatrixPage(Page):
             "One-line version: M is symmetric, always invertible, never "
             "infinitely light or heavy, and the Coriolis part paired with it "
             "can never create energy."))
+
+        self.add(ch8.mass_matrix_video_card())
 
         p = Card("the four properties, and why each holds")
         p.add(body(
@@ -394,6 +401,8 @@ class NewtonEulerPage(Page):
             "6-D form packs both equations into one line; you do not need it "
             "for a planar arm."))
         self.add(b)
+        self.add(ch8.rigid_body_card())
+        self.add(ch8.spatial_inertia_card())
 
         r = Card("the recursion (planar revolute version, as coded)")
         r.add(body(

@@ -1,0 +1,126 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Constrained dynamics</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const arm = MR.arm({ L: [1, .8], m: [2, 1.5], r: [.5, .4], I: [.17, .08] });
+const STAB = 20;
+let UNI = true;                 // unilateral contact: the wall can push but not pull
+const ik = (x, y, up) => { const L1 = arm.L[0], L2 = arm.L[1], c2 = Math.max(-1, Math.min(1, (x * x + y * y - L1 * L1 - L2 * L2) / (2 * L1 * L2)));
+  const q2 = (up ? -1 : 1) * Math.acos(c2); return [Math.atan2(y, x) - Math.atan2(L2 * Math.sin(q2), L1 + L2 * Math.cos(q2)), q2]; };
+const sim = { q: null, qd: [0, 0], t: 0, trail: [], lam: [], contact: true };
+const reset = () => { const v = SL.v; sim.q = ik(v.xw / 100, v.y0 / 100, v.up === 1); sim.qd = [0, 0]; sim.t = 0; sim.trail = []; sim.lam = []; sim.contact = true; };
+const tauOf = () => [SL.v.t1 / 10, SL.v.t2 / 10];
+/* KKT solve: M q̈ − Aᵀλ = τ − h,  A q̈ = −Ȧq̇ − 2aφ̇ − a²φ  (λ = wall push on the tip along +x) */
+const solve = (q, qd, tau) => {
+  const J = MR.tipJac(arm.L, q), A = J[0], M = MR.massMatrix(arm, q), h = MR.hVec(arm, q, qd);
+  const phi = MR.points(arm.L, q)[2][0] - SL.v.xw / 100, phid = MR.dot(A, qd), Adq = MR.JdotQd(arm.L, q, qd)[0];
+  const K = [[M[0][0], M[0][1], -A[0]], [M[1][0], M[1][1], -A[1]], [A[0], A[1], 0]];
+  const rhs = [tau[0] - h[0], tau[1] - h[1], -Adq - 2 * STAB * phid - STAB * STAB * phi];
+  const x = MR.solve(K, rhs);
+  return { qdd: [x[0], x[1]], lam: x[2], A, M, h, phi, phid, Adq, K, rhs, J };
+};
+const free = (q, qd, tau) => MR.forwardDyn(arm, q, qd, tau);
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'A hand on a wall: the multiplier is the contact force',
+  sub: 'The 2R arm of pages 135–138 rests its hand on a vertical wall and slides down under gravity. Play runs it; Reset puts the hand back at the start height.',
+  view: '2d',
+  legend: [['--bad', 'wall'], ['--a', 'allowed joint motion (null space of A)'], ['--b', 'wall force λ'], ['--d', 'tip trail']],
+  controls: [
+    { id: 'xw', label: 'wall position x_w', min: 60, max: 170, value: 140, fmt: x => f(x / 100) + ' m' },
+    { id: 'y0', label: 'start height', min: -100, max: 120, value: -60, fmt: x => f(x / 100) + ' m' },
+    { id: 'up', label: 'elbow', min: 0, max: 1, value: 0, fmt: x => x ? 'up' : 'down' },
+    { id: 't1', label: 'motor τ₁', min: -300, max: 300, value: 0, fmt: x => f(x / 10, 1) + ' N·m' },
+    { id: 't2', label: 'motor τ₂', min: -200, max: 200, value: 0, fmt: x => f(x / 10, 1) + ' N·m' },
+  ],
+  onControl(id) { if (id === 'xw' || id === 'y0' || id === 'up') reset(); },
+  buttons: [{ label: 'Unilateral (can only push)', toggle: true, pressed: true, onclick: e => { UNI = !UNI; e.setAttribute('aria-pressed', UNI); } }],
+  setup() { reset(); },
+  play: { tick(dt) { const h = .002; let n = Math.max(1, Math.round(dt / h));
+    while (n--) { const tau = tauOf(); let a;
+      if (sim.contact) { const r = solve(sim.q, sim.qd, tau); if (UNI && r.lam < 0) { sim.contact = false; a = free(sim.q, sim.qd, tau); } else { a = r.qdd; sim.lam.push([sim.t, r.lam]); } }
+      else { a = free(sim.q, sim.qd, tau); if (MR.points(arm.L, sim.q)[2][0] >= SL.v.xw / 100 && MR.dot(MR.tipJac(arm.L, sim.q)[0], sim.qd) > 0) { sim.contact = true; const A = MR.tipJac(arm.L, sim.q)[0]; const k = MR.dot(A, sim.qd) / MR.dot(A, MR.solve(MR.massMatrix(arm, sim.q), A)); sim.qd = MR.sub(sim.qd, MR.scl(MR.solve(MR.massMatrix(arm, sim.q), A), k)); } }
+      if (!sim.contact) sim.lam.push([sim.t, 0]);
+      sim.qd = MR.add(sim.qd, MR.scl(a, h)); sim.q = MR.add(sim.q, MR.scl(sim.qd, h)); sim.t += h; }
+    sim.trail.push(MR.points(arm.L, sim.q)[2]); if (sim.trail.length > 600) sim.trail.shift(); if (sim.lam.length > 6000) sim.lam.splice(0, sim.lam.length - 6000); } },
+  reset() { reset(); },
+  steps: [
+    ['A constraint on the configuration', 'The hand must stay on the wall: φ(q) = x_tip(q) − x_w = 0. Two joints, one rule, so the arm keeps one freedom: sliding up and down the wall.'],
+    ['The same rule on velocities: A(q) q̇ = 0', 'Differentiate φ: the hand’s x-velocity must be zero. A(q) is the x-row of the Jacobian. Only joint velocities in the null space of A are allowed.'],
+    ['The allowed direction', 'For 2 joints and 1 constraint the null space of A is a line. The blue arcs show the joint motion that slides the hand along the wall without leaving it.'],
+    ['Add the wall force: M q̈ + h = τ + Aᵀ λ', 'The wall pushes on the hand with a force λ along x. In joint torques that is Aᵀλ (τ = JᵀF from page 126, with F = (λ, 0)). λ is the Lagrange multiplier.'],
+    ['One more equation for one more unknown', 'Differentiate the constraint again: A q̈ + Ȧ q̇ = 0 (plus a small correction for drift). Stack it with the dynamics and solve for q̈ and λ together.'],
+    ['Run it: sliding down the wall', 'Press Play. The hand slides down; λ (right plot) is the force the wall must supply at each instant. Change the motor torques to press harder or pull away.'],
+    ['The wall can push, not pull', 'If λ would go negative, the wall would have to pull the hand. A real wall cannot: the contact breaks and the arm moves freely. That switch is what makes contact hard to simulate and control.'],
+  ],
+  draw(Pl) {
+    const S = SL.st, t = SL.ease(SL.anim), tau = tauOf(), q = sim.q, qd = sim.qd, xw = SL.v.xw / 100;
+    const P = MR.points(arm.L, q), r = solve(q, qd, tau);
+    const A = Pl.panel(0, 0, .55, 1, [-.6, 2.2, -1.6, 1.6]); A.frame('the arm and the wall (t = ' + f(sim.t, 2) + ' s)'); A.grid(.5);
+    A.line([xw, -1.6], [xw, 1.6], '--bad', 4); for (let y = -1.5; y < 1.6; y += .15) A.line([xw, y], [xw + .08, y + .08], '--bad', 1.5);
+    A.poly(sim.trail, '--d', 1.5); A.arm(P);
+    if (S === 0) A.text(P[2], 'φ = x_tip − x_w = ' + f(r.phi, 4) + ' m', '--muted', -220, -14, { mono: true });
+    if (S >= 2 && S <= 4) { const n = MR.unit([-r.A[1], r.A[0]]); [0, 1].forEach(i => { const a0 = q.slice(0, i + 1).reduce((x, y) => x + y) - .3; A.arc(P[i], 30, a0, a0 + n[i] * 1.6 * t, '--a', 3, true, 'ṅ' + (i + 1) + '=' + f(n[i], 2)); });
+      A.arrow(P[2], MR.scl(MR.mv(r.J, n), .4 * t), '--a', 3, 'J n: along the wall'); }
+    if (S >= 3) A.arrow(P[2], [-Math.max(-1, Math.min(1, r.lam / 30)) * .6 * (S === 3 ? t : 1), 0], '--b', 4, sim.contact ? 'λ = ' + f(r.lam, 1) + ' N (wall on hand)' : 'no contact', null, -150, -10);
+    if (!sim.contact) A.text([xw - 1.5, 1.4], 'contact broken: the wall would have had to pull', '--bad', 0, 0, { size: 12 });
+    const B = Pl.panel(.56, 0, .44, .55, [Math.max(0, sim.t - 4), Math.max(4, sim.t), -10, 40], false);
+    const lams = sim.lam.filter((_, i) => i % 10 === 0);
+    const mx = Math.max(10, ...lams.map(p => Math.abs(p[1]))) * 1.15;
+    const B2 = Pl.panel(.56, 0, .44, .55, [Math.max(0, sim.t - 4), Math.max(4, sim.t), -mx * .3, mx], false);
+    B2.series([{ pts: lams, cl: '--b', w: 2.5, label: 'λ(t): wall force on the hand' }], { title: 'contact force over time (press Play)', yl: 'N' });
+    const R = Pl.panel(.56, .57, .44, .43, [0, 1, 0, 1], false); R.frame();
+    const L = (y, s, c) => R.label(R.x + 10, R.y + R.h * y, s, c, { mono: true, size: 12 });
+    L(.12, `q = ${vs(q, 3)}   q̇ = ${vs(qd, 3)}`, '--ink');
+    L(.26, `A = x-row of J = ${vs(r.A, 3)}`, '--a');
+    L(.40, `A q̇ = ${f(r.phid, 4)} m/s  (must be 0)`, '--a');
+    L(.54, `h = c + g = ${vs(r.h, 2)} N·m`, '--c');
+    L(.68, `q̈ = ${vs(r.qdd, 3)}   λ = ${f(r.lam, 3)} N`, '--b');
+    L(.82, `contact: ${sim.contact ? 'yes' : 'NO (free flight)'}   mode: ${UNI ? 'unilateral' : 'bilateral (glued)'}`, sim.contact ? '--c' : '--bad');
+  },
+  math(S) {
+    const tau = tauOf(), q = sim.q, qd = sim.qd, r = solve(q, qd, tau), n = MR.unit([-r.A[1], r.A[0]]);
+    const head = `<p class="cg">Wall at x_w = ${f(SL.v.xw / 100)} m. q = ${vs(q, 3)}, q̇ = ${vs(qd, 3)}, τ = ${vs(tau, 2)}. Correction gain a = ${STAB} 1/s.</p>`;
+    const rows = [
+`<p>A <b>holonomic constraint</b> restricts the configuration itself:</p>
+${E(`φ(q) = x_tip(q) − x_w = L₁cos q₁ + L₂cos(q₁+q₂) − x_w = 0
+now: x_tip = ${f(MR.points(arm.L, q)[2][0], 4)},  φ = ${f(r.phi, 5)} m`)}
+<p>n joints, k independent constraints → n − k freedoms. Here 2 − 1 = 1: the hand can only slide along the wall (page 132 counted freedoms the same way for closed chains).</p>`,
+`<p>Differentiate φ(q(t)) = 0 in time:</p>
+${E(`dφ/dt = (∂φ/∂q) q̇ = A(q) q̇ = 0
+A(q) = [−L₁s₁ − L₂s₁₂,  −L₂s₁₂] = ${vs(r.A, 4)}      (first row of J)
+A q̇ now = ${f(r.phid, 5)}`)}
+<p>A Pfaffian constraint A(q)q̇ = 0. (A rolling wheel gives one that cannot be integrated back to φ(q) = 0: nonholonomic, page 147.)</p>`,
+`<p>Allowed velocities are the null space of A (page 130): perpendicular to the row A.</p>
+${E(`n = (−A₂, A₁)/|A| = ${vs(n, 4)}
+check: A·n = ${f(MR.dot(r.A, n), 6)}
+hand velocity J n = ${vs(MR.mv(r.J, n), 4)}   (x part 0: slides along the wall)`)}
+<p>Every allowed motion is q̇ = s·n for some speed s. The constraint removed one direction of joint space, exactly like the null space removed the task direction on page 130, but in reverse: here we keep only the null space.</p>`,
+`<p>The wall can only push along its normal x. Its force F = (λ, 0) on the hand reaches the joints as Jᵀ F = Aᵀ λ:</p>
+${E(`M(q) q̈ + c(q, q̇) + g(q) = τ + Aᵀ(q) λ
+Aᵀλ = ${vs(MR.scl(r.A, r.lam), 3)} N·m   for λ = ${f(r.lam, 3)} N`)}
+${ul(['λ is a <b>Lagrange multiplier</b>: an extra unknown that enforces the constraint.', 'Power check: the constraint force does no work on allowed motions, because (Aᵀλ)·(s n) = λ s (A·n) = 0.'])}`,
+`<p>Two equations, one for each unknown group (q̈ and λ). The second comes from differentiating Aq̇ = 0 again:</p>
+${E(`A q̈ + Ȧ q̇ = 0     (+ 2a φ̇ + a² φ to pull any drift back to the wall)
+
+[ M   −Aᵀ ] [ q̈ ]   [ τ − h                    ]
+[ A    0  ] [ λ ] = [ −Ȧq̇ − 2aφ̇ − a²φ          ]
+
+` + SL.mat(r.K, 3, 'K') + `
+rhs = ${vs(r.rhs, 3)}
+→ q̈ = ${vs(r.qdd, 4)} rad/s²,  λ = ${f(r.lam, 4)} N`)}
+<p>Ȧq̇ = ${f(r.Adq, 4)}: the hand’s x-acceleration when q̈ = 0, which the joints must cancel.</p>`,
+`<p>Press Play. Each 2 ms tick solves the system above, then steps q̇ and q (semi-implicit Euler).</p>
+${ul([`λ now = ${f(r.lam, 2)} N: positive means the wall pushes the hand away (+x).`, 'With τ = 0 at the default pose the arm leans on the wall: gravity swings it into the wall, so λ &gt; 0 and the hand slides down. At many other poses gravity swings the arm <b>away</b> from the wall, λ would be negative, and the hand leaves (step 6).', 'Push τ₁ positive or negative to press the hand harder into the wall or to drag it away. Watch λ follow.', 'The tip trail stays on the wall: the correction gain a keeps numerical drift at micrometres.'])}`,
+`<p>A real wall is <b>unilateral</b>: λ ≥ 0. If the solve returns λ &lt; 0, the wall would have to pull, so the contact breaks and the arm moves with the free dynamics M q̈ + h = τ. If the hand comes back with velocity into the wall, an impact removes its x-velocity and contact resumes.</p>
+${E(`contact now: ${sim.contact ? 'yes' : 'no'},  λ (if glued) = ${f(r.lam, 3)} N`)}
+${ul(['Turn off “Unilateral” to glue the hand to the wall (λ may go negative): that is a bilateral constraint, like a slider joint.', 'This switch between modes (complementarity: λ ≥ 0, gap ≥ 0, λ·gap = 0) is why contact-rich simulation and control are hard.', 'Force control (page 145) controls λ directly along the wall normal and motion along the tangent.'])}`];
+    return head + rows[S];
+  },
+  stats() { const r = solve(sim.q, sim.qd, tauOf()); return `<span><b>λ</b>${f(r.lam, 2)} N</span><span><b>contact</b>${sim.contact ? 'yes' : 'no'}</span><span><b>t</b>${f(sim.t, 2)} s</span>`; },
+});
+</script>
+</body></html>

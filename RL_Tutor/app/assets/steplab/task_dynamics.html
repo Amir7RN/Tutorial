@@ -1,0 +1,145 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Task-space dynamics</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const arm = MR.arm({ L: [1, .8], m: [2, 1.5], r: [.5, .4], I: [.17, .08] });
+const st = () => {
+  const v = SL.v, q = [v.q1 * Math.PI / 180, v.q2 * Math.PI / 180], qd = [v.d1 / 10, v.d2 / 10];
+  const phi = v.phi * Math.PI / 180, u = [Math.cos(phi), Math.sin(phi)], Fm = v.F;
+  const J = MR.tipJac(arm.L, q), M = MR.massMatrix(arm, q), Mi = MR.inv(M), detJ = MR.det(J);
+  const Li = MR.mul(MR.mul(J, Mi), MR.T(J));
+  const ok = Math.abs(detJ) > 2e-3, Lam = ok ? MR.inv(Li) : null;
+  const g = MR.gravityVec(arm, q), c = MR.sub(MR.hVec(arm, q, qd), g), Jdq = MR.JdotQd(arm.L, q, qd);
+  let Jbar = null, mu = null, p = null;
+  if (ok) { Jbar = MR.mul(MR.mul(Mi, MR.T(J)), Lam); mu = MR.sub(MR.mv(MR.T(Jbar), c), MR.mv(Lam, Jdq)); p = MR.mv(MR.T(Jbar), g); }
+  const P = MR.points(arm.L, q);
+  return { q, qd, phi, u, Fm, J, M, Mi, detJ, Li, ok, Lam, g, c, Jdq, Jbar, mu, p, P };
+};
+/* push the resting arm (no gravity) with a constant hand force for 0.3 s; return the tip path */
+const pushPath = (q0, F) => {
+  const a0 = MR.arm({ L: arm.L, m: arm.m, r: arm.r, I: arm.I, g: 0 }); let q = q0.slice(), qd = [0, 0]; const pts = [MR.points(arm.L, q)[2]], dt = .002;
+  for (let k = 0; k < 150; k++) { const tau = MR.mv(MR.T(MR.tipJac(arm.L, q)), F), a = MR.forwardDyn(a0, q, qd, tau); qd = MR.add(qd, MR.scl(a, dt)); q = MR.add(q, MR.scl(qd, dt)); if (k % 5 === 4) pts.push(MR.points(arm.L, q)[2]); }
+  return pts;
+};
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Task-space dynamics: the mass the hand feels',
+  sub: 'Write the dynamics in hand coordinates: F = Λ(q) ẍ + μ(q, q̇) + p(q). Same arm as pages 135–137. Gravity is ignored in steps 2–4 so only inertia shows.',
+  view: '2d',
+  legend: [['--b', 'hand force F'], ['--d', 'hand acceleration ẍ = Λ⁻¹F'], ['--c', 'Λ: force needed per unit acceleration'], ['--a', 'actual hand path when pushed']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 10, fmt: x => x + '°' },
+    { id: 'q2', label: 'elbow θ₂', min: -180, max: 180, value: 75, fmt: x => x + '°' },
+    { id: 'phi', label: 'force direction φ', min: -180, max: 180, value: 45, fmt: x => x + '°' },
+    { id: 'F', label: 'force size', min: 1, max: 40, value: 10, fmt: x => x + ' N' },
+    { id: 'd1', label: 'θ̇₁ (step 5)', min: -30, max: 30, value: 10, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd2', label: 'θ̇₂ (step 5)', min: -30, max: 30, value: 15, fmt: x => f(x / 10, 1) + ' rad/s' },
+  ],
+  buttons: [{ label: 'Sweep φ', onclick: () => { let a = 0; const id = setInterval(() => { a += 4; SL.setControl('phi', ((SL.v.phi + 4 + 180) % 360) - 180); SL.redraw(); if (a >= 360) clearInterval(id); }, 30); } },
+            { label: 'Nearly straight elbow', onclick: () => { SL.setControl('q2', 8); SL.redraw(); } }],
+  steps: [
+    ['Hand coordinates', 'Describe the motion by the hand position x instead of the joint angles. ẋ = J q̇ and, differentiating once more, ẍ = J q̈ + J̇ q̇.'],
+    ['Substitute into M q̈ + c + g = Jᵀ F', 'Let the only input be a force F at the hand (τ = JᵀF). Solve for q̈ and push it through ẍ = J q̈ + J̇ q̇. The result has the same shape as before: F = Λ ẍ + μ + p.'],
+    ['Λ: a mass that depends on direction', 'Λ = (J M⁻¹ Jᵀ)⁻¹ is the 2×2 “mass” of the hand. A unit acceleration along d needs force Λd. Sweep φ: the hand is heavy in some directions and light in others.'],
+    ['Push along x, it moves partly along y', 'At rest, ẍ = Λ⁻¹ F. Unless F lies on a principal axis of Λ, the hand accelerates in a different direction from the push. The blue dashed path is the real arm pushed for 0.3 s.'],
+    ['Near a singularity the hand gets infinitely heavy', 'Straighten the elbow. Along the arm, J loses rank and Λ → ∞: no finite force accelerates the hand that way. Across the arm it stays finite.'],
+    ['μ: velocity forces seen at the hand', 'When the arm moves, Coriolis and centripetal joint torques appear at the hand as μ = J̄ᵀ c − Λ J̇ q̇. The second part exists even for a single point mass on a curved path.'],
+    ['p: gravity seen at the hand', 'p = J̄ᵀ g is the hand force that would hold the arm against gravity if all the effort came from the hand. J̄ = M⁻¹JᵀΛ is the dynamically consistent inverse of J.'],
+    ['Why it matters: control and safety', 'Operational-space control commands τ = Jᵀ(Λ ẍ_des + μ + p) so the hand moves like a unit point mass. And the mass a person feels in a collision is 1/(uᵀΛ⁻¹u).'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), tip = s.P[2];
+    const A = Pl.panel(0, 0, .55, 1, [-2, 2, -1.6, 2.2]); A.frame('the arm and its hand'); A.grid(.5); A.arm(s.P);
+    const F = MR.scl(s.u, s.Fm);
+    if (S === 0) { A.arrow(tip, MR.scl(MR.mv(s.J, s.qd), .3 * t), '--a', 3, 'ẋ = J q̇ (×0.3)'); A.text(tip, 'x = ' + vs(tip), '--muted', 8, 18, { mono: true }); }
+    if (S >= 2 && S <= 4 && s.ok) {
+      /* Λ ellipse: forces for all unit accelerations, and the Λ⁻¹ ellipse: accelerations for unit forces */
+      const Ev = MR.eigSym(s.Lam), kL = .6 / Ev.vals[0];
+      A.ellipse(tip, MR.mscl(s.Lam, kL), '--c', 2, null, '--c');
+      const Ei = MR.eigSym(s.Li), kA = .6 / Ei.vals[0];
+      A.ellipse(tip, MR.mscl(s.Li, kA), '--d', 2, [5, 3]);
+      Ev.vecs.forEach((w, k) => A.line(MR.add(tip, MR.scl(w, -.7)), MR.add(tip, MR.scl(w, .7)), '--c', 1, [3, 3]));
+      const acc = MR.mv(s.Li, F);
+      A.arrow(tip, MR.scl(s.u, .6), '--b', 3, 'F');
+      A.arrow(tip, MR.scl(MR.unit(acc), .6 * t), '--d', 3, 'ẍ');
+      if (S === 3) A.poly(pushPath(s.q, F), '--a', 2.5, [4, 3]);
+    }
+    if (S >= 2 && S <= 4 && !s.ok) A.text([-1.9, -1.4], 'J is singular here: Λ does not exist', '--bad', 0, 0);
+    if (S === 5 && s.ok) { A.arrow(tip, MR.scl(MR.mv(s.J, s.qd), .3), '--a', 2.5, 'ẋ (×0.3)'); A.arrow(tip, MR.scl(s.mu, .1 * t), '--e', 3, 'μ (×0.1 m/N)'); }
+    if (S === 6 && s.ok) { A.arrow(tip, MR.scl(s.p, -.05 * t), '--c', 3, '−p: hold-up force at the hand (×0.05)'); MR.coms(arm, s.q).forEach((cm, i) => A.arrow(cm, [0, -arm.m[i] * 9.81 * .02], '--grey', 2)); }
+    if (S === 7 && s.ok) { const pts = []; for (let i = 0; i <= 96; i++) { const a = i / 96 * 2 * Math.PI, d = [Math.cos(a), Math.sin(a)], me = 1 / MR.dot(d, MR.mv(s.Li, d)); pts.push(MR.add(tip, MR.scl(d, me * .12))); }
+      A.poly(pts, '--bad', 2.5, null, '--bad', true); A.text(MR.add(tip, [0, -.5]), 'collision mass 1/(uᵀΛ⁻¹u), ×0.12 m/kg', '--bad', -60, 0, { size: 12 }); }
+    /* right: polar plot of effective mass, or matrices */
+    const B = Pl.panel(.56, 0, .44, .6, [-1, 1, -1, 1]);
+    if (s.ok && S >= 2 && S <= 4) {
+      B.frame('dᵀΛd: mass felt accelerating along d (kg)'); const pts = []; let mx = 0;
+      for (let i = 0; i <= 120; i++) { const a = i / 120 * 2 * Math.PI, d = [Math.cos(a), Math.sin(a)], m = MR.dot(d, MR.mv(s.Lam, d)); mx = Math.max(mx, m); pts.push([a, m]); }
+      const k = .85 / Math.min(mx, 60); B.circle([0, 0], .85, '--line', 1); B.axes();
+      B.clip(() => B.poly(pts.map(([a, m]) => [Math.cos(a) * m * k, Math.sin(a) * m * k]), '--c', 2.5, null, '--c', true));
+      const m = MR.dot(s.u, MR.mv(s.Lam, s.u)); B.arrow([0, 0], MR.scl(s.u, Math.min(.95, m * k)), '--b', 2.5, f(m, 2) + ' kg');
+      if (mx > 60) B.label(B.x + 8, B.y + B.h - 8, 'clipped: up to ' + f(mx, 0) + ' kg along the arm', '--bad', { size: 12 });
+    } else B.frame();
+    const R = Pl.panel(.56, .62, .44, .38, [0, 1, 0, 1], false); R.frame();
+    const L = (y, txt, cl) => R.label(R.x + 10, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    L(.14, `det J = ${f(s.detJ, 3)}`, s.ok ? '--muted' : '--bad');
+    if (s.ok) { L(.30, `Λ  = [${f(s.Lam[0][0], 2)} ${f(s.Lam[0][1], 2)}; ${f(s.Lam[1][0], 2)} ${f(s.Lam[1][1], 2)}] kg`, '--c');
+      L(.46, `Λ⁻¹= [${f(s.Li[0][0], 3)} ${f(s.Li[0][1], 3)}; ${f(s.Li[1][0], 3)} ${f(s.Li[1][1], 3)}]`, '--d');
+      L(.62, `F = ${vs(F, 1)} N → ẍ = ${vs(MR.mv(s.Li, F), 2)} m/s²`, '--b');
+      L(.78, `μ = ${vs(s.mu, 2)} N    p = ${vs(s.p, 2)} N`, '--e'); }
+  },
+  math(S) {
+    const s = st(), F = MR.scl(s.u, s.Fm);
+    const head = `<p class="cg">θ = (${s.q.map(SL.deg).join(', ')}), θ̇ = ${vs(s.qd, 1)} rad/s, F = ${s.Fm} N at φ = ${SL.deg(s.phi)}.</p>`;
+    if (!s.ok && S >= 1) return head + `<p class="cbad">det J = ${f(s.detJ, 4)}: the arm is (nearly) singular. Λ = (J M⁻¹ Jᵀ)⁻¹ does not exist. Bend the elbow.</p>`;
+    const ang = (a, b) => Math.acos(Math.max(-1, Math.min(1, MR.dot(a, b) / MR.norm(a) / MR.norm(b)))) * 180 / Math.PI;
+    const acc = s.ok ? MR.mv(s.Li, F) : [0, 0];
+    const rows = [
+`<p>Hand position x(q) and its derivatives:</p>
+${E(`ẋ = J(q) q̇
+ẍ = J(q) q̈ + J̇(q, q̇) q̇`)}
+${E(SL.mat(s.J, 3, 'J') + `\nẋ = J q̇ = ${vs(MR.mv(s.J, s.qd), 3)} m/s\nJ̇q̇ = ${vs(s.Jdq, 3)} m/s²   (acceleration with q̈ = 0: the hand moves on a curve)`)}
+<p>The goal: an equation in x alone, “force at the hand = mass × hand acceleration + …”.</p>`,
+`<p>Start from the joint equation with a hand force, M q̈ + c + g = Jᵀ F, and solve for q̈:</p>
+${E(`q̈ = M⁻¹(JᵀF − c − g)
+ẍ = J q̈ + J̇q̇ = (J M⁻¹ Jᵀ) F − J M⁻¹(c + g) + J̇q̇
+Multiply by Λ = (J M⁻¹ Jᵀ)⁻¹:
+F = Λ ẍ + [J̄ᵀc − Λ J̇q̇] + J̄ᵀg  =  Λ ẍ + μ + p        with J̄ = M⁻¹JᵀΛ`)}
+<p>Exactly the shape of the joint equation, now in hand coordinates. Valid where J has full row rank.</p>`,
+`${E(SL.mat(s.M, 3, 'M') + '\n' + SL.mat(s.Li, 4, 'J M⁻¹ Jᵀ') + '\n' + SL.mat(s.Lam, 3, 'Λ'))}
+<p>Eigen-decomposition of Λ: ${(() => { const e = MR.eigSym(s.Lam); return `heavy ${f(e.vals[0], 2)} kg along ${vs(e.vecs[0], 2)}, light ${f(e.vals[1], 2)} kg along ${vs(e.vecs[1], 2)}`; })()}.</p>
+<p>Along d = (cos φ, sin φ): accelerating the hand at 1 m/s² along d needs F = Λd = ${vs(MR.mv(s.Lam, s.u), 2)} N, of which dᵀΛd = ${f(MR.dot(s.u, MR.mv(s.Lam, s.u)), 3)} N is along d. Green ellipse: Λ (forces for unit accelerations); dashed violet: Λ⁻¹ (accelerations for unit forces).</p>`,
+`<p>At rest and without gravity, F = Λẍ, so</p>
+${E(`ẍ = Λ⁻¹ F = J M⁻¹ Jᵀ F = ${vs(acc, 3)} m/s²
+angle between F and ẍ: ${f(ang(F, acc), 1)}°`)}
+${ul(['The two point the same way only along the eigenvectors of Λ.', 'The dashed blue path is a real simulation: τ = JᵀF applied for 0.3 s from rest. It starts along ẍ, then curves as the pose and Λ change.', 'This is the video’s point: a robot hand does not feel like a point mass, whose acceleration always follows the force.'])}`,
+`<p>Λ⁻¹ = J M⁻¹ Jᵀ has det = det(J)² / det(M). As det J → 0, Λ⁻¹ becomes singular and Λ blows up.</p>
+${E(`det J = ${f(s.detJ, 4)},  det M = ${f(MR.det(s.M), 4)}
+det(Λ⁻¹) = det(J)²/det(M) = ${f(s.detJ ** 2 / MR.det(s.M), 5)}
+eigenvalues of Λ: ${MR.eigSym(s.Lam).vals.map(x => f(x, 2)).join(', ')} kg`)}
+<p>Press “Nearly straight elbow”: the heavy direction lines up with the arm and its mass shoots up. Physically: pushing along a straight arm, the joints have no leverage, so the hand will not accelerate that way, whatever the force.</p>`,
+`<p>Velocity terms at the hand (θ̇ from the sliders):</p>
+${E(`c (joint) = ${vs(s.c, 3)} N·m
+J̄ᵀ c     = ${vs(MR.mv(MR.T(s.Jbar), s.c), 3)} N
+Λ J̇q̇     = ${vs(MR.mv(s.Lam, s.Jdq), 3)} N
+μ = J̄ᵀc − ΛJ̇q̇ = ${vs(s.mu, 3)} N`)}
+<p>The −ΛJ̇q̇ part: even a point mass needs a sideways force to move on a curve. Here the hand moves on a curve whenever the joints turn at constant speed.</p>`,
+`${E(`g (joint) = ${vs(s.g, 3)} N·m
+J̄ = M⁻¹ Jᵀ Λ    (the dynamically consistent inverse)
+p = J̄ᵀ g = ${vs(s.p, 3)} N`)}
+<p>Check: Jᵀp = ${vs(MR.mv(MR.T(s.J), s.p), 3)} vs g = ${vs(s.g, 3)}: for a square, invertible J they are equal, J̄ = J⁻¹ and p = J⁻ᵀg.</p>
+<p>J̄ weights the inverse by the mass matrix. For redundant arms it is the inverse that makes the null-space torques cause no hand acceleration (page 144).</p>`,
+`<p><b>Operational-space control</b> (page 144): choose the hand acceleration you want, then</p>
+${E(`τ = Jᵀ (Λ ẍ_des + μ + p)        ⇒   ẍ = ẍ_des`)}
+<p>The hand behaves like a unit point mass that you steer directly; all the coupling of the joints is cancelled.</p>
+<p><b>Safety.</b> In a collision along unit direction u the hand acts like a mass</p>
+${E(`m_u = 1 / (uᵀ Λ⁻¹ u) = ${f(1 / MR.dot(s.u, MR.mv(s.Li, s.u)), 2)} kg   along φ = ${SL.deg(s.phi)}`)}
+<p>(red curve, all directions). ISO/TS 15066 limits for human contact are written in terms of this effective mass and speed.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return s.ok ? `<span><b>λ(Λ)</b>${MR.eigSym(s.Lam).vals.map(x => f(x, 2)).join(', ')} kg</span><span><b>det J</b>${f(s.detJ, 3)}</span>` : '<span class="pill bad">singular</span>'; },
+});
+</script>
+</body></html>

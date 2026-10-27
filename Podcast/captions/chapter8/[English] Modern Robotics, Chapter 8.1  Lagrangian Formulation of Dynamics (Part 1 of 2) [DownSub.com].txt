@@ -1,0 +1,137 @@
+In Chapter 8, we study the dynamics of open-chain
+robots. For example, the forward dynamics
+problem is to calculate the joint accelerations
+theta-double-dot given the current joint positions
+theta, the joint velocities theta-dot, and
+the forces and torques tau applied at each
+joint. The forward dynamics is useful for
+simulation.
+The inverse dynamics problem is to find the
+joint forces and torques tau needed to create
+the acceleration theta-double-dot for the
+given joint positions and velocities. The
+inverse dynamics is useful in control of robots.
+Robot dynamics is necessary not just for simulation
+and control, but also for the analysis of
+robot motion planners and controllers, as
+we'll see in chapters 9 through 11.
+In this book we study two approaches to solving
+the forward and inverse dynamics problems.
+The first is the Lagrangian formulation, a
+variational approach based on the kinetic
+and potential energy of the robot. The second
+approach is the Newton-Euler formulation,
+which relies on f equals m_a applied to each
+individual link of the robot. The focus of
+Chapter 8 is primarily on the Newton-Euler
+formulation, because it uses some of the geometric
+tools we have already developed, and it results
+in an efficient recursive algorithm for calculating
+the inverse dynamics.
+In this video, though, we start with the Lagrangian
+formulation, due to its conceptual simplicity.
+The key object in the Lagrangian formulation
+is the Lagrangian L. The Lagrangian for a
+mechanical system is its kinetic energy minus
+its potential energy. The potential energy
+P depends only on the configuration theta,
+while the kinetic energy K depends on theta
+and theta-dot.
+I won't derive the Lagrangian equations of
+motion, which you can find in many textbooks
+on mechanics. I'll just state the result:
+the vector of joint forces and torques tau
+is equal to the time derivative of the partial
+derivative of L with respect to theta-dot
+minus the partial derivative of L with respect
+to theta. The joint forces and torques tau
+are dual to the joint velocities theta-dot,
+meaning that tau dotted with theta-dot represents
+the power consumed or produced by the joints.
+We can write this vector equation in its components
+as shown here, where tau_i is the i-th element
+of the n-vector tau.
+Let's apply the formulation to a 2R robot
+in gravity. The lengths of the links are L_1
+and L_2, and all the mass of the robot is
+concentrated in point masses m_1 and m_2 as
+shown. We need to calculate the kinetic and
+potential energy of the two-point masses,
+so first we calculate the position of mass_1,
+given by the coordinates x_1 and y_1. We can
+take the derivative to get the velocity of
+m_1. We can do the same for mass_2, deriving
+its position and velocity. With this information,
+we can calculate the kinetic energy of link_1
+as one-half m_1 v_1-squared, where v_1-squared
+is just x_1-dot-squared plus y_1-dot-squared.
+Applying our earlier derivation, the kinetic
+energy simplifies to one-half m_1 L_1-squared
+theta_1-dot-squared. We can similarly calculate
+the kinetic energy of link_2. The potential
+energy of each mass depends only on its height,
+or its y-coordinate.
+Now we can calculate the Lagrangian as the
+sum of the kinetic energies minus the potential
+energies of the links, and express the joint
+torques in terms of the derivatives of the
+Lagrangian. This is tedious to do manually,
+but let's look at how we would calculate the
+derivatives for one particular component of
+the Lagrangian, which I'll call L_comp. The
+impact of this component of the Lagrangian
+on the torque at the second joint is tau_2comp.
+If we take the partial derivative of L_comp
+with respect to theta_2-dot, we get m_2 L_1
+L_2 theta_1-dot cosine of theta_2, and if
+we take the time derivative of that, we get
+the expression you see here. Now we can subtract
+the partial derivative of L_comp with respect
+to theta_2 to get this expression. The last
+two terms cancel, so the final torque at joint
+2 due to L_comp is m_2 L_1 L_2 theta_1-double-dot
+cosine theta_2.
+If we do these calculations for all the terms
+in the Lagrangian, we get these equations
+of motion. Even for a simple 2R robot, the
+equations are rather complicated. Notice that
+some terms are linear in the joint acceleration
+theta-double-dot, some terms do not depend
+on the joint acceleration but instead depend
+on a product of joint velocities, like theta_1-dot
+times theta_2-dot or theta_2-dot-squared,
+and some terms have no dependence on the joint
+velocities or accelerations. With this observation,
+we can write the vector equation of motion
+in this form: tau equals M of theta times
+theta-double-dot plus c of (theta, theta-dot)
+plus g of theta, where the matrix M and the
+vectors c and g are shown here. We call M
+the mass matrix. For a robot with n joints,
+this matrix is n-by-n, and for our 2R example
+it is 2-by-2. We call the vector c a velocity-product
+term, since it is composed of terms with a
+theta_i-squared or a theta_i times theta_j
+in it. Finally, we call the vector g the gravity
+term, since it depends on gravity. We call
+this a gravity term under the assumption that
+the potential energy comes only from gravity,
+but if there were springs at the robot joints,
+those springs would also contribute to the
+potential energy and therefore to g of theta.
+Overall, this equation looks like f equals
+m-a plus a gravity force, except that the
+accelerations of the masses depend not only
+on the joint accelerations but also products
+of the joint velocities. These velocity-product
+terms appear because the joint coordinates
+are not inertial coordinates. We will explore
+velocity-product terms in more detail in the
+next video.
+There is one more term we could add to the
+right-hand side, the Jacobian transpose times
+F_tip, where F_tip is the wrench that the
+end-effector applies to the environment. We
+learned about this term in Chapter 5.
+In the next video we'll take a closer look
+at velocity-product terms.

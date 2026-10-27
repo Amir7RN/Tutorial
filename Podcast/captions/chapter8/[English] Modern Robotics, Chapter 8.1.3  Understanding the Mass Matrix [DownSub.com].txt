@@ -1,0 +1,122 @@
+By now you're familiar with the equations
+of motion of a robot.
+In this video we focus on better understanding
+the mass matrix M of theta.
+First, recall that the kinetic energy of a
+point mass is one-half m-v-squared, where
+m is the mass and v is its scalar velocity.
+If v is a vector, we could rewrite this as
+one-half v-transpose times m times v.
+Now, for a robot arm, it is not hard to show
+that the kinetic energy takes the same form,
+one-half theta-dot-transpose times the mass
+matrix times theta-dot.
+The mass matrix is positive definite, meaning
+that the kinetic energy is positive for any
+nonzero joint velocity vector.
+This is analogous to the fact that a point
+mass can only have positive mass.
+In addition, the mass matrix is symmetric.
+Finally, the mass matrix depends on the joint
+configuration theta.
+The mass matrix depends on theta because the
+amount of inertia about each joint depends
+on whether the arm is stretched out or not.
+To see the variation in the mass matrix graphically,
+consider again the 2R robot arm, where the
+link lengths and masses are each one.
+Assume that the robot initially has zero velocity,
+and consider a circle of accelerations in
+the joint space at this robot configuration.
+Then this circle maps through the mass matrix
+to an ellipse of joint torques.
+This ellipse can be interpreted as a direction-dependent
+mass ellipsoid; certain joint acceleration
+directions require larger torques than others.
+The directions of the principal axes of the
+ellipse are given by the eigenvectors of the
+mass matrix and the lengths of the principal
+semi-axes are given by the eigenvalues.
+If the mass matrix is invertible, then we
+can also map a circle of joint torques to
+an ellipse of joint accelerations.
+If we change the configuration of the robot,
+the shapes of these ellipses change.
+Since these ellipses are in joint torque and
+acceleration space, they are not easy to understand
+intuitively.
+Instead, imagine that you grab the endpoint
+of the robot and you feel how "massy" it is
+when you move it in different directions.
+Let's say that V is the endpoint linear velocity,
+related to the joint velocity by the Jacobian
+J. When you linearly accelerate the endpoint,
+you will feel an apparent mass at the end-effector
+that depends on the joint configuration.
+We call this apparent mass Lambda of theta.
+To see how Lambda is related to the mass matrix
+M, we can equate the kinetic energy expressed
+in the end-effector velocity and the joint
+velocity.
+If the Jacobian is invertible, we can express
+the joint velocity as J-inverse times V, which
+gives us the relationship we were looking
+for: the configuration-dependent end-effector
+mass is equal to J-inverse-transpose times
+M times J-inverse.
+Now, if you consider a circle of endpoint
+accelerations when the robot is at rest, we
+can map this through the end-effector mass
+Lambda to get an ellipsoid of endpoint forces,
+depending on the robot's configuration.
+This ellipse is easier to understand.
+First of all, the directions of the force
+and the endpoint acceleration are only aligned
+if the force is aligned with a principal axis
+of the ellipse, as you see here.
+To accelerate the endpoint in this direction,
+you need a lot of force.
+To accelerate the endpoint in the orthogonal
+direction, you need much less force.
+For all force directions not aligned with
+a principal axis of the ellipse, the acceleration
+direction is not parallel to the force direction.
+To see this, let's map a circle of endpoint
+forces through the inverse end-effector mass
+matrix to get an ellipse of end-effector accelerations.
+For an endpoint force purely in the x-direction,
+as indicated by the dot on the circle of forces,
+we get an end-effector acceleration that has
+both x and y components, as indicated by the
+dot on the ellipsoid of accelerations.
+From this example, we learn two things.
+First, the magnitude of the effective end-effector
+mass depends on the direction of acceleration.
+Second, in general the directions of the end-effector
+acceleration and force are not aligned.
+So when we move the endpoint of the robot
+by hand, it does not feel like a point mass,
+which has a constant mass magnitude and always
+accelerates in the direction of the applied
+force.
+Also, the apparent end-effector mass depends
+on the configuration of the robot, as you
+see here.
+You should now have a good understanding of
+the form of the dynamic equations of a robot,
+including the mass matrix and velocity-product
+terms.
+Intuitively, these equations of motion are
+just f equals m-a, where the m-a term depends
+on both the joint velocities and accelerations,
+plus forces to balance gravity, plus forces
+to create the desired wrench at the end-effector.
+Starting in the next video, we will learn
+another way to derive these same equations,
+beginning with the equation f equals m-a for
+a single rigid body.
+This is called the Newton-Euler formulation
+of the dynamics.
+This formulation allows us to derive an efficient
+recursive algorithm, without differentiations,
+for computing the dynamics of open-chain robots.

@@ -1,0 +1,384 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>3R Obstacle Avoidance Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 3-D scene left; run controls, the step-by-step tick, and joint-speed bars right; stacks on phones */
+:root{
+  --bg:#f2f4f7; --panel:#ffffff; --ink:#1a2330; --muted:#5b6676; --line:#d4dae2; --hi:#eaf0ff;
+  --task:#2a4fd6; --away:#d9661f; --wish:#8a93a1; --null:#7a4fd0; --total:#1f8a4c; --obs:#c23b3b; --link:#3b4656;
+  --j1:#7a4fd0; --j2:#c0398a; --j3:#2e8b57;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --task:#7d9bff; --away:#f08a45; --wish:#7d8796; --null:#a98bf0; --total:#4fd08a; --obs:#ef6b6b; --link:#b8c2cf;
+  --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --task:#7d9bff; --away:#f08a45; --wish:#7d8796; --null:#a98bf0; --total:#4fd08a; --obs:#ef6b6b; --link:#b8c2cf;
+  --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+html,body{height:100%}
+.wrap{height:100%;display:flex;flex-direction:column;gap:8px;max-width:1500px;margin:0 auto;padding-block:10px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));box-sizing:border-box}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+h1{font-size:1.15rem;margin:0;text-wrap:balance}
+.sub{color:var(--muted);margin:0;font-size:.88rem}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.view{position:relative;padding:6px;display:flex;flex-direction:column;min-height:0}
+#scene{flex:1;min-height:0;width:100%;max-width:100%;display:block;touch-action:none;cursor:grab;border-radius:6px}
+.side{overflow-y:auto}
+@media (max-width:900px){
+  html,body{height:auto}.wrap{height:auto}
+  .grid{grid-template-columns:minmax(0,1fr)}
+  #scene{flex:none;aspect-ratio:1.1/1}
+  .side{overflow:visible}}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 6px}
+.chip{font:inherit;font-family:var(--mono);font-weight:600;font-size:.85rem;width:34px;height:30px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.chip[aria-current="true"]{background:var(--task);border-color:var(--task);color:var(--panel)}
+.stepTitle{font-weight:700;margin:2px 0}
+.stepText{font-size:.88rem;margin:0;min-height:3.2em}
+.lbl{position:absolute;font-size:.78rem;font-weight:700;pointer-events:none;white-space:nowrap;transform:translate(-50%,-120%);
+  background:color-mix(in srgb,var(--panel) 82%,transparent);padding:0 5px;border-radius:4px}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.8rem;color:var(--muted);padding:8px 4px 2px}
+.sw{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.side{display:flex;flex-direction:column;gap:12px;min-width:0}
+.h{font-size:.76rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;font-weight:700}
+.btns{display:flex;flex-wrap:wrap;gap:6px}
+.btns button,.seg button{font:inherit;font-size:.86rem;font-weight:700;border-radius:7px;padding:6px 11px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.btns button.primary{background:var(--task);border-color:var(--task);color:var(--panel)}
+.seg{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.seg button[aria-pressed="true"]{background:var(--hi);border-color:var(--task)}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--task);outline-offset:2px}
+.stat{display:flex;flex-wrap:wrap;gap:8px;font-family:var(--mono);font-size:.84rem;font-variant-numeric:tabular-nums;margin-top:8px}
+.pill{font-family:var(--body);font-weight:700;font-size:.8rem;padding:2px 9px;border-radius:99px;border:1px solid var(--line)}
+.pill.bad{border-color:var(--obs);color:var(--obs)} .pill.ok{border-color:var(--total);color:var(--total)}
+.steps{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.step{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;text-align:left;font:inherit;color:var(--ink);
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 10px;cursor:pointer}
+.step .n{font-family:var(--mono);font-weight:600;color:var(--muted)}
+.step b{display:block;font-size:.92rem}
+.step .t{font-size:.86rem;color:var(--muted)}
+.step[aria-current="true"]{background:var(--hi);border-color:var(--task)}
+.step[aria-current="true"] .t{color:var(--ink)}
+.nav{display:flex;gap:8px;margin-top:8px}
+.nav button{font:inherit;font-weight:700;border-radius:8px;padding:7px 13px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.nav button.primary{background:var(--task);border-color:var(--task);color:var(--panel)}
+.nav button:disabled{opacity:.45;cursor:default}
+details{border-top:1px solid var(--line);margin-top:8px;padding-top:8px}
+summary{cursor:pointer;font-weight:700;font-size:.88rem;color:var(--muted)}
+.math{font-size:.86rem;line-height:1.5;margin-top:6px;overflow-x:auto}.math p{margin:0 0 6px}.math ul{margin:0 0 6px;padding-left:18px}.math .eq{font-family:var(--mono);font-size:.82rem;font-variant-numeric:tabular-nums;white-space:nowrap}
+#bars{width:100%;max-width:100%;display:block}
+.note{font-size:.82rem;color:var(--muted);margin:6px 0 0}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>3R arm: follow the target and dodge the obstacle</h1>
+    <p class="sub">Tip rides the dashed line; the spare joint bends the arm around the red post. Drag to orbit.</p>
+  </div>
+
+  <div class="grid">
+    <div class="card view" id="view">
+      <canvas id="scene" aria-label="3-D view of a three-joint arm, a target path and an obstacle"></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--task)"></span>tip task</span>
+        <span><span class="sw" style="background:var(--away)"></span>away from obstacle</span>
+        <span><span class="sw" style="background:var(--wish)"></span>raw wish (leaks)</span>
+        <span><span class="sw" style="background:var(--null)"></span>null part</span>
+        <span><span class="sw" style="background:var(--total)"></span>final</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="card">
+        <div class="h">Run the controller</div>
+        <div class="btns">
+          <button id="play" class="primary" type="button">Play</button>
+          <button id="reset" type="button">Reset</button>
+        </div>
+        <div class="seg" role="group" aria-label="Avoidance mode">
+          <button data-mode="off" type="button" aria-pressed="false">No avoidance</button>
+          <button data-mode="on" type="button" aria-pressed="true">Avoid with N</button>
+          <button data-mode="wrong" type="button" aria-pressed="false">Wrong: skip N</button>
+        </div>
+        <div class="stat" id="stat"></div>
+      </div>
+
+      <div class="card">
+        <div class="h">One control tick, step by step</div>
+        <div class="btns"><button id="freeze" type="button">Freeze at the closest moment</button></div>
+        <div class="chips" id="steps"></div>
+        <p class="stepTitle" id="stepTitle"></p>
+        <p class="stepText" id="stepText"></p>
+        <div class="nav"><button id="back" type="button">Back</button><button id="next" class="primary" type="button">Next step</button></div>
+        <details><summary>Show the math for this step</summary><div class="math" id="math"></div></details>
+      </div>
+
+      <div class="card">
+        <div class="h">Joint speeds (rad/s)</div>
+        <canvas id="bars" aria-label="Joint speeds from each part of the controller"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+<script>
+(()=>{
+/* ---------- math ---------- */
+const L=[1,1,1],OBS=[1.5,1.4],R_OBS=0.15,DSAFE=0.6,K0=8,KP=4,TPER=8,AMP=0.6,H0=[0,Math.PI/2,-Math.PI/2];
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f=(x,d=2)=>(Math.abs(x)<5e-4?0:x).toFixed(d), vs=v=>'('+v.map(x=>f(x)).join(', ')+')';
+const dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0), add=(a,b)=>a.map((x,i)=>x+b[i]), sub=(a,b)=>a.map((x,i)=>x-b[i]), scl=(a,k)=>a.map(x=>x*k), nrm=a=>Math.sqrt(dot(a,a));
+function fk(th){const P=[[0,0]];let a=0;for(let i=0;i<3;i++){a+=th[i];const p=P[i];P.push([p[0]+L[i]*Math.cos(a),p[1]+L[i]*Math.sin(a)])}return P}
+function jacPoint(P,p,k){const J=[[0,0,0],[0,0,0]];for(let i=0;i<=k;i++){J[0][i]=-(p[1]-P[i][1]);J[1][i]=p[0]-P[i][0]}return J}
+const mulJ=(J,x)=>[dot(J[0],x),dot(J[1],x)], mulJT=(J,v)=>[0,1,2].map(i=>J[0][i]*v[0]+J[1][i]*v[1]);
+function pinv(J){const A=dot(J[0],J[0]),B=dot(J[0],J[1]),C=dot(J[1],J[1]),det=A*C-B*B;const inv=[[C/det,-B/det],[-B/det,A/det]];
+  return v=>mulJT(J,[inv[0][0]*v[0]+inv[0][1]*v[1],inv[1][0]*v[0]+inv[1][1]*v[1]])}
+function closest(P){let best=null;for(let k=0;k<3;k++){const a=P[k],b=P[k+1],ab=sub(b,a);let t=dot(sub(OBS,a),ab)/dot(ab,ab);t=Math.max(0,Math.min(1,t));
+  if(k===0&&t<0.05)continue;const p=add(a,scl(ab,t)),d=nrm(sub(p,OBS));if(!best||d<best.d)best={d,p,k}}return best}
+const target=t=>[2,1+AMP*Math.sin(2*Math.PI*t/TPER)], targetV=t=>[0,AMP*2*Math.PI/TPER*Math.cos(2*Math.PI*t/TPER)];
+function tick(th,t,mode,forceGain){
+  const P=fk(th),tip=P[3],J=jacPoint(P,tip,2),Jp=pinv(J);
+  const Vd=add(targetV(t),scl(sub(target(t),tip),KP));
+  const tdTask=Jp(Vd);
+  const c=closest(P),d=c.d,dir=scl(sub(c.p,OBS),1/d);
+  const k=forceGain??(d<DSAFE?K0*(DSAFE-d)/DSAFE:0);
+  const Jpt=jacPoint(P,c.p,c.k),wish=scl(mulJT(Jpt,dir),k);
+  const back=Jp(mulJ(J,wish)),nullPart=sub(wish,back);           // N·wish = wish − J⁺J·wish
+  let td=tdTask;if(mode==='on')td=add(tdTask,nullPart);if(mode==='wrong')td=add(tdTask,wish);
+  return {P,tip,J,Vd,tdTask,c,dir,k,Jpt,wish,nullPart,td,
+    tipWish:mulJ(J,wish),tipNull:mulJ(J,nullPart),tipTotal:mulJ(J,td),
+    pWish:mulJ(Jpt,wish),pNull:mulJ(Jpt,nullPart),pTotal:mulJ(Jpt,td)};
+}
+
+/* ---------- state ---------- */
+const S={th:H0.slice(),t:0,mode:'on',playing:false,step:-1,frozen:null,minD:9,maxErr:0,trail:[],hit:false};
+
+/* ---------- 3-D ---------- */
+const view=document.getElementById('view'),cv=document.getElementById('scene');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1.15,.05,100);
+scene.add(new THREE.AmbientLight(0xffffff,.6));const dl=new THREE.DirectionalLight(0xffffff,.75);dl.position.set(3,6,4);scene.add(dl);
+const W3=(p,y=0)=>new THREE.Vector3(p[0],y,-p[1]);
+const mat=c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c),roughness:.55,metalness:.1});
+let grid=null;
+const linkM=mat('#3b4656');const links=[0,1,2].map(()=>{const m=new THREE.Mesh(new THREE.BoxGeometry(1,.07,.09),linkM);scene.add(m);return m});
+const jM=[mat('#7a4fd0'),mat('#c0398a'),mat('#2e8b57')];const joints=jM.map(m=>{const j=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.16,24),m);scene.add(j);return j});
+const tipMesh=new THREE.Mesh(new THREE.SphereGeometry(.055,20,14),mat('#2a4fd6'));scene.add(tipMesh);
+const obsM=new THREE.MeshStandardMaterial({color:0xc23b3b,roughness:.5,transparent:true,opacity:.9});
+const obs=new THREE.Mesh(new THREE.CylinderGeometry(R_OBS,R_OBS,.5,32),obsM);obs.position.copy(W3(OBS,.25));scene.add(obs);
+function ring(r,c,dashed){const pts=[];for(let i=0;i<=96;i++){const a=i/96*2*Math.PI;pts.push(W3([OBS[0]+r*Math.cos(a),OBS[1]+r*Math.sin(a)],.005))}
+  const g=new THREE.BufferGeometry().setFromPoints(pts);const m=dashed?new THREE.LineDashedMaterial({color:c,dashSize:.05,gapSize:.04}):new THREE.LineBasicMaterial({color:c});
+  const l=new THREE.Line(g,m);if(dashed)l.computeLineDistances();scene.add(l);return l}
+const safeRing=ring(DSAFE,0xc23b3b,true);
+const pathG=new THREE.BufferGeometry().setFromPoints([W3([2,1-AMP],.005),W3([2,1+AMP],.005)]);
+const pathL=new THREE.Line(pathG,new THREE.LineDashedMaterial({color:0x2a4fd6,dashSize:.06,gapSize:.05}));pathL.computeLineDistances();scene.add(pathL);
+const tgt=new THREE.Mesh(new THREE.RingGeometry(.06,.085,28),new THREE.MeshBasicMaterial({color:0x2a4fd6,side:THREE.DoubleSide}));tgt.rotation.x=-Math.PI/2;scene.add(tgt);
+const pMark=new THREE.Mesh(new THREE.SphereGeometry(.045,16,12),new THREE.MeshBasicMaterial({color:0xd9661f}));scene.add(pMark);
+const gapG=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);const gapL=new THREE.Line(gapG,new THREE.LineDashedMaterial({color:0xd9661f,dashSize:.04,gapSize:.03}));scene.add(gapL);
+const TMAX=3000,trG=new THREE.BufferGeometry();trG.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TMAX*3),3));trG.setDrawRange(0,0);
+const trail=new THREE.Line(trG,new THREE.LineBasicMaterial({color:0x2a4fd6,transparent:true,opacity:.6}));scene.add(trail);
+const mkA=c=>{const a=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,c,.09,.06);a.visible=false;scene.add(a);return a};
+const A={task:mkA(0x2a4fd6),away:mkA(0xd9661f),tipWish:mkA(0x8a93a1),pWish:mkA(0x8a93a1),pNull:mkA(0x7a4fd0),tipTot:mkA(0x1f8a4c),pTot:mkA(0x1f8a4c)};
+function setA(a,o,v,k,lift){const w=new THREE.Vector3(v[0],0,-v[1]).multiplyScalar(k);let L=w.length();a.visible=L>1e-3;if(!a.visible)return;
+  if(L>1.6){w.multiplyScalar(1.6/L);L=1.6}a.position.copy(o);a.position.y=lift||.12;a.setDirection(w.clone().normalize());a.setLength(L,Math.min(.1,L*.35),Math.min(.06,L*.25))}
+const labels={};function lab(id,cls){const d=document.createElement('div');d.className='lbl';d.style.color=`var(${cls})`;d.hidden=true;view.appendChild(d);labels[id]=d}
+['task','away','tipWish','pWish','pNull','tipTot','obs','tgt'].forEach((k,i)=>lab(k,['--task','--away','--wish','--wish','--null','--total','--obs','--task'][i]));
+function place(id,v3,txt){const d=labels[id];if(!txt){d.hidden=true;return}const p=v3.clone().project(cam);if(p.z>1){d.hidden=true;return}
+  const r=cv.getBoundingClientRect(),vr=view.getBoundingClientRect();d.hidden=false;d.textContent=txt;
+  d.style.left=(r.left-vr.left+(p.x+1)/2*r.width)+'px';d.style.top=(r.top-vr.top+(1-p.y)/2*r.height)+'px'}
+function colorize(){
+  const c=n=>new THREE.Color(css(n));scene.background=c('--panel');
+  if(grid)scene.remove(grid);grid=new THREE.GridHelper(6,24,c('--line'),c('--line'));grid.position.set(1,-.002,-1);scene.add(grid);
+  linkM.color=c('--link');jM[0].color=c('--j1');jM[1].color=c('--j2');jM[2].color=c('--j3');tipMesh.material.color=c('--task');
+  safeRing.material.color=c('--obs');pathL.material.color=c('--task');tgt.material.color=c('--task');trail.material.color=c('--task');
+  pMark.material.color=c('--away');gapL.material.color=c('--away');
+  A.task.setColor(c('--task'));A.away.setColor(c('--away'));A.tipWish.setColor(c('--wish'));A.pWish.setColor(c('--wish'));
+  A.pNull.setColor(c('--null'));A.tipTot.setColor(c('--total'));A.pTot.setColor(c('--total'));
+}
+function placeLink(m,a,b){const P=W3(a),Q=W3(b);m.position.copy(P.clone().add(Q).multiplyScalar(.5));m.position.y=.04;m.scale.set(P.distanceTo(Q),1,1);m.rotation.set(0,Math.atan2(-(Q.z-P.z),Q.x-P.x),0)}
+const orb={az:-.35,el:1.0,r:5.2,tgt:new THREE.Vector3(1.1,0,-1.1)};
+function placeCam(){cam.position.set(orb.tgt.x+orb.r*Math.cos(orb.el)*Math.sin(orb.az),orb.tgt.y+orb.r*Math.sin(orb.el),orb.tgt.z+orb.r*Math.cos(orb.el)*Math.cos(orb.az));cam.lookAt(orb.tgt)}
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;orb.az-=(e.clientX-drag[0])*.008;orb.el=Math.max(.15,Math.min(1.5,orb.el+(e.clientY-drag[1])*.006));drag=[e.clientX,e.clientY];draw()});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>drag=null));
+cv.addEventListener('wheel',e=>{e.preventDefault();orb.r=Math.max(2.5,Math.min(11,orb.r*(1+Math.sign(e.deltaY)*.08)));draw()},{passive:false});
+
+/* ---------- drawing ---------- */
+const KV=0.55;
+function draw(){
+  const th=S.frozen?S.frozen.th:S.th,t=S.frozen?S.frozen.t:S.t;
+  const r=tick(th,t,S.mode,S.frozen?S.frozen.k:undefined);
+  placeCam();
+  for(let i=0;i<3;i++){placeLink(links[i],r.P[i],r.P[i+1]);joints[i].position.copy(W3(r.P[i],.05))}
+  tipMesh.position.copy(W3(r.tip,.05));tgt.position.copy(W3(target(t),.01));
+  const hit=r.c.d<R_OBS;obsM.color=new THREE.Color(hit?css('--obs'):css('--obs'));obsM.emissive=new THREE.Color(hit?0x661111:0x000000);
+  pMark.position.copy(W3(r.c.p,.06));const gp=gapL.geometry.attributes.position,a=W3(OBS,.06),b=W3(r.c.p,.06);gp.setXYZ(0,a.x,a.y,a.z);gp.setXYZ(1,b.x,b.y,b.z);gp.needsUpdate=true;gapL.computeLineDistances();
+  const tp=trG.attributes.position,n=Math.min(S.trail.length,TMAX);for(let i=0;i<n;i++){const q=S.trail[S.trail.length-n+i];tp.setXYZ(i,q[0],.01,-q[1])}tp.needsUpdate=true;trG.setDrawRange(0,n);
+  Object.values(A).forEach(x=>x.visible=false);Object.keys(labels).forEach(k=>labels[k].hidden=true);
+  const st=S.frozen?S.step:-1,T=W3(r.tip),Pp=W3(r.c.p);
+  if(st===-1){ // running view: show final tip velocity and target
+    setA(A.task,T,r.Vd,KV);if(S.mode!=='off'&&r.k>0){setA(A.away,Pp,scl(r.dir,.5),1)}
+  } else {
+    if(st>=0)setA(A.task,T,r.Vd,KV,.14);
+    if(st>=2)setA(A.away,Pp,scl(r.dir,.5),1,.14);
+    if(st===3){setA(A.pWish,Pp,r.pWish,KV*.22,.2);setA(A.tipWish,T,r.tipWish,KV*.22,.2)}
+    if(st===4){setA(A.pNull,Pp,r.pNull,KV,.2)}
+    if(st===5){setA(A.tipTot,T,r.tipTotal,KV,.22);setA(A.pTot,Pp,r.pTotal,KV,.22)}
+  }
+  renderer.render(scene,cam);
+  // labels
+  const lift=(v,y)=>v.clone().setY(y);
+  if(st>=0){place('task',lift(T,.15).add(new THREE.Vector3(r.Vd[0],0,-r.Vd[1]).multiplyScalar(KV)),'want V_d');}
+  if(st===0||st===-1){place('obs',W3(OBS,.55),'obstacle');place('tgt',W3(target(t),.02),st===0?'target moves on this line':'')}
+  if(st>=2)place('away',lift(Pp,.15).add(new THREE.Vector3(r.dir[0],0,-r.dir[1]).multiplyScalar(.5)),'closest point: push away');
+  if(st===3){place('pWish',lift(Pp,.2).add(new THREE.Vector3(r.pWish[0],0,-r.pWish[1]).multiplyScalar(KV*.22)),'raw wish moves this point… (shown small)');
+    place('tipWish',lift(T,.2).add(new THREE.Vector3(r.tipWish[0],0,-r.tipWish[1]).multiplyScalar(KV*.22)),'…but also leaks into the tip');}
+  if(st===4)place('pNull',lift(Pp,.2).add(new THREE.Vector3(r.pNull[0],0,-r.pNull[1]).multiplyScalar(KV)),'null part: still moves away, tip feels 0');
+  if(st===5)place('tipTot',lift(T,.22).add(new THREE.Vector3(r.tipTotal[0],0,-r.tipTotal[1]).multiplyScalar(KV)),'tip = V_d exactly');
+  drawBars(r,st);mathPanel(r,st);stats(r);
+}
+
+/* ---------- bars ---------- */
+const bc=document.getElementById('bars'),bx=bc.getContext('2d');
+function drawBars(r,st){
+  const rect=bc.getBoundingClientRect(),dpr=window.devicePixelRatio||1,W=rect.width;if(!W)return;const H=160;bc.style.height=H+'px';
+  if(bc.width!==Math.round(W*dpr)||bc.height!==Math.round(H*dpr)){bc.width=Math.round(W*dpr);bc.height=Math.round(H*dpr)}
+  bx.setTransform(dpr,0,0,dpr,0,0);bx.clearRect(0,0,W,H);
+  const show={task:st===-1||st>=1,wish:st===-1?S.mode==='wrong':st>=3,nul:st===-1?S.mode==='on':st>=4,tot:st===-1||st>=5};
+  const sets=[['task part',r.tdTask,'--task',show.task],['raw wish',r.wish,'--wish',show.wish],['null part',r.nullPart,'--null',show.nul],['final',S.frozen?add(r.tdTask,r.nullPart):r.td,'--total',show.tot]];
+  let mx=0.3;sets.forEach(s=>{if(s[3])s[1].forEach(x=>mx=Math.max(mx,Math.abs(x)))});
+  const left=70,right=48,mid=left+(W-left-right)/2,half=(W-left-right)/2,rowH=(H-26)/3;
+  bx.strokeStyle=css('--line');bx.beginPath();bx.moveTo(mid,4);bx.lineTo(mid,H-22);bx.stroke();
+  bx.font=`12px ${css('--mono')}`;
+  for(let j=0;j<3;j++){const y0=6+j*rowH;bx.fillStyle=css(['--j1','--j2','--j3'][j]);bx.font=`700 12px ${css('--body')}`;bx.fillText('joint '+(j+1),4,y0+rowH/2+4);
+    sets.forEach((s,q)=>{if(!s[3])return;const v=s[1][j],w=v/mx*half,y=y0+4+q*12;bx.fillStyle=css(s[2]);bx.fillRect(Math.min(mid,mid+w),y,Math.abs(w),q===3?9:6);
+      if(q===3){bx.font=`600 11px ${css('--mono')}`;bx.fillText(f(v),W-right+4,y+8)}})}
+  let x=4;bx.font=`11px ${css('--body')}`;sets.forEach(s=>{if(!s[3])return;bx.fillStyle=css(s[2]);bx.fillRect(x,H-14,10,6);bx.fillStyle=css('--muted');bx.fillText(s[0],x+13,H-8);x+=bx.measureText(s[0]).width+26});
+}
+
+/* ---------- steps ---------- */
+const STEPS=[
+ ['The situation','The tip must follow the target (blue arrow: the velocity it needs right now). The red post is near the arm; the dashed red ring is the safety zone.'],
+ ['Task part: J⁺V_d','Joint speeds that make the tip do exactly its job, with the least joint motion. Blue bars. This alone would let the link drift into the post.'],
+ ['Find the closest point and the away direction','The point on the arm nearest the post (orange dot), and the direction straight away from the post (orange arrow). The closer it is, the stronger the push.'],
+ ['Raw wish: θ̇₀ = k J_pᵀ d','Turn "push that point away" into joint speeds by leverage (grey bars). It moves the point away, but it also moves the tip (grey arrow at the tip): a leak.'],
+ ['Project it: N θ̇₀','N keeps only the part of the wish the tip cannot feel (purple bars). The point still moves away (purple arrow); the tip gets exactly zero from it.'],
+ ['Combine: θ̇ = J⁺V_d + N θ̇₀','Green bars: the final joint speeds. Green arrows: the tip moves exactly as the task asks, and the closest point moves away from the post.']];
+const stepsEl=document.getElementById('steps');
+const MODE_TXT={off:'No avoidance: the tip tracks, but a link runs into the post.',on:'Avoid with N: the arm bends around the post; the tip stays on the line.',wrong:'Skip N: the arm dodges, but the extra motion pushes the tip off the line.'};
+function renderSteps(){stepsEl.innerHTML=STEPS.map((s,i)=>`<button class="chip" data-i="${i}" type="button" title="${s[0]}" aria-current="${!!(S.frozen&&S.step===i)}">${i}</button>`).join('');
+  stepsEl.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{if(!S.frozen)freeze();S.step=+b.dataset.i;renderSteps();draw()});
+  const tEl=document.getElementById('stepTitle'),xEl=document.getElementById('stepText');
+  if(S.frozen){tEl.textContent=S.step+'. '+STEPS[S.step][0];xEl.textContent=STEPS[S.step][1]}
+  else{tEl.textContent='Running view';xEl.textContent=MODE_TXT[S.mode]+' Press "Freeze" or a number to walk through one tick.'}
+  document.getElementById('back').disabled=!S.frozen||S.step<=0;document.getElementById('next').disabled=S.frozen&&S.step>=STEPS.length-1;}
+function mathPanel(r,st){
+  const m=document.getElementById('math');if(st<0){m.innerHTML='<p>Press "Freeze at the closest moment" (or a step number) to see the full working for each step.</p>';return}
+  const t=S.frozen.t,tg=target(t),P=r.P,tip=r.tip;
+  const col=i=>[r.J[0][i],r.J[1][i]], arm=i=>sub(tip,P[i]);
+  const A=dot(r.J[0],r.J[0]),B=dot(r.J[0],r.J[1]),C=dot(r.J[1],r.J[1]),det=A*C-B*B;
+  const inv=[[C/det,-B/det],[-B/det,A/det]], iv=v=>[inv[0][0]*v[0]+inv[0][1]*v[1],inv[1][0]*v[0]+inv[1][1]*v[1]];
+  const w=iv(r.Vd), nl=(()=>{const a=r.J[0],b=r.J[1];let n=[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];return scl(n,1/nrm(n))})();
+  const jn=['joint 1','joint 2','joint 3'], E=s=>`<span class="eq">${s}</span>`;
+  const li=a=>'<ul>'+a.map(x=>'<li>'+x+'</li>').join('')+'</ul>';
+  const pc=i=>[r.Jpt[0][i],r.Jpt[1][i]];
+  const rows=[
+`<p><b>Goal of this step:</b> know where everything is and what velocity the tip needs right now.</p>
+<p><b>1. Where the arm is.</b> Joints at ${E(vs(P[0]))}, ${E(vs(P[1]))}, ${E(vs(P[2]))}; tip at ${E(vs(tip))}.</p>
+<p><b>2. Where the target is.</b> It slides up and down the line x = 2. At t = ${f(t)} s it is at ${E(vs(tg))}, moving at ${E(vs(targetV(t)))} m/s.</p>
+<p><b>3. The velocity the tip should have.</b> Two parts added together:</p>
+${li([`<b>keep up</b> with the target: its own velocity ${E(vs(targetV(t)))}`,`<b>fix any lag</b>: ${KP} × (target − tip) = ${KP} × ${E(vs(sub(tg,tip)))} = ${E(vs(scl(sub(tg,tip),KP)))}`])}
+<p>So ${E('V_d = '+vs(r.Vd)+' m/s')}. This is the only thing the tip is asked to do.</p>`,
+
+`<p><b>Goal:</b> find joint speeds that give the tip exactly V_d, using the least total joint motion.</p>
+<p><b>1. Each joint's tip arrow (the columns of J).</b> Joint i turning at 1 rad/s moves the tip perpendicular to its moment arm (tip − joint), with the same length: rotate the arm 90°.</p>
+${li([0,1,2].map(i=>`${jn[i]}: arm ${E(vs(arm(i)))} → arrow ${E(vs(col(i)))}`))}
+<p><b>2. Total squared leverage, JJᵀ (2×2, hand side).</b> Add up over all three joints:</p>
+${li([`sideways·sideways: ${E(f(A))}`,`up·up: ${E(f(C))}`,`sideways·up (the leak): ${E(f(B))}`])}
+<p><b>3. Corrected push w = (JJᵀ)⁻¹ V_d.</b> Divide V_d by the squared leverage and cancel the leak: ${E('w = '+vs(w))}.</p>
+<p><b>4. Hand it to the joints by leverage, θ̇ = Jᵀw.</b> Each joint's speed = its arrow · w:</p>
+${li([0,1,2].map(i=>`${jn[i]}: ${E(vs(col(i))+' · '+vs(w)+' = '+f(r.tdTask[i]))}`))}
+<p><b>Check:</b> J θ̇ = ${E(vs(mulJ(r.J,r.tdTask)))} = V_d ✓. This alone does the task, but it ignores the post.</p>`,
+
+`<p><b>Goal:</b> find the part of the arm in most danger, and which way it should move.</p>
+<p><b>1. Closest point.</b> For each link, find the point on that segment nearest the post centre ${E(vs(OBS))}. The nearest overall is on <b>link ${r.c.k+1}</b>, at ${E('p = '+vs(r.c.p))}.</p>
+<p><b>2. How close.</b> Distance from post centre: ${E(f(r.c.d)+' m')}. The post radius is ${R_OBS} m, so the actual gap is ${E(f(r.c.d-R_OBS)+' m')}.</p>
+<p><b>3. Away direction.</b> d = (p − post) ÷ its length = ${E(vs(sub(r.c.p,OBS)))} ÷ ${f(r.c.d)} = ${E(vs(r.dir))}.</p>
+<p><b>4. How hard to push.</b> Zero outside the safety ring (radius ${DSAFE} m), growing linearly as the arm gets closer: k = ${K0} × (${DSAFE} − ${f(r.c.d)}) ÷ ${DSAFE} = ${E(f(r.k))}.</p>`,
+
+`<p><b>Goal:</b> turn "move point p along d" into joint speeds. This is the raw wish, before any protection for the tip.</p>
+<p><b>1. Point p's own Jacobian, J_p.</b> Same moment-arm rule, but measured to p instead of the tip. Only joints <b>before</b> p can move it; joints after p get a zero column.</p>
+${li([0,1,2].map(i=>`${jn[i]}: ${i<=r.c.k?`arm ${E(vs(sub(r.c.p,P[i])))} → arrow ${E(vs(pc(i)))}`:`after p → ${E('(0, 0)')}`}`))}
+<p><b>2. Each joint's leverage on "away".</b> Dot each arrow with d, times the gain k (this is θ̇₀ = k·J_pᵀd):</p>
+${li([0,1,2].map(i=>`${jn[i]}: ${f(r.k)} × (${E(vs(pc(i))+' · '+vs(r.dir))}) = ${E(f(r.wish[i]))}`))}
+<p><b>3. What it does to p:</b> J_p θ̇₀ = ${E(vs(r.pWish))}. Dot with d = ${E(f(dot(r.pWish,r.dir)))} > 0, so p moves away ✓.</p>
+<p><b>4. The problem: what it does to the tip.</b> J θ̇₀ = ${E(vs(r.tipWish))} m/s. That is not zero, so adding the wish directly would push the tip off its path (that is the "Wrong: skip N" mode).</p>
+<p><b>Why the numbers are so big:</b> the wish is only a request. Most of it points in directions the tip would feel, and step 4 throws that part away. Only the small leftover is actually used.</p>`,
+
+`<p><b>Goal:</b> keep only the part of the wish the tip cannot feel.</p>
+<p><b>1. The part the tip feels.</b> From step 3, the wish would move the tip by ${E(vs(r.tipWish))}.</p>
+<p><b>2. Which joint motion causes exactly that?</b> Undo it with the same recipe as step 1: J⁺ applied to the leak, i.e. corrected push ${E(vs(iv(r.tipWish)))}, then each joint's arrow · push:</p>
+<p>${E('J⁺(Jθ̇₀) = '+vs(r.wish.map((x,i)=>x-r.nullPart[i])))}</p>
+<p><b>3. Remove it.</b> Null part = wish − that = ${E(vs(r.wish))} − ${E(vs(r.wish.map((x,i)=>x-r.nullPart[i])))} = ${E(vs(r.nullPart))}. That is N θ̇₀ with N = I − J⁺J.</p>
+<p><b>Same thing, seen another way:</b> the only joint motion the tip can't feel is the null line, perpendicular to both rows of J: ${E('n = '+vs(nl))}. The wish's amount along it is n · θ̇₀ = ${E(f(dot(nl,r.wish)))}, and ${E(f(dot(nl,r.wish))+' × n = '+vs(scl(nl,dot(nl,r.wish))))}, the same null part.</p>
+<p><b>Checks:</b></p>
+${li([`tip from the null part: J · Nθ̇₀ = ${E(vs(r.tipNull))} ✓ (zero)`,`point p from the null part: ${E(vs(r.pNull))}; dot with d = ${E(f(dot(r.pNull,r.dir)))}, ${dot(r.pNull,r.dir)>0?'still away ✓':'(weak here)'}`])}`,
+
+`<p><b>Goal:</b> add the task part and the null part, and confirm both jobs are done.</p>
+<p><b>1. Final joint speeds</b>, joint by joint (task + null):</p>
+${li([0,1,2].map(i=>`${jn[i]}: ${E(f(r.tdTask[i])+' + '+f(r.nullPart[i])+' = '+f(r.tdTask[i]+r.nullPart[i]))} rad/s`))}
+<p><b>2. Tip check:</b> J θ̇ = ${E(vs(mulJ(r.J,add(r.tdTask,r.nullPart))))} = V_d ${E(vs(r.Vd))} ✓. The null part added nothing at the tip.</p>
+<p><b>3. Obstacle check:</b> point p moves ${E(vs(mulJ(r.Jpt,add(r.tdTask,r.nullPart))))}; its speed toward "away" is ${E(f(dot(mulJ(r.Jpt,add(r.tdTask,r.nullPart)),r.dir)))} m/s (from the task part alone it would be ${E(f(dot(mulJ(r.Jpt,r.tdTask),r.dir)))}, i.e. moving toward the post). A value of about zero means the gap has stopped shrinking: the null part exactly cancels the approach. That is why this frozen moment is the closest the arm ever gets.</p>
+<p><b>4. Compare with skipping N:</b> task + raw wish would move the tip by ${E(vs(add(r.Vd,r.tipWish)))} instead of ${E(vs(r.Vd))}: an error of ${E(vs(r.tipWish))} every tick.</p>`];
+  m.innerHTML=rows[st];
+}
+function stats(r){
+  const el=document.getElementById('stat');
+  el.innerHTML=`<span>t ${f(S.frozen?S.frozen.t:S.t,1)} s</span><span>gap ${f(r.c.d-R_OBS)} m</span><span>tip error ${f(nrm(sub(r.tip,target(S.frozen?S.frozen.t:S.t))),3)} m</span>`+
+   (S.hit?'<span class="pill bad">hit the post</span>':'<span class="pill ok">no contact</span>')+(S.maxErr>0.05?'<span class="pill bad">tip left the line</span>':'');
+}
+
+/* ---------- run ---------- */
+let last=0;
+function loop(now){
+  if(!S.playing){last=0;return}
+  const dt=last?Math.min(.05,(now-last)/1000):0;last=now;
+  const sub_=10;for(let s=0;s<sub_;s++){const r=tick(S.th,S.t,S.mode);for(let i=0;i<3;i++)S.th[i]+=r.td[i]*dt/sub_;S.t+=dt/sub_;
+    const P=fk(S.th),c=closest(P);if(c.d<R_OBS)S.hit=true;S.maxErr=Math.max(S.maxErr,nrm(sub(P[3],target(S.t))))}
+  S.trail.push(fk(S.th)[3]);if(S.trail.length>TMAX)S.trail.shift();
+  draw();requestAnimationFrame(loop);
+}
+function reset(){S.th=H0.slice();S.t=0;S.trail=[];S.hit=false;S.maxErr=0;S.frozen=null;S.step=-1;renderSteps();draw()}
+function freeze(){ // simulate with avoidance to the moment of closest approach
+  let th=H0.slice(),t=0,best={d:9};const dt=.004;
+  for(let n=0;n<TPER/dt;n++){const r=tick(th,t,'on');if(r.c.d<best.d)best={d:r.c.d,th:th.slice(),t,k:r.k};for(let i=0;i<3;i++)th[i]+=r.td[i]*dt;t+=dt}
+  S.playing=false;document.getElementById('play').textContent='Play';
+  S.frozen={th:best.th,t:best.t,k:best.k};S.step=0;S.mode='on';
+  document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.mode==='on'?'true':'false'));
+  renderSteps();draw();
+}
+document.getElementById('play').onclick=e=>{if(S.frozen){S.frozen=null;S.step=-1;renderSteps()}S.playing=!S.playing;e.target.textContent=S.playing?'Pause':'Play';if(S.playing)requestAnimationFrame(loop);else draw()};
+document.getElementById('reset').onclick=()=>{S.playing=false;document.getElementById('play').textContent='Play';reset()};
+document.getElementById('freeze').onclick=freeze;
+document.getElementById('next').onclick=()=>{if(!S.frozen){freeze();return}S.step=Math.min(STEPS.length-1,S.step+1);renderSteps();draw()};
+document.getElementById('back').onclick=()=>{if(!S.frozen)return;S.step=Math.max(0,S.step-1);renderSteps();draw()};
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>{S.mode=b.dataset.mode;document.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',x===b?'true':'false'));
+  S.playing=false;document.getElementById('play').textContent='Play';reset()});
+
+function size(){const w=cv.clientWidth,h=cv.clientHeight;if(!w)return;renderer.setPixelRatio(window.devicePixelRatio||1);renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();draw()}
+colorize();new ResizeObserver(size).observe(cv);new ResizeObserver(()=>draw()).observe(bc);
+const retheme=()=>{colorize();draw()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+renderSteps();size();
+})();
+</script>
+
+</body></html>
