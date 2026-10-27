@@ -14,7 +14,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
 
-from app.widgets.step_lab import STEPLAB_DIR, STEP_LABS, lab_path
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STEPLAB_DIR = os.path.join(ROOT, "app", "assets", "steplab")
+
+
+def _labs():
+    # imported lazily: importing the app at discovery time upsets later Qt tests
+    from app.widgets.step_lab import STEP_LABS
+    return STEP_LABS
 
 NODE_SCRIPT = r"""
 const MR = require(process.argv[2]);
@@ -36,8 +43,8 @@ console.log(JSON.stringify({
 
 class FileTests(unittest.TestCase):
     def test_every_lab_exists_and_loads_only_local_scripts(self):
-        for name, (html, title) in STEP_LABS.items():
-            path = lab_path(html)
+        for name, (html, title) in _labs().items():
+            path = os.path.join(STEPLAB_DIR, html)
             self.assertTrue(os.path.exists(path), f"{name}: {html} missing")
             src = open(path, encoding="utf-8").read()
             for s in re.findall(r'<script src="([^"]+)"', src):
@@ -46,7 +53,7 @@ class FileTests(unittest.TestCase):
             self.assertTrue(title)
 
     def test_labs_are_unique_per_page(self):
-        files = [h for h, _ in STEP_LABS.values()]
+        files = [h for h, _ in _labs().values()]
         self.assertEqual(len(files), len(set(files)))
 
 
