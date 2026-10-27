@@ -1,0 +1,157 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Parallel elastic actuator</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Rotor J_m, limb J_L, parallel spring k (page defaults 0.04, 0.06, 200). Gravity: 0.4 m to the centre of mass, θ = lean from upright, spring pushes back toward θ₀. */
+const st = () => { const v = SL.v; return { Jm: v.jm / 1000, JL: v.jl / 1000, k: v.k, b: v.b / 100, w: Math.pow(10, v.w / 100), A: v.amp / 100, k2: v.k2, th0: v.th0 * Math.PI / 180, m: v.m / 2, pay: v.pay / 2, hi: v.hi * Math.PI / 180, kp: v.kp }; };
+const f = SL.f, E = SL.eq, ul = SL.ul, L10 = Math.log10, G = 9.81, LEN = .4, D = Math.PI / 180;
+let T = 0;
+const w0 = s => Math.sqrt(s.k / (s.Jm + s.JL));
+const JeffP = (s, w) => s.Jm + s.JL - s.k / (w * w), JeffS = (s, w) => s.JL + s.k * s.Jm / (s.k - s.Jm * w * w);
+const split = (pts, cond) => { const out = []; let cur = null, cv = null; pts.forEach(p => { const c = cond(p); if (c !== cv) { cur = []; out.push({ c, pts: cur }); cv = c; } cur.push(p); }); return out; };
+function zig(A, p0, p1, n, amp, cl, w) { const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l = Math.hypot(dx, dy), nx = -dy / l, ny = dx / l, pts = [p0];
+  for (let i = 1; i < 2 * n; i++) { const t = i / (2 * n), a = i % 2 ? amp : -amp; pts.push([p0[0] + dx * t + nx * a, p0[1] + dy * t + ny * a]); } pts.push(p1); A.poly(pts, cl, w); }
+/* rotor and limb on one shaft; the spring ties a crank on the shaft to ground */
+function picture(A, th, s) {
+  const rr = .22 + .25 * Math.min(1, s.Jm / .1), c = [-.85, .1];
+  A.line([-1.45, -1], [-.25, -1], '--grey', 2); for (let i = 0; i < 7; i++) A.line([-1.4 + i * .18, -1], [-1.48 + i * .18, -1.1], '--grey', 1);
+  A.circle(c, rr, '--b', 4); const cr = [c[0] + rr * Math.cos(th - Math.PI / 2), c[1] + rr * Math.sin(th - Math.PI / 2)]; A.line(c, cr, '--b', 3); A.dot(cr, 5, '--b');
+  zig(A, cr, [c[0], -1], 6, .08, '--c', 2.5); A.text([c[0] + .15, -.6], 'spring k to ground', '--c', 6, 0, { size: 12 }); A.text([c[0], c[1] + rr + .1], 'rotor J_m', '--b', -28, 0, { size: 12 });
+  A.line(c, [.1, .1], '--ink', 4); const e = [.1 + .9 * Math.cos(th), .1 + .9 * Math.sin(th)]; A.dot([.1, .1], 6, '--ink'); A.line([.1, .1], e, '--link', 7); A.dot(e, 8 + 12 * Math.min(1, s.JL / .1), '--e'); A.text([.55, -.35], 'limb J_L (same shaft)', '--e', -40, 0, { size: 12 });
+}
+const grav = (s, th, m) => m * G * LEN * Math.sin(th), spr = (s, th) => s.k2 * (th - s.th0);
+/* least-squares straight line k(θ − θ0) through m g L sinθ over [0, hi] */
+function fit(s) { const n = 60, xs = [...Array(n)].map((_, i) => s.hi * i / (n - 1)), ys = xs.map(x => grav(s, x, s.m)), mx = xs.reduce((a, b) => a + b) / n, my = ys.reduce((a, b) => a + b) / n;
+  const sl = xs.reduce((a, x, i) => a + (x - mx) * (ys[i] - my), 0) / xs.reduce((a, x) => a + (x - mx) ** 2, 0), k = sl, th0 = mx - my / sl; return { k, th0, xs }; }
+const rms = a => Math.sqrt(a.reduce((p, x) => p + x * x, 0) / a.length);
+function loops(s) { const J = s.Jm + s.JL, kd = 2 * .7 * Math.sqrt(s.kp * J), c = [kd, s.kp];
+  const pea = { num: c, den: [J, s.b + kd, s.k + s.kp] }, ff = { num: [kd, s.kp + s.k], den: [J, s.b + kd, s.k + s.kp] }, rig = { num: c, den: [J, s.b + kd, s.kp] };
+  const cs = .5, sn = CTL.pmul(c, [cs, s.k]), sd = [s.Jm * s.JL, cs * J, s.k * J, 0, 0], sea = CTL.feedback(CTL.tf(sn, sd));
+  return { J, kd, pea, ff, rig, sea, seaOk: CTL.roots(sea.den).every(z => z[0] < 0) }; }
+function impact(s) { const kc = 20000, v0 = 2, J = s.Jm + s.JL, Tn = 3 * Math.PI * Math.sqrt(J / kc), dt = Tn / 4000, ct = th => th > 0 ? kc * th : 0;
+  const one = (k) => CTL.ode((t, x) => [x[1], (-ct(x[0]) - k * x[0]) / J], [0, v0], Tn, dt, 8).map(([t, x]) => [t, ct(x[0])]);
+  const sea = CTL.ode((t, x) => { const ts = s.k * (x[0] - x[2]); return [x[1], -ts / s.Jm, x[3], (ts - ct(x[2])) / s.JL]; }, [0, v0, 0, v0], Tn, dt, 8).map(([t, x]) => [t, ct(x[2])]);
+  return { Tn, rig: one(0), pea: one(s.k), sea }; }
+SL.app({
+  title: 'Parallel elastic actuator: the spring beside the motor',
+  sub: 'Same spring, other side of the motor. The rotor stays bolted to the limb, so impacts see everything — but the spring now carries weight, stores and returns energy in cyclic motion, and adds to the controller instead of fighting it.',
+  view: '2d',
+  legend: [['--b', 'rotor / motor torque'], ['--e', 'limb / gravity'], ['--c', 'spring'], ['--a', 'PEA result'], ['--grey', 'SEA / no spring, for comparison'], ['--bad', 'resonance / cost']],
+  controls: [
+    { id: 'jm', label: 'rotor J_m', min: 1, max: 200, value: 40, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'jl', label: 'limb J_L', min: 1, max: 200, value: 60, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'k', label: 'parallel spring k', min: 5, max: 2000, value: 200, fmt: x => x + ' N·m/rad' },
+    { id: 'b', label: 'joint damping b', min: 0, max: 200, value: 40, fmt: x => f(x / 100, 2) + ' N·m·s/rad' },
+    { id: 'w', label: 'probe / cycle frequency ω', min: 0, max: 300, value: 165, fmt: x => f(Math.pow(10, x / 100), 1) + ' rad/s' },
+    { id: 'amp', label: 'cycle amplitude (step 3)', min: 5, max: 100, value: 30, fmt: x => f(x / 100, 2) + ' rad' },
+    { id: 'k2', label: 'gravity spring k (steps 4–5)', min: 1, max: 300, value: 100, fmt: x => x + ' N·m/rad' },
+    { id: 'th0', label: 'spring rest angle θ₀ (steps 4–5)', min: -45, max: 45, value: 0, fmt: x => x + '°' },
+    { id: 'm', label: 'limb mass (steps 4–5)', min: 2, max: 200, value: 60, fmt: x => f(x / 2, 1) + ' kg' },
+    { id: 'pay', label: 'unexpected payload (step 5)', min: 0, max: 40, value: 0, fmt: x => f(x / 2, 1) + ' kg' },
+    { id: 'hi', label: 'working range 0…θ (step 5)', min: 20, max: 90, value: 70, fmt: x => x + '°' },
+    { id: 'kp', label: 'PD stiffness K_p (step 6)', min: 1, max: 400, value: 40, fmt: x => x + ' N·m/rad' },
+  ],
+  play: { tick(dt) { T += dt; } },
+  reset() { T = 0; },
+  steps: [
+    ['One body again, plus a spring to ground', 'Motor and limb share one shaft; the spring sits beside them and pulls the shaft back toward its rest angle. One equation: (J_m + J_L)θ̈ + kθ = τ. Press Play: the whole joint, rotor included, bounces at √(k/(J_m + J_L)).'],
+    ['J_eff = J_m + J_L − k/ω²', 'Fast: J_eff → J_m + J_L, the full machine — no impact protection at all. At √(k/(J_m+J_L)) it is exactly zero. Slow: large and negative. Compare the grey SEA curve with the same spring: opposite behaviour at both ends.'],
+    ['“Negative inertia” means “feels like a spring”', 'Dividing every torque by θ̈ forces a spring into inertia units with the opposite sign. Read the torque per radian instead: spring k flat, inertia Jω² rising. Below the crossing the joint pushes back like a spring; above, like a mass.'],
+    ['Cyclic motion: the spring pays the inertia', 'Swing the joint sinusoidally. Without the spring the motor supplies Jω²A at peak; with it only |k − Jω²|A. At resonance the motor does almost nothing — energy sloshes between spring and inertia. Running and hopping live here.'],
+    ['Gravity compensation: a line against a sine', 'A body leaning θ away from upright needs m g L sinθ to hold it. A spring offers k(θ − θ₀). The motor pays the difference. A straight line can cross a sine at most twice: two free poses, the rest paid by the motor.'],
+    ['Tune the spring for a working range — then add a payload', 'Least-squares fit k and θ₀ to gravity over the range the robot actually uses: RMS motor torque drops sharply. Now pick up an unexpected payload: the cancellation fails and the motor pays everything the spring does not.'],
+    ['In the loop: a gain, not a lag', 'PD control: (J s² + (b + K_d)s + k + K_p)θ = (K_d s + K_p)θ_ref. The spring adds to K_p — same slot, more natural frequency, no extra poles. But it pulls toward its own rest angle: cancel it with feedforward kθ_ref. The SEA with the same gains for contrast.'],
+    ['What a parallel spring can never do', 'Hit a wall. Rigid and PEA give the same spike — the spring is negligible against the inertia at impact speed and the rotor is still bolted on. Only a series spring hides the rotor. SEA for safety, PEA for energy: often both, in different joints.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, J = s.Jm + s.JL, wn = w0(s), ws = CTL.logspace(0, 3, 500), lw = L10(s.w);
+    const R = Pl.panel(.63, 0, .37, .66, [-1.5, 1.3, -1.2, 1.2], S === 0);
+    if (S === 0) { R.frame('one shaft (slowed)'); const th = .45 * Math.sin(3 * T); picture(R, th, s);
+      const P = Pl.panel(0, 0, .62, .66, [0, 2.1, -.6, .6], false), ts = [...Array(300)].map((_, i) => i / 299 * 2.1);
+      P.series([{ pts: ts.map(t => [t, .45 * Math.sin(3 * t)]), cl: '--a', w: 3, label: 'θ_m = θ_L = θ' }, { pts: ts.map(t => [t, -.45 * Math.sin(3 * t) * .9]), cl: '--c', w: 1.5, dash: [4, 3], label: 'spring torque −kθ (scaled)' }], { title: `free motion: everything swings together at ω₀ = ${f(wn, 1)} rad/s (slowed)` });
+      P.line([T % 2.1, -.6], [T % 2.1, .6], '--grey', 1, [3, 3]); }
+    else if (S === 1) { const yl = [L10(s.JL) - 1.3, L10(J) + 1.5], A = Pl.panel(0, 0, .62, .66, [0, 3, ...yl], false), lg = v => L10(Math.max(1e-9, Math.abs(v)));
+      const segs = split(ws.map(x => [L10(x), JeffP(s, x)]), p => p[1] > 0).map(g => ({ pts: g.pts.map(p => [p[0], lg(p[1])]), cl: g.c ? '--a' : '--bad', w: 3, dash: g.c ? null : [5, 3] }));
+      const sea = split(ws.map(x => [L10(x), JeffS(s, x)]), p => p[1] > 0).map(g => ({ pts: g.pts.map(p => [p[0], lg(p[1])]), cl: '--grey', w: 1.5, dash: g.c ? null : [2, 3] }));
+      segs[segs.length - 1].label = 'log₁₀ |J_eff| PEA'; sea[0].label = 'SEA, same k';
+      A.series([...sea, ...segs, { pts: [[0, L10(J)], [3, L10(J)]], cl: '--b', w: 1.2, dash: [4, 3], label: 'J_m + J_L' }, { pts: [[0, L10(s.JL)], [3, L10(s.JL)]], cl: '--e', w: 1.2, dash: [4, 3], label: 'J_L' }], { title: 'J_eff(ω) vs log₁₀ ω — dashed = negative' });
+      A.line([L10(wn), yl[0]], [L10(wn), yl[1]], '--bad', 1, [3, 3]); A.text([L10(wn), yl[1]], 'ω₀: J_eff = 0', '--bad', 4, 34, { size: 12 }); A.dot([lw, lg(JeffP(s, s.w))], 6, '--ink'); }
+    else if (S === 2) { const A = Pl.panel(0, 0, .62, .66, [0, 3, 0, 5], false);
+      A.series([{ pts: ws.map(x => [L10(x), L10(s.k)]), cl: '--c', w: 2, dash: [5, 3], label: 'spring k' }, { pts: ws.map(x => [L10(x), L10(J * x * x)]), cl: '--b', w: 2, dash: [5, 3], label: 'inertia Jω²' }, { pts: ws.map(x => [L10(x), L10(Math.max(1e-3, Math.abs(s.k - J * x * x)))]), cl: '--a', w: 3, label: '|k − Jω²|: torque per rad you feel' }], { title: 'log₁₀ torque per radian vs log₁₀ ω' });
+      A.line([L10(wn), 0], [L10(wn), 5], '--bad', 1, [3, 3]); A.text([0.1, 4.6], '← feels like a spring', '--c', 0, 0, { size: 12 }); A.text([2.2, 4.6], 'feels like a mass →', '--b', 0, 0, { size: 12 }); A.dot([lw, L10(Math.max(1e-3, Math.abs(s.k - J * s.w * s.w)))], 6, '--ink'); }
+    else if (S === 3) { const lin = [...Array(400)].map((_, i) => 1 + i), top = Math.max(J * 160 * 160 * s.A, s.k * s.A) * 1.05, A = Pl.panel(0, 0, .62, .66, [1, 160, 0, top], false);
+      A.series([{ pts: lin.map(x => [x * .4, J * (x * .4) ** 2 * s.A]), cl: '--grey', w: 2, dash: [5, 3], label: 'peak motor torque, no spring: Jω²A' }, { pts: lin.map(x => [x * .4, Math.abs(s.k - J * (x * .4) ** 2) * s.A]), cl: '--a', w: 3, label: 'with PEA: |k − Jω²|A' }], { title: 'cyclic motion θ = A sin ωt — ω in rad/s', yl: 'N·m' });
+      A.line([wn, 0], [wn, top], '--bad', 1, [3, 3]); A.text([wn, top * .92], 'ω₀ = ' + f(wn, 1), '--bad', 4, 0, { size: 12 }); if (s.w <= 160) A.dot([s.w, Math.abs(s.k - J * s.w * s.w) * s.A], 6, '--ink'); }
+    else if (S === 4 || S === 5) { const F = fit(s), K = S === 5 ? F.k : s.k2, t0 = S === 5 ? F.th0 : s.th0, m = s.m + (S === 5 ? s.pay : 0), degs = [...Array(121)].map((_, i) => i * .75), mx = s.m * G * LEN * 1.25 + (S === 5 ? s.pay * G * LEN : 0);
+      const A = Pl.panel(0, 0, .62, .66, [0, 90, -mx, mx], false);
+      const list = [{ pts: degs.map(d => [d, grav(s, d * D, m)]), cl: '--e', w: 2.5, label: 'gravity m g L sinθ' }, { pts: degs.map(d => [d, K * (d * D - t0)]), cl: '--c', w: 2.5, label: 'spring k(θ − θ₀)' }, { pts: degs.map(d => [d, grav(s, d * D, m) - K * (d * D - t0)]), cl: '--b', w: 3, label: 'motor pays τ_m' }];
+      if (S === 5 && s.pay > 0) list.push({ pts: degs.map(d => [d, grav(s, d * D, s.m) - K * (d * D - t0)]), cl: '--grey', w: 1.5, dash: [4, 3], label: 'as tuned' });
+      A.series(list, { title: S === 4 ? 'holding torque vs lean from upright (°)' : `least-squares spring over 0…${f(s.hi / D, 0)}°`, yl: 'N·m' });
+      if (S === 5) { A.poly([[0, -mx], [s.hi / D, -mx], [s.hi / D, mx], [0, mx]], '--a', 1, [2, 4]); }
+      if (S === 4) { const sg = degs.map(d => grav(s, d * D, m) - K * (d * D - t0)); sg.forEach((v, i) => { if (i && Math.sign(v) !== Math.sign(sg[i - 1])) A.dot([degs[i], 0], 6, '--a'); }); } }
+    else if (S === 6) { const lp = loops(s), Tst = 1, dt = 1e-3, A = Pl.panel(0, 0, .62, .66, [0, Tst, -.1, 1.6], false), y = G2 => CTL.step(G2, Tst, dt).map(p => [p[0], Math.max(-.1, Math.min(1.6, p[1]))]);
+      A.series([{ pts: y(lp.rig), cl: '--grey', w: 1.5, dash: [4, 3], label: 'no spring' }, { pts: y(lp.pea), cl: '--c', w: 2.5, label: 'PEA' }, { pts: y(lp.ff), cl: '--a', w: 3, label: 'PEA + feedforward kθ_ref' }, { pts: (r => { const i = r.findIndex(p => Math.abs(p[1]) > 1.6); return i > 0 ? r.slice(0, i + 1) : r; })(CTL.step(lp.sea, Tst, 2e-4).filter((_, i) => i % 5 === 0)).map(p => [p[0], Math.max(-.1, Math.min(1.6, p[1]))]), cl: lp.seaOk ? '--b' : '--bad', w: 1.5, label: lp.seaOk ? 'SEA, same gains' : 'SEA, same gains: unstable' }], { title: `step to θ_ref = 1, K_d = ${f(lp.kd, 2)} (ζ = 0.7 as if no spring)` });
+      A.line([0, 1], [Tst, 1], '--grey', 1, [2, 3]); }
+    else { const im = impact(s), pk = Math.max(...im.rig.map(p => p[1])) * 1.15, A = Pl.panel(0, 0, .62, .66, [0, im.Tn * 1000, 0, pk], false);
+      A.series([{ pts: im.rig.map(p => [p[0] * 1000, p[1]]), cl: '--grey', w: 4, label: 'rigid joint' }, { pts: im.pea.map(p => [p[0] * 1000, p[1]]), cl: '--bad', w: 2, dash: [5, 3], label: 'PEA' }, { pts: im.sea.map(p => [p[0] * 1000, p[1]]), cl: '--a', w: 2.5, label: 'SEA, same k' }], { title: 'contact torque against a wall (2 rad/s, 20 kN·m/rad) — ms', yl: 'N·m' }); }
+    if (S >= 1) { R.frame('numbers'); const Lb = (y, t, cl) => R.label(R.x + 10, R.y + R.h * y, t, cl, { mono: true, size: 12 });
+      Lb(.1, `J_m + J_L = ${f(J, 3)} kg·m²`, '--ink'); Lb(.2, `ω₀ = √(k/(J_m+J_L)) = ${f(wn, 1)} rad/s`, '--bad');
+      if (S === 1 || S === 2) { const jp = JeffP(s, s.w); Lb(.32, `at ω = ${f(s.w, 1)}:`, '--muted'); Lb(.42, `J_eff PEA = ${f(jp, 4)}`, jp > 0 ? '--a' : '--bad'); Lb(.52, `J_eff SEA = ${f(JeffS(s, s.w), 4)}`, '--grey'); Lb(.62, `|k − Jω²| = ${f(Math.abs(s.k - J * s.w * s.w), 1)} N·m/rad`, '--a'); Lb(.72, jp < 0 ? 'regime: spring-like' : 'regime: mass-like', jp < 0 ? '--c' : '--b'); }
+      if (S === 3) { const a = J * s.w * s.w * s.A, b = Math.abs(s.k - J * s.w * s.w) * s.A; Lb(.32, `at ω = ${f(s.w, 1)}, A = ${f(s.A, 2)} rad:`, '--muted'); Lb(.42, `no spring: ${f(a, 2)} N·m peak`, '--grey'); Lb(.52, `PEA:       ${f(b, 2)} N·m peak`, '--a'); Lb(.62, `copper loss ∝ τ²: ${f(a > 0 ? b * b / (a * a) * 100 : 0, 0)} %`, '--bad'); Lb(.72, `spring stores ½kA² = ${f(.5 * s.k * s.A * s.A, 2)} J`, '--c'); }
+      if (S === 4) { const degs = [...Array(91)].map((_, i) => i * D), tm = degs.map(t => grav(s, t, s.m) - spr(s, t)), tg = degs.map(t => grav(s, t, s.m)); Lb(.32, `m g L = ${f(s.m * G * LEN, 1)} N·m (L = 0.4 m)`, '--e'); Lb(.42, `RMS gravity 0–90°: ${f(rms(tg), 1)} N·m`, '--e'); Lb(.52, `RMS motor  0–90°: ${f(rms(tm), 1)} N·m`, '--b'); Lb(.62, `peak motor: ${f(Math.max(...tm.map(Math.abs)), 1)} N·m`, '--bad'); }
+      if (S === 5) { const F = fit(s), tg = F.xs.map(t => grav(s, t, s.m)), tm = F.xs.map(t => grav(s, t, s.m) - F.k * (t - F.th0)), tp = F.xs.map(t => grav(s, t, s.m + s.pay) - F.k * (t - F.th0));
+        Lb(.32, `best k = ${f(F.k, 1)} N·m/rad`, '--c'); Lb(.42, `best θ₀ = ${f(F.th0 / D, 1)}°`, '--c'); Lb(.52, `RMS no spring ${f(rms(tg), 1)} N·m`, '--e'); Lb(.62, `RMS tuned     ${f(rms(tm), 2)} N·m`, '--b'); if (s.pay > 0) Lb(.72, `with +${f(s.pay, 1)} kg: ${f(rms(tp), 1)} N·m`, '--bad'); }
+      if (S === 6) { const lp = loops(s); Lb(.32, `ω_n PEA = √((k+K_p)/J) = ${f(Math.sqrt((s.k + s.kp) / J), 1)}`, '--c'); Lb(.42, `ω_n rigid = √(K_p/J) = ${f(Math.sqrt(s.kp / J), 1)}`, '--grey'); Lb(.52, `DC gain PEA = K_p/(k+K_p) = ${f(s.kp / (s.k + s.kp), 3)}`, '--bad'); Lb(.62, 'with feedforward: 1.000', '--a'); Lb(.72, lp.seaOk ? 'SEA: stable, slower' : 'SEA: unstable at these gains', lp.seaOk ? '--b' : '--bad'); }
+      if (S === 7) { const im = impact(s), p = a => Math.max(...a.map(q => q[1])); Lb(.32, `rigid peak ${f(p(im.rig), 0)} N·m`, '--grey'); Lb(.42, `PEA peak   ${f(p(im.pea), 0)} N·m`, '--bad'); Lb(.52, `SEA peak   ${f(p(im.sea), 0)} N·m`, '--a'); Lb(.64, `spring torque at impact ≈ k·mrad`, '--muted'); Lb(.74, `vs inertia ≈ k_c·mrad: ${f(20000 / s.k, 0)}× bigger`, '--muted'); } }
+    const B2 = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); B2.frame(); const L2 = (x, y, t, cl) => B2.label(B2.x + B2.w * x, B2.y + B2.h * y, t, cl, { mono: true, size: 12 });
+    L2(.02, .22, `(J_m + J_L) θ̈ + b θ̇ + k θ = τ_m + τ_ext      one body, ${f(J, 3)} kg·m², spring ${s.k} N·m/rad`, '--ink');
+    L2(.02, .47, `J_eff(ω) = J_m + J_L − k/ω²:  −∞ (slow) → 0 at ${f(wn, 1)} rad/s → ${f(J, 3)} (fast) — never below the rotor at impact`, '--a');
+    L2(.02, .72, S === 4 || S === 5 ? 'τ_m(θ) = m g L sinθ − k(θ − θ₀): the motor pays whatever the line misses of the sine' : 'SEA: spring in the force path → a lag (filters the motor).   PEA: spring beside it → a gain (adds to the motor).', '--muted');
+  },
+  math(S) {
+    const s = st(), J = s.Jm + s.JL, wn = w0(s);
+    const head = `<p class="cg">J_m = ${f(s.Jm, 3)}, J_L = ${f(s.JL, 3)} kg·m², k = ${s.k} N·m/rad.</p>`;
+    const rows = [
+`${E(`θ_m = θ_L = θ   (rigid shaft)
+τ_m + τ_ext = J_m θ̈ + J_L θ̈ + k θ = [(J_m + J_L)s² + k] θ
+free: ω₀ = √(k/(J_m + J_L)) = ${f(wn, 2)} rad/s`)}
+${ul(['No relative mode: the spring cannot separate rotor and limb because it does not sit between them.', 'Compare the SEA: two bodies and a mode where they swing against each other. Here there is only one body on a spring.'])}`,
+`${E(`τ_ext / (s²θ) = (J_m + J_L) + k/s²
+s = jω:  J_eff(ω) = J_m + J_L − k/ω²
+ω → ∞: ${f(J, 3)}   ω = ω₀: 0   ω → 0: −∞`)}
+<p>The SEA dropped to J_L at high frequency; the PEA stays at J_m + J_L. A parallel spring has no compliance in the force path, so nothing can ever hide the rotor.</p>`,
+`${E(`Z(ω) = τ/θ = k − (J_m + J_L)ω²
+spring term in phase with θ, inertia term in phase with θ̈ = −ω²θ
+J_eff = −Z/ω² < 0  ⇔  k > Jω²  ⇔  ω < ω₀`)}
+<p>Negative J_eff is not negative mass and not free energy. It says one thing: below ω₀ what pushes back is stiffness. That stiffness is useful if it is sized against a load that is always there — gravity (steps 4–5).</p>`,
+`${E(`θ = A sin ωt  ⇒  τ_m = (k − Jω²) A sin ωt
+no spring: peak J ω² A = ${f(J * s.w * s.w * s.A, 2)} N·m
+PEA:       peak |k − Jω²| A = ${f(Math.abs(s.k - J * s.w * s.w) * s.A, 2)} N·m
+spring energy ½kA² = ${f(.5 * s.k * s.A * s.A, 3)} J returned every half cycle`)}
+<p>Copper loss goes as τ², so near ω₀ the motor heat collapses. Match the spring to the gait frequency and the motor only tops up the losses; drift away from ω₀ and the benefit fades — far above it the spring is irrelevant, far below it the motor fights it.</p>`,
+`${E(`τ_m + τ_s(θ) = τ_g(θ)
+τ_g = m g L sinθ = ${f(s.m * G * LEN, 1)} sinθ
+τ_s = k(θ − θ₀) = ${s.k2}(θ − ${f(s.th0 / D, 0)}°)
+τ_m = 0 where the line meets the sine`)}
+<p>θ is the lean from upright, so gravity tips the body over and the spring pushes it back. sinθ bends over while the line keeps rising: past the second crossing the spring over-pushes and the motor must hold the body against the spring. A PEA makes the robot efficient at one task and worse at others.</p>`,
+(() => { const F = fit(s); return `${E(`minimise Σ [m g L sinθ − k(θ − θ₀)]² over 0…${f(s.hi / D, 0)}°
+linear regression of τ_g on θ:  slope k,  intercept −kθ₀
+k* = ${f(F.k, 2)} N·m/rad,  θ₀* = ${f(F.th0 / D, 2)}°`)}
+<p>The fit is for one mass. A payload changes m g L but not the spring: the motor pays the difference everywhere, and a mistuned PEA can be worse than none near the end of the range. Real designs add an adjustable preload, or a clutch to switch the spring out.</p>`; })(),
+`${E(`(J s² + (b + K_d)s + k + K_p) θ = (K_d s + K_p) θ_ref
+ω_n = √((k + K_p)/J) = ${f(Math.sqrt((s.k + s.kp) / J), 2)} rad/s
+DC gain K_p/(k + K_p) = ${f(s.kp / (s.k + s.kp), 3)}  →  add k θ_ref:  DC gain 1`)}
+<p>The spring stiffness lands in the same slot as K_p: the loop cannot tell them apart. No new poles, no resonance to crash into — the opposite of the series spring, whose fourth-order plant capped the gains. The price is a bias toward the spring's rest angle, which feedforward removes.</p>`,
+`${E(`impact lasts ~ π√(J/k_c) ≈ ${f(Math.PI * Math.sqrt(J / 20000) * 1000, 1)} ms
+spring torque k·θ ≪ contact torque k_c·θ   (k_c/k = ${f(20000 / s.k, 0)})
+⇒ PEA peak ≈ rigid peak ≈ v√(k_c (J_m + J_L))`)}
+${ul(['SEA — motor → spring → load: safety, impact tolerance, torque sensing; costs bandwidth.', 'PEA — motor ∥ spring → load: energy, gravity support, peak torque; costs nothing in control but gives no protection.', 'A humanoid may use a SEA at the ankle for balance and impacts and a PEA at the knee to hold up the torso.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>ω₀</b>${f(w0(s), 1)} rad/s</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Biped actuators</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Capstone biped: 30 kg, CoM 0.75 m, 0.20 m foot; thigh = shank = 0.4 m. Same screening numbers as the page:
+   j_load {ankle 3.2, knee 1.1, hip 0.45}, rotor 6e-5, j_local {0.15, 0.10, 0.06}, foot 0.35 m/s at a 0.10 m lever. */
+const JN = ['ankle', 'knee', 'hip'], JLOAD = [3.2, 1.1, .45], JLOC = [.15, .10, .06], NEED = [12, 20, 25], JROT = 6e-5, LEG = .4, M = 30, G = 9.81, DW = .35 / .10, TLIM = 400;
+const TOPS = [['QDD', '--a'], ['SEA', '--c'], ['harmonic', '--bad'], ['direct', '--b']];
+const st = () => { const v = SL.v; return { j: v.joint, top: v.top, N: v.n, ks: v.ks, tc: v.tc / 10000, q: v.q * Math.PI / 180, tsw: v.tsw / 100, tm: v.tm, wmax: v.wmax }; };
+const f = SL.f, E = SL.eq, ul = SL.ul, L10 = Math.log10, TAU = 2 * Math.PI;
+/* effective ratio of a topology (as on the page: DD forces 1, harmonic at least 60) */
+const Nof = (s, top) => top === 3 ? 1 : top === 2 ? Math.max(s.N, 60) : s.N;
+const Jm = (s, top) => JROT * Nof(s, top) ** 2;
+function screen(s, j, top) {
+  const N = Nof(s, top), jm = JROT * N * N, rigid = (jm + JLOC[j]) * DW / s.tc;
+  const tau = top === 1 ? Math.min(DW * Math.sqrt(s.ks * JLOC[j]), rigid) : rigid;
+  const bw = top === 1 ? Math.sqrt(s.ks * (1 / jm + 1 / JLOAD[j])) / (TAU * 3) : N <= 12 ? 200 : 60;
+  const back = top === 1 || N <= 12, sw = swing(s, j, N);
+  return { N, jm, tau, bw, back, sw, pass: back && bw >= NEED[j] && tau < TLIM && sw.ok, J: jm + JLOC[j] };
+}
+/* swing: move 0.6 rad in t_sw with bang–bang acceleration; peak output speed 2Δθ/t */
+function swing(s, j, N) { const dth = .6, a = 4 * dth / (s.tsw * s.tsw), w = 2 * dth / s.tsw, need = (N * N * JROT + JLOAD[j] / 3) * a, have = N * s.tm, spd = w * N;
+  return { a, w, need, have, spd, ok: have >= need && spd <= s.wmax }; }
+function robot(A, q, hl) { const k = [LEG * Math.sin(q / 2), LEG * Math.cos(q / 2)], h = [0, 2 * LEG * Math.cos(q / 2)], t = [0, h[1] + .5];
+  A.line([-.6, 0], [.7, 0], '--grey', 1.5); A.line([-.05, 0], [.17, 0], '--ink', 5); A.line([0, 0], k, '--link', 7); A.line(k, h, '--link', 7); A.line(h, t, '--link', 9); A.dot([0, t[1] + .1], 12, '--link');
+  A.dot([0, h[1] + .25], 9, '--e'); A.text([0, h[1] + .25], 'CoM', '--e', 10, 4, { size: 11 });
+  [[0, 0], k, h].forEach((p, i) => { A.dot(p, i === hl ? 11 : 7, i === hl ? '--bad' : TOPS[0][1]); A.text(p, JN[i], i === hl ? '--bad' : '--muted', 12, 4, { size: 12 }); }); }
+SL.app({
+  title: 'Biped actuators: one robot, three joints, three different answers',
+  sub: 'A 30 kg biped. Each joint has to survive three different jobs — hold the body in stance, whip the leg through swing, take the heel strike — and each job prefers a different actuator. Screen QDD, SEA, harmonic drive and direct drive against all three.',
+  view: '2d',
+  legend: [['--a', 'QDD'], ['--c', 'SEA'], ['--bad', 'harmonic / fail'], ['--b', 'direct drive'], ['--e', 'load / requirement']],
+  controls: [
+    { id: 'joint', label: 'joint', min: 0, max: 2, value: 1, fmt: x => JN[x] },
+    { id: 'top', label: 'topology (steps 4–5)', min: 0, max: 3, value: 0, fmt: x => TOPS[x][0] },
+    { id: 'n', label: 'gear ratio N', min: 1, max: 160, value: 8, fmt: x => x + ':1' },
+    { id: 'ks', label: 'SEA spring k', min: 200, max: 8000, step: 50, value: 1500, fmt: x => x + ' N·m/rad' },
+    { id: 'tc', label: 'contact time', min: 2, max: 100, value: 15, fmt: x => f(x / 10, 1) + ' ms' },
+    { id: 'q', label: 'knee crouch (step 1)', min: 0, max: 100, value: 40, fmt: x => x + '°' },
+    { id: 'tsw', label: 'swing time (step 2)', min: 20, max: 80, value: 35, fmt: x => f(x / 100, 2) + ' s' },
+    { id: 'tm', label: 'motor peak torque', min: 2, max: 40, value: 15, fmt: x => x + ' N·m' },
+    { id: 'wmax', label: 'motor max speed', min: 50, max: 800, step: 10, value: 300, fmt: x => x + ' rad/s' },
+  ],
+  steps: [
+    ['The robot and its three demands', '30 kg, centre of mass at 0.75 m, a 20 cm foot. Every joint lives three lives per step: stance (hold torque, often at zero speed), swing (accelerate and stop a leg), contact (a heel strike faster than any loop). Pick a joint with the slider.'],
+    ['Stance: torque at zero speed still costs heat', 'In a crouch the knee carries the body weight at a lever l·sin(q/2). Mechanical power τω is zero, yet the motor burns I²R. Gearing divides the motor current by N, so the copper loss falls as 1/N² — the first argument for a gearbox.'],
+    ['Swing: accelerate a leg — the gearbox pushes back', 'Swinging 0.6 rad in t_sw needs α = 4Δθ/t². The motor must accelerate its own reflected rotor N²J_r plus the leg; it can supply Nτ_m but must also spin at N·ω. Too little N: too weak. Too much: the rotor eats the torque, or the motor cannot spin fast enough.'],
+    ['Contact: the heel strike nobody can control', 'Rigid transmission: the foot\'s momentum stops in the contact time t_c, so τ = (N²J_r + J_local)Δω/t_c — grows without limit on harder ground. SEA: the spring caps it by energy, τ = Δω√(kJ_local), with no t_c at all.'],
+    ['What the world feels, per topology', 'J_eff(ω) for the chosen joint and topology, with the impact band (80–400 Hz) shaded. Rigid drives show the full reflected rotor there; the SEA drops toward the local foot-and-shank inertia.'],
+    ['Torque bandwidth against an assumed target', 'Screening assumptions, as on the page: rigid drives 200 Hz at N ≤ 12 and 60 Hz above; SEA one third of its two-inertia resonance. Targets 12 / 20 / 25 Hz for ankle / knee / hip — illustrative, not derived from the capture point.'],
+    ['The full screen: 3 joints × 4 topologies', 'Every cell runs all four checks — bandwidth, impact below 400 N·m, backdrivable, swing feasible. Green passes. Move the spring, the ratio, the contact time and the motor and watch the matrix rearrange.'],
+    ['Candidate choices — to verify, not to buy', 'Take the first passing topology per joint in the order the page suggests (ankle SEA, knee and hip QDD). These are starting candidates for a teaching robot, not calculated optima: thermal duty, losses, spring travel and real impact tests decide.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, j = s.j;
+    if (S === 0 || S === 7) { const A = Pl.panel(0, 0, .3, .66, [-.7, .8, -.1, 1.75]); A.frame(); robot(A, S === 0 ? s.q : .35, S === 0 ? j : -1);
+      const R = Pl.panel(.31, 0, .69, .66, [0, 1, 0, 1], false); R.frame(S === 0 ? 'three demands per joint' : 'candidates from the screen'); const Lb = (x, y, t, cl, o = {}) => R.label(R.x + R.w * x, R.y + R.h * y, t, cl, { mono: true, size: 12, ...o });
+      if (S === 0) { Lb(.03, .12, 'joint', '--muted'); Lb(.18, .12, 'stance', '--muted'); Lb(.45, .12, 'swing', '--muted'); Lb(.72, .12, 'contact', '--muted');
+        JN.forEach((n, i) => { const y = .25 + .14 * i, c = i === j ? '--bad' : '--ink'; Lb(.03, y, n, c); Lb(.18, y, ['CoP torque', 'body weight', 'torso balance'][i], c); Lb(.45, y, `J_load ${JLOAD[i]}`, c); Lb(.72, y, `J_local ${JLOC[i]}`, c); });
+        Lb(.03, .7, `heel strike: foot 0.35 m/s at 0.10 m → Δω = ${f(DW, 1)} rad/s`, '--e'); Lb(.03, .8, `rotor J_r = 6e-5 kg·m² (motor side), peak motor torque ${s.tm} N·m`, '--b'); Lb(.03, .9, 'structure assumed to take 400 N·m', '--bad'); }
+      else { const pref = [[1, 0, 3, 2], [0, 1, 3, 2], [0, 3, 1, 2]]; JN.forEach((n, i) => { const pick = pref[i].find(t => screen(s, i, t).pass), y = .18 + .2 * i;
+          Lb(.03, y, n, '--ink', { size: 13 }); Lb(.2, y, pick === undefined ? 'nothing passes — change N, k or motor' : `${TOPS[pick][0]}${pick === 1 ? ` (k = ${s.ks})` : pick !== 3 ? ` (N = ${Nof(s, pick)})` : ''}`, pick === undefined ? '--bad' : TOPS[pick][1], { size: 13 });
+          if (pick !== undefined) { const r = screen(s, i, pick); Lb(.2, y + .08, `bw ${f(r.bw, 0)} Hz ≥ ${NEED[i]}, impact ${f(r.tau, 0)} N·m, swing ${f(r.sw.need, 1)}/${f(r.sw.have, 0)} N·m`, '--muted'); } });
+        Lb(.03, .82, 'verify: thermal duty, losses, backlash, spring travel, impact tests', '--muted'); } }
+    else if (S === 1) { const qs = [...Array(101)].map((_, i) => i * Math.PI / 180), W = M * G / 2, A = Pl.panel(0, 0, .62, .4, [0, 100, 0, 130], false), kt = .2, R = .15;
+      A.series([{ pts: qs.map(q => [q * 180 / Math.PI, W * LEG * Math.sin(q / 2)]), cl: '--a', w: 3, label: 'knee, two-leg stance' }, { pts: qs.map(q => [q * 180 / Math.PI, 2 * W * LEG * Math.sin(q / 2)]), cl: '--c', w: 2, label: 'one leg' }, { pts: [[0, 120], [100, 120]], cl: '--bad', w: 1.5, dash: [5, 3], label: 'stated knee peak 120 N·m' }], { title: 'knee holding torque (N·m) vs crouch (°)' });
+      A.line([s.q * 180 / Math.PI, 0], [s.q * 180 / Math.PI, 130], '--ink', 1, [2, 3]);
+      const tq = 2 * W * LEG * Math.sin(s.q / 2), Ns = [...Array(60)].map((_, i) => i + 1), P = n => R * (tq / (n * kt * .9)) ** 2, B = Pl.panel(0, .42, .62, .24, [0, 60, 0, L10(P(1)) + .3], false);
+      B.series([{ pts: Ns.map(n => [n, L10(P(n))]), cl: '--bad', w: 2.5, label: `log₁₀ copper loss (W) holding ${f(tq, 0)} N·m on one leg vs N` }]); B.dot([s.N, L10(P(s.N))], 6, '--ink');
+      const Rp = Pl.panel(.63, 0, .37, .66, [-.7, .8, -.1, 1.75]); Rp.frame(); robot(Rp, s.q, 1); }
+    else if (S === 2) { const Ns = [...Array(160)].map((_, i) => i + 1), sw = Ns.map(n => swing(s, j, n)), top = Math.max(...sw.map(x => x.need)) * 3, A = Pl.panel(0, 0, .62, .4, [1, 160, 0, top], false);
+      A.series([{ pts: Ns.map((n, i) => [n, sw[i].have]), cl: '--a', w: 3, label: 'available N τ_m' }, { pts: Ns.map((n, i) => [n, sw[i].need]), cl: '--bad', w: 3, label: 'needed (N²J_r + J_leg)α' }], { title: `${JN[j]} swing: output torque (N·m) vs N` });
+      sw.forEach((x, i) => { if (x.ok) A.line([i + 1, 0], [i + 1, A.b[3] * .03], '--c', 3); }); A.dot([s.N, sw[s.N - 1].need], 6, '--ink');
+      const B = Pl.panel(0, .42, .62, .24, [1, 160, 0, Math.max(s.wmax * 1.5, 1)], false); B.series([{ pts: Ns.map((n, i) => [n, sw[i].spd]), cl: '--b', w: 2.5, label: 'motor speed N·ω_peak (rad/s)' }, { pts: Ns.map(n => [n, s.wmax]), cl: '--bad', w: 1.5, dash: [5, 3], label: 'motor max' }]); }
+    else if (S === 3) { const tcs = CTL.logspace(-3.7, -2, 100), N = Nof(s, s.top === 1 ? 0 : s.top), jm = JROT * N * N, A = Pl.panel(0, 0, .62, .66, [-3.7, -2, 0, L10(5000)], false), sea = DW * Math.sqrt(s.ks * JLOC[j]);
+      A.series([{ pts: tcs.map(t => [L10(t), L10((jm + JLOC[j]) * DW / t)]), cl: '--bad', w: 3, label: `rigid, N = ${N}` }, { pts: tcs.map(t => [L10(t), L10(Math.min(sea, (JROT * s.N * s.N + JLOC[j]) * DW / t))]), cl: '--c', w: 3, label: `SEA, k = ${s.ks}` }, { pts: tcs.map(t => [L10(t), L10(TLIM)]), cl: '--e', w: 1.5, dash: [5, 3], label: 'structure 400 N·m' }], { title: `${JN[j]} heel-strike torque: log₁₀ N·m vs log₁₀ contact time (s)` });
+      A.line([L10(s.tc), 0], [L10(s.tc), L10(5000)], '--ink', 1, [2, 3]); A.text([-3.65, L10(1500)], '← hard ground', '--muted', 0, 0, { size: 12 }); }
+    else if (S === 4) { const r = screen(s, j, s.top), ws = CTL.logspace(0, 3.4, 300), jl = JLOAD[j], A = Pl.panel(0, 0, .62, .66, [0, 3.4, -2, 1.5], false);
+      const je = w => s.top === 1 ? jl + s.ks * r.jm / (s.ks - r.jm * w * w) : r.jm + jl;
+      A.poly([[L10(TAU * 80), -2], [L10(TAU * 400), -2], [L10(TAU * 400), 1.5], [L10(TAU * 80), 1.5]], '--bad', 0, null, '--bad', true);
+      A.series([{ pts: ws.map(w => [L10(w), L10(Math.max(1e-3, Math.abs(je(w))))]), cl: TOPS[s.top][1], w: 3, label: `log₁₀ |J_eff|, ${TOPS[s.top][0]}, N = ${r.N}` }, { pts: ws.map(w => [L10(w), L10(jl)]), cl: '--e', w: 1.5, dash: [5, 3], label: 'load alone' }, { pts: ws.map(w => [L10(w), L10(JLOC[j])]), cl: '--muted', w: 1.2, dash: [2, 3], label: 'local foot/shank' }], { title: `what the world feels at the ${JN[j]} — shaded: impact band 80–400 Hz` }); }
+    else if (S === 5) { const rs = TOPS.map((_, t) => screen(s, j, t)), mx = Math.max(220, ...rs.map(r => r.bw)) * 1.1, A = Pl.panel(0, 0, .62, .66, [0, 4, 0, L10(mx)], false); A.frame(`${JN[j]}: torque bandwidth (log₁₀ Hz) vs target ${NEED[j]} Hz`);
+      rs.forEach((r, t) => { const h = L10(Math.max(1, r.bw)); A.poly([[t + .2, 0], [t + .8, 0], [t + .8, h], [t + .2, h]], TOPS[t][1], 1.5, null, TOPS[t][1], true); A.text([t + .5, h], f(r.bw, 0) + ' Hz', '--ink', -18, -4, { size: 12 }); A.text([t + .5, 0], TOPS[t][0], TOPS[t][1], -22, 16, { size: 12 }); });
+      A.line([0, L10(NEED[j])], [4, L10(NEED[j])], '--e', 2, [6, 3]); }
+    else { const A = Pl.panel(0, 0, 1, .66, [0, 1, 0, 1], false); A.frame('screen: B bandwidth · I impact · K backdrive · S swing   (green = all pass)'); const Lb = (x, y, t, cl, o = {}) => A.label(A.x + A.w * x, A.y + A.h * y, t, cl, { mono: true, size: 12, ...o });
+      TOPS.forEach((t, k) => Lb(.16 + .21 * k, .14, t[0] + (k === 1 ? '' : ` N=${Nof(s, k)}`), t[1], { size: 13 }));
+      JN.forEach((n, i) => { const y = .3 + .22 * i; Lb(.02, y, n, i === j ? '--bad' : '--ink', { size: 13 });
+        TOPS.forEach((t, k) => { const r = screen(s, i, k), x = .16 + .21 * k, m = (ok, l) => ok ? l : l.toLowerCase() + '✗';
+          A.poly([[x - .01, y - .08], [x + .19, y - .08], [x + .19, y + .1], [x - .01, y + .1]].map(p => [p[0], 1 - p[1]]), r.pass ? '--c' : '--bad', 1.5, null, null, false);
+          Lb(x, y, [m(r.bw >= NEED[i], 'B'), m(r.tau < TLIM, 'I'), m(r.back, 'K'), m(r.sw.ok, 'S')].join(' '), r.pass ? '--c' : '--bad', { size: 13 });
+          Lb(x, y + .06, `${f(r.bw, 0)} Hz · ${f(r.tau, 0)} N·m`, '--muted', { size: 11 }); }); }); }
+    if (S >= 2 && S <= 5) { const R = Pl.panel(.63, 0, .37, .66, [0, 1, 0, 1], false); R.frame('numbers — ' + JN[j]); const Lb = (y, t, cl) => R.label(R.x + 10, R.y + R.h * y, t, cl, { mono: true, size: 12 });
+      if (S === 2) { const sw = swing(s, j, s.N); Lb(.1, `α = 4·0.6/t² = ${f(sw.a, 1)} rad/s²`, '--ink'); Lb(.2, `ω_peak = ${f(sw.w, 2)} rad/s`, '--ink'); Lb(.3, `leg inertia ≈ J_load/3 = ${f(JLOAD[j] / 3, 3)}`, '--e'); Lb(.42, `N = ${s.N}: need ${f(sw.need, 1)} N·m`, '--bad'); Lb(.52, `have N τ_m = ${f(sw.have, 0)} N·m`, '--a'); Lb(.62, `motor speed ${f(sw.spd, 0)} / ${s.wmax} rad/s`, '--b'); Lb(.74, sw.ok ? 'swing feasible' : 'swing NOT feasible', sw.ok ? '--c' : '--bad'); }
+      if (S === 3) { const N = Nof(s, s.top === 1 ? 0 : s.top), jm = JROT * N * N; Lb(.1, `Δω = 0.35/0.10 = ${f(DW, 1)} rad/s`, '--ink'); Lb(.2, `N²J_r = ${f(jm, 4)}, J_local = ${JLOC[j]}`, '--b'); Lb(.32, `rigid: ${f((jm + JLOC[j]) * DW / s.tc, 0)} N·m at t_c = ${f(s.tc * 1000, 1)} ms`, '--bad'); Lb(.42, `SEA: Δω√(kJ_local) = ${f(DW * Math.sqrt(s.ks * JLOC[j]), 0)} N·m`, '--c'); Lb(.52, `spring travel τ/k = ${f(DW * Math.sqrt(JLOC[j] / s.ks), 3)} rad`, '--c'); Lb(.62, `SEA stop time ≈ ${f(Math.PI / 2 * Math.sqrt(JLOC[j] / s.ks) * 1000, 1)} ms`, '--muted'); }
+      if (S === 4) { const r = screen(s, j, s.top); Lb(.1, `${TOPS[s.top][0]}, N = ${r.N}`, TOPS[s.top][1]); Lb(.2, `N²J_r = ${f(r.jm, 4)} kg·m²`, '--b'); Lb(.3, `J_load = ${JLOAD[j]}, J_local = ${JLOC[j]}`, '--e'); Lb(.42, `at impact: J_m + J_local = ${f(r.J, 3)}`, r.J > .4 ? '--bad' : '--c'); if (s.top === 1) Lb(.52, `ω_r = ${f(Math.sqrt(s.ks * (1 / r.jm + 1 / JLOAD[j])), 0)} rad/s`, '--c'); }
+      if (S === 5) { TOPS.forEach((t, k) => { const r = screen(s, j, k); Lb(.1 + .1 * k, `${t[0]}: ${f(r.bw, 0)} Hz ${r.bw >= NEED[j] ? '✓' : '✗'}`, r.bw >= NEED[j] ? t[1] : '--bad'); }); Lb(.55, 'rigid: assumed, not derived', '--muted'); Lb(.65, 'SEA: ω_r/(2π·3), screening rule', '--muted'); } }
+    const B2 = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); B2.frame(); const L2 = (x, y, t, cl) => B2.label(B2.x + B2.w * x, B2.y + B2.h * y, t, cl, { mono: true, size: 12 });
+    const r = screen(s, j, s.top);
+    L2(.02, .22, `stance: P_cu = R(τ/(N k_t))²      swing: Nτ_m ≥ (N²J_r + J_leg)α, Nω ≤ ω_max      contact: τ = J Δω/t_c (rigid), Δω√(kJ_local) (SEA)`, '--ink');
+    L2(.02, .47, `${JN[j]} with ${TOPS[s.top][0]} (N = ${r.N}): bandwidth ${f(r.bw, 0)} Hz (need ${NEED[j]}), impact ${f(r.tau, 0)} N·m (limit 400), ${r.back ? 'backdrivable' : 'not backdrivable'}, swing ${r.sw.ok ? 'ok' : 'fails'}`, r.pass ? '--c' : '--bad');
+    L2(.02, .72, 'screening values and thresholds are assumptions for teaching — verify against measured requirements before choosing hardware', '--muted');
+  },
+  math(S) {
+    const s = st(), j = s.j, r = screen(s, j, s.top), W = M * G / 2, tq = 2 * W * LEG * Math.sin(s.q / 2), sw = swing(s, j, s.N);
+    const head = `<p class="cg">${JN[j]}: J_load = ${JLOAD[j]}, J_local = ${JLOC[j]} kg·m², rotor 6e-5, N = ${s.N}.</p>`;
+    const rows = [
+`${E(`stance   → sustained torque, heat
+swing    → speed and acceleration
+contact  → impact and compliance`)}
+${ul(['Each job is checked separately; a joint must pass all three.', 'Reflected motor inertia N²J_r matters, but so do friction, transmission stiffness and motor size.', 'The ankle balances through the centre of pressure; the knee carries the weight; the hip swings the leg and balances the torso.'])}`,
+`${E(`τ_knee = W·l·sin(q/2) per leg (two-leg),  W = m g/2 = ${f(W, 0)} N
+one leg at q = ${f(s.q * 180 / Math.PI, 0)}°: ${f(tq, 1)} N·m
+motor current I = τ/(N k_t η),  P_cu = R I² = ${f(.15 * (tq / (s.N * .2 * .9)) ** 2, 1)} W at N = ${s.N}`)}
+<p>Holding still is free mechanically and expensive electrically. The square in I²R means a 10:1 gearbox cuts stance heat a hundredfold; a direct drive needs a much larger motor (or more cooling) to stand all day.</p>`,
+`${E(`α = 4Δθ/t_sw² = ${f(sw.a, 1)} rad/s²,  ω_peak = 2Δθ/t_sw = ${f(sw.w, 2)}
+need (N²J_r + J_leg) α = ${f(sw.need, 1)} N·m
+have N τ_m = ${f(sw.have, 0)} N·m,   motor speed N ω_peak = ${f(sw.spd, 0)} rad/s`)}
+<p>Torque available grows like N, the rotor's demand like N², the motor speed like N: swing feasibility is a window in N, closed from below by torque and from above by speed and reflected inertia.</p>`,
+`${E(`rigid: τ = (N²J_r + J_local) Δω / t_c = ${f((r.jm + JLOC[j]) * DW / s.tc, 0)} N·m
+SEA:   ½J_local Δω² = ½k δ²  ⇒  τ = kδ = Δω√(k J_local) = ${f(DW * Math.sqrt(s.ks * JLOC[j]), 0)} N·m`)}
+<p>Only the local foot-and-shank inertia takes part; the body's momentum travels up the leg as a strut. The rigid estimate scales as 1/t_c — harder ground, bigger spike, and no software gets a vote. The SEA estimate has no t_c in it at all: that independence is the argument for series elasticity at the ankle.</p>`,
+`${E(`rigid:  J_eff = N²J_r + J_load = ${f(r.jm + JLOAD[j], 3)} (flat)
+SEA:    J_eff(ω) = J_load + kN²J_r/(k − N²J_r ω²) → J_load at high ω
+impact band 80–400 Hz: what a heel strike excites`)}
+<p>At the knee and hip with QDD the rotor is a modest share; a harmonic drive at N = 100 makes the rotor dominate (0.6 kg·m² of rotor felt at the joint). The SEA hides it behind the spring.</p>`,
+`${E(`rigid drives: 200 Hz if N ≤ 12, else 60 Hz   (assumed)
+SEA: ω_r/(2π·3),  ω_r = √(k(1/N²J_r + 1/J_load))
+targets: ankle 12, knee 20, hip 25 Hz   (illustrative)`)}
+<p>These are screening rules, not derived bandwidths. A soft SEA spring fails the hip's target; a stiff one passes but delivers less impact protection — the trade-off from the SEA page, now with a number attached.</p>`,
+`${E(`pass = (bandwidth ≥ target) ∧ (impact < 400 N·m)
+      ∧ (backdrivable: SEA or N ≤ 12) ∧ (swing feasible)`)}
+${ul(['Harmonic drives fail backdrive and usually impact. Direct drive can pass these four checks at knee and hip, but stance heat (step 1) — not screened here — needs a much bigger motor.', 'Soften the SEA spring to pass the ankle impact; stiffen it and watch the hip bandwidth pass while impact fails.', 'Shorten the contact time (harder floor): rigid options fail the impact check one by one.'])}`,
+`${E(`ankle → SEA (or QDD + compliant foot)
+knee  → QDD near N = 8  (check 120 N·m peak + swing speed)
+hip   → QDD near N = 6  (swing acceleration, step placement)`)}
+<p>Starting candidates, not optima. Direct drive is not ruled out by mass alone, and an SEA is not automatically fast or compliant enough for every contact. Thermal duty, losses, spring travel and real impact tests decide.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(), r = screen(s, s.j, s.top); return `<span><b>${JN[s.j]} · ${TOPS[s.top][0]}</b>${r.pass ? 'passes' : 'fails'} screen</span>`; },
+});
+</script>
+</body></html>

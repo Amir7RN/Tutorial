@@ -1,0 +1,132 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Arm actuators</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Capstone arm, as on the page: l1 = 0.55·reach, l2 = 0.45·reach, links 3 kg and (2 kg + wrist hardware),
+   wrist lever 0.06 m, shoulder rotor 8e-5 kg·m², backdrivable if N²J_r < 0.15 kg·m². */
+const G = 9.81, JROT = 8e-5, JBD = .15, KT = .15, RW = .2, TS = .02, ETA = .7, KC = 75000, FMAX = 280;
+const TOPS = [['harmonic', 100, '--bad'], ['cycloidal', 40, '--e'], ['QDD', 8, '--a'], ['direct', 1, '--b']];
+const JN = ['shoulder', 'elbow', 'wrist'], JC = ['--bad', '--e', '--c'];
+const st = () => { const v = SL.v; return { reach: v.reach / 100, pay: v.pay / 10, wm: v.wm / 10, N: v.ns, q1: v.q1 * Math.PI / 180, q2: v.q2 * Math.PI / 180, v: v.v / 10, mode: v.mode }; };
+const f = SL.f, E = SL.eq, ul = SL.ul, L10 = Math.log10;
+function torques(s, r = s.reach, pay = s.pay) { const a = .55 * r, b = .45 * r, m1 = 3, m2 = 2 + s.wm, c1 = Math.cos(s.q1), c12 = Math.cos(s.q1 + s.q2);
+  return [G * (m1 * a / 2 * c1 + m2 * (a * c1 + b / 2 * c12) + pay * (a * c1 + b * c12)), G * (m2 * b / 2 + pay * b) * c12, G * pay * .06 * c12].map(Math.abs); }
+/* link inertia about the shoulder (elbow held) and the hand distance */
+function jlinks(s) { const a = .55 * s.reach, b = .45 * s.reach, m2 = 2 + s.wm, r2 = a * a + b * b + 2 * a * b * Math.cos(s.q2);
+  return { J: 3 * a * a / 3 + m2 * (a * a + b * b / 3 + a * b * Math.cos(s.q2)) + s.pay * r2, r: Math.sqrt(r2) }; }
+const heat = (tau, N) => RW * (tau / (N * KT * .9)) ** 2;
+const impactF = (s, N) => { const L = jlinks(s), m = (JROT * N * N + L.J) / (L.r * L.r); return { m, F: s.v * Math.sqrt(KC * m) }; };
+function armPic(A, s, hl) { const sc = 1 / Math.max(.5, s.reach), a = .55 * s.reach * sc, b = .45 * s.reach * sc, e = [a * Math.cos(s.q1), a * Math.sin(s.q1)], w = [e[0] + b * Math.cos(s.q1 + s.q2), e[1] + b * Math.sin(s.q1 + s.q2)], h = [w[0] + .1 * Math.cos(s.q1 + s.q2), w[1] + .1 * Math.sin(s.q1 + s.q2)];
+  A.poly([[-.15, -.5], [.15, -.5], [.08, 0], [-.08, 0]], '--grey', 2, null, '--grey', true); A.line([0, 0], e, '--link', 9); A.line(e, w, '--link', 7); A.line(w, h, '--link', 4); A.dot(h, 6 + 4 * s.pay, '--e');
+  [[0, 0], e, w].forEach((p, i) => { A.dot(p, i === hl ? 11 : 8, JC[i]); A.text(p, JN[i], JC[i], 10, -8, { size: 12 }); }); A.text(h, `${f(s.pay, 1)} kg`, '--e', 8, 14, { size: 11 }); }
+SL.app({
+  title: 'Arm actuators: the hard joint is at the top',
+  sub: 'On a leg the joint nearest the ground works hardest; on an arm it is the joint nearest the base, carrying the whole chain and the payload at the end of a long lever. Size the three joints, watch distal mass poison the shoulder, and see why "fenced" and "collaborative" arms get opposite answers.',
+  view: '2d',
+  legend: [['--bad', 'shoulder / harmonic'], ['--e', 'elbow / cycloidal'], ['--c', 'wrist'], ['--a', 'QDD'], ['--b', 'direct drive']],
+  controls: [
+    { id: 'reach', label: 'reach', min: 30, max: 120, value: 65, fmt: x => x + ' cm' },
+    { id: 'pay', label: 'payload', min: 0, max: 100, value: 20, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'wm', label: 'distal hardware', min: 0, max: 40, value: 8, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'ns', label: 'shoulder gear ratio N', min: 1, max: 160, value: 100, fmt: x => x + ':1' },
+    { id: 'q1', label: 'shoulder angle', min: -90, max: 90, value: 0, fmt: x => x + '°' },
+    { id: 'q2', label: 'elbow angle', min: 0, max: 150, value: 0, fmt: x => x + '°' },
+    { id: 'v', label: 'collision speed (step 5)', min: 1, max: 20, value: 5, fmt: x => f(x / 10, 1) + ' m/s' },
+    { id: 'mode', label: 'arm type (step 7)', min: 0, max: 1, value: 1, fmt: x => ['fenced, position-controlled', 'collaborative, contact-rich'][x] },
+  ],
+  steps: [
+    ['The reversal: who carries what', 'The shoulder holds both links, the wrist hardware and the payload; the wrist holds only the payload on a 6 cm lever. Move the pose: torques are largest with the arm stretched horizontal. Everything expensive sits at the base.'],
+    ['Static torque against reach', 'Shoulder torque grows with reach (and faster than linearly once the links get longer and heavier); the wrist does not care. Extend the reach and watch the gap between the three joints open up.'],
+    ['Distal mass poisons proximal joints', 'Add 1 kg at the wrist: it costs the wrist nothing (it sits on the axis) and the shoulder g·r. Heavier wrist hardware also adds m r² to the shoulder\'s inertia. Arms are designed from the tip inward; every gram at the end is argued about.'],
+    ['Holding a pose all day: heat by topology', 'Gravity never switches off. Motor current I = τ/(N k_t), copper loss R I². A harmonic drive holds the shoulder for a few watts; a direct drive would need kilowatts. This is why industrial arms are geared.'],
+    ['…and then N² decides whether you can feel', 'The same gear ratio that cools the motor multiplies the rotor by N². Above about 0.15 kg·m² reflected at the shoulder the joint stops being backdrivable: a push no longer turns into motion, and impedance control becomes emulation through a torque sensor.'],
+    ['Collision with a person', 'An unexpected hit at the hand: effective mass m = (N²J_r + J_links)/r², peak force ≈ v√(k m) on a 75 kN/m hand. Compare with an illustrative 280 N transient limit. Slow down, or remove reflected mass.'],
+    ['Power off: what holds the arm up?', 'Cut the power. A joint falls if gravity beats the friction reflected through its gears (N τ_s/η). A high ratio falls slowly, a QDD falls fast — and at high load even a harmonic drive can backdrive. Brakes are a design item, not an afterthought.'],
+    ['Two arms, two answers', 'Fenced, position-controlled: harmonic drives everywhere — torque density, repeatability, cool motors; nobody is supposed to touch it. Collaborative: QDD at shoulder and elbow, QDD or SEA at the wrist; pay in motor mass and heat, gain real backdrivability.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, tq = torques(s);
+    if (S === 0) { const A = Pl.panel(0, 0, .45, .66, [-.4, 1.25, -.7, 1.1]); A.frame('pose'); armPic(A, s, 0);
+      const B = Pl.panel(.46, 0, .54, .66, [0, 3, 0, Math.max(...tq) * 1.2], false); B.frame('static holding torque (N·m) in this pose');
+      tq.forEach((t, i) => { B.poly([[i + .2, 0], [i + .8, 0], [i + .8, t], [i + .2, t]], JC[i], 1.5, null, JC[i], true); B.text([i + .5, t], f(t, 1), '--ink', -14, -4, { size: 12 }); B.text([i + .5, 0], JN[i], JC[i], -24, 16, { size: 12 }); });
+      B.text([1.2, Math.max(...tq) * 1.1], `ratio shoulder/wrist = ${f(tq[0] / Math.max(tq[2], 1e-6), 0)}×`, '--muted', 0, 0, { size: 12 }); }
+    else if (S === 1) { const rr = [...Array(91)].map((_, i) => .3 + i * .01), T = rr.map(r => torques(s, r)), A = Pl.panel(0, 0, .62, .66, [30, 120, 0, Math.max(...T.map(t => t[0])) * 1.1], false);
+      A.series(JN.map((n, i) => ({ pts: rr.map((r, k) => [r * 100, T[k][i]]), cl: JC[i], w: 3, label: n })), { title: 'static torque (N·m) vs reach (cm), current pose', yl: 'N·m' }); A.line([s.reach * 100, 0], [s.reach * 100, A.b[3]], '--ink', 1, [2, 3]); }
+    else if (S === 2) { const t1 = torques(s, s.reach, s.pay + 1), d = t1.map((t, i) => t - tq[i]), A = Pl.panel(0, 0, .3, .66, [0, 3, 0, Math.max(...d, .1) * 1.25], false); A.frame('Δτ per +1 kg at the wrist (N·m)');
+      d.forEach((t, i) => { A.poly([[i + .2, 0], [i + .8, 0], [i + .8, t], [i + .2, t]], JC[i], 1.5, null, JC[i], true); A.text([i + .5, t], f(t, 2), '--ink', -14, -4, { size: 12 }); A.text([i + .5, 0], JN[i].slice(0, 5), JC[i], -16, 16, { size: 11 }); });
+      const wms = [...Array(41)].map((_, i) => i / 10), B = Pl.panel(.31, 0, .31, .66, [0, 4, 0, torques({ ...s, wm: 4 })[0] * 1.15], false);
+      B.series([{ pts: wms.map(m => [m, torques({ ...s, wm: m })[0]]), cl: '--bad', w: 3, label: 'shoulder τ' }, { pts: wms.map(m => [m, torques({ ...s, wm: m })[2] * 20]), cl: '--c', w: 2, dash: [4, 3], label: 'wrist τ ×20' }], { title: 'vs wrist hardware (kg)' }); B.line([s.wm, 0], [s.wm, B.b[3]], '--ink', 1, [2, 3]); }
+    else if (S === 3) { const hs = TOPS.map(t => heat(tq[0], t[1])), lg = h => L10(Math.max(.1, h)) + 1, A = Pl.panel(0, 0, .62, .66, [0, 4, 0, lg(Math.max(...hs)) * 1.15], false); A.frame(`copper loss holding the shoulder's ${f(tq[0], 1)} N·m (log₁₀ W)`);
+      hs.forEach((h, i) => { const y = lg(h); A.poly([[i + .2, 0], [i + .8, 0], [i + .8, y], [i + .2, y]], TOPS[i][2], 1.5, null, TOPS[i][2], true); A.text([i + .5, y], h < 1e4 ? f(h, 1) + ' W' : f(h / 1000, 0) + ' kW', '--ink', -22, -4, { size: 12 }); A.text([i + .5, 0], `${TOPS[i][0]} ${TOPS[i][1]}:1`, TOPS[i][2], -36, 16, { size: 11 }); });
+      A.line([0, lg(50)], [4, lg(50)], '--muted', 1.5, [5, 3]); A.text([3.2, lg(50)], '~50 W: a small motor\'s cooling', '--muted', -120, -6, { size: 11 }); }
+    else if (S === 4) { const Ns = [...Array(160)].map((_, i) => i + 1), A = Pl.panel(0, 0, .62, .66, [1, 160, -4.5, 0.5], false);
+      A.series([{ pts: Ns.map(n => [n, L10(JROT * n * n)]), cl: '--bad', w: 3, label: 'log₁₀ N²J_r at the shoulder (kg·m²)' }, { pts: Ns.map(n => [n, L10(JBD)]), cl: '--c', w: 2, dash: [5, 3], label: 'backdrivable below 0.15' }, { pts: Ns.map(n => [n, L10(heat(tq[0], n) / 1e4)]), cl: '--b', w: 2, dash: [3, 3], label: 'log₁₀ holding heat (×10⁻⁴ W)' }], { title: 'shoulder: cool motor or feel the world — vs N' });
+      A.dot([s.N, L10(JROT * s.N * s.N)], 7, JROT * s.N * s.N < JBD ? '--c' : '--bad'); A.line([Math.sqrt(JBD / JROT), -4.5], [Math.sqrt(JBD / JROT), .5], '--c', 1, [2, 3]); }
+    else if (S === 5) { const Ns = [...Array(160)].map((_, i) => i + 1), Fs = Ns.map(n => impactF(s, n).F), A = Pl.panel(0, 0, .62, .66, [1, 160, 0, Math.max(...Fs, FMAX) * 1.1], false);
+      A.series([{ pts: Ns.map((n, i) => [n, Fs[i]]), cl: '--bad', w: 3, label: `peak hand force at ${f(s.v, 1)} m/s` }, { pts: Ns.map(n => [n, FMAX]), cl: '--c', w: 2, dash: [5, 3], label: 'illustrative 280 N limit' }], { title: 'collision force (N) vs shoulder gear ratio', yl: 'N' }); A.dot([s.N, impactF(s, s.N).F], 7, '--ink');
+      TOPS.forEach(t => A.line([t[1], 0], [t[1], A.b[3] * .04], t[2], 3)); }
+    else if (S === 6) { const Tn = 1.2, L = jlinks(s), sim = N => { const J = JROT * N * N + L.J, fr = N * TS / ETA; let th = s.q1, w = 0; const out = [[0, th]]; for (let i = 1; i <= 600; i++) { const g = torques({ ...s, q1: th })[0] * (Math.cos(th) >= 0 ? -1 : 1), net = Math.abs(w) > 1e-6 ? g - Math.sign(w) * fr : Math.abs(g) > fr ? g - Math.sign(g) * fr : 0; w += net / J * Tn / 600; th += w * Tn / 600; if (th < -Math.PI / 2) { th = -Math.PI / 2; w = 0; } out.push([i * Tn / 600, th]); } return out; };
+      const A = Pl.panel(0, 0, .62, .66, [0, Tn, -95, Math.max(10, s.q1 * 180 / Math.PI + 10)], false);
+      A.series(TOPS.map(t => ({ pts: sim(t[1]).map(p => [p[0], p[1] * 180 / Math.PI]), cl: t[2], w: 2.5, label: `${t[0]} ${t[1]}:1` })), { title: 'power cut, no brake: shoulder angle (°) vs time (s)' }); A.line([0, -90], [Tn, -90], '--grey', 1, [2, 3]); }
+    else { const A = Pl.panel(0, 0, 1, .66, [0, 1, 0, 1], false), coll = s.mode === 1; A.frame(coll ? 'collaborative, contact-rich arm' : 'fenced, position-controlled arm'); const Lb = (x, y, t, cl, o = {}) => A.label(A.x + A.w * x, A.y + A.h * y, t, cl, { mono: true, size: 12, ...o });
+      const pick = coll ? [['QDD', 8], ['QDD', 8], ['QDD or SEA', 6]] : [['harmonic', 100], ['harmonic', 100], ['harmonic', 100]];
+      Lb(.02, .12, 'joint', '--muted'); Lb(.14, .12, 'choice', '--muted'); Lb(.34, .12, 'hold τ', '--muted'); Lb(.46, .12, 'heat', '--muted'); Lb(.58, .12, 'N²J_r', '--muted'); Lb(.7, .12, 'backdrive', '--muted'); Lb(.84, .12, 'hand hit', '--muted');
+      JN.forEach((n, i) => { const [nm, N] = pick[i], y = .24 + .13 * i, jr = JROT * N * N * (i === 0 ? 1 : i === 1 ? .5 : .1), h = heat(tq[i], N); Lb(.02, y, n, JC[i], { size: 13 }); Lb(.14, y, `${nm} ${N}:1`, coll ? '--a' : '--bad', { size: 13 }); Lb(.34, y, f(tq[i], 1) + ' N·m', '--ink'); Lb(.46, y, f(h, 1) + ' W', h > 50 ? '--bad' : '--c'); Lb(.58, y, f(jr, 4), '--ink'); Lb(.7, y, jr < JBD ? 'yes' : 'no', jr < JBD ? '--c' : '--bad');
+        if (i === 0) Lb(.84, y, f(impactF(s, N).F, 0) + ' N', impactF(s, N).F > FMAX ? '--bad' : '--c'); });
+      Lb(.02, .7, coll ? 'pays: motor mass, holding heat, a gravity term that never switches off' : 'pays: no backdrivability — nothing may touch it; a torque sensor per joint only emulates compliance', '--muted');
+      Lb(.02, .8, coll ? 'gains: real impedance control, safe contact, no torque sensor needed to pretend' : 'gains: torque density, near-zero backlash, cool motors, cheap', '--muted');
+      Lb(.02, .9, 'do not: build a harmonic arm and expect joint torque sensors to make it a cobot', '--bad'); }
+    if (S >= 1 && S <= 6) { const R = Pl.panel(.63, 0, .37, .66, [0, 1, 0, 1], false); R.frame('numbers'); const Lb = (y, t, cl) => R.label(R.x + 10, R.y + R.h * y, t, cl, { mono: true, size: 12 });
+      tq.forEach((t, i) => Lb(.1 + .09 * i, `${JN[i]}: ${f(t, 1)} N·m`, JC[i]));
+      if (S === 1) { Lb(.42, `l₁ = ${f(.55 * s.reach, 3)} m, l₂ = ${f(.45 * s.reach, 3)} m`, '--ink'); Lb(.52, `shoulder/wrist = ${f(tq[0] / Math.max(tq[2], 1e-6), 0)}×`, '--muted'); }
+      if (S === 2) { const d = torques(s, s.reach, s.pay + 1)[0] - tq[0], L = jlinks(s); Lb(.42, `+1 kg at hand: +${f(d, 1)} N·m shoulder`, '--bad'); Lb(.52, `= g·r = ${f(G * L.r, 1)} (horizontal)`, '--muted'); Lb(.62, `link inertia at shoulder ${f(L.J, 3)} kg·m²`, '--ink'); }
+      if (S === 3) { TOPS.forEach((t, i) => Lb(.42 + .09 * i, `${t[0]} ${t[1]}: I = ${f(tq[0] / (t[1] * KT * .9), 1)} A`, t[2])); }
+      if (S === 4) { const j = JROT * s.N * s.N; Lb(.42, `N = ${s.N}: N²J_r = ${f(j, 4)}`, j < JBD ? '--c' : '--bad'); Lb(.52, j < JBD ? 'backdrivable: impedance is real' : 'NOT backdrivable: emulated', j < JBD ? '--c' : '--bad'); Lb(.62, `holding heat ${f(heat(tq[0], s.N), 1)} W`, '--b'); Lb(.72, `limit N = √(0.15/J_r) = ${f(Math.sqrt(JBD / JROT), 0)}`, '--c'); }
+      if (S === 5) { const r = impactF(s, s.N), L = jlinks(s); Lb(.42, `hand at r = ${f(L.r, 2)} m`, '--ink'); Lb(.52, `m_eff = ${f(r.m, 2)} kg (rotor ${f(JROT * s.N * s.N / L.r / L.r, 2)})`, '--ink'); Lb(.62, `F ≈ v√(k m) = ${f(r.F, 0)} N`, r.F > FMAX ? '--bad' : '--c'); Lb(.72, `safe speed for 280 N: ${f(FMAX / Math.sqrt(KC * r.m), 2)} m/s`, '--a'); }
+      if (S === 6) { TOPS.forEach((t, i) => { const fr = t[1] * TS / ETA; Lb(.42 + .09 * i, `${t[0]}: friction ${f(fr, 1)} N·m ${fr > tq[0] ? 'holds' : 'falls'}`, fr > tq[0] ? '--c' : t[2]); }); } }
+    const B2 = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); B2.frame(); const L2 = (x, y, t, cl) => B2.label(B2.x + B2.w * x, B2.y + B2.h * y, t, cl, { mono: true, size: 12 });
+    L2(.02, .22, `τ_sh = g[m₁l₁/2·c₁ + m₂(l₁c₁ + l₂/2·c₁₂) + m_p(l₁c₁ + l₂c₁₂)] = ${f(tq[0], 1)} N·m    τ_el = ${f(tq[1], 1)}    τ_wr = ${f(tq[2], 2)}`, '--ink');
+    L2(.02, .47, `shoulder N = ${s.N}: N²J_r = ${f(JROT * s.N * s.N, 4)} kg·m² (${JROT * s.N * s.N < JBD ? 'backdrivable' : 'not backdrivable'}), holding heat ${f(heat(tq[0], s.N), 1)} W`, JROT * s.N * s.N < JBD ? '--c' : '--bad');
+    L2(.02, .72, 'leg: hardest joint at the ground, pushing on it.   arm: hardest joint at the base, carrying everything after it.', '--muted');
+  },
+  math(S) {
+    const s = st(), tq = torques(s), L = jlinks(s), j = JROT * s.N * s.N;
+    const head = `<p class="cg">reach ${f(s.reach, 2)} m, payload ${f(s.pay, 1)} kg, wrist hardware ${f(s.wm, 1)} kg, shoulder N = ${s.N}.</p>`;
+    const rows = [
+`${E(`τ_sh = g[m₁ l₁/2 cos q₁ + m₂(l₁ cos q₁ + l₂/2 cos q₁₂) + m_p(l₁ cos q₁ + l₂ cos q₁₂)]
+τ_el = g(m₂ l₂/2 + m_p l₂) cos q₁₂,   τ_wr = g m_p · 0.06 · cos q₁₂
+now: ${tq.map(t => f(t, 1)).join(' / ')} N·m`)}
+${ul(['The leg: the joint at the ground pushes the body up. The arm: the joint at the base carries everything after it.', 'Second reversal: an arm\'s own mass is its enemy — strengthening a distal joint makes the proximal joint\'s problem worse.'])}`,
+`${E(`l₁ = 0.55 r,  l₂ = 0.45 r
+horizontal: τ_sh = g r (0.275 m₁ + 0.775 m₂ + m_p)   — grows with r
+            τ_wr = 0.06 g m_p                     — independent of r`)}
+<p>Shoulder torque scales with reach times everything outboard. A longer arm needs a stronger shoulder, which is heavier, which the base must carry — the sizing cascades inward.</p>`,
+`${E(`Δτ_sh per kg at the hand = g · r_horizontal = ${f(torques(s, s.reach, s.pay + 1)[0] - tq[0], 2)} N·m
+Δτ_wr per kg = g · 0.06 = 0.59 N·m
+ΔJ_sh = m r² = ${f(L.r * L.r, 3)} kg·m² per kg`)}
+<p>A bigger wrist motor, a heavier gripper, a wrist torque sensor: each one costs the shoulder torque (g·r) and inertia (r²). This is why designers fight over grams at the tip.</p>`,
+`${E(`I = τ / (N k_t η),  P = R I²   (k_t = 0.15 N·m/A, R = 0.2 Ω)
+${TOPS.map(t => `${t[0]} ${t[1]}:1 → ${f(heat(tq[0], t[1]), 1)} W`).join('\n')}`)}
+<p>Holding torque at zero speed is mechanically free and electrically brutal. The 1/N² in the heat is why every industrial arm is geared — and a direct-drive shoulder holding a pose is thermally impossible at this size.</p>`,
+`${E(`J_reflected = N² J_r = ${s.N}² × 8e-5 = ${f(j, 4)} kg·m²
+backdrivable (screening) if < 0.15  ⇒  N < ${f(Math.sqrt(JBD / JROT), 0)}`)}
+<p>Heat wants a large N, feel wants a small one. Behind a non-backdrivable shoulder, "impedance control" runs through a joint torque sensor, and its rendered stiffness is bounded by that sensor loop's bandwidth rather than by the mechanics.</p>`,
+(() => { const r = impactF(s, s.N); return `${E(`m_eff = (N²J_r + J_links)/r² = (${f(j, 3)} + ${f(L.J, 3)})/${f(L.r, 2)}² = ${f(r.m, 2)} kg
+F_peak ≈ v√(k_hand m_eff) = ${f(s.v, 1)}·√(75000·${f(r.m, 2)}) = ${f(r.F, 0)} N`)}
+<p>Speed enters linearly, mass under a square root: halving the reflected mass lowers the force by only 30 %, halving the speed by 50 %. Collaborative arms limit speed near people and keep N²J_r small; the force limits come from ISO/TS 15066-style tables (the 280 N here is illustrative).</p>`; })(),
+`${E(`falls if τ_gravity > N τ_s/η   (τ_s = 0.02 N·m motor side, η = 0.7)
+θ̈ = (τ_gravity − friction) / (N²J_r + J_links)`)}
+<p>A high ratio slows the fall (N² inertia, N friction) and may stop it at light loads; a QDD drops like a stone. A non-backdrivable arm is safe when powered and a falling weight when not — so every arm near people needs brakes, sized for the full gravity torque.</p>`,
+`${E(`fenced:        harmonic ×3   — density, repeatability, cool
+collaborative: QDD, QDD, QDD/SEA — backdrivable, feels contact
+not:           harmonic + torque sensors, expecting a cobot`)}
+<p>The arm's answer depends on one question — will anything touch it? — not on the arm's size. The last row is the admittance-versus-impedance argument arriving as a purchase order.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(), t = torques(s); return `<span><b>shoulder</b>${f(t[0], 0)} N·m</span><span><b>N²J_r</b>${f(JROT * s.N * s.N, 3)}</span>`; },
+});
+</script>
+</body></html>

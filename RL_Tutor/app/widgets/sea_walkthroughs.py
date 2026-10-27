@@ -114,11 +114,13 @@ def attach_sea_walkthroughs(page):
     from .lesson_connection import LessonConnection
 
     # Replace the general opening movie with the more useful port comparison.
-    original = page.lesson_animation
-    original.timer.stop()
-    page.content.removeWidget(original)
-    original.setParent(None)
-    original.deleteLater()
+    # (absent when a step lab has taken the movie's place)
+    original = getattr(page, 'lesson_animation', None)
+    if original is not None:
+        original.timer.stop()
+        page.content.removeWidget(original)
+        original.setParent(None)
+        original.deleteLater()
 
     matches = [
         ('derivation', 'balance'),

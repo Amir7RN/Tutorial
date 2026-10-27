@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Nonlinear systems</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Pendulum θ̈ = −(g/l) sin θ − c θ̇ + u, g/l = 9.81 (l = 1 m). θ = 0 hanging down. */
+let PLANE = null;
+const W2 = 9.81;
+const st = () => { const v = SL.v; return { th0: v.th0 * Math.PI / 180, c: v.c / 100, thi: v.thi * Math.PI / 180, wi: v.wi / 10, amp: v.amp / 10, fs: v.fs / 10, ki: v.ki, sat: v.sat / 10 }; };
+const pend = (th, w, c, u = () => 0, T = 8, dt = 2e-3) => CTL.ode((t, x) => [x[1], -W2 * Math.sin(x[0]) - c * x[1] + u(t)], [th, w], T, dt, 5);
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Nonlinear systems: what you lose when superposition goes',
+  sub: 'A 1 m pendulum, θ̈ = −(g/l) sin θ − c θ̇ + u, plus a position loop with stiction and saturation. Everything on pages 2–20 assumed linearity; here is where a robot breaks it.',
+  view: '2d',
+  legend: [['--a', 'trajectory'], ['--grey', 'linear prediction'], ['--d', 'poles / equilibria'], ['--c', 'energy contours'], ['--bad', 'separatrix / limit']],
+  controls: [
+    { id: 'amp', label: 'pulse (0)', min: 5, max: 200, value: 120, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'th0', label: 'θ₀ (1)', min: 0, max: 180, value: 30, fmt: x => x + '°' },
+    { id: 'c', label: 'damping c', min: 0, max: 100, value: 15, fmt: x => f(x / 100, 2) },
+    { id: 'thi', label: 'start θ (2–3)', min: -180, max: 180, value: 150, fmt: x => x + '°' },
+    { id: 'wi', label: 'start θ̇ (2–3)', min: -100, max: 100, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'fs', label: 'stiction (4)', min: 0, max: 40, value: 15, fmt: x => f(x / 10, 1) + ' N·m' },
+    { id: 'ki', label: 'K_i (4)', min: 0, max: 60, value: 20, fmt: x => x },
+    { id: 'sat', label: 'limit (5)', min: 5, max: 100, value: 20, fmt: x => f(x / 10, 1) + ' N·m' },
+  ],
+  drag: () => [{ panel: () => PLANE, pos: () => [SL.v.thi * Math.PI / 180, SL.v.wi / 10], set: q => { SL.setControl('thi', Math.max(-180, Math.min(180, Math.round(q[0] * 180 / Math.PI)))); SL.setControl('wi', Math.max(-100, Math.min(100, Math.round(q[1] * 10)))); } }],
+  steps: [
+    ['What you lose: double in ≠ double out', 'Give the hanging pendulum a torque pulse u, then 2u. A linear system’s second response is exactly twice the first. The pendulum’s is not: at large swings sin θ < θ and the period stretches.'],
+    ['Same equation, opposite conclusions', 'Linearise about an operating point θ₀: δ̈ = −(g/l) cos θ₀ δ − c δ̇. Below 90° the poles are a damped pair; above 90° one is real and positive. Slide θ₀: one equation, stable or unstable depending on where you stand.'],
+    ['Why a phase portrait, not a step response', 'Plot (θ, θ̇) and every possible motion is a curve through the vector field. Drag the starting point: from near the bottom it spirals in; from near the top it goes over and settles one full turn later.'],
+    ['Energy contours and the separatrix', 'Without damping, E = ½θ̇² − (g/l) cos θ is constant: trajectories are its contour lines. The red separatrix through the upright points splits swinging from whirling — a boundary no linear model has.'],
+    ['Stiction: why a position loop hunts', 'Static friction holds the joint until the torque exceeds it. With integral action the command winds up, breaks free, overshoots, sticks again: a limit cycle around the target that never settles.'],
+    ['Saturation: big steps are different steps', 'A torque limit leaves small moves linear but makes large ones slower and, with integral action, overshoot. Normalise the responses by step size: in a linear system they would lie on top of each other.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    if (S === 0) { const pulse = a => tt => tt < .2 ? a : 0, r1 = pend(0, 0, s.c, pulse(s.amp), 6), r2 = pend(0, 0, s.c, pulse(2 * s.amp), 6), ym = Math.max(...r2.map(p => Math.abs(p[1][0])), ...r1.map(p => 2 * Math.abs(p[1][0]))) * 1.1;
+      const A = Pl.panel(0, 0, 1, .66, [0, 6, -ym, ym], false);
+      A.series([{ pts: r1.map(p => [p[0], 2 * p[1][0]]), cl: '--grey', w: 2, dash: [6, 3], label: '2 × (response to u): the linear prediction' }, { pts: r2.map(p => [p[0], p[1][0]]), cl: '--a', w: 2.5, label: 'actual response to 2u' }], { title: 'superposition test', yl: 'θ (rad)' }); }
+    if (S === 1) { const A = Pl.panel(0, 0, .4, .66, [-1.3, 1.3, -1.4, 1.2]); A.frame('the operating point'); A.line([0, 0], [Math.sin(s.th0), -Math.cos(s.th0)], '--link', 5); A.dot([Math.sin(s.th0), -Math.cos(s.th0)], 9, '--e'); A.dot([0, 0], 5, '--ink');
+        A.text([-1.2, 1.05], 'u holds it at θ₀ = ' + Math.round(s.th0 * 180 / Math.PI) + '°', '--muted', 0, 0, { size: 12 });
+      const pts = [...Array(181)].map((_, i) => i * Math.PI / 180), P = Pl.panel(.41, 0, .59, .66, [-6, 6, -4.5, 4.5]); P.frame('linearised poles as θ₀ goes 0 → 180°'); P.poly([[0, -4.5], [6, -4.5], [6, 4.5], [0, 4.5]], null, 0, null, '--bad', true); P.axes();
+      P.clip(() => pts.forEach(a => CTL.roots([1, s.c, W2 * Math.cos(a)]).forEach(r => P.dot(r, 1.4, '--b'))));
+      CTL.roots([1, s.c, W2 * Math.cos(s.th0)]).forEach(r => { const c = r[0] > 1e-9 ? '--bad' : '--d'; P.line([r[0] - .2, r[1] - .2], [r[0] + .2, r[1] + .2], c, 3); P.line([r[0] - .2, r[1] + .2], [r[0] + .2, r[1] - .2], c, 3); }); }
+    if (S === 2 || S === 3) {
+      const P = Pl.panel(0, 0, .66, .66, [-Math.PI * 1.15, Math.PI * 1.15, -9, 9], false); PLANE = P; P.frame('phase plane: θ across, θ̇ up (drag the start)'); P.axes();
+      const c = S === 3 ? 0 : s.c;
+      if (S === 2) for (let i = -9; i <= 9; i++) for (let j = -6; j <= 6; j++) { const th = i * Math.PI / 8, w = j * 1.4, d = [w, -W2 * Math.sin(th) - c * w], n = Math.hypot(d[0], d[1] / 2) || 1; P.arrow([th, w], [d[0] / n * .2, d[1] / n * .4], '--line', 1); }
+      if (S === 3) { [-8, -5, -2, 2, 6, 12, 20, 32].forEach(Ev => { for (const sg of [1, -1]) { const pts = []; for (let i = 0; i <= 300; i++) { const th = -Math.PI * 1.15 + i / 300 * 2.3 * Math.PI, w2 = 2 * (Ev + W2 * Math.cos(th)); pts.push(w2 >= 0 ? [th, sg * Math.sqrt(w2)] : null); }
+          let seg = []; pts.forEach(p => { if (p) seg.push(p); else { if (seg.length > 1) P.poly(seg, '--c', 1); seg = []; } }); if (seg.length > 1) P.poly(seg, '--c', 1); } });
+        for (const sg of [1, -1]) P.poly([...Array(301)].map((_, i) => { const th = -Math.PI * 1.15 + i / 300 * 2.3 * Math.PI; return [th, sg * Math.sqrt(Math.max(0, 2 * W2 * (1 + Math.cos(th))))]; }), '--bad', 2.5); }
+      [-2 * Math.PI, 0, 2 * Math.PI].forEach(x => P.dot([x, 0], 5, '--d')); [-Math.PI, Math.PI].forEach(x => P.dot([x, 0], 5, '--bad', true));
+      const tr = pend(s.thi, s.wi, c, () => 0, 10, 2e-3); P.clip(() => P.poly(tr.slice(0, Math.max(2, Math.round(tr.length * t))).map(p => [p[1][0], p[1][1]]), '--a', 2.5)); P.dot([s.thi, s.wi], 6, '--a', true);
+      const B = Pl.panel(.67, 0, .33, .66, [0, 10, -8, 8], false); B.series([{ pts: tr.map(p => [p[0], p[1][0]]), cl: '--a', w: 2, label: 'θ(t)' }], { title: 'the same motion in time' }); }
+    if (S === 4) { const dt = 5e-4, J = .2, kp = 8, kd = .3, out = []; let th = 0, w = 0, I = 0;
+      for (let i = 0; i <= 8 / dt; i++) { const tt = i * dt, e = 1 - th, tau = kp * e - kd * w + s.ki * I; I += dt * e;
+        let a; if (Math.abs(w) < 1e-3 && Math.abs(tau) <= s.fs) { a = 0; w = 0; } else a = (tau - (s.fs * .7) * Math.sign(w || tau) - .2 * w) / J;
+        w += dt * a; th += dt * w; if (i % 10 === 0) out.push([tt, th, tau]); }
+      const A = Pl.panel(0, 0, .62, .66, [0, 8, 0, Math.max(1.4, ...out.map(p => p[1])) * 1.05], false); A.series([{ pts: out.map(p => [p[0], p[1]]), cl: '--a', w: 2.5, label: 'joint angle (target 1 rad)' }], { title: 'PID position loop on a joint with stiction' }); A.line([0, 1], [8, 1], '--grey', 1, [4, 3]);
+      const tm = Math.max(...out.map(p => Math.abs(p[2]))) * 1.1, B = Pl.panel(.63, 0, .37, .66, [0, 8, -tm, tm], false); B.series([{ pts: out.map(p => [p[0], p[2]]), cl: '--b', w: 2, label: 'motor torque' }], { title: 'command winds up, breaks free, sticks' });
+      B.line([0, s.fs], [8, s.fs], '--bad', 1, [4, 3]); B.line([0, -s.fs], [8, -s.fs], '--bad', 1, [4, 3]); }
+    if (S === 5) { const J = .2, kp = 20, kd = 3, kI = 15, resp = A0 => { const dt = 1e-3, o = []; let th = 0, w = 0, I = 0; for (let i = 0; i <= 4 / dt; i++) { const e = A0 - th; I += dt * e; const tau = Math.max(-s.sat, Math.min(s.sat, kp * e - kd * w + kI * I)); w += dt * (tau - .2 * w) / J; th += dt * w; if (i % 5 === 0) o.push([i * dt, th / A0]); } return o; };
+      const A = Pl.panel(0, 0, 1, .66, [0, 4, 0, 1.6], false); A.series([[.05, '--d', '0.05 rad step'], [.5, '--a', '0.5 rad step'], [2, '--bad', '2 rad step']].map(([a, cl, lab]) => ({ pts: resp(a), cl, w: 2.5, label: lab })), { title: 'responses divided by step size (linear ⇒ identical)' }); A.line([0, 1], [4, 1], '--grey', 1, [4, 3]); }
+    const R = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); R.frame(); const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    if (S === 1) { const k = W2 * Math.cos(s.th0), r = CTL.roots([1, s.c, k]); L(.02, .25, `slope of the gravity term at θ₀: −(g/l) cos θ₀ = ${f(-k, 3)}`, '--ink'); L(.02, .5, `linearised poles: ${r.map(q => f(q[0], 2) + (q[1] ? (q[1] > 0 ? '+' : '−') + f(Math.abs(q[1]), 2) + 'j' : '')).join(', ')}`, r.some(q => q[0] > 1e-9) ? '--bad' : '--d'); L(.02, .75, s.th0 < Math.PI / 2 ? 'below 90°: a restoring spring → damped oscillation' : s.th0 > Math.PI / 2 ? 'above 90°: gravity pushes away → saddle (unstable)' : 'exactly 90°: no stiffness at all', '--muted'); }
+    else if (S === 2 || S === 3) { const Ei = .5 * s.wi * s.wi - W2 * Math.cos(s.thi); L(.02, .3, `start: θ = ${f(s.thi * 180 / Math.PI, 0)}°, θ̇ = ${f(s.wi, 1)}   energy E = ½θ̇² − (g/l)cos θ = ${f(Ei, 2)}`, '--a'); L(.02, .6, `separatrix energy = g/l = ${f(W2, 2)}: ${Ei > W2 ? 'above → it goes over the top' : 'below → it swings back'}${S === 2 ? ' (damping then removes energy)' : ''}`, Ei > W2 ? '--bad' : '--c'); }
+    else if (S === 4) { L(.02, .3, `stiction ${f(s.fs, 1)} N·m, kinetic friction ${f(s.fs * .7, 2)} N·m, K_i = ${s.ki}`, '--ink'); L(.02, .6, s.ki ? 'with K_i > 0: hunting limit cycle (try K_i = 0: it stops short, with a steady error instead)' : 'K_i = 0: stops short of the target — the dead band of stiction', '--muted'); }
+    else if (S === 5) L(.02, .4, `torque limit ${f(s.sat, 1)} N·m: small steps never reach it (linear); big steps do (slower, more overshoot)`, '--ink');
+    else L(.02, .4, `pulse u = ${f(s.amp, 1)} rad/s² for 0.2 s and twice that; the gap between the curves is the nonlinearity`, '--ink');
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">θ̈ = −9.81 sin θ − ${f(s.c, 2)} θ̇ + u.</p>`;
+    const rows = [
+`${E(`linear: response(2u) = 2 · response(u)          (superposition)
+pendulum: sin θ ≈ θ only for small θ (sin 60° = 0.866, sin 90° = 1)`)}
+${ul(['Larger swings: weaker restoring torque than the linear model says → longer period, larger amplitude than predicted.', 'Lost with superposition: transfer functions, Bode plots, poles as the complete story, adding responses of separate inputs.', 'Robot sources: gravity sin θ, Coriolis products, friction sign(θ̇), backlash, saturation, contact on/off.'])}`,
+`${E(`f(θ) = −(g/l) sin θ  ⇒  f(θ₀ + δ) ≈ f(θ₀) − (g/l) cos θ₀ · δ
+δ̈ + c δ̇ + (g/l) cos θ₀ δ = 0
+θ₀ = ${f(s.th0 * 180 / Math.PI, 0)}°: stiffness term ${f(W2 * Math.cos(s.th0), 3)}`)}
+<p>A linear model is a local truth: its poles describe small motions around one point. Move the point and the conclusion can flip — which is why gain scheduling (next page) exists.</p>`,
+`${E(`state (θ, θ̇):  d/dt [θ; θ̇] = [θ̇; −(g/l) sin θ − c θ̇]
+equilibria: θ̇ = 0, sin θ = 0 ⇒ θ = 0, ±π, ±2π …`)}
+${ul(['At θ = 0 (and ±2π): stable spirals (damped).', 'At θ = ±π: saddles — trajectories approach along one direction and leave along another.', 'A step response shows one curve; the phase portrait shows every possible behaviour at once.'])}`,
+`${E(`E = ½ θ̇² − (g/l) cos θ   (per unit inertia),  dE/dt = −c θ̇² (= 0 here)
+separatrix: E = g/l  ⇒  θ̇ = ±√(2(g/l)(1 + cos θ))`)}
+<p>Inside the separatrix: swinging (closed curves). Outside: whirling over the top. Energy is the natural coordinate for nonlinear systems — the Lyapunov method on the next page is built on it.</p>`,
+`${E(`friction: |τ| ≤ f_s and θ̇ = 0 → stuck;  moving → τ_f = f_c sign θ̇ + b θ̇
+f_s = ${f(s.fs, 1)} > f_c = ${f(s.fs * .7, 2)}`)}
+${ul(['Near the target the P term alone is too small to break free: it stops short.', 'The integral keeps growing until the torque exceeds f_s; the joint jumps, and because f_c < f_s it overshoots.', 'Remedies: friction compensation, dithering, or accept a dead band; reduce K_i.'])}`,
+`${E(`τ = sat(K_p e − K_d θ̇ + K_i ∫e, ±${f(s.sat, 1)})`)}
+${ul(['Saturation is a gain that falls as the signal grows: effective gain = limit / demand.', 'Small steps: never saturate, perfectly linear.', 'Large steps: the motor runs flat out, the integrator winds up (page 7), the overshoot appears. A linear analysis would promise identical normalised curves.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>c</b>${f(s.c, 2)}</span>`; },
+});
+</script>
+</body></html>

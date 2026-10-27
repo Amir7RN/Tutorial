@@ -1,0 +1,96 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Effective inertia</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Motor rotor J_m and limb J_L (page defaults 0.04 and 0.06 kg·m²). */
+const st = () => { const v = SL.v; return { Jm: v.jm / 1000, JL: v.jl / 1000, N: v.n, dm: v.dm / 10, r: v.r / 100, tmax: v.tm, k: v.k, kf: v.kf / 10 }; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const logx = (A, ws, fn) => ws.map(w => [Math.log10(w), fn(w)]);
+SL.app({
+  title: 'Effective inertia: what the world feels when it pushes the joint',
+  sub: 'Before any controller exists, mechanics decides how heavy the joint feels. Motor rotor J_m, limb J_L, an optional gearbox N, extra mass at the end of the link, and how fast the world pushes.',
+  view: '2d',
+  legend: [['--a', 'J_eff'], ['--b', 'rotor share'], ['--e', 'limb share'], ['--c', 'spring torque'], ['--bad', 'limit / optimum']],
+  controls: [
+    { id: 'jm', label: 'rotor J_m', min: 1, max: 200, value: 40, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'jl', label: 'limb J_L', min: 1, max: 200, value: 60, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'n', label: 'gear ratio N', min: 1, max: 30, value: 1, fmt: x => x + ':1' },
+    { id: 'dm', label: 'extra mass at the tip', min: 0, max: 30, value: 5, fmt: x => f(x / 10, 1) + ' kg' },
+    { id: 'r', label: 'its distance from the joint', min: 5, max: 80, value: 50, fmt: x => f(x / 100, 2) + ' m' },
+    { id: 'tm', label: 'motor peak torque', min: 1, max: 20, value: 5, fmt: x => x + ' N·m' },
+    { id: 'k', label: 'spring k (step 6)', min: 10, max: 2000, value: 300, fmt: x => x + ' N·m/rad' },
+    { id: 'kf', label: 'force-feedback gain (step 5)', min: 0, max: 100, value: 20, fmt: x => f(x / 10, 1) },
+  ],
+  steps: [
+    ['The four symbols', 'J_m: the spinning rotor inside the motor. J_L: the limb or tool on the output. k: any spring in the drivetrain. ω: how fast the world is pushing — not a property of the robot at all, but of what is happening to it.'],
+    ['Direct drive: J_eff = J_m + J_L, at every frequency', 'Motor and limb are welded into one body, one acceleration: (J_m + J_L) θ̈ = τ. Push slowly or hit it hard: it feels the same. Flat in frequency.'],
+    ['Add a gearbox: the rotor counts N² times', 'Through ratio N the rotor turns N times faster, so its kinetic energy is N² larger: reflected inertia N²J_m. At N = 10 a small rotor can outweigh the whole limb.'],
+    ['Distal mass: the most expensive kilogram', 'A mass m at distance r adds m r². Half a kilogram at the end of a 0.5 m link adds 0.125 kg·m² — and every joint closer to the base must carry and accelerate it too.'],
+    ['Motor specification: the best gear ratio', 'For a motor of peak torque τ_max the load acceleration is N τ_max / (N²J_m + J_L). It peaks at N* = √(J_L/J_m), where the reflected rotor equals the load: inertia matching.'],
+    ['What software can and cannot fix', 'Force feedback can hide part of the rotor inertia at low frequency (feels lighter). Above the loop bandwidth the controller cannot react and the full mechanical inertia comes back — exactly when impacts happen.'],
+    ['A spring has no frequency; an inertia has no frequency; together they do', 'Spring torque kθ does not depend on ω; inertial torque J ω² θ grows with ω². They cross at ω = √(k/J): below it the spring dominates, above it the inertia. This one crossing organises the next pages.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const JLtot = s.JL + (S >= 3 && S <= 4 ? s.dm * s.r * s.r : 0), Nn = S >= 2 && S <= 4 ? s.N : 1, Jref = Nn * Nn * s.Jm, Jeff = Jref + JLtot;
+    if (S <= 1) { const A = Pl.panel(0, 0, .5, .66, [-1.4, 1.4, -1.2, 1.2]); A.frame('the joint'); A.circle([-.6, 0], .3, '--b', 4); A.text([-.6, -.45], 'rotor J_m', '--b', -30, 0, { size: 12 }); A.line([-.3, 0], [.9, 0], '--link', 8); A.dot([.9, 0], 12, '--e'); A.text([.9, -.35], 'limb J_L', '--e', -26, 0, { size: 12 }); A.arrow([.9, .5], [0, -.3], '--bad', 3, 'world pushes');
+      const ws = CTL.logspace(0, 3, 100), B = Pl.panel(.51, 0, .49, .66, [0, 3, 0, (s.Jm + s.JL) * 1.4], false);
+      B.series([{ pts: logx(B, ws, () => s.Jm + s.JL), cl: '--a', w: 3, label: 'direct drive J_eff (kg·m²)' }, { pts: logx(B, ws, () => s.JL), cl: '--e', w: 1.5, dash: [4, 3], label: 'limb only' }], { title: 'effective inertia vs log₁₀ ω (rad/s)' }); }
+    else if (S === 2 || S === 3) { const Ns = [...Array(30)].map((_, i) => i + 1), mx = Math.max(...Ns.map(n => n * n * s.Jm + JLtot)), A = Pl.panel(0, 0, .5, .66, [1, 30, 0, Math.min(mx, 40 * JLtot) * 1.05], false);
+      A.series([{ pts: Ns.map(n => [n, n * n * s.Jm + JLtot]), cl: '--a', w: 3, label: 'J_eff at the output' }, { pts: Ns.map(n => [n, JLtot]), cl: '--e', w: 1.5, dash: [4, 3], label: 'limb' }], { title: 'J_eff vs gear ratio N' }); A.dot([Nn, Jeff], 6, '--bad');
+      const B = Pl.panel(.51, 0, .49, .66, [0, 2, 0, 1], false); B.frame('who owns the inertia?'); const pr = Jref / Jeff;
+      B.poly([[.5, 0.05], [1.5, 0.05], [1.5, .05 + .85 * pr], [.5, .05 + .85 * pr]], '--b', 2, null, '--b', true); B.poly([[.5, .05 + .85 * pr], [1.5, .05 + .85 * pr], [1.5, .9], [.5, .9]], '--e', 2, null, '--e', true);
+      B.text([1, .05 + .85 * pr / 2], 'rotor ' + f(pr * 100, 0) + ' %', '--ink', -30, 4, { size: 13 }); B.text([1, .05 + .85 * pr + .85 * (1 - pr) / 2], 'limb ' + f((1 - pr) * 100, 0) + ' %', '--ink', -26, 4, { size: 13 }); }
+    else if (S === 4) { const Ns = [...Array(300)].map((_, i) => .2 + i / 10), acc = n => n * s.tmax / (n * n * s.Jm + JLtot), Ns_ = Math.sqrt(JLtot / s.Jm), A = Pl.panel(0, 0, .62, .66, [0, 30, 0, acc(Ns_) * 1.15], false);
+      A.series([{ pts: Ns.map(n => [n, acc(n)]), cl: '--a', w: 3, label: 'load acceleration N τ_max / (N²J_m + J_L)' }], { title: 'how fast can this motor swing this limb?', yl: 'rad/s²' }); A.line([Ns_, 0], [Ns_, acc(Ns_)], '--bad', 2, [5, 3]); A.text([Ns_, acc(Ns_)], 'N* = √(J_L/J_m) = ' + f(Ns_, 2), '--bad', 6, -6, { size: 12 }); A.dot([Nn, acc(Nn)], 6, '--b'); }
+    else if (S === 5) { const ws = CTL.logspace(0, 3.5, 200), wb = 2 * Math.PI * 50, japp = w => s.JL + s.Jm / CTL.cabs(CTL.cadd([1, 0], CTL.cscl(CTL.cdiv([1, 0], [1, w / wb]), s.kf)));
+      const A = Pl.panel(0, 0, .62, .66, [0, 3.5, 0, (s.Jm + s.JL) * 1.2], false); A.series([{ pts: logx(A, ws, () => s.Jm + s.JL), cl: '--grey', w: 1.5, dash: [4, 3], label: 'mechanical J_m + J_L' }, { pts: logx(A, ws, japp), cl: '--a', w: 3, label: 'felt with force feedback' }, { pts: logx(A, ws, () => s.JL), cl: '--e', w: 1.2, dash: [3, 3], label: 'limb' }], { title: 'apparent inertia vs log₁₀ ω — loop bandwidth 50 Hz' }); A.line([Math.log10(wb), 0], [Math.log10(wb), (s.Jm + s.JL) * 1.2], '--bad', 1, [3, 3]); }
+    else { const J = s.Jm + s.JL, ws = CTL.logspace(0, 3, 200), wc = Math.sqrt(s.k / J), A = Pl.panel(0, 0, .62, .66, [0, 3, -1, Math.log10(J * 1e6) + 1], false);
+      A.series([{ pts: logx(A, ws, () => Math.log10(s.k)), cl: '--c', w: 3, label: 'spring torque per rad: k' }, { pts: logx(A, ws, w => Math.log10(J * w * w)), cl: '--a', w: 3, label: 'inertial torque per rad: J ω²' }], { title: 'log₁₀ torque per radian of motion vs log₁₀ ω' }); A.line([Math.log10(wc), -1], [Math.log10(wc), 7], '--bad', 1.5, [5, 3]); A.text([Math.log10(wc), Math.log10(s.k)], 'cross at √(k/J) = ' + f(wc, 1) + ' rad/s', '--bad', 6, -8, { size: 12 }); }
+    const R = Pl.panel(.63, S === 4 || S === 5 || S === 6 ? 0 : 2, .37, .66, [0, 1, 0, 1], false);
+    if (S >= 4) { R.frame('numbers'); const L = (y, txt, cl) => R.label(R.x + 10, R.y + R.h * y, txt, cl, { mono: true, size: 12 }); L(.12, `J_m = ${f(s.Jm, 3)}, J_L = ${f(JLtot, 4)}`, '--ink'); L(.24, `N = ${Nn}: N²J_m = ${f(Jref, 4)}`, '--b'); L(.36, `J_eff = ${f(Jeff, 4)} kg·m²`, '--a');
+      if (S === 4) { const Ns_ = Math.sqrt(JLtot / s.Jm); L(.52, `N* = ${f(Ns_, 2)}`, '--bad'); L(.64, `best accel = τ_max/(2√(J_m J_L)) = ${f(s.tmax / (2 * Math.sqrt(s.Jm * JLtot)), 1)}`, '--a'); L(.76, `at N = ${Nn}: ${f(Nn * s.tmax / (Nn * Nn * s.Jm + JLtot), 1)} rad/s²`, '--b'); }
+      if (S === 5) { L(.52, `feedback gain ${f(s.kf, 1)}: rotor felt as J_m/(1 + K) = ${f(s.Jm / (1 + s.kf), 4)} at low ω`, '--a'); L(.64, 'above 50 Hz: full J_m again', '--bad'); }
+      if (S === 6) { L(.52, `k = ${s.k}: crossover √(k/J) = ${f(Math.sqrt(s.k / (s.Jm + s.JL)), 1)} rad/s (${f(Math.sqrt(s.k / (s.Jm + s.JL)) / 6.283, 2)} Hz)`, '--bad'); } }
+    const B2 = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); B2.frame(); const L2 = (x, y, txt, cl) => B2.label(B2.x + B2.w * x, B2.y + B2.h * y, txt, cl, { mono: true, size: 12 });
+    L2(.02, .25, `J_eff = N²J_m + J_L${S >= 3 && S <= 4 ? ' + m r²' : ''} = ${f(Nn * Nn, 0)}·${f(s.Jm, 3)} + ${f(s.JL, 3)}${S >= 3 && S <= 4 ? ' + ' + f(s.dm, 1) + '·' + f(s.r, 2) + '²' : ''} = ${f(Jeff, 4)} kg·m²`, '--a');
+    L2(.02, .5, `a 1 N·m push accelerates it at ${f(1 / Jeff, 2)} rad/s²; rotor share ${f(Jref / Jeff * 100, 0)} %`, '--ink');
+    if (S >= 3 && S <= 4) L2(.02, .75, `the extra ${f(s.dm, 1)} kg at ${f(s.r, 2)} m adds ${f(s.dm * s.r * s.r, 4)} kg·m² (${f(s.dm * s.r * s.r / s.JL * 100, 0)} % of the limb)`, '--e');
+  },
+  math(S) {
+    const s = st(), JLtot = s.JL + (S >= 3 && S <= 4 ? s.dm * s.r * s.r : 0), Nn = S >= 2 && S <= 4 ? s.N : 1;
+    const head = `<p class="cg">J_m = ${f(s.Jm, 3)}, J_L = ${f(s.JL, 3)} kg·m², N = ${Nn}.</p>`;
+    const rows = [
+`${E(`J_eff = τ_ext / θ̈   — the inertia an outside push feels`)}
+${ul(['A slow lean and a sharp impact are the same joint at two frequencies; with springs in the drivetrain they can feel like two different machines.', 'J_eff decides: how hard the joint hits things, how much torque a motion needs, and what a controller can achieve.'])}`,
+`${E(`J_m θ̈_m = τ − J_L θ̈        (motor drives the limb)
+θ_m = θ   ⇒  (J_m + J_L) θ̈ = τ   ⇒  J_eff = J_m + J_L = ${f(s.Jm + s.JL, 4)}`)}
+<p>No spring, no frequency: whatever hits the limb hits the rotor too. Perfect transparency (the motor feels the world) and full impact (the whole rotor slams into the wall).</p>`,
+`${E(`θ_m = N θ,  τ_out = N τ_m
+kinetic energy ½ J_m (N θ̇)² = ½ (N² J_m) θ̇²
+J_eff = N² J_m + J_L = ${f(Nn * Nn * s.Jm + s.JL, 4)}`)}
+<p>Quasi-direct drives keep N small (6–10) so the rotor stays a minority of J_eff; harmonic drives at N = 100 make the rotor dominate by orders of magnitude.</p>`,
+`${E(`point mass: J = m r² = ${f(s.dm, 1)} × ${f(s.r, 2)}² = ${f(s.dm * s.r * s.r, 4)} kg·m²
+J_eff now ${f(Nn * Nn * s.Jm + JLtot, 4)} kg·m²`)}
+<p>Mechanism design rule: put the heavy things (motors, batteries) close to the base and drive distal joints through cables or linkages. A kilogram at the hand costs torque at every joint before it.</p>`,
+`${E(`load acceleration a(N) = N τ_max / (N² J_m + J_L)
+da/dN = 0  ⇒  N* = √(J_L/J_m) = ${f(Math.sqrt(JLtot / s.Jm), 3)}
+a_max = τ_max / (2√(J_m J_L)) = ${f(s.tmax / (2 * Math.sqrt(s.Jm * JLtot)), 2)} rad/s²`)}
+<p>At N* half the motor torque accelerates the rotor and half the load. Higher N gives more static torque but less acceleration; motor sizing is always this trade.</p>`,
+`${E(`τ_m = −K_f · (lowpass of measured interaction torque)
+low ω: rotor felt as J_m / (1 + K_f) = ${f(s.Jm / (1 + s.kf), 4)}
+high ω (above the loop bandwidth): J_m again`)}
+<p>Software can reshape what the joint feels only inside its bandwidth. Impacts are broadband: their first milliseconds see the bare mechanics. That is the argument for mechanical compliance (next page).</p>`,
+`${E(`spring:   τ = k θ          (flat in ω)
+inertia:  τ = J ω² θ       (rises 40 dB/decade)
+equal at  ω = √(k/J) = ${f(Math.sqrt(s.k / (s.Jm + s.JL)), 2)} rad/s`)}
+<p>Below the crossing the joint “is” a spring; above it, “is” an inertia. Series and parallel springs move this crossing around in different ways — pages 26 and 27.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>J_m + J_L</b>${f(s.Jm + s.JL, 3)} kg·m²</span>`; },
+});
+</script>
+</body></html>

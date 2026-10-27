@@ -1,0 +1,114 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Controlling a nonlinear robot</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* One link on a motor: J θ̈ + b θ̇ + m g l sin θ = τ (θ = 0 hanging). m = 1 kg, l = 0.5 m: J = 0.25, mgl = 4.905. */
+const J = .25, b = .05, MGL = 9.81 * .5;
+const st = () => { const v = SL.v; return { err: v.err / 100, Kp: v.kp, phi: v.phi / 100, lim: v.lim / 100, ke: v.ke / 10 }; };
+const target = t => 1.6 + .6 * Math.sin(1.5 * t), targetD = t => .9 * Math.cos(1.5 * t), targetDD = t => -1.35 * Math.sin(1.5 * t);
+const methods = {
+  pd: (s, t, x) => { const e = target(t) - x[0], ed = targetD(t) - x[1]; return s.Kp * e + 2 * Math.sqrt(s.Kp * J) * ed; },
+  lin: (s, t, x) => { const e = target(t) - x[0], ed = targetD(t) - x[1]; return MGL * (1 + s.err) * Math.sin(1.6) + s.Kp * e + 2 * Math.sqrt(s.Kp * J) * ed; },
+  sched: (s, t, x) => { const e = target(t) - x[0], ed = targetD(t) - x[1]; return MGL * (1 + s.err) * Math.sin(target(t)) + s.Kp * e + 2 * Math.sqrt(s.Kp * J) * ed; },
+  ct: (s, t, x) => { const e = target(t) - x[0], ed = targetD(t) - x[1], k = 1 + s.err, wn = Math.sqrt(s.Kp / J); return J * k * (targetDD(t) + 2 * wn * ed + wn * wn * e) + b * k * x[1] + MGL * k * Math.sin(x[0]); },
+  smc: (s, t, x) => { const e = target(t) - x[0], ed = targetD(t) - x[1], k = 1 + s.err, lam = 10, sv = ed + lam * e, sat = Math.max(-1, Math.min(1, sv / Math.max(s.phi, 1e-4)));
+    return J * k * (targetDD(t) + lam * ed) + b * k * x[1] + MGL * k * Math.sin(x[0]) + 4 * sat; },
+};
+const run = (name, s, T = 6) => { const out = []; CTL.ode((t, x) => { const tau = methods[name](s, t, x); out.push([t, x[0], tau]); return [x[1], (tau - b * x[1] - MGL * Math.sin(x[0])) / J]; }, [target(0), targetD(0)], T, 1e-3, 1);
+  return out.filter((_, i) => i % 20 === 0); };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const COL = { pd: '--grey', lin: '--f', sched: '--d', ct: '--a', smc: '--e' }, NAME = { pd: 'high-gain PD', lin: 'linearised at 1.6 rad', sched: 'gain-scheduled gravity', ct: 'computed torque', smc: 'sliding mode' };
+SL.app({
+  title: 'Controlling a nonlinear robot: six approaches, one wrong model',
+  sub: 'One link (J = 0.25, mgl = 4.9 N·m) tracking θ_d(t) = 1.6 + 0.6 sin 1.5t, using a model whose mass is wrong by the slider amount. Then swing-up with a motor too weak to lift it.',
+  view: '2d',
+  legend: [['--grey', 'high-gain PD'], ['--f', 'linearised'], ['--d', 'gain-scheduled'], ['--a', 'computed torque'], ['--e', 'sliding mode']],
+  controls: [
+    { id: 'err', label: 'model mass error', min: -40, max: 40, value: -30, fmt: x => (x > 0 ? '+' : '') + x + ' %' },
+    { id: 'kp', label: 'K_p (ω_n² J)', min: 5, max: 300, value: 60, fmt: x => x + ' N·m/rad' },
+    { id: 'phi', label: 'sliding boundary layer φ', min: 0, max: 50, value: 5, fmt: x => f(x / 100, 2) },
+    { id: 'lim', label: 'swing-up torque limit', min: 5, max: 120, value: 35, fmt: x => x + ' % of mgl' },
+    { id: 'ke', label: 'energy gain k_E', min: 2, max: 60, value: 15, fmt: x => f(x / 10, 1) },
+  ],
+  steps: [
+    ['0 · High-gain PD: ignore it and pay', 'τ = K_p e + K_d ė. Gravity m g l sin θ is a disturbance the PD must hold back with an error: e ≈ mgl sin θ / K_p. More gain, less error, never zero.'],
+    ['1 · Linearise about one operating point', 'Add the gravity torque at 1.6 rad as a constant feedforward. Perfect at 1.6 rad, wrong everywhere else the target goes.'],
+    ['2 · Gain scheduling', 'Re-evaluate the gravity term at the current target: many linearisations, interpolated. Most of the error goes; what remains is the model’s mass error and the dynamics it ignores.'],
+    ['3 · Computed torque (feedback linearisation)', 'Cancel the whole nonlinearity with the model: τ = Ĵ(θ̈_d + K_d ė + K_p e) + b̂θ̇ + m̂gl sin θ. With a perfect model the error equation is linear and exact; with a wrong one the leftover acts as a disturbance.'],
+    ['4 · Sliding mode: robustness bought with a discontinuity', 'Drive s = ė + λe to zero with a switching term that overpowers any model error up to a bound. Exact robustness; the price is chattering torque. A boundary layer φ trades a little error for smoothness.'],
+    ['The shoot-out', 'Same pendulum, same wrong model, all five controllers: tracking error over time and RMS. Change the model error and K_p and see the ranking hold or change.'],
+    ['Lyapunov: an energy that must go down', 'For PD plus exact gravity cancellation V = ½Jθ̇² + ½K_p e² can only decrease: V̇ = −(b + K_d)θ̇². No linearisation, a global guarantee — the direct method.'],
+    ['Swing-up: invert it with a motor too weak to lift it', 'Pump energy: τ = k_E (E_target − E) θ̇, saturated. Each swing adds a little until the pendulum reaches the top; then switch to a balancing PD. Passivity-based control at its simplest.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    if (S <= 5) {
+      const names = S === 5 ? Object.keys(methods) : S === 0 ? ['pd'] : S === 1 ? ['pd', 'lin'] : S === 2 ? ['lin', 'sched'] : S === 3 ? ['sched', 'ct'] : ['ct', 'smc'];
+      const runs = names.map(n => [n, run(n, s)]);
+      const A = Pl.panel(0, 0, .62, .4, [0, 6, .6, 2.6], false);
+      A.series([{ pts: runs[0][1].map(p => [p[0], target(p[0])]), cl: '--ink', w: 1.2, dash: [4, 3], label: 'target' }].concat(runs.map(([n, r]) => ({ pts: r.map(p => [p[0], p[1]]), cl: COL[n], w: 2.2, label: NAME[n] }))), { title: 'θ (rad)' });
+      const em = Math.max(.02, ...runs.flatMap(([n, r]) => r.filter(p => p[0] > .5).map(p => Math.abs(target(p[0]) - p[1])))) * 1.15, B = Pl.panel(0, .41, .62, .26, [0, 6, -em, em], false);
+      B.series(runs.map(([n, r]) => ({ pts: r.map(p => [p[0], Math.max(-em, Math.min(em, target(p[0]) - p[1]))]), cl: COL[n], w: 2 })), { title: 'tracking error (rad)' });
+      if (S === 4 || S === 5) { const r = runs.find(x => x[0] === 'smc') || runs[runs.length - 1], tm = Math.max(...r[1].map(p => Math.abs(p[2]))) * 1.1, C = Pl.panel(.63, 0, .37, .67, [0, 6, -tm, tm], false); C.series([{ pts: r[1].map(p => [p[0], p[2]]), cl: '--e', w: 1.5, label: 'sliding-mode torque' }], { title: 'φ = ' + f(s.phi, 2) + (s.phi < .01 ? ': chattering' : '') }); }
+      else { const C = Pl.panel(.63, 0, .37, .67, [0, 1, 0, 1], false); C.frame('RMS tracking error (after 0.5 s)'); runs.forEach(([n, r], i) => { const e = Math.sqrt(r.filter(p => p[0] > .5).reduce((a, p) => a + (target(p[0]) - p[1]) ** 2, 0) / r.filter(p => p[0] > .5).length); C.label(C.x + 14, C.y + 44 + i * 28, NAME[n].padEnd(24) + f(e * 1000, 2) + ' mrad', COL[n], { mono: true, size: 12 }); }); }
+    } else if (S === 6) {
+      const Kd = 2 * Math.sqrt(s.Kp * J), th0 = .3, out = []; CTL.ode((tt, x) => { const e = 2 - x[0], tau = MGL * Math.sin(x[0]) + s.Kp * e - Kd * x[1]; out.push([tt, x[0], .5 * J * x[1] * x[1] + .5 * s.Kp * e * e]); return [x[1], (tau - b * x[1] - MGL * Math.sin(x[0])) / J]; }, [th0, 0], 4, 1e-3, 1);
+      const o = out.filter((_, i) => i % 10 === 0), A = Pl.panel(0, 0, .62, .67, [0, 4, 0, Math.max(...o.map(p => p[2])) * 1.1], false);
+      A.series([{ pts: o.map(p => [p[0], p[2]]), cl: '--c', w: 2.5, label: 'V(t) = ½Jθ̇² + ½K_p e²' }], { title: 'PD + exact gravity compensation, 0.3 → 2 rad' });
+      const B = Pl.panel(.63, 0, .37, .67, [0, 4, 0, 2.3], false); B.series([{ pts: o.map(p => [p[0], p[1]]), cl: '--a', w: 2, label: 'θ' }], { title: 'the motion' }); B.line([0, 2], [4, 2], '--grey', 1, [4, 3]);
+    } else {
+      const lim = s.lim * MGL, Et = MGL, out = []; let mode = 'pump';
+      CTL.ode((tt, x) => { const E = .5 * J * x[1] * x[1] - MGL * Math.cos(x[0]); const near = Math.cos(x[0]) < -.92;
+        if (near) mode = 'balance'; let tau = mode === 'pump' ? s.ke * (Et - E) * x[1] : (MGL * Math.sin(x[0]) + 40 * (Math.PI - ((x[0] % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - 6 * x[1]);
+        tau = Math.max(-lim, Math.min(lim, tau)); out.push([tt, x[0], E, tau]); return [x[1], (tau - b * x[1] - MGL * Math.sin(x[0])) / J]; }, [.05, 0], 15, 1e-3, 1);
+      const o = out.filter((_, i) => i % 15 === 0), A = Pl.panel(0, 0, .62, .4, [0, 15, -1.1, 1.2], false);
+      A.series([{ pts: o.map(p => [p[0], -Math.cos(p[1])]), cl: '--a', w: 2, label: 'tip height −cos θ (1 = upright)' }], { title: 'swing-up with |τ| ≤ ' + f(s.lim * 100, 0) + ' % of mgl' }); A.line([0, 1], [15, 1], '--grey', 1, [4, 3]);
+      const B = Pl.panel(0, .41, .62, .26, [0, 15, -MGL * 1.1, MGL * 1.3], false); B.series([{ pts: o.map(p => [p[0], p[2]]), cl: '--c', w: 2, label: 'energy E' }], {}); B.line([0, Et], [15, Et], '--bad', 1, [4, 3]);
+      const C = Pl.panel(.63, 0, .37, .67, [-1.2, 1.2, -1.2, 1.2]); C.frame('the pendulum now'); const last = o[Math.min(o.length - 1, Math.round(o.length * t) - 1)] || o[0]; C.line([0, 0], [Math.sin(last[1]), -Math.cos(last[1])], '--link', 5); C.dot([Math.sin(last[1]), -Math.cos(last[1])], 9, '--e'); C.dot([0, 0], 5, '--ink');
+    }
+    const R = Pl.panel(0, .69, 1, .31, [0, 1, 0, 1], false); R.frame(); const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    L(.02, .22, `model mass error ${s.err > 0 ? '+' : ''}${f(s.err * 100, 0)} %  →  model mgl = ${f(MGL * (1 + s.err), 2)} vs true ${f(MGL, 2)} N·m`, '--bad');
+    L(.02, .46, `K_p = ${s.Kp}, K_d = 2√(K_p J) = ${f(2 * Math.sqrt(s.Kp * J), 2)}   (critically damped linear part, ω_n = ${f(Math.sqrt(s.Kp / J), 1)} rad/s)`, '--ink');
+    if (S === 5) { const rr = Object.keys(methods).map(n => { const r = run(n, s).filter(p => p[0] > .5); return NAME[n] + ' ' + f(Math.sqrt(r.reduce((a, p) => a + (target(p[0]) - p[1]) ** 2, 0) / r.length) * 1000, 1); }); L(.02, .92, 'RMS mrad: ' + rr.join(' · '), '--c'); }
+    L(.02, .7, S === 0 ? `PD standing error near θ = 1.6: mgl sin θ / K_p ≈ ${f(MGL * Math.sin(1.6) / s.Kp * 1000, 1)} mrad` : S === 7 ? `torque limit ${f(s.lim * MGL, 2)} N·m < mgl = ${f(MGL, 2)}: it cannot lift directly, only pump` : 'sliding mode: switching gain 4 N·m covers the model error; φ smooths it', '--muted');
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">J = 0.25, b = 0.05, mgl = 4.905. Model mass error ${f(s.err * 100, 0)} %. K_p = ${s.Kp}.</p>`;
+    const rows = [
+`${E(`τ = K_p e + K_d ė
+equilibrium: K_p e = m g l sin θ  ⇒  e ≈ mgl sin θ_d / K_p = ${f(MGL * Math.sin(1.6) / s.Kp, 4)} rad at 1.6 rad`)}
+<p>The simplest option and often the industrial one (with high gear ratios gravity looks small). The price: a standing error that changes with pose.</p>`,
+`${E(`τ = m̂gl sin(1.6) + K_p e + K_d ė      (constant feedforward)
+error ≈ (mgl sin θ − m̂gl sin 1.6)/K_p`)}
+<p>Linearisation is exact at one point only. The further the target wanders from 1.6 rad, the worse the cancellation.</p>`,
+`${E(`τ = m̂gl sin θ_d(t) + K_p e + K_d ė
+remaining error ≈ (mgl − m̂gl) sin θ / K_p = model error × gravity / K_p`)}
+<p>Gain scheduling: design linear controllers at many points and interpolate (here only the feedforward changes). It is how flight controllers have been built for decades.</p>`,
+`${E(`τ = Ĵ (θ̈_d + K_d ė + K_p e) + b̂ θ̇ + m̂gl sin θ
+perfect model ⇒ ë + K_d ė + K_p e = 0       (linear, exact, any pose)
+wrong model  ⇒ ë + K_d ė + K_p e = (model error terms)/J`)}
+<p>Computed torque turns a nonlinear plant into a double integrator — if the model is right. Robot arms use it with RNEA (page 135) at 1 kHz.</p>`,
+`${E(`s = ė + λ e  (λ = 10)
+τ = model terms + K_s · sat(s/φ),  K_s = 4 N·m ≥ |model error|
+inside |s| < φ: linear; outside: full switching`)}
+${ul(['φ → 0: the error converges exactly to s = 0 despite the wrong model, but the torque chatters between ±K_s.', 'Larger φ: smooth torque, error bounded by about φ/λ.', 'Requires a known bound on the uncertainty.'])}`,
+`<p>RMS tracking errors are listed in the panel. Typical ranking with a 30 % mass error: PD worst (gravity uncompensated), linearised next, then scheduled, computed torque, and sliding mode best.</p>
+${ul(['Raise K_p: every method improves, PD most.', 'Set the model error to 0: computed torque becomes nearly perfect.', 'Make the boundary layer tiny: sliding mode error drops and the torque chatters.'])}`,
+`${E(`V = ½ J θ̇² + ½ K_p e²   (e = θ_d − θ, θ_d constant)
+V̇ = θ̇ (J θ̈) − K_p e θ̇ = θ̇(τ − bθ̇ − mgl sin θ) − K_p e θ̇
+with τ = mgl sin θ + K_p e − K_d θ̇:   V̇ = −(b + K_d) θ̇² ≤ 0`)}
+<p>V acts like an energy that the controller only removes. LaSalle’s principle then gives convergence to the target from any start: a global result without linearising. Page 134’s Ṁ − 2C skew property is what makes this work for full arms.</p>`,
+`${E(`E = ½ J θ̇² − m g l cos θ,   upright: E_target = + m g l = ${f(MGL, 3)} J
+τ = sat(k_E (E_target − E) θ̇, ±${f(s.lim * MGL, 2)})
+Ė = θ̇ τ − b θ̇² = k_E (E_target − E) θ̇² − b θ̇²  ≥ 0 while E < E_target`)}
+<p>Push in the direction of motion: every swing adds energy, however weak the motor. Near the top, a linear balancing controller takes over (a hybrid controller).</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>model error</b>${f(s.err * 100, 0)} %</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gearing and reflected inertia</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Motor-side rotor J_r (kg·m², on the motor shaft), limb J_L at the output, ratio N. */
+const st = () => { const v = SL.v; return { N: v.n, Jr: v.jr * 1e-6, JL: v.jl / 1000, tm: v.tm / 10, wm: v.wm, ts: v.ts / 1000, eta: v.eta / 100, push: v.push, kv: v.kv, mv: v.mv / 100, ke: v.ke * 1000, wp: v.wp }; };
+const f = SL.f, E = SL.eq, ul = SL.ul, L10 = Math.log10, TAU = 2 * Math.PI;
+let T = 0;
+const Jref = s => s.N * s.N * s.Jr, Jout = s => Jref(s) + s.JL, brk = (s, N = s.N) => N * s.ts / s.eta;
+function gear(A, c, r, teeth, ang, cl) { A.circle(c, r, cl, 3); for (let i = 0; i < teeth; i++) { const a = ang + i * TAU / teeth; A.line([c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)], [c[0] + (r + .07) * Math.cos(a), c[1] + (r + .07) * Math.sin(a)], cl, 3); } A.line(c, [c[0] + r * .8 * Math.cos(ang), c[1] + r * .8 * Math.sin(ang)], cl, 2.5); A.dot(c, 4, cl); }
+SL.app({
+  title: 'Gearing: the N² law and what it hides',
+  sub: 'A gearbox multiplies torque by N and divides speed by N — and makes the rotor feel N² times heavier at the output. That square decides acceleration, backdrivability, whether impedance control can feel a human at all, and which way out a designer picks.',
+  view: '2d',
+  legend: [['--b', 'motor side / rotor'], ['--e', 'limb / output'], ['--a', 'result'], ['--c', 'human / sensor'], ['--bad', 'friction / limit']],
+  controls: [
+    { id: 'n', label: 'gear ratio N', min: 1, max: 160, value: 50, fmt: x => x + ':1' },
+    { id: 'jr', label: 'rotor J_r (motor side)', min: 10, max: 1000, step: 10, value: 100, fmt: x => f(x * 1e-6 * 1e4, 1) + 'e-4 kg·m²' },
+    { id: 'jl', label: 'limb J_L', min: 1, max: 200, value: 60, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'tm', label: 'motor peak torque', min: 5, max: 100, value: 20, fmt: x => f(x / 10, 1) + ' N·m' },
+    { id: 'wm', label: 'motor no-load speed', min: 100, max: 1000, step: 10, value: 500, fmt: x => x + ' rad/s' },
+    { id: 'ts', label: 'motor-side stiction', min: 0, max: 200, value: 30, fmt: x => x + ' mN·m' },
+    { id: 'eta', label: 'backdrive efficiency', min: 30, max: 98, value: 70, fmt: x => x + ' %' },
+    { id: 'push', label: 'human push at the joint', min: 0, max: 40, value: 5, fmt: x => x + ' N·m' },
+    { id: 'kv', label: 'virtual spring (step 5)', min: 10, max: 500, value: 100, fmt: x => x + ' N·m/rad' },
+    { id: 'mv', label: 'virtual mass (step 6)', min: 1, max: 100, value: 20, fmt: x => f(x / 100, 2) + ' kg·m²' },
+    { id: 'ke', label: 'contact stiffness (step 6)', min: 1, max: 100, value: 2, fmt: x => x + ' kN·m/rad' },
+    { id: 'wp', label: 'position-loop bandwidth (step 6)', min: 5, max: 100, value: 20, fmt: x => x + ' Hz' },
+  ],
+  play: { tick(dt) { T += dt; } },
+  reset() { T = 0; },
+  steps: [
+    ['One gear pair: torque ×N, speed ÷N', 'The motor pinion turns N times for every turn of the output. Power is conserved (minus losses), so the torque goes up by N exactly as the speed goes down by N. Press Play and watch the pinion race.'],
+    ['The square law: J_reflected = N² J_r', 'Turning N times faster, the rotor stores N² times the kinetic energy per output radian: ½J_r(Nθ̇)² = ½(N²J_r)θ̇². At 100:1 a rotor feels 10 000× heavier — often far heavier than the limb it drives.'],
+    ['Torque–speed: what the ratio trades', 'The motor\'s line runs from peak torque at stall to no-load speed. Through the gearbox it becomes N× taller and N× narrower. A task point (torque and speed the joint needs) must sit under the line — too little N and it is too weak, too much and it is too slow.'],
+    ['Inertia matching: the fastest ratio', 'Acceleration of the limb: Nτ_m/(N²J_r + J_L). Small N wastes torque; large N wastes it spinning the rotor. The peak sits at N* = √(J_L/J_r), where reflected rotor equals the limb.'],
+    ['Backdriving: will a human push move it?', 'Push the limb. Before anything moves the push must beat the motor-side stiction reflected through the gears (N τ_s / η). Above that, what is left accelerates N²J_r + J_L. A 100:1 harmonic drive can ignore a 5 N·m push completely.'],
+    ['Why impedance control goes blind', 'Impedance control renders a virtual spring from the encoder: τ = −K_v θ. Behind the gearbox the human feels the spring plus a friction band of ±Nτ_s/η: a fat hysteresis loop. Small pushes never reach the encoder — the robot thinks no one is there.'],
+    ['Admittance: sense the force, move with the motor', 'Put a force sensor at the contact. The robot measures the push and moves itself as a virtual mass M_v: friction and N² inertia are now inside the position loop. The catch: against stiff contact a light M_v goes unstable — M_v must exceed about k_e/ω_p².'],
+    ['Three ways out — ranked by what they fix', 'Do not gear (QDD): fixes sensing and inertia. Output torque sensor (KUKA iiwa, Franka): fixes sensing only. F/T sensor + admittance: fixes sensing at one point only. Only mechanics removes reflected inertia from an impact.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, Jr2 = Jref(s), Jo = Jout(s), Ns = [...Array(160)].map((_, i) => i + 1);
+    if (S === 0) { const A = Pl.panel(0, 0, .62, .66, [-1.6, 1.6, -1.1, 1.1]), dr = Math.min(s.N, 4), r1 = .22, r2 = r1 * dr, phi = .5 * T;
+      gear(A, [-1.15 + r1, 0], r1, 8, -s.N * phi, '--b'); gear(A, [-1.15 + 2 * r1 + .07 + r2, 0], r2, Math.round(8 * dr), phi + Math.PI / 8, '--e');
+      A.text([-1.15 + r1, -r1 - .25], 'motor pinion', '--b', -36, 0, { size: 12 }); A.text([-1.15 + 2 * r1 + r2, -r2 - .2], `output (${s.N}:1, drawn ${dr}:1)`, '--e', -40, 0, { size: 12 });
+      const R = Pl.panel(.63, 0, .37, .66, [0, 1, 0, 1], false); R.frame('one output turn'); const Lb = (y, t, cl) => R.label(R.x + 10, R.y + R.h * y, t, cl, { mono: true, size: 12 });
+      Lb(.12, `motor turns: ${s.N}`, '--b'); Lb(.22, `output torque: N τ_m = ${f(s.N * s.tm, 1)} N·m`, '--e'); Lb(.32, `output speed: ω_m/N = ${f(s.wm / s.N, 2)} rad/s`, '--e'); Lb(.46, `rotor alone: ${f(s.Jr * 1e4, 2)}e-4 kg·m²`, '--b'); Lb(.56, `felt at output: ${f(Jr2, 4)} kg·m²`, '--bad'); Lb(.66, `motor angle at output: ${f(-s.N * phi % 360, 0)} rad`, '--muted'); }
+    else if (S === 1) { const A = Pl.panel(0, 0, .62, .66, [0, L10(160), L10(s.Jr) - .3, L10(160 * 160 * s.Jr) + .3], false);
+      A.series([{ pts: Ns.map(n => [L10(n), L10(n * n * s.Jr)]), cl: '--b', w: 3, label: 'log₁₀ N²J_r' }, { pts: Ns.map(n => [L10(n), L10(s.JL)]), cl: '--e', w: 2, dash: [5, 3], label: 'log₁₀ J_L' }, { pts: Ns.map(n => [L10(n), L10(n * n * s.Jr + s.JL)]), cl: '--a', w: 2, label: 'log₁₀ total' }], { title: 'reflected inertia vs log₁₀ N — slope 2: the square law' });
+      A.dot([L10(s.N), L10(Jr2)], 6, '--ink'); A.line([L10(Math.sqrt(s.JL / s.Jr)), L10(s.Jr) - .3], [L10(Math.sqrt(s.JL / s.Jr)), L10(160 * 160 * s.Jr) + .3], '--bad', 1, [3, 3]);
+      const R = Pl.panel(.63, 0, .37, .66, [0, 2, 0, 1], false); R.frame('who owns the output inertia?'); const pr = Jr2 / Jo;
+      R.poly([[.5, .05], [1.5, .05], [1.5, .05 + .85 * pr], [.5, .05 + .85 * pr]], '--b', 2, null, '--b', true); R.poly([[.5, .05 + .85 * pr], [1.5, .05 + .85 * pr], [1.5, .9], [.5, .9]], '--e', 2, null, '--e', true);
+      R.text([1, .05 + .85 * pr / 2], 'rotor ' + f(pr * 100, 1) + ' %', '--ink', -36, 4, { size: 13 }); R.text([1, .92], `N² = ${f(s.N * s.N, 0)}`, '--ink', -26, -6, { size: 13 }); }
+    else if (S === 2) { const tq = 150, sp = 25, A = Pl.panel(0, 0, .62, .66, [0, sp, 0, tq], false), line = n => [[0, Math.min(tq, n * s.tm * .95)], [s.wm / n, 0]];
+      A.series([{ pts: line(s.N), cl: '--a', w: 3, label: `N = ${s.N}` }, { pts: line(Math.max(1, Math.round(s.N / 4))), cl: '--grey', w: 1.5, dash: [4, 3], label: `N = ${Math.max(1, Math.round(s.N / 4))}` }, { pts: line(Math.min(400, s.N * 3)), cl: '--b', w: 1.5, dash: [4, 3], label: `N = ${Math.min(400, s.N * 3)}` }], { title: 'output torque (N·m) vs output speed (rad/s), efficiency 95 %' });
+      [[60, 3, 'knee: 60 N·m @ 3 rad/s'], [20, 6, 'arm: 20 N·m @ 6 rad/s'], [80, 1, 'lift: 80 N·m @ 1 rad/s']].forEach(([t, w, l]) => { const ok = t <= s.N * s.tm * .95 * (1 - w * s.N / s.wm); A.dot([w, t], 7, ok ? '--c' : '--bad'); A.text([w, t], l + (ok ? ' ✓' : ' ✗'), ok ? '--c' : '--bad', 9, 4, { size: 11 }); }); }
+    else if (S === 3) { const acc = n => n * s.tm / (n * n * s.Jr + s.JL), nst = Math.sqrt(s.JL / s.Jr), A = Pl.panel(0, 0, .62, .66, [0, 160, 0, acc(nst) * 1.15], false);
+      A.series([{ pts: Ns.map(n => [n, acc(n)]), cl: '--a', w: 3, label: 'limb acceleration Nτ_m/(N²J_r + J_L)' }], { title: 'acceleration vs gear ratio', yl: 'rad/s²' });
+      A.line([nst, 0], [nst, acc(nst)], '--bad', 1.5, [5, 3]); A.text([nst, acc(nst)], `N* = ${f(nst, 1)}`, '--bad', 6, -6, { size: 12 }); A.dot([s.N, acc(s.N)], 6, '--b'); }
+    else if (S === 4) { const A = Pl.panel(0, 0, .62, .33, [0, 160, 0, Math.max(brk(s, 160), s.push) * 1.1], false);
+      A.series([{ pts: Ns.map(n => [n, brk(s, n)]), cl: '--bad', w: 3, label: 'breakaway at the output N τ_s/η (N·m)' }, { pts: Ns.map(n => [n, s.push]), cl: '--c', w: 2, dash: [5, 3], label: 'your push' }], { title: 'does the push beat the reflected stiction?' }); A.dot([s.N, brk(s)], 6, '--ink');
+      const t = [...Array(101)].map((_, i) => i * .002), th = (n, tt) => Math.max(0, s.push - brk(s, n)) / (n * n * s.Jr + s.JL) * tt * tt / 2, mx = Math.max(1e-4, th(1, .2)), B = Pl.panel(0, .34, .62, .32, [0, 200, 0, mx * 1000 * 1.1], false);
+      B.series([{ pts: t.map(tt => [tt * 1000, th(1, tt) * 1000]), cl: '--grey', w: 1.5, dash: [4, 3], label: 'N = 1' }, { pts: t.map(tt => [tt * 1000, th(s.N, tt) * 1000]), cl: '--a', w: 3, label: `N = ${s.N}` }], { title: 'joint motion after the push (mrad) vs ms — what the encoder sees', yl: 'mrad' }); }
+    else if (S === 5) { const A = Pl.panel(0, 0, .62, .66, [-.25, .25, -40, 40], false), band = brk(s), ph = [...Array(201)].map((_, i) => i / 200 * TAU), amp = .2;
+      const loop = b => ph.map(p => { const th = amp * Math.sin(p), dir = Math.cos(p) >= 0 ? 1 : -1; return [th, s.kv * th + dir * b]; });
+      A.series([{ pts: [[-.25, -s.kv * .25], [.25, s.kv * .25]], cl: '--c', w: 1.5, dash: [5, 3], label: 'spring you asked for K_v θ' }, { pts: loop(brk(s, 1)), cl: '--grey', w: 1.5, label: 'what you feel, N = 1' }, { pts: loop(band), cl: '--bad', w: 3, label: `what you feel, N = ${s.N}` }], { title: 'torque you must apply (N·m) vs joint angle (rad), slow back-and-forth push', yl: 'N·m' }); }
+    else if (S === 6) { const kes = CTL.logspace(2, 5.3, 100), wp = s.wp * TAU, A = Pl.panel(0, 0, .62, .66, [2, 5.3, -3, 1], false);
+      A.series([{ pts: kes.map(k => [L10(k), L10(k / (wp * wp))]), cl: '--bad', w: 3, label: 'log₁₀ smallest stable M_v ≈ k_e/ω_p²' }, { pts: kes.map(k => [L10(k), L10(Jo)]), cl: '--b', w: 2, dash: [5, 3], label: 'log₁₀ N²J_r + J_L (impedance feel)' }, { pts: kes.map(k => [L10(k), L10(s.mv)]), cl: '--c', w: 2.5, label: 'log₁₀ your M_v' }], { title: 'virtual mass vs log₁₀ contact stiffness (N·m/rad)' });
+      const ok = s.mv > s.ke / (wp * wp); A.dot([L10(s.ke), L10(s.mv)], 7, ok ? '--c' : '--bad'); A.text([L10(s.ke), L10(s.mv)], ok ? 'stable' : 'chatters / unstable', ok ? '--c' : '--bad', 8, -6, { size: 12 }); }
+    else { const Nq = 6, opts = [['QDD (N = 6)', Nq * Nq * s.Jr + s.JL, brk(s, Nq), '--a'], ['gearbox + output torque sensor', Jo, .05, '--b'], ['gearbox + F/T + admittance', Jo, .02, '--c'], ['bare gearbox (impedance)', Jo, brk(s), '--bad']];
+      const A = Pl.panel(0, 0, .31, .66, [0, 4, 0, Math.max(...opts.map(o => o[1])) * 1.2], false); A.frame('inertia an impact sees (kg·m²)');
+      opts.forEach((o, i) => { A.poly([[i + .2, 0], [i + .8, 0], [i + .8, o[1]], [i + .2, o[1]]], o[3], 1.5, null, o[3], true); A.text([i + .5, o[1]], f(o[1], 3), '--ink', -16, -4, { size: 11 }); A.text([i + .5, 0], String(i + 1), o[3], -3, 16, { size: 12 }); });
+      const lg = v => L10(Math.max(.005, v)) + 2.5, B = Pl.panel(.31, 0, .31, .66, [0, 4, 0, lg(Math.max(...opts.map(o => o[2]))) * 1.15], false); B.frame('smallest push it can feel (log, N·m)');
+      opts.forEach((o, i) => { B.poly([[i + .2, 0], [i + .8, 0], [i + .8, lg(o[2])], [i + .2, lg(o[2])]], o[3], 1.5, null, o[3], true); B.text([i + .5, lg(o[2])], f(o[2], 2), '--ink', -14, -4, { size: 11 }); B.text([i + .5, 0], String(i + 1), o[3], -3, 16, { size: 12 }); });
+      const R = Pl.panel(.63, 0, .37, .66, [0, 1, 0, 1], false); R.frame('legend'); opts.forEach((o, i) => R.label(R.x + 10, R.y + R.h * (.12 + .1 * i), `${i + 1} ${o[0]}`, o[3], { mono: true, size: 12 }));
+      R.label(R.x + 10, R.y + R.h * .58, 'torque sensor ~0.05 N·m, F/T ~0.02 N·m', '--muted', { mono: true, size: 11 }); R.label(R.x + 10, R.y + R.h * .68, 'only option 1 lowers the impact bar', '--a', { mono: true, size: 12 }); }
+    if (S >= 2 && S <= 6) { const R = Pl.panel(.63, 0, .37, .66, [0, 1, 0, 1], false); R.frame('numbers'); const Lb = (y, t, cl) => R.label(R.x + 10, R.y + R.h * y, t, cl, { mono: true, size: 12 });
+      Lb(.1, `N = ${s.N}: N²J_r = ${f(Jr2, 4)}, J_L = ${f(s.JL, 3)}`, '--b'); Lb(.2, `output inertia ${f(Jo, 4)} kg·m²`, '--a');
+      if (S === 2) { Lb(.34, `stall torque N τ_m η = ${f(s.N * s.tm * .95, 1)} N·m`, '--a'); Lb(.44, `top speed ω_m/N = ${f(s.wm / s.N, 1)} rad/s`, '--a'); Lb(.54, `peak power ≈ τ_m ω_m/4 = ${f(s.tm * s.wm / 4, 0)} W (any N)`, '--muted'); }
+      if (S === 3) { const nst = Math.sqrt(s.JL / s.Jr); Lb(.34, `N* = √(J_L/J_r) = ${f(nst, 1)}`, '--bad'); Lb(.44, `best: τ_m/(2√(J_r J_L)) = ${f(s.tm / (2 * Math.sqrt(s.Jr * s.JL)), 0)} rad/s²`, '--a'); Lb(.54, `at N = ${s.N}: ${f(s.N * s.tm / Jo, 0)} rad/s²`, '--b'); Lb(.64, `rotor uses ${f(Jr2 / Jo * 100, 0)} % of the torque`, '--muted'); }
+      if (S === 4) { const b = brk(s), mv = s.push > b; Lb(.34, `breakaway N τ_s/η = ${f(b, 2)} N·m`, '--bad'); Lb(.44, `push ${s.push} N·m → ${mv ? 'moves' : 'NOTHING MOVES'}`, mv ? '--c' : '--bad'); if (mv) Lb(.54, `θ̈ = ${f((s.push - b) / Jo, 1)} rad/s²`, '--a'); Lb(.64, `QDD (N = 6): ${f(brk(s, 6), 2)} N·m`, '--muted'); }
+      if (S === 5) { const b = brk(s); Lb(.34, `friction band ±${f(b, 2)} N·m`, '--bad'); Lb(.44, `push below it: encoder sees 0`, '--bad'); Lb(.54, `dead zone in angle ±${f(b / s.kv, 3)} rad`, '--muted'); Lb(.64, `energy lost per cycle 4·band·A = ${f(4 * b * .2, 2)} J`, '--muted'); }
+      if (S === 6) { const wp = s.wp * TAU; Lb(.34, `ω_p = ${f(wp, 0)} rad/s`, '--ink'); Lb(.44, `min M_v ≈ k_e/ω_p² = ${f(s.ke / (wp * wp), 3)}`, '--bad'); Lb(.54, `your M_v = ${f(s.mv, 3)} vs impedance ${f(Jo, 3)}`, '--c'); Lb(.64, `force sensor bypasses ${f(brk(s), 2)} N·m friction`, '--a'); } }
+    const B2 = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); B2.frame(); const L2 = (x, y, t, cl) => B2.label(B2.x + B2.w * x, B2.y + B2.h * y, t, cl, { mono: true, size: 12 });
+    L2(.02, .22, `θ_m = N θ,  τ_out = η N τ_m,  ω_out = ω_m / N`, '--ink');
+    L2(.02, .47, `J_out = N²J_r + J_L = ${f(s.N * s.N, 0)}·${f(s.Jr * 1e4, 2)}e-4 + ${f(s.JL, 3)} = ${f(Jo, 4)} kg·m²   (rotor ${f(Jr2 / Jo * 100, 0)} %)`, '--a');
+    L2(.02, .72, `backdrive breakaway N τ_s/η = ${f(brk(s), 2)} N·m — a push of ${s.push} N·m ${s.push > brk(s) ? 'moves the joint' : 'is invisible to the encoder'}`, s.push > brk(s) ? '--c' : '--bad');
+  },
+  math(S) {
+    const s = st(), Jo = Jout(s), nst = Math.sqrt(s.JL / s.Jr), wp = s.wp * TAU;
+    const head = `<p class="cg">N = ${s.N}, J_r = ${f(s.Jr * 1e4, 2)}e-4 (motor side), J_L = ${f(s.JL, 3)} kg·m².</p>`;
+    const rows = [
+`${E(`θ_m = N θ_out
+τ_out ω_out = η τ_m ω_m   ⇒  τ_out = η N τ_m
+N = ${s.N}: ${f(s.tm, 1)} N·m → ${f(s.N * s.tm * s.eta, 1)} N·m at η = ${f(s.eta, 2)}`)}
+<p>A gearbox is a lever in rotation: it changes the exchange rate between torque and speed, not the power. Losses (η) appear in both directions — backdriving usually loses more.</p>`,
+`${E(`KE = ½ J_r θ̇_m² = ½ J_r (N θ̇)² = ½ (N² J_r) θ̇²
+J_reflected = N² J_r = ${f(s.N * s.N, 0)} × ${f(s.Jr * 1e4, 2)}e-4 = ${f(Jref(s), 4)}
+100:1 → ×10 000`)}
+<p>Doubling N quadruples what the rotor feels like. That is why quasi-direct drives stop at N ≈ 6–10 and why a harmonic drive at 100:1 is dominated by its own motor.</p>`,
+`${E(`motor line: τ_m = τ_peak (1 − ω_m/ω_0)
+output line: τ = η N τ_peak (1 − N ω/ω_0)
+stall ${f(s.N * s.tm * .95, 1)} N·m, top speed ${f(s.wm / s.N, 1)} rad/s`)}
+<p>The gearbox does not create power: peak mechanical power τ_peak ω_0/4 is the same at every N. Choosing N slides the line between strong-and-slow and weak-and-fast; the task points tell you which side you need.</p>`,
+`${E(`a(N) = N τ_m / (N² J_r + J_L)
+da/dN = 0  ⇒  N* = √(J_L/J_r) = ${f(nst, 2)}
+a_max = τ_m / (2√(J_r J_L))`)}
+<p>At N* half the motor torque spins the rotor and half the limb. Most real joints run above N* — they need static torque (gravity) more than raw acceleration — and pay for it in reflected inertia.</p>`,
+`${E(`move only if τ_push > N τ_s / η = ${f(brk(s), 2)} N·m
+then θ̈ = (τ_push − N τ_s/η) / (N² J_r + J_L)
+N = ${s.N}: ${s.push > brk(s) ? f((s.push - brk(s)) / Jo, 1) + ' rad/s²' : 'no motion'}`)}
+<p>Backdrivability is two numbers: friction reflected linearly (N) and inertia reflected quadratically (N²). High-ratio gearboxes fail on both; worm gears do not backdrive at all (η_back → 0).</p>`,
+`${E(`impedance: τ_m = −K_v θ_enc   (the encoder is the only witness)
+felt: τ_push = K_v θ + sgn(θ̇)·N τ_s/η
+no motion while |τ_push − K_v θ| < ${f(brk(s), 2)} N·m`)}
+<p>Impedance control is open-loop in force: it assumes the mechanism lets a push turn into motion. Through a stiff, sticky gearbox small pushes never become motion, so the controller never responds; big pushes break free and lurch.</p>`,
+`${E(`admittance: M_v θ̈_ref + B_v θ̇_ref = τ_sensor,  position loop tracks θ_ref
+felt inertia ≈ M_v = ${f(s.mv, 3)}  (instead of ${f(Jo, 3)})
+stiff contact: M_v ≳ k_e/ω_p² = ${f(s.ke / (wp * wp), 3)}`)}
+<p>The robot uses its own power to overcome its own friction: the sensor sees the push before the gears do. Against a stiff wall the stiff position loop and the environment form a loop of their own — light virtual masses chatter. Impedance is good at hard contact, admittance at free motion: the duality.</p>`,
+`${E(`1 QDD:            J_impact = 36 J_r + J_L = ${f(36 * s.Jr + s.JL, 3)}
+2 output torque:  J_impact = N²J_r + J_L = ${f(Jo, 3)}
+3 F/T admittance: J_impact = ${f(Jo, 3)}`)}
+${ul(['Output-side torque sensing puts friction, backlash and N² inertia inside the loop — but an impact faster than the loop still meets the full reflected rotor.', 'An F/T sensor sees only forces at its own mounting point; contact anywhere else on the arm is invisible.', 'Once N² inertia exists only mechanics removes it — same lesson as the SEA page.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>N²J_r</b>${f(Jref(s), 4)}</span><span><b>N*</b>${f(Math.sqrt(s.JL / s.Jr), 1)}</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,156 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Series elastic actuator</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Rotor J_m, limb J_L, series spring k (page defaults 0.04, 0.06, 300). */
+const st = () => { const v = SL.v; return { Jm: v.jm / 1000, JL: v.jl / 1000, k: v.k, c: v.c / 100, w: Math.pow(10, v.w / 100), kp: v.kp, v0: v.v0 / 10, kc: v.kc * 1000, N: v.n, bits: v.bits }; };
+const f = SL.f, E = SL.eq, ul = SL.ul, L10 = Math.log10;
+let T = 0;
+const W = s => ({ a: Math.sqrt(s.k / s.Jm), n: Math.sqrt(s.k / s.JL), r: Math.sqrt(s.k * (1 / s.Jm + 1 / s.JL)) });
+const Jeff = (s, w) => s.JL + s.k * s.Jm / (s.k - s.Jm * w * w);
+/* split a curve where cond changes, so positive and negative branches get their own colour */
+const split = (pts, cond) => { const out = []; let cur = null, cv = null; pts.forEach(p => { const c = cond(p); if (c !== cv) { cur = []; out.push({ c, pts: cur }); cv = c; } cur.push(p); }); return out; };
+function zig(A, p0, p1, n, amp, cl, w) { const pts = [p0]; for (let i = 1; i < 2 * n; i++) { const t = i / (2 * n); pts.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (i % 2 ? amp : -amp)]); } pts.push(p1); A.poly(pts, cl, w); }
+/* rotor disk, torsion spring, limb on its own pivot */
+function picture(A, thm, thl, s) {
+  const rr = .22 + .25 * Math.min(1, s.Jm / .1);
+  A.circle([-1, 0], rr, '--b', 4); A.line([-1, 0], [-1 + rr * Math.cos(thm + Math.PI / 2), rr * Math.sin(thm + Math.PI / 2)], '--b', 3); A.text([-1, -rr - .18], 'rotor J_m', '--b', -28, 0, { size: 12 });
+  zig(A, [-1 + rr, 0], [.15, 0], 6, .1 * Math.min(1.6, 300 / s.k + .3), '--c', 2.5); A.text([-.35, .3], 'spring k', '--c', -24, 0, { size: 12 });
+  const L = .9, e = [.15 + L * Math.cos(thl), L * Math.sin(thl)]; A.dot([.15, 0], 6, '--ink'); A.line([.15, 0], e, '--link', 7); A.dot(e, 8 + 12 * Math.min(1, s.JL / .1), '--e'); A.text([.6, -.45], 'limb J_L', '--e', -24, 0, { size: 12 });
+}
+function impact(s) {
+  const Jr = s.N * s.N * s.Jm, Jg = Jr + s.JL, kc = s.kc, tc = Math.PI * Math.sqrt(Jg / kc), Tn = Math.max(3 * tc, 1.2 * Math.PI / W({ ...s, Jm: Jr }).r), dt = Tn / 6000;
+  const ct = th => th > 0 ? kc * th : 0;
+  const sea = CTL.ode((t, x) => { const ts = s.k * (x[0] - x[2]) + s.c * (x[1] - x[3]); return [x[1], -ts / Jr, x[3], (ts - ct(x[2])) / s.JL]; }, [0, s.v0, 0, s.v0], Tn, dt, 10);
+  const rig = CTL.ode((t, x) => [x[1], -ct(x[0]) / Jg], [0, s.v0], Tn, dt, 10);
+  return { Tn, Jr, Jg, sea: sea.map(([t, x]) => [t, ct(x[2]), s.k * (x[0] - x[2])]), rig: rig.map(([t, x]) => [t, ct(x[0])]) };
+}
+function loop(s) {
+  const J = s.Jm + s.JL, kd = 2 * .7 * Math.sqrt(s.kp * J), num = CTL.pmul([kd, s.kp], [s.c, s.k]), den = [s.Jm * s.JL, s.c * J, s.k * J, 0, 0];
+  const Lp = CTL.tf(num, den), m = CTL.margins(Lp, -1, 4, 3000), cl = CTL.feedback(Lp), r = CTL.roots(cl.den), stable = r.every(z => z[0] < 0);
+  return { kd, Lp, m, cl, stable, rig: CTL.feedback(CTL.tf([kd, s.kp], [J, 0, 0])) };
+}
+SL.app({
+  title: 'Series elastic actuator: a spring between motor and limb',
+  sub: 'One spring makes the joint two bodies. What the world feels now depends on how fast it pushes — light during an impact, heavy during a slow lean — and the same spring sets a ceiling on how fast the joint can be controlled.',
+  view: '2d',
+  legend: [['--b', 'rotor / motor side'], ['--e', 'limb / load side'], ['--c', 'spring'], ['--a', 'J_eff / response'], ['--bad', 'resonance / limit']],
+  controls: [
+    { id: 'jm', label: 'rotor J_m', min: 1, max: 200, value: 40, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'jl', label: 'limb J_L', min: 1, max: 200, value: 60, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'k', label: 'spring k', min: 5, max: 4000, value: 300, fmt: x => x + ' N·m/rad' },
+    { id: 'c', label: 'spring damping c', min: 0, max: 300, value: 50, fmt: x => f(x / 100, 2) + ' N·m·s/rad' },
+    { id: 'w', label: 'probe frequency ω', min: 0, max: 300, value: 150, fmt: x => f(Math.pow(10, x / 100), 1) + ' rad/s' },
+    { id: 'kp', label: 'PD stiffness K_p (step 6)', min: 1, max: 100, value: 8, fmt: x => x + ' N·m/rad' },
+    { id: 'v0', label: 'impact speed (step 5)', min: 2, max: 60, value: 20, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'kc', label: 'wall stiffness (step 5)', min: 1, max: 100, value: 20, fmt: x => x + ' kN·m/rad' },
+    { id: 'n', label: 'gearbox before the spring (step 5)', min: 1, max: 10, value: 3, fmt: x => x + ':1' },
+    { id: 'bits', label: 'spring encoder bits (step 7)', min: 8, max: 20, value: 14, fmt: x => x + ' bit' },
+  ],
+  play: { tick(dt) { T += dt; } },
+  reset() { T = 0; },
+  steps: [
+    ['Two bodies, two equations', 'The spring separates rotor and limb: two angles θ_m and θ_L, two Newton equations coupled only through the spring torque k(θ_m − θ_L). Press Play: left alone, the pair rocks against each other at one frequency, the relative mode.'],
+    ['J_eff becomes a curve', 'Eliminate θ_m and the inertia the world feels is J_eff(ω) = J_L + kJ_m/(k − J_mω²). Slow pushes feel J_m + J_L; fast pushes feel only J_L. In between: infinity at √(k/J_m) and zero at the relative-mode frequency.'],
+    ['Three experiments, three frequencies', 'Shake the motor and watch the limb: peak at √(k/J_L). Push the limb with the motor torque-free: it will not move at √(k/J_m) and runs away at √(k(1/J_m + 1/J_L)). Never mix them up.'],
+    ['Who moves: the motor or the spring?', 'Below √(k/J_m) the spring barely bends — the rotor is dragged along, so you feel it. Above, the spring takes the motion and the rotor stands almost still. Slide the probe frequency across and press Play.'],
+    ['Motor → limb: transmissibility', 'Now the motor is the input. Below √(k/J_L) the limb follows; at it the limb overshoots by a factor limited only by damping; above it the limb ignores the motor (−40 dB/decade). This is the hard limit on how fast a SEA can move its load.'],
+    ['Impact: the spring acts before any software', 'Swing the limb into a wall. Rigid joint: the whole reflected rotor slams in. SEA: the first, sharp peak sees only J_L; the spring loads up slowly. A 1 kHz loop needs 1 ms to notice; this spike is over in a few.'],
+    ['Closing a loop around the spring', 'PD on the limb angle, torque on the motor. Gains tuned as if rigid work at low stiffness; push K_p and the crossover runs into the spring resonance, where the phase falls through −180°. The spring sets the bandwidth ceiling.'],
+    ['The spring is also a torque sensor', 'Measure deflection Δθ and τ = kΔθ. A softer spring turns the same encoder count into finer torque resolution — and lowers the resonance. Stiffness is the single dial trading torque fidelity and safety against bandwidth.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, w = W(s), J = s.Jm + s.JL;
+    const ws = CTL.logspace(0, 3, 600), lw = L10(s.w);
+    const R = Pl.panel(.63, 0, .37, .66, [-1.5, 1.3, -1.2, 1.2], S === 0 || S === 3);
+    if (S === 0) { const th = Math.sin(3 * T), A = .5; R.frame('relative mode (slowed down)'); picture(R, A * s.JL / J * th, -A * s.Jm / J * th, s);
+      const P = Pl.panel(0, 0, .62, .66, [0, 2.1, -.6, .6], false), ts = [...Array(300)].map((_, i) => i / 299 * 2.1);
+      P.series([{ pts: ts.map(t => [t, .5 * s.JL / J * Math.sin(3 * t)]), cl: '--b', w: 2.5, label: 'θ_m' }, { pts: ts.map(t => [t, -.5 * s.Jm / J * Math.sin(3 * t)]), cl: '--e', w: 2.5, label: 'θ_L' }], { title: `free motion: opposite swings at ω_r = ${f(w.r, 1)} rad/s (slowed)` });
+      P.line([T % 2.1, -.6], [T % 2.1, .6], '--grey', 1, [3, 3]); }
+    else if (S === 1) { const yl = [L10(s.JL) - 1.2, L10(J) + 1.4], A = Pl.panel(0, 0, .62, .66, [0, 3, ...yl], false);
+      const pts = ws.map(x => [L10(x), Jeff(s, x)]), segs = split(pts, p => p[1] > 0).map(g => ({ pts: g.pts.map(p => [p[0], L10(Math.max(1e-9, Math.abs(p[1])))]), cl: g.c ? '--a' : '--bad', w: 3, dash: g.c ? null : [5, 3] }));
+      segs[0].label = 'log₁₀ |J_eff|'; segs.push({ pts: [[0, L10(J)], [3, L10(J)]], cl: '--b', w: 1.2, dash: [4, 3], label: 'J_m + J_L' }, { pts: [[0, L10(s.JL)], [3, L10(s.JL)]], cl: '--e', w: 1.2, dash: [4, 3], label: 'J_L' });
+      A.series(segs, { title: 'J_eff(ω) vs log₁₀ ω — dashed red = negative (mass feels like a spring)' });
+      [[w.a, 'ω_a: J_eff → ∞', -4, 'right'], [w.r, 'ω_r: J_eff = 0', 4, 'left']].forEach(([x, t, dx, al], i) => { A.line([L10(x), yl[0]], [L10(x), yl[1]], '--bad', 1, [3, 3]); A.text([L10(x), yl[1]], t, '--bad', dx, 34 + 16 * i, { size: 12, align: al }); });
+      const jw = Jeff(s, s.w); A.dot([lw, L10(Math.max(1e-9, Math.abs(jw)))], 6, '--ink'); }
+    else if (S === 2) { const A = Pl.panel(0, 0, .62, .66, [0, 3, -4, 3], false), c1 = ws.map(x => [L10(x), L10(s.k / Math.abs(s.k - s.JL * x * x))]), c2 = ws.map(x => [L10(x), L10(1 / Math.abs(Jeff(s, x) * x * x)) + 2]);
+      A.series([{ pts: c1, cl: '--b', w: 2.5, label: '① |θ_L/θ_m|: motor angle prescribed' }, { pts: c2, cl: '--e', w: 2.5, label: '② ③ |θ_L/τ_L| (+2 decades): motor torque-free' }], { title: 'log₁₀ magnitude vs log₁₀ ω' });
+      [[w.n, '① ω_n = √(k/J_L)', '--b'], [w.a, '② ω_a = √(k/J_m)', '--e'], [w.r, '③ ω_r = √(k(1/J_m+1/J_L))', '--bad']].forEach(([x, t, cl], i) => { A.line([L10(x), -4], [L10(x), 3], cl, 1, [3, 3]); A.text([L10(x), 3], t + ' = ' + f(x, 1), cl, 4, 16 + 16 * i, { size: 12 }); }); }
+    else if (S === 3) { const g = s.k / (s.k - s.Jm * s.w * s.w), th = Math.cos(3 * T), A0 = .35; R.frame(`forced at ω = ${f(s.w, 1)} rad/s (slowed)`); picture(R, A0 * Math.max(-3, Math.min(3, g)) * th, A0 * th, s);
+      const A = Pl.panel(0, 0, .62, .66, [0, 3, -3, 3], false);
+      A.series([{ pts: ws.map(x => [L10(x), L10(s.k / Math.abs(s.k - s.Jm * x * x))]), cl: '--b', w: 3, label: 'log₁₀ |θ_m/θ_L| — rotor motion' }, { pts: ws.map(x => [L10(x), L10(s.Jm * x * x / Math.abs(s.k - s.Jm * x * x))]), cl: '--c', w: 3, label: 'log₁₀ |Δθ/θ_L| — spring deflection' }], { title: 'per radian of limb motion: how much rotor, how much spring?' });
+      A.line([L10(w.a), -3], [L10(w.a), 3], '--bad', 1, [3, 3]); A.text([L10(w.a), 3], 'handover at ω_a', '--bad', 4, 34, { size: 12 }); A.line([lw, -3], [lw, 3], '--ink', 1, [2, 3]); }
+    else if (S === 4) { const A = Pl.panel(0, 0, .62, .66, [0, 3, -60, 40], false), tr = x => CTL.cdiv([s.k, s.c * x], [s.k - s.JL * x * x, s.c * x]);
+      A.series([{ pts: ws.map(x => [L10(x), CTL.db(CTL.cabs(tr(x)))]), cl: '--a', w: 3, label: '|θ_L/θ_m| dB' }, { pts: ws.map(x => [L10(x), CTL.carg(tr(x)) * 180 / Math.PI / 4.5]), cl: '--grey', w: 1.5, dash: [4, 3], label: 'phase ÷ 4.5 (°)' }], { title: 'motor angle in → limb angle out' });
+      A.line([L10(w.n), -60], [L10(w.n), 40], '--bad', 1, [3, 3]); A.text([L10(w.n), 40], 'ω_n = ' + f(w.n, 1), '--bad', 4, 16, { size: 12 }); const g = CTL.db(CTL.cabs(tr(s.w))); A.dot([lw, g], 6, '--ink'); }
+    else if (S === 5) { const im = impact(s), pk = Math.max(...im.sea.map(p => p[1]), ...im.rig.map(p => p[1]), ...im.sea.map(p => Math.abs(p[2]))) * 1.12, A = Pl.panel(0, 0, .62, .66, [0, im.Tn * 1000, -pk * .08, pk], false);
+      A.series([{ pts: im.rig.map(p => [p[0] * 1000, p[1]]), cl: '--bad', w: 2.5, label: 'rigid joint: contact torque' }, { pts: im.sea.map(p => [p[0] * 1000, p[1]]), cl: '--a', w: 3, label: 'SEA: contact torque' }, { pts: im.sea.map(p => [p[0] * 1000, p[2]]), cl: '--c', w: 1.5, dash: [4, 3], label: 'spring torque' }], { title: 'collision with a wall — time in ms', yl: 'N·m' });
+      A.line([1, -pk * .08], [1, pk], '--grey', 1, [2, 3]); A.text([1, pk * .9], '1 kHz loop notices', '--muted', 4, 0, { size: 11 }); }
+    else if (S === 6) { const lp = loop(s), m = lp.m, A = Pl.panel(0, 0, .62, .32, [-1, 4, -80, 60], false);
+      A.series([{ pts: m.ws.map((x, i) => [L10(x), Math.max(-80, CTL.db(m.mag[i]))]), cl: '--a', w: 2.5, label: '|L| dB' }], { title: `loop gain, K_d = ${f(lp.kd, 2)} (ζ = 0.7 as if rigid)` }); A.line([-1, 0], [4, 0], '--grey', 1); A.line([L10(w.r), -80], [L10(w.r), 60], '--bad', 1, [3, 3]);
+      const B = Pl.panel(0, .34, .62, .32, [-1, 4, -400, 0], false); B.series([{ pts: m.ws.map((x, i) => [L10(x), m.ph[i] * 180 / Math.PI]), cl: '--b', w: 2.5, label: 'phase °' }]); B.line([-1, -180], [4, -180], '--bad', 1, [4, 3]); if (m.wc) B.line([L10(m.wc), -400], [L10(m.wc), 0], '--a', 1, [2, 3]);
+      const Tst = 1.2, y1 = CTL.step(lp.cl, Tst, 2e-4).filter((_, i) => i % 10 === 0), y0 = CTL.step(lp.rig, Tst, 2e-4).filter((_, i) => i % 10 === 0), C2 = Pl.panel(.63, 0, .37, .66, [0, Tst, -.2, 2], false);
+      C2.series([{ pts: y0.map(p => [p[0], p[1]]), cl: '--grey', w: 1.5, dash: [4, 3], label: 'rigid' }, { pts: y1.map(p => [p[0], Math.max(-.2, Math.min(2, p[1]))]), cl: lp.stable ? '--a' : '--bad', w: 2.5, label: lp.stable ? 'with spring' : 'with spring: UNSTABLE' }], { title: 'limb step response' }); }
+    else { const ks = CTL.logspace(1, 4, 200), d = 2 * Math.PI / Math.pow(2, s.bits), A = Pl.panel(0, 0, .62, .66, [1, 4, -4, 4], false);
+      A.series([{ pts: ks.map(k => [L10(k), L10(k * d)]), cl: '--c', w: 3, label: 'log₁₀ torque resolution kδ (N·m)' }, { pts: ks.map(k => [L10(k), L10(Math.sqrt(k * (1 / s.Jm + 1 / s.JL)))]), cl: '--bad', w: 3, label: 'log₁₀ ω_r (rad/s)' }, { pts: ks.map(k => [L10(k), L10(k * .15)]), cl: '--b', w: 1.5, dash: [4, 3], label: 'log₁₀ τ at 0.15 rad travel' }], { title: 'stiffness k (log₁₀ N·m/rad): what each choice buys' });
+      A.line([L10(s.k), -4], [L10(s.k), 4], '--ink', 1.5, [3, 3]); A.dot([L10(s.k), L10(s.k * d)], 6, '--c'); A.dot([L10(s.k), L10(w.r)], 6, '--bad'); }
+    if ([1, 2, 4, 5, 7].includes(S)) { R.frame('numbers'); const Lb = (y, t, cl) => R.label(R.x + 10, R.y + R.h * y, t, cl, { mono: true, size: 12 });
+      Lb(.1, `ω_n = √(k/J_L) = ${f(w.n, 1)} rad/s`, '--b'); Lb(.2, `ω_a = √(k/J_m) = ${f(w.a, 1)} rad/s`, '--e'); Lb(.3, `ω_r = ${f(w.r, 1)} rad/s (${f(w.r / 6.283, 1)} Hz)`, '--bad');
+      if (S === 1) { const jw = Jeff(s, s.w); Lb(.45, `at ω = ${f(s.w, 1)}: J_eff = ${f(jw, 4)}`, jw > 0 ? '--a' : '--bad'); Lb(.55, `slow limit J_m + J_L = ${f(J, 3)}`, '--b'); Lb(.65, `fast limit J_L = ${f(s.JL, 3)}`, '--e'); }
+      if (S === 2) { Lb(.45, 'ω_n < ω_a when J_L > J_m', '--muted'); Lb(.55, 'ω_r > both, always', '--muted'); Lb(.65, `ω_r² = ω_n² + ω_a² = ${f(w.r * w.r, 0)}`, '--ink'); }
+      if (S === 4) { const z = s.c / (2 * Math.sqrt(s.k * s.JL)); Lb(.45, `damping ratio ζ = c/(2√(kJ_L)) = ${f(z, 3)}`, '--ink'); Lb(.55, `peak ≈ 1/(2ζ) = ${f(1 / (2 * Math.max(z, 1e-4)), 1)} (${f(CTL.db(1 / (2 * Math.max(z, 1e-4))), 1)} dB)`, '--bad'); Lb(.65, `at ω = ${f(s.w, 1)}: ${f(CTL.db(s.k / Math.abs(s.k - s.JL * s.w * s.w)), 1)} dB (undamped)`, '--a'); }
+      if (S === 5) { const im = impact(s), ps = Math.max(...im.sea.map(p => p[1])), pr = Math.max(...im.rig.map(p => p[1])); Lb(.45, `reflected rotor N²J_m = ${f(im.Jr, 3)}`, '--b'); Lb(.55, `rigid peak ${f(pr, 0)} N·m`, '--bad'); Lb(.65, `SEA peak ${f(ps, 0)} N·m (${f(ps / pr * 100, 0)} %)`, '--a'); Lb(.75, `√(J_L/(N²J_m+J_L)) = ${f(Math.sqrt(s.JL / im.Jg) * 100, 0)} %`, '--muted'); }
+      if (S === 7) { const d = 2 * Math.PI / Math.pow(2, s.bits); Lb(.45, `δ = 2π/2^${s.bits} = ${f(d * 1e3, 3)} mrad`, '--ink'); Lb(.55, `torque step kδ = ${f(s.k * d * 1e3, 1)} mN·m`, '--c'); Lb(.65, `±0.15 rad travel → ±${f(s.k * .15, 0)} N·m`, '--b'); } }
+    const B2 = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); B2.frame(); const L2 = (x, y, t, cl) => B2.label(B2.x + B2.w * x, B2.y + B2.h * y, t, cl, { mono: true, size: 12 });
+    L2(.02, .22, 'J_m θ̈_m = τ_m − k(θ_m − θ_L) − c(θ̇_m − θ̇_L)        J_L θ̈_L = k(θ_m − θ_L) + c(θ̇_m − θ̇_L) + τ_ext', '--ink');
+    L2(.02, .47, `J_eff(ω) = J_L + kJ_m/(k − J_mω²):  ${f(J, 3)} (slow) → ∞ at ${f(w.a, 1)} → 0 at ${f(w.r, 1)} → ${f(s.JL, 3)} (fast) rad/s`, '--a');
+    if (S === 6) { const lp = loop(s); L2(.02, .72, `crossover ${lp.m.wc ? f(lp.m.wc, 1) : '—'} rad/s, phase margin ${lp.m.pm !== null ? f(lp.m.pm, 1) + '°' : '—'}, gain margin ${lp.m.gm !== null ? f(lp.m.gm, 1) + ' dB' : '∞'} — ω_r = ${f(w.r, 1)} rad/s`, lp.stable ? '--a' : '--bad'); }
+    else L2(.02, .72, `at the probe ω = ${f(s.w, 1)} rad/s: J_eff = ${f(Jeff(s, s.w), 4)} kg·m², spring deflection per limb radian ${f(s.Jm * s.w * s.w / Math.abs(s.k - s.Jm * s.w * s.w), 3)}`, '--muted');
+  },
+  math(S) {
+    const s = st(), w = W(s), J = s.Jm + s.JL;
+    const head = `<p class="cg">J_m = ${f(s.Jm, 3)}, J_L = ${f(s.JL, 3)} kg·m², k = ${s.k} N·m/rad, c = ${f(s.c, 2)}.</p>`;
+    const rows = [
+`${E(`J_m θ̈_m = τ_m − k(θ_m − θ_L)
+J_L θ̈_L = k(θ_m − θ_L) + τ_ext
+free motion (τ = 0): modes ω = 0 and ω_r = √(k(1/J_m + 1/J_L)) = ${f(w.r, 2)}`)}
+${ul(['ω = 0: both bodies turn together — the rigid-body mode, J_m + J_L.', `ω_r: they swing against each other, amplitudes in ratio θ_m/θ_L = −J_L/J_m = ${f(-s.JL / s.Jm, 2)}; the centre of inertia stays still.`, 'Every later step is one of these two modes showing up in a different experiment.'])}`,
+`${E(`(J_m s² + k) θ_m = k θ_L  ⇒  θ_m = k/(k + J_m s²) · θ_L
+[J_L s² + kJ_m s²/(k + J_m s²)] θ_L = τ_ext
+J_eff(ω) = J_L + kJ_m/(k − J_mω²)
+ω → 0: ${f(J, 3)}     ω → ∞: ${f(s.JL, 3)}
+∞ at ω_a = ${f(w.a, 1)},  0 at ω_r = ${f(w.r, 1)}`)}
+<p>Between ω_a and ω_r J_eff is negative: the joint pushes back in phase with displacement, like a spring rather than a mass. Above ω_r it climbs back to J_L. The impact-relevant fact: fast pushes see only the limb.</p>`,
+`${E(`① θ_L/θ_m = k/(k − J_Lω²)               peak at ω_n = √(k/J_L) = ${f(w.n, 1)}
+② θ_L/τ_L, motor torque-free: zero at  ω_a = √(k/J_m) = ${f(w.a, 1)}
+③ same, both free: pole at             ω_r = √(ω_n² + ω_a²) = ${f(w.r, 1)}`)}
+${ul(['① is the motor driving the limb through the spring (position-controlled motor).', '② the rotor oscillates and the spring cancels the push exactly: the limb stands still — an antiresonance.', '③ is the free relative mode of step 0. These are transfer-function features, not control bandwidths.'])}`,
+`${E(`θ_m/θ_L = k/(k − J_mω²)
+Δθ/θ_L = (θ_m − θ_L)/θ_L = J_mω²/(k − J_mω²)
+at ω = ${f(s.w, 1)}: rotor ${f(s.k / (s.k - s.Jm * s.w * s.w), 3)},  spring ${f(s.Jm * s.w * s.w / (s.k - s.Jm * s.w * s.w), 3)} per rad of limb`)}
+<p>Slow: the spring bends just enough (≈ J_mω²/k) to accelerate the rotor — so the rotor's mass is really in your hand. Fast: rotor motion → 0 and deflection → −1: the spring takes all the motion and the rotor is effectively bolted to ground.</p>`,
+`${E(`θ_L/θ_m = (cs + k)/(J_L s² + cs + k)
+ω_n = √(k/J_L) = ${f(w.n, 2)},  ζ = c/(2√(kJ_L)) = ${f(s.c / (2 * Math.sqrt(s.k * s.JL)), 3)}
+peak ≈ 1/(2ζ),   above ω_n: −40 dB/decade`)}
+<p>A perfect motor position loop still cannot move the limb faster than ω_n: past it the spring filters the motion away. That is why SEA force/position bandwidth is quoted in the 5–20 Hz range, set by k and J_L, not by the motor.</p>`,
+`${E(`rigid: peak ≈ v√(k_c (N²J_m + J_L)),  contact time π√(J/k_c)
+SEA first peak ≈ v√(k_c J_L)   (rotor hidden behind the spring)
+ratio √(J_L/(N²J_m + J_L)) = ${f(Math.sqrt(s.JL / (s.N * s.N * s.Jm + s.JL)), 3)}`)}
+<p>The wall is far stiffer than the series spring, so during the first milliseconds the spring has not moved and the rotor plays no part. The bigger the gearbox in front of the spring, the larger the reflected rotor — and the larger the protection. No controller is involved; no controller could be, at this speed.</p>`,
+`${E(`P(s) = θ_L/τ_m = (cs + k)/(s²[J_mJ_L s² + c(J_m+J_L)s + k(J_m+J_L)])
+C(s) = K_p + K_d s,  K_d = 2·0.7·√(K_p(J_m+J_L))
+low ω: P ≈ 1/((J_m+J_L)s²)    near ω_r = ${f(w.r, 1)}: resonance, phase → −360°`)}
+<p>With these numbers the loop goes unstable once the crossover passes roughly ω_r/5 (K_p ≈ 22): the gain margin, not the phase margin, is what runs out. Collocated control (feedback on θ_m, or on spring torque) avoids the phase crash; feedback on the far side of the spring meets it head-on. Raise k and the ceiling rises with √k — losing the safety of step 5.</p>`,
+`${E(`τ = k Δθ,  Δθ measured by an encoder of resolution δ = 2π/2^b
+torque resolution kδ = ${f(s.k * 2 * Math.PI / Math.pow(2, s.bits) * 1e3, 2)} mN·m
+ω_r ∝ √k:  halving k → finer torque by 2, resonance lower by √2`)}
+${ul(['Soft spring: exquisite torque sensing and impact protection, low bandwidth, big deflection.', 'Stiff spring: high bandwidth, coarse torque, little protection — tending to the rigid joint of page 25.', 'Every SEA design is one point on this line; the PEA of page 27 moves the spring to the other side of the motor.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(), w = W(s); return `<span><b>ω_a</b>${f(w.a, 1)} rad/s</span><span><b>ω_r</b>${f(w.r, 1)} rad/s</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DD vs SEA vs PEA</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Same J_m, J_L, k, b in all three topologies (page defaults 0.04, 0.06, 300, 0.4). */
+const st = () => { const v = SL.v; return { Jm: v.jm / 1000, JL: v.jl / 1000, k: v.k, b: v.b / 100, w: Math.pow(10, v.w / 100), kp: v.kp, fs: v.fs, cyc: v.cyc / 10 }; };
+const f = SL.f, E = SL.eq, ul = SL.ul, L10 = Math.log10, TAU = 2 * Math.PI;
+const CS = .5;   /* SEA spring damping, N·m·s/rad */
+const TOP = [['DD', '--b'], ['SEA', '--a'], ['PEA', '--c']];
+const Jeff = (s, w) => [s.Jm + s.JL, s.JL + s.k * s.Jm / (s.k - s.Jm * w * w), s.Jm + s.JL - s.k / (w * w)];
+const plants = s => { const J = s.Jm + s.JL; return [CTL.tf([1], [J, s.b, 0]), (K => CTL.tf(K, CTL.padd(CTL.pmul([s.Jm, s.b, 0], CTL.padd([s.JL, 0, 0], K)), CTL.pmul([s.JL, 0, 0], K))))([CS, s.k]), CTL.tf([1], [J, s.b, s.k])]; };
+const kdOf = s => 2 * .7 * Math.sqrt(s.kp * (s.Jm + s.JL));
+function closed(s) { const kd = kdOf(s); return plants(s).map((P, i) => { const L = CTL.tf(CTL.pmul([kd, s.kp], P.num), P.den), T0 = CTL.feedback(L), T = i === 2 ? { num: [kd, s.kp + s.k], den: T0.den, delay: 0 } : T0, ok = CTL.roots(T.den).every(z => z[0] < -1e-9);
+  const dc = Math.abs(CTL.pevalr(T.num, 0) / CTL.pevalr(T.den, 0)); let bw = null; if (ok) { for (const x of CTL.logspace(-1, 4, 1500)) if (CTL.cabs(CTL.freq(T, x)) < .7071 * dc) { bw = x; break; } } return { T, ok, dc, bw }; }); }
+/* the page's bandwidth budget, in Hz: min(gain limit, f_s/15, mechanical) */
+function budget(s) { const J = s.Jm + s.JL, imp = s.fs / 15, mech = Math.sqrt(s.k / s.JL) / TAU;
+  const g = [Math.sqrt(s.kp / J) / TAU, Math.sqrt(s.kp / J) / TAU, Math.sqrt((s.kp + s.k) / J) / TAU];
+  return g.map((gi, i) => { const lim = [['gain', gi], ['loop rate', imp]]; if (i === 1) lim.push(['spring', mech]); const m = lim.reduce((a, b) => b[1] < a[1] ? b : a); return { lim, bw: m[1], by: m[0] }; }); }
+const impactPk = (s, kc = 20000, v = 2) => [v * Math.sqrt(kc * (s.Jm + s.JL)), v * Math.sqrt(kc * s.JL), v * Math.sqrt(kc * (s.Jm + s.JL))];
+function zig(A, p0, p1, n, amp, cl, w) { const dx = p1[0] - p0[0], dy = p1[1] - p0[1], l = Math.hypot(dx, dy), nx = -dy / l, ny = dx / l, pts = [p0];
+  for (let i = 1; i < 2 * n; i++) { const t = i / (2 * n), a = i % 2 ? amp : -amp; pts.push([p0[0] + dx * t + nx * a, p0[1] + dy * t + ny * a]); } pts.push(p1); A.poly(pts, cl, w); }
+function schematic(A, kind, s, th) {
+  const rr = .2 + .2 * Math.min(1, s.Jm / .1), c = [-.75, 0], e0 = [.35, 0];
+  A.circle(c, rr, '--b', 3.5); A.line(c, [c[0] + rr * Math.cos(th + 1.57), rr * Math.sin(th + 1.57)], '--b', 2.5);
+  if (kind === 1) zig(A, [c[0] + rr, 0], [e0[0], 0], 5, .09, '--c', 2.5); else A.line([c[0] + rr, 0], e0, '--ink', 4);
+  if (kind === 2) { A.line([-1.15, -.85], [-.35, -.85], '--grey', 2); zig(A, [c[0], -rr], [c[0], -.85], 4, .08, '--c', 2.5); }
+  const e = [e0[0] + .7 * Math.cos(th), .7 * Math.sin(th)]; A.dot(e0, 5, '--ink'); A.line(e0, e, '--link', 6); A.dot(e, 7 + 10 * Math.min(1, s.JL / .1), '--e');
+  A.text([0, .85], ['Direct drive', 'Series elastic', 'Parallel elastic'][kind], TOP[kind][1], -45, 0, { size: 13 });
+  A.text([0, -1.05], ['motor = limb', 'motor → spring → limb', 'motor = limb, spring to ground'][kind], '--muted', -60, 0, { size: 11 });
+}
+SL.app({
+  title: 'DD vs SEA vs PEA: one rotor, one limb, one spring, three places to put it',
+  sub: 'Same motor, same limb, same spring stiffness. Only the place the spring is bolted changes — and with it the inertia an impact feels, what a controller can reach, and who wins which job.',
+  view: '2d',
+  legend: [['--b', 'direct drive'], ['--a', 'series elastic'], ['--c', 'parallel elastic'], ['--bad', 'limit / unstable']],
+  controls: [
+    { id: 'jm', label: 'rotor J_m', min: 1, max: 200, value: 40, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'jl', label: 'limb J_L', min: 1, max: 200, value: 60, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'k', label: 'spring k (all three)', min: 5, max: 5000, value: 300, fmt: x => x + ' N·m/rad' },
+    { id: 'b', label: 'damping b', min: 0, max: 200, value: 40, fmt: x => f(x / 100, 2) + ' N·m·s/rad' },
+    { id: 'w', label: 'probe frequency ω', min: 0, max: 300, value: 150, fmt: x => f(Math.pow(10, x / 100), 1) + ' rad/s' },
+    { id: 'kp', label: 'PD stiffness K_p (same for all)', min: 1, max: 3000, value: 15, fmt: x => x + ' N·m/rad' },
+    { id: 'fs', label: 'loop rate f_s', min: 100, max: 10000, step: 100, value: 1000, fmt: x => x + ' Hz' },
+    { id: 'cyc', label: 'gait frequency (step 7)', min: 5, max: 100, value: 70, fmt: x => f(x / 10, 1) + ' Hz' },
+  ],
+  steps: [
+    ['Three drawings, one parts list', 'Direct drive bolts the rotor to the limb. The series elastic actuator puts the spring between them. The parallel elastic actuator keeps them bolted and ties the shaft to ground through the spring. Everything else on this page follows from where that spring sits.'],
+    ['What the world feels: J_eff(ω) for all three', 'DD: flat at J_m + J_L. SEA: J_m + J_L slow, only J_L at impact. PEA: negative (spring-like) slow, J_m + J_L at impact. Right side of the plot = impacts; left side = slow interaction.'],
+    ['What the controller sees: three plants', 'Torque in, limb angle out. DD and PEA are two-pole plants; the PEA has its poles lifted by k. The SEA is four-pole, with an antiresonance/resonance pair in the middle and −80 dB/decade beyond it.'],
+    ['One PD loop around all three', 'Identical gains, tuned as if the joint were rigid (the PEA also gets feedforward kθ_ref to cancel its spring bias). DD behaves as designed; PEA is faster; SEA is fine at low gain and rings — then goes unstable — as K_p grows. Push the K_p slider.'],
+    ['The bandwidth budget', 'For each topology take the smallest of three ceilings: what your gain buys (√(K_p/J), plus k for the PEA), what your loop rate allows (f_s/15), and — for the SEA only — what the spring allows (√(k/J_L)). The diamond is what you get.'],
+    ['Sweep the spring: the one trade-off', 'Across four decades of k: SEA bandwidth climbs with √k while its impact protection fades; PEA bandwidth climbs too, protection never existed; DD does not care. A series spring stiff enough to stop costing bandwidth has stopped protecting anybody.'],
+    ['Impacts and cyclic work', 'Collision peak at the same speed: only the SEA hides the rotor. Cyclic motion at the gait frequency: only the PEA lets a spring pay the inertia. Each spring placement buys one thing the other cannot.'],
+    ['Scoreboard: who wins which job', 'All the numbers in one table, best in each row highlighted. Fast legs (Cheetah): DD/QDD. Robots among people (Digit, Neo): SEA. Heavy, efficient bipeds and prostheses: PEA. Real humanoids mix them joint by joint.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, J = s.Jm + s.JL, lw = L10(s.w), ws = CTL.logspace(0, 3, 500);
+    if (S === 0) { [0, 1, 2].forEach(i => schematic(Pl.panel(i / 3, 0, 1 / 3 - .01, .66, [-1.3, 1.3, -1.2, 1.1]), i, s, .35)); }
+    else if (S === 1) { const yl = [L10(s.JL) - 1.3, L10(J) + 1.5], A = Pl.panel(0, 0, .62, .66, [0, 3, ...yl], false), lg = v => L10(Math.max(1e-9, Math.abs(v)));
+      const list = []; [0, 1, 2].forEach(i => { let cur = null, sg = null; ws.forEach(x => { const v = Jeff(s, x)[i], g = v > 0; if (g !== sg) { cur = { pts: [], cl: TOP[i][1], w: i === 0 ? 4 : 2.5, dash: g ? null : [5, 3] }; list.push(cur); sg = g; } cur.pts.push([L10(x), lg(v)]); }); });
+      list.forEach(l => { const i = TOP.findIndex(t => t[1] === l.cl); if (!TOP[i].done) { l.label = TOP[i][0]; TOP[i].done = 1; } }); TOP.forEach(t => delete t.done);
+      A.series(list, { title: 'log₁₀ |J_eff| vs log₁₀ ω — dashed = negative' }); A.line([lw, yl[0]], [lw, yl[1]], '--ink', 1, [2, 3]);
+      A.text([.05, yl[1] - .25], '← slow interaction', '--muted', 0, 0, { size: 12 }); A.text([2.25, yl[1] - .25], 'impacts →', '--muted', 0, 0, { size: 12 }); }
+    else if (S === 2) { const A = Pl.panel(0, 0, .62, .66, [0, 3, -140, 0], false);
+      A.series(plants(s).map((P, i) => ({ pts: ws.map(x => [L10(x), Math.max(-140, CTL.db(CTL.cabs(CTL.freq(P, x))))]), cl: TOP[i][1], w: i === 0 ? 4 : 2.5, label: TOP[i][0] })), { title: '|θ_L/τ| dB vs log₁₀ ω' });
+      [[Math.sqrt(s.k / s.Jm), 'SEA antires.'], [Math.sqrt(s.k * (1 / s.Jm + 1 / s.JL)), 'SEA res.'], [Math.sqrt(s.k / J), 'PEA poles']].forEach(([x, t], i) => { if (x < 1000) { A.line([L10(x), -140], [L10(x), 0], i < 2 ? '--a' : '--c', 1, [3, 3]); A.text([L10(x), 0], t, i < 2 ? '--a' : '--c', 4, 16 + 15 * i, { size: 11 }); } }); }
+    else if (S === 3) { const C = closed(s), Tst = 1.5, A = Pl.panel(0, 0, .62, .66, [0, Tst, -.2, 1.8], false);
+      A.series(C.map((c, i) => { let r = CTL.step(c.T, Tst, i === 1 ? 2e-4 : 1e-3); if (i === 1) r = r.filter((_, j) => j % 5 === 0); if (!c.ok) { const j = r.findIndex(p => Math.abs(p[1]) > 1.8); if (j > 0) r = r.slice(0, j + 1); } return { pts: r.map(p => [p[0], Math.max(-.2, Math.min(1.8, p[1]))]), cl: c.ok ? TOP[i][1] : '--bad', w: i === 0 ? 4 : 2.5, label: TOP[i][0] + (c.ok ? '' : ' UNSTABLE') }; }), { title: `step response, K_p = ${s.kp}, K_d = ${f(kdOf(s), 2)} (same for all)` });
+      A.line([0, 1], [Tst, 1], '--grey', 1, [2, 3]); }
+    else if (S === 4) { const Bd = budget(s), top = Math.max(...Bd.flatMap(b => b.lim.map(l => l[1]))) * 1.15, A = Pl.panel(0, 0, .62, .66, [0, 3, 0, L10(top) + .2], false); A.frame('bandwidth budget, log₁₀ Hz — bars: ceilings, diamond: result');
+      Bd.forEach((b, i) => { b.lim.forEach((l, j) => { const x0 = i + .15 + j * .24, h = Math.max(0, L10(l[1]) + .2); A.poly([[x0, 0], [x0 + .2, 0], [x0 + .2, h], [x0, h]], j === 0 ? TOP[i][1] : j === 1 ? '--grey' : '--bad', 1.5, null, j === 0 ? TOP[i][1] : j === 1 ? '--grey' : '--bad', true); A.text([x0 + .1, h], l[0], '--ink', -14, -4, { size: 10 }); });
+        const y = L10(b.bw) + .2; A.poly([[i + .5, y + .07], [i + .58, y], [i + .5, y - .07], [i + .42, y]], '--ink', 2, null, '--ink', true); A.text([i + .5, .02], TOP[i][0] + ': ' + f(b.bw, 1) + ' Hz', TOP[i][1], -40, 16, { size: 12 }); }); }
+    else if (S === 5) { const ks = CTL.logspace(.7, 4, 120), A = Pl.panel(0, 0, .62, .4, [.7, 4, -.5, 3], false), bw = k => budget({ ...s, k }).map(b => L10(b.bw));
+      A.series(TOP.map((t, i) => ({ pts: ks.map(k => [L10(k), bw(k)[i]]), cl: t[1], w: i === 0 ? 4 : 2.5, label: t[0] })), { title: 'log₁₀ budget bandwidth (Hz) vs log₁₀ k' }); A.line([L10(s.k), -.5], [L10(s.k), 3], '--ink', 1, [2, 3]);
+      const B = Pl.panel(0, .42, .62, .24, [.7, 4, -.05, 1.1], false), hid = k => 1 - Math.min(1, Math.abs(k / (k - s.Jm * 300 * 300)));
+      B.series([{ pts: ks.map(k => [L10(k), hid(k)]), cl: '--a', w: 2.5, label: 'SEA: share of rotor hidden from a 300 rad/s event' }, { pts: ks.map(k => [L10(k), 0]), cl: '--c', w: 2, dash: [4, 3], label: 'DD, PEA: none' }]); B.line([L10(s.k), -.05], [L10(s.k), 1.1], '--ink', 1, [2, 3]); }
+    else if (S === 6) { const pk = impactPk(s), A = Pl.panel(0, 0, .3, .66, [0, 3, 0, Math.max(...pk) * 1.2], false); A.frame('impact peak at 2 rad/s (N·m)');
+      pk.forEach((p, i) => { A.poly([[i + .2, 0], [i + .8, 0], [i + .8, p], [i + .2, p]], TOP[i][1], 1.5, null, TOP[i][1], true); A.text([i + .5, p], f(p, 0), '--ink', -12, -4, { size: 12 }); A.text([i + .5, 0], TOP[i][0], TOP[i][1], -12, 16, { size: 12 }); });
+      const w = s.cyc * TAU, A0 = .3, tq = [J * w * w * A0, J * w * w * A0, Math.abs(s.k - J * w * w) * A0], B = Pl.panel(.31, 0, .31, .66, [0, 3, 0, Math.max(...tq) * 1.2], false); B.frame(`peak torque, ±0.3 rad at ${f(s.cyc, 1)} Hz (N·m)`);
+      tq.forEach((p, i) => { B.poly([[i + .2, 0], [i + .8, 0], [i + .8, p], [i + .2, p]], TOP[i][1], 1.5, null, TOP[i][1], true); B.text([i + .5, p], f(p, 1), '--ink', -12, -4, { size: 12 }); B.text([i + .5, 0], TOP[i][0], TOP[i][1], -12, 16, { size: 12 }); }); }
+    else { const pk = impactPk(s), Bd = budget(s), C = closed(s), w = s.cyc * TAU, tq = [J * w * w * .3, J * w * w * .3, Math.abs(s.k - J * w * w) * .3], A = Pl.panel(0, 0, 1, .66, [0, 1, 0, 1], false); A.frame('scoreboard — best in each row in bold colour');
+      const rows = [['J_eff at impact (kg·m²)', [J, s.JL, J], 'min', 3], ['impact peak (N·m)', pk, 'min', 0], ['budget bandwidth (Hz)', Bd.map(b => b.bw), 'max', 1], ['PD loop at these gains', C.map(c => c.ok ? (c.bw ? c.bw / TAU : 0) : -1), 'max', 1], ['cyclic peak torque (N·m)', tq, 'min', 1], ['steady error without feedforward', [0, 0, s.k / (s.k + s.kp)], 'min', 3]];
+      const X = [.04, .46, .64, .82], Y = r => .14 + r * .12, Lb = (x, y, t, cl, o = {}) => A.label(A.x + A.w * x, A.y + A.h * y, t, cl, { mono: true, size: 12, ...o });
+      TOP.forEach((t, i) => Lb(X[i + 1], Y(0), t[0], t[1], { size: 13 }));
+      rows.forEach(([name, vals, best, dg], r) => { Lb(X[0], Y(r + 1), name, '--ink'); const v2 = vals.map(v => v < 0 ? (best === 'max' ? -Infinity : Infinity) : v), bv = best === 'max' ? Math.max(...v2) : Math.min(...v2);
+        vals.forEach((v, i) => Lb(X[i + 1], Y(r + 1), v < 0 ? 'unstable' : r === 3 ? f(v, 1) + ' Hz' : f(v, dg), v < 0 ? '--bad' : Math.abs(v2[i] - bv) < 1e-9 * Math.max(1, Math.abs(bv)) ? TOP[i][1] : '--muted')); }); }
+    if (S >= 1 && S <= 6) { const R = Pl.panel(.63, 0, .37, .66, [0, 1, 0, 1], false); R.frame('numbers'); const Lb = (y, t, cl) => R.label(R.x + 10, R.y + R.h * y, t, cl, { mono: true, size: 12 });
+      if (S === 1) { const je = Jeff(s, s.w); Lb(.1, `at ω = ${f(s.w, 1)} rad/s:`, '--muted'); TOP.forEach((t, i) => Lb(.2 + .1 * i, `${t[0]}: J_eff = ${f(je[i], 4)}`, t[1])); Lb(.55, `impact limit: ${f(J, 3)} / ${f(s.JL, 3)} / ${f(J, 3)}`, '--ink'); Lb(.65, `slow limit:   ${f(J, 3)} / ${f(J, 3)} / −∞`, '--ink'); }
+      if (S === 2) { Lb(.1, 'DD:  1/((J_m+J_L)s² + bs)', '--b'); Lb(.2, 'PEA: 1/((J_m+J_L)s² + bs + k)', '--c'); Lb(.3, 'SEA: K/((J_m s²+bs)(J_L s²+K)', '--a'); Lb(.38, '      + J_L s² K),  K = k + cs', '--a'); Lb(.52, `SEA antiresonance √(k/J_m) = ${f(Math.sqrt(s.k / s.Jm), 1)}`, '--a'); Lb(.62, `SEA resonance = ${f(Math.sqrt(s.k * (1 / s.Jm + 1 / s.JL)), 1)} rad/s`, '--a'); Lb(.72, `PEA corner √(k/J) = ${f(Math.sqrt(s.k / J), 1)} rad/s`, '--c'); }
+      if (S === 3) { const C = closed(s); C.forEach((c, i) => { Lb(.1 + .2 * i, `${TOP[i][0]}: ${c.ok ? 'stable' : 'UNSTABLE'}`, c.ok ? TOP[i][1] : '--bad'); if (c.ok) Lb(.2 + .2 * i, `  −3 dB ${c.bw ? f(c.bw / TAU, 2) + ' Hz' : '—'}, DC ${f(c.dc, 3)}`, '--muted'); }); Lb(.72, 'raise K_p: watch the SEA ring, then go', '--muted'); }
+      if (S === 4) { budget(s).forEach((b, i) => { Lb(.1 + .2 * i, `${TOP[i][0]}: ${f(b.bw, 1)} Hz — set by ${b.by}`, TOP[i][1]); Lb(.2 + .2 * i, '  ' + b.lim.map(l => `${l[0]} ${f(l[1], 1)}`).join(', '), '--muted'); }); Lb(.72, `f_s/15 = ${f(s.fs / 15, 1)} Hz`, '--grey'); }
+      if (S === 5) { const bd = budget(s); Lb(.1, `k = ${s.k} N·m/rad`, '--ink'); bd.forEach((b, i) => Lb(.2 + .1 * i, `${TOP[i][0]}: ${f(b.bw, 1)} Hz (${b.by})`, TOP[i][1])); Lb(.55, `SEA spring ceiling √(k/J_L)/2π = ${f(Math.sqrt(s.k / s.JL) / TAU, 1)} Hz`, '--a'); Lb(.65, `rotor hidden at 300 rad/s: ${f(Math.max(0, 1 - Math.abs(s.k / (s.k - s.Jm * 9e4))) * 100, 0)} %`, '--a'); }
+      if (S === 6) { const pk = impactPk(s), w = s.cyc * TAU; Lb(.1, `impact: v√(k_c J), k_c = 20 kN·m/rad`, '--muted'); Lb(.2, `SEA / rigid = √(J_L/(J_m+J_L)) = ${f(pk[1] / pk[0] * 100, 0)} %`, '--a'); Lb(.34, `gait ω = ${f(w, 1)} rad/s`, '--muted'); Lb(.44, `PEA tuned at √(k/J) = ${f(Math.sqrt(s.k / J), 1)} rad/s`, '--c'); Lb(.54, `best k for this gait: Jω² = ${f(J * w * w, 0)} N·m/rad`, '--c'); Lb(.64, 'SEA cyclic torque: as DD (motor still accelerates J_m)', '--muted'); } }
+    const B2 = Pl.panel(0, .68, 1, .32, [0, 1, 0, 1], false); B2.frame(); const L2 = (x, y, t, cl) => B2.label(B2.x + B2.w * x, B2.y + B2.h * y, t, cl, { mono: true, size: 12 });
+    L2(.02, .22, `DD   J_eff = J_m + J_L = ${f(J, 3)}                       plant 1/(Js² + bs)          no mechanical ceiling`, '--b');
+    L2(.02, .47, `SEA  J_eff = J_L + kJ_m/(k − J_mω²) → ${f(s.JL, 3)} at impact     plant 4th order            ceiling √(k/J_L) = ${f(Math.sqrt(s.k / s.JL) / TAU, 1)} Hz`, '--a');
+    L2(.02, .72, `PEA  J_eff = J_m + J_L − k/ω² → ${f(J, 3)} at impact          plant 1/(Js² + bs + k)      k adds to K_p`, '--c');
+  },
+  math(S) {
+    const s = st(), J = s.Jm + s.JL, Bd = budget(s), pk = impactPk(s);
+    const head = `<p class="cg">J_m = ${f(s.Jm, 3)}, J_L = ${f(s.JL, 3)} kg·m², k = ${s.k} N·m/rad, b = ${f(s.b, 2)}.</p>`;
+    const rows = [
+`${E(`DD:   (J_m + J_L) θ̈ = τ
+SEA:  J_m θ̈_m = τ − k(θ_m − θ_L),  J_L θ̈_L = k(θ_m − θ_L)
+PEA:  (J_m + J_L) θ̈ + kθ = τ`)}
+${ul(['Spring in the force path (SEA): it filters every newton the motor sends — protection and lag.', 'Spring beside the force path (PEA): it adds torque without filtering anything — energy and bias.', 'No spring (DD): nothing to filter, nothing to add; the motor is all there is.'])}`,
+`${E(`DD   J_eff = ${f(J, 3)}
+SEA  J_eff(ω) = J_L + kJ_m/(k − J_mω²)
+PEA  J_eff(ω) = J_m + J_L − k/ω²
+at ω = ${f(s.w, 1)}: ${Jeff(s, s.w).map(v => f(v, 4)).join(' / ')}`)}
+<p>Read the plot as who you are protecting from what. Impacts (right): only the SEA drops to the bare limb. Slow interaction (left): the PEA turns spring-like, the SEA feels the full machine, DD is DD everywhere.</p>`,
+`${E(`P_DD  = 1/((J_m+J_L)s² + bs)
+P_PEA = 1/((J_m+J_L)s² + bs + k)
+P_SEA = K/((J_m s² + bs)(J_L s² + K) + J_L s² K),  K = k + cs, c = ${CS}`)}
+<p>The PEA only moves the pole pair out to √(k/J) = ${f(Math.sqrt(s.k / J), 1)} rad/s. The SEA adds a lightly damped pair at ${f(Math.sqrt(s.k * (1 / s.Jm + 1 / s.JL)), 1)} rad/s — a phase drop of 180° the loop must stay below.</p>`,
+`${E(`C(s) = K_p + K_d s,  K_d = 2·0.7·√(K_p J) = ${f(kdOf(s), 2)}
+T(s) = C P / (1 + C P)
+PEA DC gain = K_p/(K_p + k) = ${f(s.kp / (s.kp + s.k), 3)}  → feedforward kθ_ref restores 1
+SEA spring damping c = ${CS}`)}
+<p>Same controller, three results. The DD loop is the textbook second-order response. The PEA is faster and biased toward the spring's rest angle. The SEA sees the rigid plant at low frequency, so low gains work — then its resonance takes the gain margin away.</p>`,
+`${E(`gain limit:      √(K_p/J)/2π   (PEA: √((K_p + k)/J)/2π)
+loop-rate limit: f_s/15 = ${f(s.fs / 15, 1)} Hz
+spring limit:    √(k/J_L)/2π = ${f(Math.sqrt(s.k / s.JL) / TAU, 1)} Hz  (SEA only)
+result: ${Bd.map((b, i) => TOP[i][0] + ' ' + f(b.bw, 1)).join(', ')} Hz`)}
+${ul(['Gain and loop-rate limits are ceilings you can buy your way past: more torque, faster electronics.', 'The SEA spring ceiling is mechanical: no controller moves it. Only a stiffer spring does.', 'This budget is a design estimate, not a measured −3 dB bandwidth.'])}`,
+`${E(`SEA ceiling ∝ √k        PEA gain limit √((K_p + k)/J) grows with k
+SEA impact first peak ≈ v√(k_c J_L)   (while k ≪ k_c)
+SEA torque resolution kδ, travel τ_max/k`)}
+<p>Soft spring: safe, sensitive, slow. Stiff spring: fast, coarse, unprotected — the SEA becomes a DD with a sensor. Choosing k is choosing a point on this line, not escaping it.</p>`,
+`${E(`impact peak ≈ v√(k_c J_seen): ${pk.map(p => f(p, 0)).join(' / ')} N·m
+cyclic peak: J ω²A (DD, SEA)   |k − Jω²| A (PEA)
+best PEA spring for a gait at ω: k = Jω²`)}
+<p>During an impact the SEA hides the rotor and the PEA cannot. During cyclic work the PEA spring carries the inertia and the SEA cannot (its rotor still has to be accelerated by the motor through the spring).</p>`,
+`${E(`DD:  best bandwidth, no protection, no energy return
+SEA: protection and torque sensing, bandwidth ≤ √(k/J_L)
+PEA: energy and gravity support, needs feedforward, no protection`)}
+<p>MIT Cheetah-style legs: quasi-direct drive for fast swing. Robots among people (Digit, 1X Neo): series elasticity for safety. Heavy bipeds and prostheses: parallel springs for battery life. A humanoid can use an SEA at the ankle and a PEA at the knee.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(), b = budget(s); return b.map((x, i) => `<span><b>${TOP[i][0]}</b>${f(x.bw, 1)} Hz</span>`).join(''); },
+});
+</script>
+</body></html>
