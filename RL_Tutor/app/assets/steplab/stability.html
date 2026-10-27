@@ -1,0 +1,98 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Stability</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+let PLANE = null;
+const st = () => { const v = SL.v; return { pr: v.pr / 10, sg: v.sg / 10, w: v.w / 10, K: v.K / 10 }; };
+const polyFromPoles = s => CTL.fromRoots([[s.pr, 0], [s.sg, s.w], [s.sg, -s.w]]);
+const freeResponse = (s, T) => [...Array(601)].map((_, i) => { const t = i / 600 * T; return [t, Math.exp(s.pr * t) + Math.exp(s.sg * t) * Math.cos(s.w * t)]; });
+const fmtRoot = r => f(r[0], 2) + (r[1] ? (r[1] > 0 ? ' + ' : ' − ') + f(Math.abs(r[1]), 2) + 'j' : '');
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Stability and how to check it',
+  sub: 'Steps 0–3: place three poles (one real, one complex pair) by dragging or with the sliders. Step 4: close a loop around 1/(s(s+1)(s+2)) and sweep the gain K.',
+  view: '2d',
+  legend: [['--d', 'poles'], ['--a', 'free response'], ['--bad', 'right half-plane'], ['--c', 'Routh first column'], ['--b', 'root locus']],
+  controls: [
+    { id: 'pr', label: 'real pole', min: -40, max: 15, value: -10, fmt: x => f(x / 10, 1) },
+    { id: 'sg', label: 'pair: σ', min: -40, max: 15, value: -5, fmt: x => f(x / 10, 1) },
+    { id: 'w', label: 'pair: ω', min: 0, max: 40, value: 20, fmt: x => f(x / 10, 1) },
+    { id: 'K', label: 'loop gain K (step 4)', min: 0, max: 120, value: 30, fmt: x => f(x / 10, 1) },
+  ],
+  buttons: [{ label: 'marginal (pair on jω axis)', onclick: () => { SL.setControl('sg', 0); SL.redraw(); } }, { label: 'unstable pair', onclick: () => { SL.setControl('sg', 3); SL.redraw(); } }, { label: 'K = 6', onclick: () => { SL.setControl('K', 60); SL.redraw(); } }],
+  drag: () => SL.st >= 4 ? [] : [{ panel: () => PLANE, pos: () => [SL.v.sg / 10, SL.v.w / 10], set: q => { SL.setControl('sg', Math.max(-40, Math.min(15, Math.round(q[0] * 10)))); SL.setControl('w', Math.max(0, Math.min(40, Math.round(q[1] * 10)))); } },
+    { panel: () => PLANE, pos: () => [SL.v.pr / 10, 0], set: q => SL.setControl('pr', Math.max(-40, Math.min(15, Math.round(q[0] * 10)))) }],
+  steps: [
+    ['What “stable” is a statement about', 'Stable means: every transient dies out on its own. Disturb it, take your hands off, and it returns. For a linear system that is one test: every pole has a negative real part.'],
+    ['Stable, marginal, unstable', 'All poles left: stable. Any pole right: unstable, however small. Poles on the imaginary axis (and none right): marginal — it neither returns nor runs away. Drag the pair onto the axis.'],
+    ['From poles to the polynomial', 'In practice you get the characteristic polynomial (from the model), not the poles. Its coefficients come from the poles; a quick necessary test: all coefficients must have the same sign.'],
+    ['Routh–Hurwitz: count without solving', 'Build the Routh array from the coefficients. The number of sign changes down its first column equals the number of right-half-plane poles. No root finding needed.'],
+    ['Use it on a loop: how much gain is too much?', 'Close a loop K/(s(s+1)(s+2)): s³ + 3s² + 2s + K = 0. Routh says stable for 0 < K < 6. Sweep K and watch two poles cross the axis at K = 6.'],
+    ['Which method for what', 'Routh: yes/no and gain limits from coefficients. Root locus: where the poles go as a gain changes. Bode and Nyquist (pages 13–14): margins, with delays and measured data.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    if (S <= 3) {
+      const poles = [[s.pr, 0], [s.sg, s.w], [s.sg, -s.w]], worst = Math.max(s.pr, s.sg), T = worst < -.05 ? Math.min(12, 5 / -worst) : 6;
+      const resp = freeResponse(s, T), ym = Math.min(10, Math.max(2.2, ...resp.map(p => Math.abs(p[1])))) * 1.05;
+      const A = Pl.panel(0, 0, .62, .64, [0, T, -ym, ym], false);
+      A.series([{ pts: resp.map(p => [p[0], Math.max(-ym, Math.min(ym, p[1]))]), cl: worst > 1e-9 ? '--bad' : '--a', w: 2.5, label: 'free response e^(p₁t) + e^(σt)cos ωt' }, { pts: resp.map(p => [p[0], Math.exp(s.pr * p[0])]).map(p => [p[0], Math.min(ym, p[1])]), cl: '--grey', w: 1, dash: [4, 3], label: 'real-pole mode' }], { title: worst < -1e-9 ? 'STABLE: every mode decays' : worst > 1e-9 ? 'UNSTABLE: a mode grows' : 'MARGINAL: a mode neither decays nor grows' });
+      const P = Pl.panel(.63, 0, .37, .64, [-4.5, 2, -4.2, 4.2]); PLANE = P; P.frame('s-plane: drag the poles'); P.poly([[0, -4.2], [2, -4.2], [2, 4.2], [0, 4.2]], null, 0, null, '--bad', true); P.axes();
+      poles.forEach((r, i) => { const c = r[0] > 1e-9 ? '--bad' : '--d'; P.line([r[0] - .12, r[1] - .12], [r[0] + .12, r[1] + .12], c, 3); P.line([r[0] - .12, r[1] + .12], [r[0] + .12, r[1] - .12], c, 3); });
+      if (S >= 2) { const R = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); R.frame(); const p = polyFromPoles(s), rt = CTL.routh(p);
+        const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+        L(.02, .18, `(s − p₁)(s − σ − jω)(s − σ + jω) = s³ + ${f(p[1], 3)} s² + ${f(p[2], 3)} s + ${f(p[3], 3)}`, '--ink');
+        L(.02, .38, `all coefficients positive? ${p.every(c => c > 0) ? 'yes (necessary, not sufficient)' : 'NO → certainly unstable or marginal'}`, p.every(c => c > 0) ? '--c' : '--bad');
+        if (S === 3) { rt.rows.forEach((row, i) => L(.02 + .0, .55 + i * .11, `s^${3 - i}:  ${row.map(x => f(x, 3).padStart(9)).join(' ')}`, i === 0 || i === 1 ? '--muted' : '--c'));
+          L(.55, .55, `first column: ${rt.col.map(x => f(x, 3)).join(', ')}`, '--c'); L(.55, .66, `sign changes = ${rt.changes} → ${rt.changes} pole(s) in the RHP`, rt.changes ? '--bad' : '--c');
+          L(.55, .77, `check (roots): ${CTL.roots(p).filter(r => r[0] > 1e-9).length} with Re > 0`, '--muted'); } }
+      else { const R = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); R.frame(); const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+        L(.02, .25, `poles: ${poles.map(fmtRoot).join(',   ')}`, '--d'); L(.02, .5, `largest real part = ${f(worst, 2)}  →  ${worst < -1e-9 ? 'stable (slowest mode decays like e^(' + f(worst, 2) + 't))' : worst > 1e-9 ? 'unstable' : 'marginal'}`, worst > 1e-9 ? '--bad' : '--a');
+        L(.02, .75, 'a stable system can still be badly damped: stability is a yes/no, not a quality grade', '--muted'); }
+    } else if (S === 4 || S === 5) {
+      const Ks = [...Array(241)].map((_, i) => i / 20), locus = Ks.map(k => CTL.roots([1, 3, 2, k]));
+      const P = Pl.panel(0, 0, .5, .64, [-3.6, 1.2, -2.6, 2.6]); P.frame('root locus of s³ + 3s² + 2s + K'); P.poly([[0, -2.6], [1.2, -2.6], [1.2, 2.6], [0, 2.6]], null, 0, null, '--bad', true); P.axes();
+      for (let j = 0; j < 3; j++) { const pts = locus.map(rs => rs[j]); P.clip(() => pts.forEach(p => P.dot(p, 1.3, '--b'))); }
+      const now = CTL.roots([1, 3, 2, s.K]); now.forEach(r => { const c = r[0] > 1e-9 ? '--bad' : '--d'; P.line([r[0] - .1, r[1] - .1], [r[0] + .1, r[1] + .1], c, 3); P.line([r[0] - .1, r[1] + .1], [r[0] + .1, r[1] - .1], c, 3); });
+      [[0, 0], [-1, 0], [-2, 0]].forEach(p => P.circle(p, .06, '--grey', 2)); P.text([0, Math.SQRT2], '±j√2 at K = 6', '--bad', 6, 0, { size: 11 });
+      const G = CTL.tf([s.K], [1, 3, 2, s.K]), T = 15, r = CTL.sim(G, () => 1, T, .01), ym = Math.min(4, Math.max(1.5, ...r.map(p => Math.abs(p[1])))) * 1.05;
+      const B = Pl.panel(.51, 0, .49, .64, [0, T, -ym * .4, ym], false); B.series([{ pts: r.map(p => [p[0], Math.max(-ym, Math.min(ym, p[1]))]), cl: s.K < 6 ? '--a' : '--bad', w: 2.5, label: 'closed-loop step, K = ' + f(s.K, 1) }], { title: s.K < 6 ? 'stable' : s.K === 6 ? 'marginal: sustained oscillation' : 'unstable' }); B.line([0, 1], [T, 1], '--grey', 1, [4, 3]);
+      const R = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); R.frame(); const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 }); const rt = CTL.routh([1, 3, 2, s.K]);
+      if (S === 4) { L(.02, .2, 'Routh array of s³ + 3s² + 2s + K:', '--muted'); L(.02, .4, 's³:  1        2', '--muted'); L(.02, .55, 's²:  3        K', '--muted'); L(.02, .7, `s¹:  (6 − K)/3 = ${f((6 - s.K) / 3, 3)}`, (6 - s.K) > 0 ? '--c' : '--bad'); L(.02, .85, `s⁰:  K = ${f(s.K, 2)}`, s.K > 0 ? '--c' : '--bad');
+        L(.5, .4, `stable ⇔ 6 − K > 0 and K > 0  ⇔  0 < K < 6`, '--ink'); L(.5, .6, `now: ${rt.changes} sign change(s) → ${rt.changes} RHP pole(s)`, rt.changes ? '--bad' : '--c'); L(.5, .8, `poles: ${now.map(fmtRoot).join(', ')}`, '--d'); }
+      else { L(.02, .25, 'Routh: from coefficients → stable or not, and the exact gain limit (here K < 6).', '--c'); L(.02, .5, 'root locus: the blue paths → where every pole goes as K changes.', '--b'); L(.02, .75, 'Bode / Nyquist (next pages): margins → how far from instability, and they handle delay and measured data.', '--e'); }
+    }
+  },
+  math(S) {
+    const s = st(), p = polyFromPoles(s), rt = CTL.routh(p);
+    const head = S <= 3 ? `<p class="cg">poles: ${fmtRoot([s.pr, 0])}, ${fmtRoot([s.sg, s.w])}, ${fmtRoot([s.sg, -s.w])}.</p>` : `<p class="cg">L(s) = K/(s(s+1)(s+2)), K = ${f(s.K, 2)}.</p>`;
+    const rows = [
+`${E(`free response = Σ cᵢ e^(pᵢ t)
+asymptotically stable  ⇔  Re pᵢ < 0 for every pole
+BIBO stable (bounded input → bounded output) ⇔ the same, for these systems`)}
+<p>Stability is a property of the system, not of a particular input: it is about what happens to <b>any</b> disturbance when you let go.</p>`,
+`${ul(['Re p &lt; 0 for all poles: stable — every mode decays.', 'Re p &gt; 0 for any pole: unstable — that one mode eventually dominates everything.', 'Re p = 0 (simple poles), none positive: marginally stable — an integrator holds, an undamped mode rings forever. A repeated pole on the axis grows (like t·sin ωt): unstable.'])}
+${E(`now: max Re p = ${f(Math.max(s.pr, s.sg), 3)}`)}`,
+`${E(`(s − p₁)(s² − 2σ s + σ² + ω²)
+= s³ + ${f(p[1], 3)} s² + ${f(p[2], 3)} s + ${f(p[3], 3)}`)}
+${ul(['Necessary: all coefficients present and of the same sign. A missing or negative coefficient means at least one pole is not in the left half-plane.', 'Not sufficient for order ≥ 3: positive coefficients can still hide an unstable pair. That is what Routh catches.'])}`,
+`${E(`row s³:  a₃  a₁         = ${f(p[0], 3)}  ${f(p[2], 3)}
+row s²:  a₂  a₀         = ${f(p[1], 3)}  ${f(p[3], 3)}
+row s¹:  (a₂a₁ − a₃a₀)/a₂ = ${f(rt.rows[2][0], 4)}
+row s⁰:  a₀             = ${f(rt.rows[3][0], 4)}
+sign changes in the first column = ${rt.changes}  = number of RHP poles`)}
+<p>For a cubic with a₃ &gt; 0 the whole test collapses to: a₂, a₁, a₀ &gt; 0 and a₂a₁ &gt; a₃a₀.</p>`,
+`${E(`1 + K/(s(s+1)(s+2)) = 0  ⇒  s³ + 3s² + 2s + K = 0
+cubic test: 3·2 > 1·K  ⇒  K < 6,  and K > 0
+at K = 6: s³ + 3s² + 2s + 6 = (s + 3)(s² + 2)  ⇒  poles ±j√2 = ±j${f(Math.SQRT2, 4)}`)}
+<p>The oscillation frequency at the limit (√2 rad/s) is also where the phase of L reaches −180° — the link to the Bode and Nyquist pages.</p>`,
+`${ul(['<b>Routh–Hurwitz</b>: algebraic yes/no; gain limits in closed form. Needs a polynomial (no delays).', '<b>Root locus</b>: the picture of where poles move with one gain; shows damping and speed, not just yes/no.', '<b>Bode</b>: gain and phase margins at a glance; works with measured frequency responses and delays.', '<b>Nyquist</b>: the rigorous version of the margin argument; handles open-loop unstable plants and delays.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return SL.st >= 4 ? `<span><b>K</b>${f(s.K, 1)}</span><span><b>stable</b>${s.K > 0 && s.K < 6 ? 'yes' : 'no'}</span>` : `<span><b>max Re p</b>${f(Math.max(s.pr, s.sg), 2)}</span>`; },
+});
+</script>
+</body></html>

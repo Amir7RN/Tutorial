@@ -1,0 +1,88 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bode plots and margins</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Position loop on the motor joint with P control: L(s) = K e^(−sD) / (s (τ s + 1)), τ = J/b. */
+const st = () => { const v = SL.v, K = Math.pow(10, v.lk / 100), tau = v.tau / 1000, D = v.d / 1000; const L = CTL.tf([K], [tau, 1, 0], D); const m = CTL.margins(L, -1, 4, 3000); return { K, tau, D, L, m }; };
+const closedStep = (K, tau, D, T) => { const dt = Math.min(tau / 300, 1e-4), n = Math.round(T / dt), lag = Math.round(D / dt), y = new Float64Array(n + 1), out = []; let v = 0;
+  for (let i = 0; i < n; i++) { const yd = i - lag >= 0 ? y[i - lag] : 0, u = K * (1 - yd); v += dt * (u - v) / tau; y[i + 1] = y[i] + dt * v; if (i % Math.max(1, Math.round(n / 600)) === 0) out.push([i * dt, y[i]]); } return out; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Bode plots, gain and phase margin: how much would have to be wrong?',
+  sub: 'The joint’s position loop with a P gain: L(s) = K e^(−sD) / (s(τs + 1)), τ = J/b = 0.1 s. Change the gain, the time constant and the loop delay; the margins update.',
+  view: '2d',
+  legend: [['--c', '|L(jω)|'], ['--e', '∠L(jω)'], ['--d', 'pieces'], ['--b', 'margins'], ['--a', 'closed loop']],
+  controls: [
+    { id: 'lk', label: 'loop gain K', min: 0, max: 250, value: 100, fmt: x => f(Math.pow(10, x / 100), 2) + ' 1/s' },
+    { id: 'tau', label: 'τ = J/b', min: 10, max: 500, value: 100, fmt: x => f(x / 1000, 3) + ' s' },
+    { id: 'd', label: 'loop delay D', min: 0, max: 100, step: .5, value: 10, fmt: x => f(x, 1) + ' ms' },
+  ],
+  buttons: [{ label: 'D = 0', onclick: () => { SL.setControl('d', 0); SL.redraw(); } }, { label: 'K for PM = 45°', onclick: () => { let lo = -1, hi = 3; for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2, L = CTL.tf([Math.pow(10, mid)], [SL.v.tau / 1000, 1, 0], SL.v.d / 1000), m = CTL.margins(L, -1, 4, 1500); (m.pm !== null && m.pm > 45 ? lo = mid : hi = mid); } SL.setControl('lk', Math.round(lo * 100)); SL.redraw(); } }],
+  steps: [
+    ['What a Bode plot is', 'Two plots against log frequency: |L(jω)| in dB and ∠L(jω) in degrees, for the loop L = everything around the feedback path. Log axes turn products into sums and power laws into straight lines.'],
+    ['Built from pieces', 'L is a product: K, an integrator 1/s (−20 dB/dec, −90°), a lag 1/(τs + 1) (−20 more above 1/τ, −90 more) and the delay e^(−sD) (0 dB, phase −ωD). On a Bode plot they simply add.'],
+    ['Gain crossover and phase margin', 'Where |L| = 1 (0 dB) the loop neither amplifies nor attenuates: that is ω_c. The phase there, measured from −180°, is the phase margin: how much extra lag would make the loop oscillate.'],
+    ['Phase crossover and gain margin', 'Where ∠L = −180° the loop inverts the signal. How far |L| is below 0 dB there is the gain margin: how much more gain would make it oscillate. Without delay this loop never reaches −180°.'],
+    ['Phase margin is damping', 'PM sets the closed-loop shape: PM ≈ 100·ζ for PM below about 70°. 60° gives little overshoot, 30° rings, 0° oscillates. The step response on the right is the same loop closed.'],
+    ['Which curve is on your screen?', 'Plant P, loop L, closed loop T = L/(1 + L) answer different questions. Margins live on L. Tracking bandwidth lives on T (its −3 dB point), which is near ω_c but not equal to it.'],
+    ['Delay sets a ceiling', 'Delay adds phase lag ωD that grows without limit. Push K up and ω_c moves right, where the delay eats more phase. There is a highest usable crossover, roughly where ω_c·D uses up the margin you can afford.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), m = s.m;
+    const ws = CTL.logspace(-1, 3.5, 500), lw = ws.map(Math.log10);
+    const H = ws.map(w => CTL.freq(s.L, w)), mag = H.map(h => CTL.db(CTL.cabs(h))), ph = CTL.unwrapPhase(H.map(CTL.carg)).map(x => x * 180 / Math.PI);
+    const A = Pl.panel(0, 0, .62, .36, [-1, 3.5, -60, 60], false), B = Pl.panel(0, .37, .62, .3, [-1, 3.5, -300, 0], false);
+    const ml = [{ pts: lw.map((x, i) => [x, mag[i]]), cl: '--c', w: 2.5, label: '|L| dB' }], pl = [{ pts: lw.map((x, i) => [x, Math.max(-300, ph[i])]), cl: '--e', w: 2.5, label: '∠L deg' }];
+    if (S === 1) { ml.push({ pts: lw.map(x => [x, CTL.db(s.K) - 20 * x]), cl: '--d', w: 1.2, dash: [5, 3], label: 'K/s' }, { pts: lw.map((x, i) => [x, -CTL.db(Math.hypot(1, ws[i] * s.tau))]), cl: '--b', w: 1.2, dash: [5, 3], label: '1/(τs+1)' });
+      pl.push({ pts: lw.map(x => [x, -90]), cl: '--d', w: 1.2, dash: [5, 3] }, { pts: lw.map((x, i) => [x, -Math.atan(ws[i] * s.tau) * 180 / Math.PI]), cl: '--b', w: 1.2, dash: [5, 3] }, { pts: lw.map((x, i) => [x, Math.max(-300, -ws[i] * s.D * 180 / Math.PI)]), cl: '--f', w: 1.2, dash: [5, 3], label: 'delay' }); }
+    A.series(ml, { title: 'magnitude (dB) against log₁₀ ω (rad/s)' }); A.line([-1, 0], [3.5, 0], '--grey', 1);
+    B.series(pl, { title: '' }); B.line([-1, -180], [3.5, -180], '--bad', 1.5, [6, 3]);
+    if (S >= 2 && m.wc) { const x = Math.log10(m.wc); A.dot([x, 0], 5, '--b'); A.text([x, 0], 'ω_c = ' + f(m.wc, 2), '--b', 6, -6, { size: 12 }); B.line([x, -180], [x, -180 + m.pm], '--b', 3); B.text([x, -180 + m.pm / 2], 'PM = ' + f(m.pm, 1) + '°', '--b', 6, 0, { size: 12 }); }
+    if (S >= 3 && m.w180) { const x = Math.log10(m.w180); B.dot([x, -180], 5, '--e'); A.line([x, 0], [x, -m.gm], '--e', 3); A.text([x, -m.gm / 2], 'GM = ' + f(m.gm, 1) + ' dB', '--e', 6, 0, { size: 12 }); }
+    /* right: closed loop */
+    const wcl = m.wc || 10, T = Math.min(5, Math.max(.2, 12 / wcl)), r = closedStep(s.K, s.tau, s.D, T), ym = Math.min(3, Math.max(1.4, ...r.map(p => Math.abs(p[1])))) * 1.05;
+    if (S === 5) { const P = Pl.panel(.63, 0, .37, .67, [-1, 3.5, -60, 40], false); const Tc = ws.map((w, i) => { const l = H[i]; return CTL.db(CTL.cabs(CTL.cdiv(l, CTL.cadd([1, 0], l)))); }), Pp = ws.map(w => CTL.db(1 / (w * Math.hypot(1, w * s.tau))));
+      P.series([{ pts: lw.map((x, i) => [x, Pp[i]]), cl: '--grey', w: 1.5, label: 'plant P' }, { pts: lw.map((x, i) => [x, mag[i]]), cl: '--c', w: 2, label: 'loop L' }, { pts: lw.map((x, i) => [x, Tc[i]]), cl: '--a', w: 2.5, label: 'closed loop T' }], { title: 'three curves, three jobs (dB)' }); P.line([-1, -3], [3.5, -3], '--a', 1, [3, 3]);
+      const bw = ws.find((w, i) => Tc[i] < -3); if (bw) { P.dot([Math.log10(bw), -3], 5, '--a'); P.text([Math.log10(bw), -3], 'T bandwidth ' + f(bw, 1), '--a', 6, 14, { size: 11 }); } }
+    else { const P = Pl.panel(.63, 0, .37, .67, [0, T, -ym * .3, ym], false); P.series([{ pts: r.map(p => [p[0], Math.max(-ym, Math.min(ym, p[1]))]), cl: m.pm !== null && m.pm > 0 ? '--a' : '--bad', w: 2.5, label: 'closed-loop step' }], { title: 'the same loop, closed' }); P.line([0, 1], [T, 1], '--grey', 1, [4, 3]); }
+    const R = Pl.panel(0, .69, 1, .31, [0, 1, 0, 1], false); R.frame();
+    const L = (x, y, txt, cl) => R.label(R.x + R.w * x, R.y + R.h * y, txt, cl, { mono: true, size: 12 });
+    L(.02, .22, `L(s) = ${f(s.K, 2)} e^(−s·${f(s.D * 1000, 1)} ms) / (s(${f(s.tau, 3)} s + 1))`, '--ink');
+    L(.02, .46, `ω_c = ${m.wc ? f(m.wc, 2) + ' rad/s (' + f(m.wc / 6.283, 2) + ' Hz)' : '—'}   PM = ${m.pm !== null ? f(m.pm, 1) + '°' : '—'}   ≈ ζ ${m.pm !== null ? f(Math.max(0, m.pm) / 100, 2) : ''}`, m.pm !== null && m.pm < 30 ? '--bad' : '--b');
+    L(.02, .7, `ω₁₈₀ = ${m.w180 ? f(m.w180, 2) + ' rad/s' : 'never (no delay: phase stops at −180° only at ∞)'}   GM = ${m.gm !== null ? f(m.gm, 1) + ' dB (×' + f(Math.pow(10, m.gm / 20), 2) + ')' : '∞'}`, '--e');
+    const os = CTL.metrics(r, 1).os; L(.02, .92, `closed-loop overshoot = ${f(os, 1)} %`, '--a');
+  },
+  math(S) {
+    const s = st(), m = s.m;
+    const head = `<p class="cg">K = ${f(s.K, 3)}, τ = ${f(s.tau, 3)} s, D = ${f(s.D * 1000, 1)} ms.</p>`;
+    const rows = [
+`${E(`L(jω) = K e^(−jωD) / (jω (1 + jωτ))
+magnitude in dB: 20 log₁₀ |L|,   phase: ∠L in degrees,   ω on a log axis`)}
+<p>Why the loop and not the plant: stability of the closed loop is decided by where 1 + L(jω) can become zero, i.e. where L = −1: magnitude 1 and phase −180° at the same frequency.</p>`,
+`${E(`20 log|L| = 20 log K − 20 log ω − 20 log √(1 + (ωτ)²) + 0
+∠L       = −90° − atan(ωτ) − ωD (in degrees: ×180/π)`)}
+${ul(['K shifts the whole magnitude up and down; it does not touch the phase.', 'The integrator gives a fixed −90°; the lag adds up to −90° more around 1/τ = ' + f(1 / s.tau, 1) + ' rad/s.', 'The delay has |e^(−jωD)| = 1 but its phase falls linearly in ω: on a log axis it plunges.'])}`,
+`${E(`|L(jω_c)| = 1  ⇒  ω_c = ${m.wc ? f(m.wc, 3) : '—'} rad/s
+PM = 180° + ∠L(jω_c) = ${m.pm !== null ? f(m.pm, 2) : '—'}°`)}
+<p>Reading: the loop could tolerate ${m.pm !== null ? f(m.pm, 1) : '—'}° of extra lag at ω_c — e.g. an extra delay of PM/(ω_c·180/π) = ${m.pm !== null && m.wc ? f(m.pm * Math.PI / 180 / m.wc * 1000, 1) : '—'} ms — before it oscillates.</p>`,
+`${E(`∠L(jω₁₈₀) = −180°  ⇒  ω₁₈₀ = ${m.w180 ? f(m.w180, 3) : '—'} rad/s
+GM = −20 log|L(jω₁₈₀)| = ${m.gm !== null ? f(m.gm, 2) + ' dB  (gain could grow ×' + f(Math.pow(10, m.gm / 20), 3) + ')' : '∞'}`)}
+<p>The minus sign: GM is how far |L| is <b>below</b> 0 dB at the −180° frequency, so positive GM = safe. With D = 0 the phase only approaches −180° as ω → ∞ and GM is infinite — another reason the delay matters.</p>`,
+`${E(`rule of thumb (second-order-like loops):  ζ ≈ PM / 100
+PM = ${m.pm !== null ? f(m.pm, 1) : '—'}°  ⇒  ζ ≈ ${m.pm !== null ? f(Math.max(0, m.pm) / 100, 2) : '—'}  ⇒  overshoot ≈ ${m.pm !== null && m.pm > 0 && m.pm < 100 ? f(100 * Math.exp(-Math.PI * (m.pm / 100) / Math.sqrt(1 - (m.pm / 100) ** 2)), 1) : '—'} %
+simulated overshoot: ${f(CTL.metrics(closedStep(s.K, s.tau, s.D, Math.min(5, Math.max(.2, 12 / (m.wc || 10)))), 1).os, 1)} %`)}
+<p>“K for PM = 45°” finds the gain for a common target. Phase margin is the frequency-domain name for damping (page 11).</p>`,
+`${ul(['<b>P(jω)</b> (grey): the plant alone. Tells you what the hardware does; no controller in it.', '<b>L(jω)</b> = C·P (blue): read margins and crossover here.', '<b>T(jω)</b> = L/(1 + L) (green): what the closed loop tracks; ≈ 0 dB below ω_c, falls above. Its −3 dB point is the tracking bandwidth.', 'A peak in T means low phase margin; |T| &gt; 1 in a band means the loop amplifies those frequencies.'])}`,
+`${E(`delay phase at ω_c: ω_c·D = ${m.wc ? f(m.wc * s.D * 180 / Math.PI, 1) : '—'}°
+for this loop: PM ≈ 90° − atan(ω_c τ) − ω_c D·(180/π)
+raising K raises ω_c ⇒ more lag from both the pole and the delay`)}
+<p>Set D = 30 ms and push K up: the margin collapses long before the gain looks large. Sampling delay, filters and the current loop all add to D: that is the bandwidth ceiling of every digital joint controller (page 1).</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>PM</b>${s.m.pm !== null ? f(s.m.pm, 0) + '°' : '—'}</span><span><b>GM</b>${s.m.gm !== null ? f(s.m.gm, 1) + ' dB' : '∞'}</span>`; },
+});
+</script>
+</body></html>

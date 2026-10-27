@@ -1,0 +1,116 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What a zero is</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* Same second-order joint every time (ω_n = 10 rad/s, ζ = 0.5); only the zero moves. */
+const WN = 10, Z = .5, DEN = [1, 2 * Z * WN, WN * WN];
+const st = () => { const v = SL.v; return { wz: v.wz / 10, z: v.z / 10, K: v.K / 10, wd: v.wd / 10 }; };
+const fmt = r => f(r[0], 2) + (r[1] ? (r[1] > 0 ? ' + ' : ' − ') + f(Math.abs(r[1]), 2) + 'j' : '');
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'What a zero is: the hole, the speed-up, the wrong-way dip',
+  sub: 'A pole is what the system does when you leave it alone. A zero is an input it refuses to pass on. One second-order joint (ω_n = 10 rad/s, ζ = 0.5) throughout; only the zero moves.',
+  view: '2d',
+  legend: [['--d', 'poles ×'], ['--f', 'zeros ○'], ['--a', 'output'], ['--b', 'input'], ['--grey', 'without the zero']],
+  controls: [
+    { id: 'wz', label: 'notch ω_z', min: 20, max: 300, value: 100, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'wd', label: 'drive ω', min: 10, max: 300, value: 100, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'z', label: 'real zero z', min: -200, max: 400, value: 50, fmt: x => 's = ' + f(-x / 10, 1) },
+    { id: 'K', label: 'gain K', min: 0, max: 300, value: 20, fmt: x => f(x / 10, 1) },
+  ],
+  buttons: [{ label: 'drive at the zero', onclick: () => { SL.setControl('wd', SL.v.wz); SL.redraw(); } }, { label: 'zero far away (z = 40)', onclick: () => { SL.setControl('z', 400); SL.redraw(); } }, { label: 'zero close (z = 2)', onclick: () => { SL.setControl('z', 20); SL.redraw(); } }, { label: 'RHP zero (s = +5)', onclick: () => { SL.setControl('z', -50); SL.redraw(); } }],
+  steps: [
+    ['The definition', 'Poles: values of s where G(s) is infinite (the system’s own motions). Zeros: values of s where G(s) = 0. A zero at s₀ means the input e^(s₀t) produces no output at all, however hard you push.'],
+    ['Drive it at the zero and the output vanishes', 'Put a zero pair on the imaginary axis at ±jω_z (a notch). Drive with a sine at ω_z: after the start-up transient, the output is exactly zero. The Bode plot has a hole there.'],
+    ['A left-half-plane zero speeds it up', 'G(s) = (s/z + 1)·ω_n²/(s² + 2ζω_n s + ω_n²). The zero adds a bit of the derivative of the response: faster rise, more overshoot. Far away it does nothing; close to the poles it dominates.'],
+    ['A right-half-plane zero: the wrong-way start', 'Move the zero to the right half-plane: the response first goes the wrong way, then recovers. No controller can remove this (cancelling it would need an unstable pole). It limits achievable bandwidth: a hardware verdict.'],
+    ['Turn the gain up: poles walk to the zeros', 'Close a loop K·G. At K = 0 the closed-loop poles are the open-loop poles; as K → ∞ they end on the zeros (the leftovers go to infinity). An RHP zero eventually drags a pole into the RHP.'],
+    ['Cancellation: the one place people get hurt', 'Place a controller zero on a plant pole and the transfer function looks simpler — but the cancelled mode is still inside. Cancel an unstable pole and the output to the reference looks fine while a disturbance makes the inside blow up.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    let G, zeros = [];
+    if (S <= 1) { G = CTL.tf(CTL.pscl([1, 0, s.wz * s.wz], WN * WN / (s.wz * s.wz)), DEN); zeros = [[0, s.wz], [0, -s.wz]]; }
+    else { G = CTL.tf(s.z ? CTL.pscl([1 / s.z, 1], WN * WN) : [WN * WN], DEN); zeros = s.z ? [[-s.z, 0]] : []; }
+    const poles = CTL.roots(DEN), G0 = CTL.tf([WN * WN], DEN);
+    if (S === 0 || S === 1) {
+      if (S === 1) { const T = 3, r = CTL.sim(G, tt => Math.sin(s.wd * tt), T, 5e-4), m = Math.max(1.2, ...r.map(p => Math.abs(p[1]))) * 1.1, A = Pl.panel(0, 0, .62, .64, [0, T, -m, m], false);
+        A.series([{ pts: r.filter((_, i) => i % 3 === 0).map(p => [p[0], p[2]]), cl: '--b', w: 1.2, label: 'input sin(' + f(s.wd, 1) + 't)' }, { pts: r.filter((_, i) => i % 3 === 0).map(p => [p[0], p[1]]), cl: '--a', w: 2.5, label: 'output' }], { title: Math.abs(s.wd - s.wz) < .05 ? 'driving AT the zero: the output dies away' : 'driving at ' + f(s.wd, 1) + ' rad/s (zero at ' + f(s.wz, 1) + ')' }); }
+      else { const A = Pl.panel(0, 0, .62, .64, [-15, 5, -14, 14]); A.frame('|G(s)| over the s-plane (bright = large)');
+        const c = Pl.c; for (let i = 0; i < 80; i++) for (let j = 0; j < 80; j++) { const x = -15 + (i + .5) / 80 * 20, y = -14 + (j + .5) / 80 * 28, v = CTL.cabs(CTL.cdiv(CTL.peval(G.num, [x, y]), CTL.peval(G.den, [x, y]))), lv = Math.max(0, Math.min(1, (Math.log10(v) + 1) / 2.5));
+          const a = A.S([x - 10 / 80, y + 14 / 80]), b = A.S([x + 10 / 80, y - 14 / 80]); c.fillStyle = `rgba(125,155,255,${lv})`; c.fillRect(a[0], a[1], b[0] - a[0] + .5, b[1] - a[1] + .5); }
+        A.axes(); poles.forEach(p => { A.line([p[0] - .4, p[1] - .4], [p[0] + .4, p[1] + .4], '--d', 3); A.line([p[0] - .4, p[1] + .4], [p[0] + .4, p[1] - .4], '--d', 3); }); zeros.forEach(z => A.circle(z, .5, '--f', 3));
+        A.text([-14.5, 12.5], 'poles: peaks to infinity · zeros: holes to zero', '--ink', 0, 0, { size: 12 }); }
+      const ws = CTL.logspace(0, 2.5, 400), B = Pl.panel(.63, 0, .37, .64, [0, 2.5, -60, 15], false);
+      B.series([{ pts: ws.map(w => [Math.log10(w), CTL.db(Math.max(1e-6, CTL.cabs(CTL.freq(G, w))))]), cl: '--a', w: 2.5, label: '|G(jω)| dB' }, { pts: ws.map(w => [Math.log10(w), CTL.db(CTL.cabs(CTL.freq(G0, w)))]), cl: '--grey', w: 1.2, dash: [4, 3], label: 'no zero' }], { title: 'Bode magnitude' });
+      B.line([Math.log10(s.wz), -60], [Math.log10(s.wz), 15], '--f', 1, [3, 3]); if (S === 1) B.dot([Math.log10(s.wd), Math.max(-60, CTL.db(Math.max(1e-6, CTL.cabs(CTL.freq(G, s.wd)))))], 5, '--b');
+    } else if (S <= 3) {
+      const T = 1.5, r = CTL.step(G, T, 1e-3), r0 = CTL.step(G0, T, 1e-3), lo = Math.min(-.2, ...r.map(p => p[1])), hi = Math.max(1.3, ...r.map(p => p[1])) * 1.05;
+      const A = Pl.panel(0, 0, .62, .64, [0, T, lo * 1.1, hi], false);
+      A.series([{ pts: r0.map(p => [p[0], p[1]]), cl: '--grey', w: 1.5, dash: [5, 3], label: 'no zero' }, { pts: r.map(p => [p[0], p[1]]).slice(0, Math.max(2, Math.round(r.length * t))), cl: s.z < 0 ? '--bad' : '--a', w: 2.5, label: 'with the zero at s = ' + f(-s.z, 1) }], { title: s.z < 0 ? 'RHP zero: undershoot first' : 'LHP zero: step response' }); A.line([0, 1], [T, 1], '--grey', 1, [4, 3]); A.line([0, 0], [T, 0], '--grey', 1);
+      if (s.z < 0) { const mn = Math.min(...r.map(p => p[1])); A.text([.1, mn], 'wrong way: ' + f(mn, 3), '--bad', 6, 14, { size: 12 }); }
+      const P = Pl.panel(.63, 0, .37, .64, [-42, 22, -16, 16]); P.frame('pole–zero map'); P.poly([[0, -16], [22, -16], [22, 16], [0, 16]], null, 0, null, '--bad', true); P.axes();
+      poles.forEach(p => { P.line([p[0] - 1, p[1] - 1], [p[0] + 1, p[1] + 1], '--d', 3); P.line([p[0] - 1, p[1] + 1], [p[0] + 1, p[1] - 1], '--d', 3); }); zeros.forEach(z => P.circle(z, 1.2, '--f', 3));
+    } else if (S === 4) {
+      const num = s.z ? [1 / s.z, 1] : [1], Ks = [...Array(201)].map((_, i) => Math.pow(10, -2 + i / 40)), P = Pl.panel(0, 0, .62, .64, [-45, 25, -25, 25]); P.frame('closed-loop poles of K·G as K grows'); P.poly([[0, -25], [25, -25], [25, 25], [0, 25]], null, 0, null, '--bad', true); P.axes();
+      Ks.forEach(k => CTL.roots(CTL.padd(DEN, CTL.pscl(num, k * WN * WN))).forEach(r => P.dot(r, 1.4, '--b')));
+      poles.forEach(p => { P.line([p[0] - 1, p[1] - 1], [p[0] + 1, p[1] + 1], '--d', 3); P.line([p[0] - 1, p[1] + 1], [p[0] + 1, p[1] - 1], '--d', 3); }); zeros.forEach(z => P.circle(z, 1.4, '--f', 3));
+      const now = CTL.roots(CTL.padd(DEN, CTL.pscl(num, s.K * WN * WN))); now.forEach(r => P.dot(r, 6, r[0] > 0 ? '--bad' : '--a'));
+      const Gc = CTL.tf(CTL.pscl(num, s.K * WN * WN), CTL.padd(DEN, CTL.pscl(num, s.K * WN * WN))), T = 1.5, r = CTL.step(Gc, T, 1e-3), ym = Math.min(4, Math.max(1.3, ...r.map(p => Math.abs(p[1])))) * 1.05;
+      const B = Pl.panel(.63, 0, .37, .64, [0, T, -ym * .6, ym], false); B.series([{ pts: r.map(p => [p[0], Math.max(-ym, Math.min(ym, p[1]))]), cl: now.some(r => r[0] > 0) ? '--bad' : '--a', w: 2.5, label: 'closed-loop step, K = ' + f(s.K, 1) }], { title: now.some(r => r[0] > 0) ? 'unstable' : 'stable' });
+    } else {
+      /* plant 1/((s − 1)(s + 2)), controller K(s − 1)/(s + 4): (s − 1) cancels in the reference path */
+      const K = 10, T = 8, dt = 1e-3; let x1 = 0, x2 = 0, xc = 0; const out = [];
+      /* states: plant P(s) = 1/((s−1)(s+2)) as ẍ + ẋ − 2x = u + d;  controller C = K(s−1)/(s+4): u = K(e·… ) via state xc: ẋc = −4xc + e, u = K(e − 5xc) */
+      for (let i = 0; i <= T / dt; i++) { const tt = i * dt, y = x1, e = 1 - y, d = tt > 1 ? .02 : 0, u = K * (e - 5 * xc);
+        if (i % 4 === 0) out.push([tt, y, x1]); const a = u + d - x2 + 2 * x1; xc += dt * (-4 * xc + e); x2 += dt * a; x1 += dt * x2; }
+      const ym = Math.min(10, Math.max(1.5, ...out.map(p => Math.abs(p[1])))) * 1.05, A = Pl.panel(0, 0, .62, .64, [0, T, -ym, ym], false);
+      A.series([{ pts: out.map(p => [p[0], Math.max(-ym, Math.min(ym, p[1]))]), cl: '--bad', w: 2.5, label: 'plant output y' }], { title: 'cancel the unstable pole s = +1, then a tiny disturbance at t = 1 s' });
+      A.line([1, -ym], [1, ym], '--b', 1, [3, 3]); A.text([1, ym * .9], 'disturbance 0.02', '--b', 4, 0, { size: 12 });
+      const P = Pl.panel(.63, 0, .37, .64, [-6, 3, -3, 3]); P.frame('controller zero on the plant pole'); P.axes(); P.poly([[0, -3], [3, -3], [3, 3], [0, 3]], null, 0, null, '--bad', true);
+      [[1, 0], [-2, 0], [-4, 0]].forEach((p, i) => { P.line([p[0] - .2, p[1] - .2], [p[0] + .2, p[1] + .2], '--d', 3); P.line([p[0] - .2, p[1] + .2], [p[0] + .2, p[1] - .2], '--d', 3); }); P.circle([1, 0], .3, '--f', 3); P.text([1, 0], 'cancelled?', '--f', -20, -16, { size: 11 });
+    }
+    const Bt = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); Bt.frame();
+    const L = (x, y, txt, cl) => Bt.label(Bt.x + Bt.w * x, Bt.y + Bt.h * y, txt, cl, { mono: true, size: 12 });
+    if (S < 5) L(.02, .22, `poles (same in every step): ${poles.map(fmt).join(', ')}`, '--d');
+    if (S <= 1) { L(.02, .46, `zeros: ±j${f(s.wz, 2)}   G(s) = (ω_n²/ω_z²)(s² + ω_z²)/(s² + ${2 * Z * WN} s + ${WN * WN})`, '--f'); L(.02, .7, `|G(j${f(s.wd, 1)})| = ${f(CTL.cabs(CTL.freq(G, s.wd)), 5)}`, '--a'); }
+    else if (S <= 4) { L(.02, .46, `zero: ${s.z ? 's = ' + f(-s.z, 2) + (s.z < 0 ? '  (right half-plane)' : '') : 'none'}   G(s) = (s/${f(s.z, 1)} + 1)·${WN * WN}/(s² + ${2 * Z * WN}s + ${WN * WN})`, '--f');
+      const m = CTL.metrics(CTL.step(G, 1.5, 1e-3), 1); L(.02, .7, `step: overshoot ${f(m.os, 1)} %, rise ${f(m.tr * 1000, 0)} ms, min ${f(Math.min(...CTL.step(G, 1.5, 1e-3).map(p => p[1])), 3)}`, '--a'); }
+    else { L(.02, .46, 'L(s) = K(s − 1)/(s + 4) · 1/((s − 1)(s + 2)) = K/((s + 4)(s + 2)) on paper', '--ink'); L(.02, .7, 'but the plant’s own mode e^(+t) is still there: any disturbance excites it and nothing feeds back on it', '--bad'); }
+  },
+  math(S) {
+    const s = st();
+    const head = `<p class="cg">Plant poles fixed at ${CTL.roots(DEN).map(fmt).join(', ')} (ω_n = 10, ζ = 0.5).</p>`;
+    const rows = [
+`${E(`G(s) = N(s)/D(s)
+poles: D(s) = 0  (the free motions, e^(pt))
+zeros: N(s) = 0  (inputs e^(zt) that produce no output)`)}
+<p>The mechanism is always two paths that cancel: two forces or two signals reach the output with equal size and opposite sign at that particular s. A zero is a property of where the input enters and where you measure, not of the free dynamics.</p>`,
+`${E(`G(s) = (ω_n²/ω_z²) (s² + ω_z²) / (s² + 2ζω_n s + ω_n²)
+G(jω_z) = (ω_n²/ω_z²)(ω_z² − ω_z²)/(…) = 0
+now: |G(j${f(s.wd, 2)})| = ${f(CTL.cabs(CTL.freq(CTL.tf(CTL.pscl([1, 0, s.wz * s.wz], WN * WN / (s.wz * s.wz)), DEN), s.wd)), 6)}`)}
+<p>Physical notches: a tuned vibration absorber, or a joint measured on the far side of a flexible coupling (the anti-resonance). Notch filters (page 15’s neighbours) put this hole on purpose at a resonance.</p>`,
+`${E(`G(s) = (s/z + 1) G₀(s)   ⇒   y(t) = y₀(t) + (1/z) ẏ₀(t)
+z = ${f(s.z, 2)}: derivative weight 1/z = ${s.z ? f(1 / s.z, 3) : '—'} s`)}
+${ul(['Far zero (z ≫ ζω_n): the derivative term is tiny, nothing changes.', 'Close zero: the derivative kick adds early speed and extra overshoot, though the poles have not moved.', 'This is why overshoot formulas from page 11 assume “no zeros”.'])}`,
+`${E(`G(s) = (1 − s/a) G₀(s),  a > 0 (zero at s = +a)
+y(t) = y₀(t) − (1/a) ẏ₀(t):  at the start ẏ₀ > 0, so y first goes negative`)}
+${ul(['Cannot be cancelled: that would need a controller pole at +a (unstable).', 'Limits bandwidth to roughly below a: push faster and the undershoot grows.', 'Examples: steering a bicycle, a non-collocated sensor on a flexible arm, boiler drum level, aircraft altitude by elevator.'])}`,
+`${E(`closed loop: D(s) + K N(s) = 0
+K → 0:  D(s) = 0       (start at the open-loop poles)
+K → ∞:  N(s) = 0       (end at the zeros; extra poles go to ∞)
+K = ${f(s.K, 2)}: poles ${CTL.roots(CTL.padd(DEN, CTL.pscl(s.z ? [1 / s.z, 1] : [1], s.K * WN * WN))).map(fmt).join(', ')}`)}
+<p>A zero attracts a pole. A left-half-plane zero (like the zero a PD controller adds) pulls the locus left: more damping. A right-half-plane zero pulls a pole into instability at high gain.</p>`,
+`${E(`C(s) = K (s − 1)/(s + 4),  P(s) = 1/((s − 1)(s + 2))
+reference → output: K/((s + 4)(s + 2) + K)       looks stable
+disturbance at the plant input → output: P/(1 + CP) still contains 1/(s − 1)`)}
+<p>Cancellation removes a mode from one transfer function, not from the hardware. Never cancel an unstable or lightly damped pole; cancel only well-damped ones, and even then check every input–output pair (internal stability).</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>zero</b>${SL.st <= 1 ? '±j' + f(s.wz, 1) : 's = ' + f(-s.z, 1)}</span>`; },
+});
+</script>
+</body></html>

@@ -595,7 +595,9 @@ class RealTimePage(Page):
         navigation = Card("Choose a visual explanation — or read downward in order")
         links = QGridLayout()
         by_story = {id(m.story): m for m in self.findChildren(LessonAnimation)}
-        topics = [("1 · What 1 kHz means", self.lesson_animation)]
+        top = getattr(self, "step_lab", None)
+        topics = [("1 · One control cycle, step by step", top) if top is not None
+                  else ("1 · What 1 kHz means", self.lesson_animation)]
         topics += [(label, by_story[id(PAGE_ONE_EXTRAS[key])]) for key, label in (
             ("cycles", "2 · Count updates per cycle"),
             ("mechanics", "3 · What bandwidth means"),

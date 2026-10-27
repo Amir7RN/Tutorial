@@ -1,0 +1,94 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The Nyquist plot</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* L(s) = K e^(−sD) / (s + 1)³ — the classic: unstable for K > 8 without delay. */
+const st = () => { const v = SL.v, K = v.K / 10, D = v.d / 100, w = Math.pow(10, v.lw / 100); const L = CTL.tf([K], [1, 3, 3, 1], D); return { K, D, w, L, m: CTL.margins(L, -2, 2.5, 3000) }; };
+const curve = (L, n = 2000) => { const ws = CTL.logspace(-3, 2.5, n); return ws.map(w => CTL.freq(L, w)); };
+const winding = pts => { /* net turns of (L + 1) around 0 as ω runs −∞ → +∞ (mirror the positive half) */
+  const full = pts.slice().reverse().map(p => [p[0], -p[1]]).concat(pts); let a = 0;
+  for (let i = 1; i < full.length; i++) { const p = CTL.cadd(full[i - 1], [1, 0]), q = CTL.cadd(full[i], [1, 0]); let d = Math.atan2(q[1], q[0]) - Math.atan2(p[1], p[0]); while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; a += d; }
+  return -Math.round(a / (2 * Math.PI));   // clockwise encirclements
+};
+const closedStep = (K, D, T) => { const dt = 2e-3, n = Math.round(T / dt), lag = Math.round(D / dt); const x = [0, 0, 0], ys = new Float64Array(n + 1), out = [];
+  for (let i = 0; i < n; i++) { const yd = i - lag >= 0 ? ys[i - lag] : 0, u = K * (1 - yd); /* (s+1)^3 y = u */ const dx = [x[1], x[2], u - x[0] - 3 * x[1] - 3 * x[2]]; for (let k = 0; k < 3; k++) x[k] += dt * dx[k]; ys[i + 1] = x[0]; if (i % 5 === 0) out.push([i * dt, x[0]]); } return out; };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'The Nyquist plot: one curve, one point, and a counting rule',
+  sub: 'L(s) = K e^(−sD)/(s + 1)³. Plot L(jω) as a single curve in the complex plane and watch it approach −1 as the gain grows. The dot is the frequency chosen with the slider.',
+  view: '2d',
+  legend: [['--c', 'L(jω), ω > 0'], ['--grey', 'mirror, ω < 0'], ['--bad', 'the −1 point'], ['--b', 'margins'], ['--a', 'closed-loop step']],
+  controls: [
+    { id: 'K', label: 'loop gain K', min: 5, max: 150, value: 40, fmt: x => f(x / 10, 1) },
+    { id: 'd', label: 'delay D', min: 0, max: 200, value: 0, fmt: x => f(x / 100, 2) + ' s' },
+    { id: 'lw', label: 'marker frequency ω', min: -200, max: 150, value: 0, fmt: x => f(Math.pow(10, x / 100), 3) + ' rad/s' },
+  ],
+  buttons: [{ label: 'K = 8 (critical)', onclick: () => { SL.setControl('K', 80); SL.setControl('d', 0); SL.redraw(); } }, { label: 'K = 10 (unstable)', onclick: () => { SL.setControl('K', 100); SL.redraw(); } }, { label: 'add 0.3 s delay', onclick: () => { SL.setControl('d', 30); SL.redraw(); } }],
+  steps: [
+    ['The same information, plotted differently', 'Bode plots magnitude and phase against ω on two axes. Nyquist plots L(jω) itself — length = magnitude, angle = phase — as one curve, ω increasing along it. Move the marker frequency and follow the dot.'],
+    ['Why −1, and not some other number', 'The closed loop is L/(1 + L). It blows up where 1 + L = 0, i.e. L = −1. The distance from the curve to −1 is |1 + L|: small distance = nearly unstable.'],
+    ['The criterion: count encirclements', 'Count how many times the full curve (both halves) circles −1 clockwise: N. Closed-loop unstable poles Z = N + P, where P is the number of unstable open-loop poles (0 here). Z = 0 means stable.'],
+    ['Margins read straight off the picture', 'Where the curve crosses the negative real axis, its distance short of −1 gives the gain margin (1/distance). Where it crosses the unit circle, its angle short of −180° is the phase margin.'],
+    ['Sweep the gain', 'K scales the whole curve. At K = 8 it passes through −1 (ω = √3); beyond, it encircles −1 twice: two unstable closed-loop poles. The step response agrees.'],
+    ['Delay makes a spiral', 'e^(−jωD) keeps rotating the curve as ω grows: it spirals into the origin and can wrap round −1 at a gain that was safe without delay. Nyquist handles this exactly; Routh cannot.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), pts = curve(s.L), N = winding(pts);
+    const R = Math.max(2, Math.min(15, s.K * 1.1)), A = Pl.panel(0, 0, .6, .7, [-R * 1.05, R * 1.05, -R * .8, R * .8]); A.frame('L(jω) in the complex plane'); A.axes();
+    A.circle([0, 0], 1, '--grey', 1, [4, 3]);
+    A.clip(() => { A.poly(pts.map(p => [p[0], -p[1]]), '--grey', 1.2, [5, 3]); A.poly(pts.slice(0, Math.max(2, Math.round(pts.length * (S === 0 ? t : 1)))), '--c', 2.5); });
+    A.dot([-1, 0], 6, '--bad'); A.text([-1, 0], '−1', '--bad', -22, 16, { size: 13 });
+    const h = CTL.freq(s.L, s.w); A.dot(h, 6, '--a'); A.text(h, 'ω = ' + f(s.w, 2), '--a', 8, -6, { size: 12 });
+    if (S === 1) { A.line([-1, 0], h, '--b', 2, [4, 3]); A.text(SL.lerp([-1, 0], h, .5), '|1 + L| = ' + f(CTL.cabs(CTL.cadd([1, 0], h)), 3), '--b', 6, -6, { size: 12 }); }
+    if (S >= 3 && s.m.w180) { const x = -Math.pow(10, -s.m.gm / 20); A.dot([x, 0], 5, '--e'); A.text([x, 0], 'crosses at ' + f(x, 3) + ' → GM ' + f(s.m.gm, 1) + ' dB', '--e', 6, 18, { size: 12 }); }
+    if (S >= 3 && s.m.wc) { const hc = CTL.freq(s.L, s.m.wc); A.line([0, 0], hc, '--b', 2); A.text(hc, 'PM ' + f(s.m.pm, 1) + '°', '--b', 6, 12, { size: 12 }); }
+    /* right: Bode with the same marker + closed loop */
+    const ws = CTL.logspace(-2, 1.5, 300), lw = ws.map(Math.log10), H = ws.map(w => CTL.freq(s.L, w)), mag = H.map(x => CTL.db(CTL.cabs(x))), ph = CTL.unwrapPhase(H.map(CTL.carg)).map(x => x * 180 / Math.PI);
+    if (S <= 1) { const B = Pl.panel(.61, 0, .39, .35, [-2, 1.5, -60, 30], false), C = Pl.panel(.61, .36, .39, .34, [-2, 1.5, -360, 0], false);
+      B.series([{ pts: lw.map((x, i) => [x, mag[i]]), cl: '--c', w: 2, label: '|L| dB' }], { title: 'the same L as a Bode plot' }); B.line([-2, 0], [1.5, 0], '--grey', 1);
+      C.series([{ pts: lw.map((x, i) => [x, Math.max(-360, ph[i])]), cl: '--e', w: 2, label: '∠L' }], {}); C.line([-2, -180], [1.5, -180], '--bad', 1, [5, 3]);
+      const lx = Math.log10(s.w); B.dot([lx, CTL.db(CTL.cabs(h))], 5, '--a'); C.dot([lx, Math.max(-360, ph[Math.max(0, Math.min(ph.length - 1, Math.round((lx + 2) / 3.5 * 299)))])], 5, '--a'); }
+    else { const T = 20, r = closedStep(s.K, s.D, T), ym = Math.min(4, Math.max(1.5, ...r.map(p => Math.abs(p[1])))) * 1.05, B = Pl.panel(.61, 0, .39, .7, [0, T, -ym * .5, ym], false);
+      B.series([{ pts: r.map(p => [p[0], Math.max(-ym, Math.min(ym, p[1]))]), cl: N === 0 ? '--a' : '--bad', w: 2.5, label: 'closed-loop step' }], { title: N === 0 ? 'stable' : 'unstable: ' + N + ' closed-loop pole(s) in the RHP' }); B.line([0, s.K / (1 + s.K)], [T, s.K / (1 + s.K)], '--grey', 1, [4, 3]); }
+    const Bt = Pl.panel(0, .72, 1, .28, [0, 1, 0, 1], false); Bt.frame();
+    const L = (x, y, txt, cl) => Bt.label(Bt.x + Bt.w * x, Bt.y + Bt.h * y, txt, cl, { mono: true, size: 12 });
+    L(.02, .25, `L(jω) at ω = ${f(s.w, 3)}: ${f(h[0], 3)} ${h[1] < 0 ? '−' : '+'} j${f(Math.abs(h[1]), 3)}   |L| = ${f(CTL.cabs(h), 3)}, ∠L = ${f(CTL.carg(h) * 180 / Math.PI, 1)}°`, '--a');
+    L(.02, .55, `clockwise encirclements of −1: N = ${N}, open-loop RHP poles P = 0  →  closed-loop RHP poles Z = N + P = ${N}`, N ? '--bad' : '--c');
+    L(.02, .85, `GM = ${s.m.gm !== null ? f(s.m.gm, 2) + ' dB' : '∞'},  PM = ${s.m.pm !== null ? f(s.m.pm, 1) + '°' : '— (|L| < 1 everywhere)'}${s.D ? '' : `,  roots of (s+1)³ + K: ${CTL.roots([1, 3, 3, 1 + s.K]).map(r => f(r[0], 2) + (r[1] ? (r[1] > 0 ? '+' : '−') + f(Math.abs(r[1]), 2) + 'j' : '')).join(', ')}`}`, '--b');
+  },
+  math(S) {
+    const s = st(), h = CTL.freq(s.L, s.w), N = winding(curve(s.L));
+    const head = `<p class="cg">K = ${f(s.K, 2)}, D = ${f(s.D, 2)} s, marker ω = ${f(s.w, 3)} rad/s.</p>`;
+    const rows = [
+`${E(`L(jω) = K e^(−jωD)/(1 + jω)³
+|L| = K/(1 + ω²)^(3/2) = ${f(CTL.cabs(h), 4)},   ∠L = −3 atan ω − ωD = ${f(CTL.carg(h) * 180 / Math.PI, 2)}°`)}
+<p>ω = 0: the curve starts at K on the positive real axis. As ω grows it swings clockwise (phase falling) and shrinks toward 0. The dashed mirror image is ω &lt; 0.</p>`,
+`${E(`T = L/(1 + L),  closed-loop poles are the s with 1 + L(s) = 0
+|1 + L(jω)| = distance from L(jω) to −1 = ${f(CTL.cabs(CTL.cadd([1, 0], h)), 4)}
+sensitivity |S| = 1/|1 + L| = ${f(1 / CTL.cabs(CTL.cadd([1, 0], h)), 3)}`)}
+<p>−1 is special because the feedback subtracts: a signal that comes back inverted (−180°) at the same size (|L| = 1) sustains itself.</p>`,
+`${E(`Z = N + P
+N = clockwise encirclements of −1 by L(jω), ω: −∞ → +∞   = ${N}
+P = open-loop poles in the RHP                              = 0
+Z = closed-loop poles in the RHP                            = ${N}`)}
+<p>Why it works (the argument principle): each closed-loop pole in the right half-plane forces the curve 1 + L to wind once more around the origin. You count windings on a picture instead of solving for roots.</p>`,
+`${E(`phase crossover: L crosses the negative real axis at −${s.m.w180 ? f(Math.pow(10, -s.m.gm / 20), 4) : '—'}
+  GM = 1/that = ${s.m.gm !== null ? f(Math.pow(10, s.m.gm / 20), 3) + ' (' + f(s.m.gm, 2) + ' dB)' : '∞'}
+gain crossover: |L| = 1 at ω_c = ${s.m.wc ? f(s.m.wc, 3) : '—'};  PM = angle from −180° = ${s.m.pm !== null ? f(s.m.pm, 2) + '°' : '—'}`)}
+<p>Both margins are distances from −1 measured two different ways: along the real axis (gain) and around the unit circle (phase). A curve that sneaks close to −1 between those two points has good margins on paper but a large peak in |S|.</p>`,
+`${E(`no delay: ∠L = −180° at 3 atan ω = π ⇒ ω = √3 = 1.732 rad/s
+|L(j√3)| = K/(1 + 3)^(3/2) = K/8  ⇒  critical K = 8
+now K = ${f(s.K, 2)}: ${s.K < 8 ? 'stable, GM = ' + f(8 / s.K, 3) + '×' : s.K === 8 ? 'marginal' : 'unstable'}
+Routh on (s + 1)³ + K = s³ + 3s² + 3s + 1 + K: stable ⇔ 9 > 1 + K ⇔ K < 8 ✓`)}`,
+`${E(`∠L = −3 atan ω − ωD: the delay term grows without bound
+D = ${f(s.D, 2)} s: ω₁₈₀ = ${s.m.w180 ? f(s.m.w180, 3) : '—'} rad/s, critical K = ${s.m.gm !== null ? f(s.K * Math.pow(10, s.m.gm / 20), 3) : '—'}`)}
+<p>With delay there is no characteristic polynomial (e^(−sD) is not a polynomial), so Routh does not apply. The Nyquist curve is still just L(jω): plot it and count.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(), N = winding(curve(s.L)); return `<span><b>N</b>${N}</span><span><b>GM</b>${s.m.gm !== null ? f(s.m.gm, 1) + ' dB' : '∞'}</span><span><b>PM</b>${s.m.pm !== null ? f(s.m.pm, 0) + '°' : '—'}</span>`; },
+});
+</script>
+</body></html>

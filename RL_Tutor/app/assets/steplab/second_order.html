@@ -1,0 +1,121 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Second-order systems</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* J θ̈ + B θ̇ + K θ = K θ_d. Defaults J = 0.04, K = 100, B = 2: ω_n = 50 rad/s, ζ = 0.5. */
+const st = () => { const v = SL.v, J = v.J / 1000, K = v.K, B = v.B / 10; const wn = Math.sqrt(K / J), z = B / (2 * Math.sqrt(J * K)); return { J, K, B, wn, z, t: v.t / 1000 }; };
+const step = (wn, z, T, n = 800) => { const G = CTL.tf([wn * wn], [1, 2 * z * wn, wn * wn]); return CTL.sim(G, () => 1, T, T / n); };
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const REG = [['undamped ζ = 0', 0], ['underdamped ζ = 0.3', .3], ['critical ζ = 1', 1], ['overdamped ζ = 2', 2], ['negative ζ = −0.1', -.1]];
+SL.app({
+  title: 'Second order: energy that sloshes, poles that pair, and four metrics',
+  sub: 'A joint with inertia J held by a spring K (real or a P gain) and damping B (friction plus a D gain). Defaults J = 0.04, K = 100, B = 2: ω_n = 50 rad/s, ζ = 0.5.',
+  view: '2d',
+  legend: [['--a', 'θ(t)'], ['--e', 'kinetic energy'], ['--c', 'spring energy'], ['--d', 'poles'], ['--b', 'metrics']],
+  controls: [
+    { id: 'J', label: 'J', min: 10, max: 200, value: 40, fmt: x => f(x / 1000, 3) + ' kg·m²' },
+    { id: 'K', label: 'K', min: 10, max: 400, value: 100, fmt: x => x + ' N·m/rad' },
+    { id: 'B', label: 'B', min: -5, max: 150, value: 20, fmt: x => f(x / 10, 1) + ' N·m·s' },
+    { id: 't', label: 'time (step 0)', min: 0, max: 300, value: 40, fmt: x => x + ' ms' },
+  ],
+  play: { tick(dt) { let t = SL.v.t + dt * 120; if (t > 300) t = 0; SL.setControl('t', t); } },
+  reset() { SL.setControl('t', 0); },
+  buttons: REG.map(([lab, z]) => ({ label: lab, onclick: () => { const J = SL.v.J / 1000, K = SL.v.K; SL.setControl('B', Math.round(z * 2 * Math.sqrt(J * K) * 10)); SL.redraw(); } }))
+    .concat([{ label: 'double J', onclick: () => { SL.setControl('J', 80); SL.setControl('K', 100); SL.setControl('B', 20); SL.redraw(); } }, { label: 'retune K = 200, B = 4', onclick: () => { SL.setControl('J', 80); SL.setControl('K', 200); SL.setControl('B', 40); SL.redraw(); } }]),
+  steps: [
+    ['Watch the energy move', 'Release the joint from 20° with no target: spring energy turns into kinetic energy and back, and the damper skims a little off each swing. Two stores trading energy: that is what second order means.'],
+    ['The equation is those sentences written down', 'Inertia × acceleration + damping × speed + stiffness × angle = stiffness × target. Divide by J: two numbers, ω_n = √(K/J) and ζ = B/(2√(JK)), describe everything.'],
+    ['Where the poles are', 's = −ζω_n ± jω_n√(1 − ζ²). They sit on a circle of radius ω_n; the angle from the negative real axis is cos⁻¹ζ. Distance = speed, angle = how much it rings.'],
+    ['The step response and its four metrics', 'Rise time (10–90 %), peak time t_p = π/ω_d, overshoot e^(−πζ/√(1−ζ²)), settling time ≈ 4/(ζω_n). Each is one line of algebra from the poles.'],
+    ['The five regimes', 'ζ = 0 rings forever, 0 < ζ < 1 rings and decays, ζ = 1 returns fastest without overshoot, ζ > 1 creeps back, ζ < 0 grows. Use the buttons.'],
+    ['Stop letting go: start shaking', 'Drive it with a sine. Below ζ = 0.707 the magnitude has a resonance peak, near (not at) ω_n: ω_r = ω_n√(1 − 2ζ²), height 1/(2ζ√(1 − ζ²)).'],
+    ['J, K and B are secretly ω_n and ζ', 'Double J at the same gains: ω_n drops to 35.4 rad/s and ζ to 0.354 — slower and ringier. Restoring the shape needs K = 200 and B = 4: twice the gains, twice the torque.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), z = s.z, wn = s.wn, unstable = z < 0;
+    const roots = CTL.roots([1, 2 * z * wn, wn * wn]);
+    if (S === 0) {
+      const th0 = 20 * Math.PI / 180, T = .3, G = CTL.tf([1, 2 * z * wn, 0], [1, 2 * z * wn, wn * wn]);
+      /* free response from θ0: simulate ẍ = −2ζω ẋ − ω² x directly */
+      const dt = 1e-4, out = []; let x = th0, v = 0; for (let i = 0; i <= T / dt; i++) { if (i % 5 === 0) out.push([i * dt, x, v]); const a = -2 * z * wn * v - wn * wn * x; v += dt * a; x += dt * v; }
+      const k = Math.min(out.length - 1, Math.round(s.t / (5 * dt))), cur = out[k], KE = .5 * s.J * cur[2] ** 2, PE = .5 * s.K * cur[1] ** 2, E0 = .5 * s.K * th0 * th0;
+      const A = Pl.panel(0, 0, .62, .64, [0, T, 0, E0 * 1.1], false);
+      A.series([{ pts: out.map(p => [p[0], .5 * s.K * p[1] ** 2]), cl: '--c', w: 2, label: '½Kθ² (spring)' }, { pts: out.map(p => [p[0], .5 * s.J * p[2] ** 2]), cl: '--e', w: 2, label: '½Jθ̇² (motion)' }, { pts: out.map(p => [p[0], .5 * s.K * p[1] ** 2 + .5 * s.J * p[2] ** 2]), cl: '--ink', w: 1.5, dash: [5, 3], label: 'total' }], { title: 'released from 20°, no target', yl: 'J' });
+      A.line([s.t, 0], [s.t, E0 * 1.1], '--a', 1.5, [4, 3]);
+      const B = Pl.panel(.63, 0, .37, .64, [-1.3, 1.3, -1.6, 1.6]); B.frame('the joint at t = ' + f(s.t * 1000, 0) + ' ms');
+      B.line([0, 0], [Math.cos(cur[1] - Math.PI / 2), Math.sin(cur[1] - Math.PI / 2)], '--link', 6); B.dot([0, 0], 7, '--d', true);
+      const bar = (x, h, cl, lab) => { B.poly([[x - .15, -1.4], [x + .15, -1.4], [x + .15, -1.4 + h], [x - .15, -1.4 + h]], cl, 1.5, null, cl, true); B.text([x, -1.45], lab, cl, -14, 14, { size: 11 }); };
+      bar(-.9, 1.2 * PE / E0, '--c', 'spring'); bar(.9, 1.2 * KE / E0, '--e', 'motion');
+    } else if (S === 5) {
+      const ws = CTL.logspace(Math.log10(wn / 20), Math.log10(wn * 20), 400), fam = [.1, .3, .5, .707, 1, 2];
+      const P = Pl.panel(0, 0, .62, .64, [Math.log10(wn / 20), Math.log10(wn * 20), -40, 20], false);
+      const list = fam.map(zz => ({ pts: ws.map(w => [Math.log10(w), CTL.db(CTL.cabs(CTL.freq(CTL.tf([wn * wn], [1, 2 * zz * wn, wn * wn]), w)))]), cl: '--grey', w: 1 }));
+      list.push({ pts: ws.map(w => [Math.log10(w), CTL.db(CTL.cabs(CTL.freq(CTL.tf([wn * wn], [1, 2 * z * wn, wn * wn]), w)))]), cl: '--a', w: 3, label: '|G(jω)| dB at ζ = ' + f(z, 2) + ' (grey: ζ = 0.1 … 2)' });
+      P.series(list, { title: 'magnitude vs log₁₀ ω' }); P.line([Math.log10(wn), -40], [Math.log10(wn), 20], '--d', 1, [4, 3]); P.text([Math.log10(wn), 18], 'ω_n', '--d', 4, 0, { size: 12 });
+      if (z > 0 && z < .707) { const wr = wn * Math.sqrt(1 - 2 * z * z), Mr = 1 / (2 * z * Math.sqrt(1 - z * z)); P.dot([Math.log10(wr), CTL.db(Mr)], 6, '--b'); P.text([Math.log10(wr), CTL.db(Mr)], 'peak ' + f(CTL.db(Mr), 1) + ' dB at ' + f(wr, 1), '--b', 8, -6, { size: 12 }); }
+    } else {
+      const T = unstable ? .4 : Math.min(2, Math.max(.15, 8 / Math.max(.5, (z < 1 ? z : z - Math.sqrt(z * z - 1)) * wn))), r = step(wn, z, T), mx = Math.min(4, Math.max(1.3, ...r.map(p => Math.abs(p[1])))) * 1.05;
+      const P = Pl.panel(0, 0, .62, .64, [0, T, unstable ? -mx : -.05, mx], false);
+      P.series([{ pts: r.map(p => [p[0], Math.max(-mx, Math.min(mx, p[1]))]).slice(0, Math.max(2, Math.round(r.length * (S === 3 ? t : 1)))), cl: unstable ? '--bad' : '--a', w: 2.5, label: 'θ(t) for a 1 rad step of θ_d' }], { title: S === 1 ? 'J θ̈ + B θ̇ + K θ = K θ_d' : 'step response, ζ = ' + f(z, 3) });
+      P.line([0, 1], [T, 1], '--grey', 1, [5, 4]);
+      if (S === 3 && z > 0 && z < 1) { const m = CTL.metrics(r, 1), wd = wn * Math.sqrt(1 - z * z), tp = Math.PI / wd, Mp = Math.exp(-Math.PI * z / Math.sqrt(1 - z * z));
+        P.dot([tp, 1 + Mp], 6, '--b'); P.text([tp, 1 + Mp], 'peak: t_p = π/ω_d, overshoot ' + f(Mp * 100, 1) + ' %', '--b', 8, -6, { size: 12 });
+        P.poly([[0, .98], [T, .98], [T, 1.02], [0, 1.02]], null, 0, null, '--c', true); P.line([4 / (z * wn), 0], [4 / (z * wn), 1.02], '--c', 1.5, [4, 3]); P.text([4 / (z * wn), .2], 't_s ≈ 4/(ζω_n)', '--c', 4, 0, { size: 12 });
+        if (isFinite(m.tr)) { const t10 = r.find(p => p[1] >= .1)[0]; P.line([t10, .1], [t10 + m.tr, .9], '--e', 2); P.text([t10 + m.tr, .9], 'rise 10→90 %', '--e', 6, 10, { size: 12 }); } }
+    }
+    /* s-plane */
+    if (S !== 0) { const Rr = 1.3 * wn, Q = Pl.panel(.63, 0, .37, .64, [-Rr * 1.6, Rr * .4, -Rr, Rr]); Q.frame('poles'); Q.axes(); Q.circle([0, 0], wn, '--grey', 1, [4, 3]);
+      roots.forEach(r => { const c = r[0] > 0 ? '--bad' : '--d'; Q.line([r[0] - wn * .06, r[1] - wn * .06], [r[0] + wn * .06, r[1] + wn * .06], c, 3); Q.line([r[0] - wn * .06, r[1] + wn * .06], [r[0] + wn * .06, r[1] - wn * .06], c, 3); });
+      if (z > 0 && z < 1 && S === 2) { Q.line([0, 0], roots[0], '--b', 1.5); Q.text(MR.scl(roots[0], .5), 'ω_n', '--b', 6, -4, { size: 12 }); Q.arc([0, 0], 30, Math.PI, Math.PI - Math.acos(z), '--e', 2, false, 'cos⁻¹ζ'); } }
+    const Bt = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); Bt.frame();
+    const L = (x, y, txt, cl) => Bt.label(Bt.x + Bt.w * x, Bt.y + Bt.h * y, txt, cl, { mono: true, size: 12 });
+    L(.02, .2, `J = ${f(s.J, 3)}, K = ${s.K}, B = ${f(s.B, 1)}  →  ω_n = √(K/J) = ${f(wn, 2)} rad/s,  ζ = B/(2√(JK)) = ${f(z, 3)}`, '--ink');
+    L(.02, .42, `poles: ${roots.map(r => f(r[0], 1) + (r[1] ? (r[1] > 0 ? ' + ' : ' − ') + f(Math.abs(r[1]), 1) + 'j' : '')).join(',  ')}`, unstable ? '--bad' : '--d');
+    if (z > 0 && z < 1) { const wd = wn * Math.sqrt(1 - z * z), m = CTL.metrics(step(wn, z, Math.min(3, 10 / (z * wn))), 1);
+      L(.02, .64, `t_p = π/ω_d = ${f(Math.PI / wd * 1000, 1)} ms   overshoot = ${f(100 * Math.exp(-Math.PI * z / Math.sqrt(1 - z * z)), 1)} %   t_s ≈ 4/(ζω_n) = ${f(4 / (z * wn) * 1000, 0)} ms`, '--b');
+      L(.02, .86, `simulated: t_p = ${f(m.tp * 1000, 1)} ms, overshoot ${f(m.os, 1)} %, t_s(2 %) = ${f(m.ts * 1000, 0)} ms, t_r = ${f(m.tr * 1000, 1)} ms`, '--muted'); }
+    else L(.02, .64, z <= 0 ? 'ζ ≤ 0: no decay (or growth): not a useful step response' : 'ζ ≥ 1: no overshoot, no ringing', z <= 0 ? '--bad' : '--muted');
+  },
+  math(S) {
+    const s = st(), z = s.z, wn = s.wn, wd = z < 1 ? wn * Math.sqrt(Math.max(0, 1 - z * z)) : 0;
+    const head = `<p class="cg">J = ${f(s.J, 3)}, K = ${s.K}, B = ${f(s.B, 1)} → ω_n = ${f(wn, 2)} rad/s, ζ = ${f(z, 3)}.</p>`;
+    const rows = [
+`${E(`E = ½Kθ² + ½Jθ̇²
+dE/dt = −B θ̇²  ≤ 0      (only the damper removes energy)
+start: E₀ = ½K(20°)² = ${f(.5 * s.K * (20 * Math.PI / 180) ** 2, 3)} J`)}
+<p>Spring full ↔ mass still; spring relaxed ↔ mass fastest. Each swing the damper takes a slice. Few slices (small B): long ringing. That trade is the whole page.</p>`,
+`${E(`J θ̈ + B θ̇ + K θ = K θ_d
+θ̈ + 2ζω_n θ̇ + ω_n² θ = ω_n² θ_d
+ω_n = √(K/J) = ${f(wn, 3)} rad/s      (how fast energy sloshes)
+ζ = B/(2√(JK)) = ${f(z, 4)}           (how much is removed per slosh)`)}
+<p>On a robot joint: K = K_p of a PD controller, B = b + K_d (page 4). Two gains, two numbers, any second-order behaviour you like.</p>`,
+`${E(`s² + 2ζω_n s + ω_n² = 0
+s = −ζω_n ± jω_n√(1 − ζ²) = ${f(-z * wn, 2)} ± j${f(wd, 2)}
+|s| = ω_n = ${f(wn, 2)},   angle from the −real axis = cos⁻¹ζ = ${f(Math.acos(Math.max(-1, Math.min(1, z))) * 180 / Math.PI, 1)}°`)}
+<p>Lines of constant ζ are rays from the origin; circles are constant ω_n. ζ = 0.707 is the 45° ray.</p>`,
+z > 0 && z < 1 ? `${E(`θ(t) = 1 − e^(−ζω_n t)[cos ω_d t + (ζ/√(1 − ζ²)) sin ω_d t]
+peak:      θ̇ = 0 first at t_p = π/ω_d = ${f(Math.PI / wd * 1000, 2)} ms
+overshoot: M_p = e^(−πζ/√(1 − ζ²)) = ${f(100 * Math.exp(-Math.PI * z / Math.sqrt(1 - z * z)), 2)} %
+settling:  e^(−ζω_n t) = 0.02 → t_s ≈ 3.9/(ζω_n) ≈ ${f(4 / (z * wn) * 1000, 1)} ms
+rise (10–90 %): ≈ (1.8 to 2.2)/ω_n near ζ = 0.5`)}
+<p>Overshoot depends on ζ only; times scale with 1/ω_n. So: pick ζ for the shape, then ω_n for the speed.</p>` : '<p>Choose 0 &lt; ζ &lt; 1 (e.g. the “underdamped” button) to see the four metrics.</p>',
+`${ul(['ζ = 0: poles on the imaginary axis, energy never leaves: rings forever.', '0 &lt; ζ &lt; 1: complex pair, decaying ringing. Most joints live here.', 'ζ = 1: double real pole at −ω_n: the fastest approach with no overshoot.', 'ζ &gt; 1: two real poles; the slow one (near 0) makes it creep.', 'ζ &lt; 0: energy is pumped in (negative damping, e.g. too much delay): grows.'])}
+${E(`now: ζ = ${f(z, 3)}`)}`,
+`${E(`|G(jω)| = 1/√((1 − (ω/ω_n)²)² + (2ζω/ω_n)²)
+${z > 0 && z < .707 ? `peak at ω_r = ω_n√(1 − 2ζ²) = ${f(wn * Math.sqrt(1 - 2 * z * z), 2)} rad/s, M_r = 1/(2ζ√(1 − ζ²)) = ${f(1 / (2 * z * Math.sqrt(1 - z * z)), 3)} (${f(CTL.db(1 / (2 * z * Math.sqrt(1 - z * z))), 2)} dB)` : 'no peak: ζ ≥ 0.707, the magnitude only falls'}
+at ω = ω_n: |G| = 1/(2ζ) = ${f(1 / (2 * Math.max(z, 1e-9)), 3)},  phase = −90°`)}
+<p>The peak is not at ω_n (the dot sits left of the ω_n line) and it is not the same as overshoot — two different measurements of the same ζ.</p>`,
+`${E(`J 0.04, K 100, B 2:  ω_n = 50.0,  ζ = 0.500
+J 0.08, K 100, B 2:  ω_n = 35.4,  ζ = 0.354   (slower AND ringier)
+J 0.08, K 200, B 4:  ω_n = 50.0,  ζ = 0.500   (shape restored, 2× torque)
+now:                 ω_n = ${f(wn, 1)},  ζ = ${f(z, 3)}`)}
+<p>A payload doubles J: keeping the same behaviour needs both gains doubled, and the motor must deliver twice the torque for the same motion — check saturation and bandwidth before assuming it can.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>ω_n</b>${f(s.wn, 1)}</span><span><b>ζ</b>${f(s.z, 3)}</span>`; },
+});
+</script>
+</body></html>

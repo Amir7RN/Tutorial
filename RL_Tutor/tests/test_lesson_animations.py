@@ -139,8 +139,11 @@ class LessonAnimationTests(unittest.TestCase):
         page.show()
         self.app.processEvents()
         movies = page.findChildren(LessonAnimation)
-        self.assertEqual(len(movies), 4)
-        self.assertEqual({id(m.story) for m in movies}, {id(STORIES['RealTimePage']), *(id(PAGE_ONE_EXTRAS[k]) for k in ("cycles", "mechanics", "alias_wheel"))})
+        extras = {id(PAGE_ONE_EXTRAS[k]) for k in ("cycles", "mechanics", "alias_wheel")}
+        if hasattr(page, 'step_lab'):        # the top movie is replaced by the step lab
+            self.assertEqual({id(m.story) for m in movies}, extras)
+        else:
+            self.assertEqual({id(m.story) for m in movies}, {id(STORIES['RealTimePage']), *extras})
         scroll = page.findChild(QScrollArea)
         for movie in movies:
             scroll.ensureWidgetVisible(movie.canvas, 0, 15)

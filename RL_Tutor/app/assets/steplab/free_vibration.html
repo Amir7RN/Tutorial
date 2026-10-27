@@ -1,0 +1,104 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Free vibration</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="ctl.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+/* m ẍ + c ẋ + k x = 0 written as ẍ + 2ζω_n ẋ + ω_n² x = 0. Default: the joint J = 0.04 on a k = 100 spring: ω_n = 50 rad/s. */
+const st = () => { const v = SL.v; return { x0: v.x0 / 100, v0: v.v0 / 10, wn: v.wn, z: SL.st <= 2 ? 0 : v.z / 100 }; };
+const sol = (x0, v0, wn, z, t) => {
+  if (z < 1 - 1e-9) { const wd = wn * Math.sqrt(1 - z * z), e = Math.exp(-z * wn * t); return e * (x0 * Math.cos(wd * t) + (v0 + z * wn * x0) / wd * Math.sin(wd * t)); }
+  if (Math.abs(z - 1) <= 1e-9) return Math.exp(-wn * t) * (x0 + (v0 + wn * x0) * t);
+  const r = Math.sqrt(z * z - 1), s1 = -wn * (z - r), s2 = -wn * (z + r), c2 = (v0 - s1 * x0) / (s2 - s1), c1 = x0 - c2; return c1 * Math.exp(s1 * t) + c2 * Math.exp(s2 * t);
+};
+const f = SL.f, E = SL.eq, ul = SL.ul;
+SL.app({
+  title: 'Free vibration: displace it, shove it, let go',
+  sub: 'Nobody pushes; the motion comes only from where it starts (x₀) and how fast (v₀). Default: the joint J = 0.04 kg·m² on a k = 100 N·m/rad spring, ω_n = 50 rad/s.',
+  view: '2d',
+  legend: [['--a', 'x(t)'], ['--b', 'x₀ part'], ['--e', 'v₀ part'], ['--grey', 'envelope'], ['--c', 'peaks']],
+  controls: [
+    { id: 'x0', label: 'initial position x₀', min: -100, max: 100, value: 50, fmt: x => f(x / 100, 2) + ' rad' },
+    { id: 'v0', label: 'initial speed v₀', min: -400, max: 400, value: 150, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'wn', label: 'ω_n', min: 5, max: 100, value: 50, fmt: x => x + ' rad/s' },
+    { id: 'z', label: 'damping ratio ζ (from step 3)', min: 0, max: 250, value: 10, fmt: x => f(x / 100, 2) },
+  ],
+  buttons: [{ label: 'ζ = 1 (critical)', onclick: () => { SL.setControl('z', 100); SL.redraw(); } }, { label: 'ζ = 2 (overdamped)', onclick: () => { SL.setControl('z', 200); SL.redraw(); } }, { label: 'ζ = 0.1', onclick: () => { SL.setControl('z', 10); SL.redraw(); } }],
+  steps: [
+    ['No damper: mass and spring', 'ẍ + ω_n² x = 0. The solution is a cosine and a sine at ω_n = √(k/m): x(t) = x₀ cos ω_n t + (v₀/ω_n) sin ω_n t. One term for each thing you chose at the start.'],
+    ['The same answer as one cosine', 'A cosine plus a sine at the same frequency is one shifted cosine: x = A cos(ω_n t − φ), A = √(x₀² + (v₀/ω_n)²), φ = atan2(v₀/ω_n, x₀). The rotating arrow (phasor) shows both at once.'],
+    ['The peak leaves x₀ behind', 'With a shove (v₀ ≠ 0) the first peak is bigger than x₀ and comes later: it is A, at t = φ/ω_n. Only with v₀ = 0 does the motion start at its peak.'],
+    ['Put the damper back', 'ẍ + 2ζω_n ẋ + ω_n² x = 0. The same shifted cosine, now at ω_d = ω_n√(1 − ζ²), inside a shrinking envelope e^(−ζω_n t).'],
+    ['Split it by initial condition', 'Linear means the x₀ response and the v₀ response simply add. Each part has its own shape; the total is their sum.'],
+    ['ζ = 1 and ζ > 1: no oscillation', 'At ζ = 1 the two poles meet on the real axis: fastest return with no overshoot. Above it they split into two real poles and the return is slower. There is no cosine any more.'],
+    ['Measure ζ from the trace', 'Successive peaks shrink by the same ratio. Its log, δ = ln(x_n / x_{n+1}) = 2πζ/√(1 − ζ²), gives ζ from any ringing trace (the tap test of page 3).'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim);
+    const wd = s.z < 1 ? s.wn * Math.sqrt(1 - s.z * s.z) : s.wn, T = Math.max(4 * 2 * Math.PI / s.wn, s.z > 0 ? Math.min(12 * 2 * Math.PI / s.wn, 5 / (s.z * s.wn)) : 0);
+    const N = 800, pts = [...Array(N + 1)].map((_, i) => { const tt = i / N * T; return [tt, sol(s.x0, s.v0, s.wn, s.z, tt)]; });
+    const A0 = Math.hypot(s.x0, s.v0 / s.wn), ym = Math.max(.1, A0, Math.abs(s.x0)) * 1.25;
+    const P = Pl.panel(0, 0, .64, .64, [0, T, -ym, ym], false);
+    const list = [];
+    if (S === 0 || S === 4) { const xp = pts.map(([tt]) => [tt, sol(s.x0, 0, s.wn, s.z, tt)]), vp = pts.map(([tt]) => [tt, sol(0, s.v0, s.wn, s.z, tt)]); list.push({ pts: xp, cl: '--b', w: 1.5, dash: [5, 3], label: S ? 'x₀ part' : 'x₀ cos ω_n t' }, { pts: vp, cl: '--e', w: 1.5, dash: [5, 3], label: S ? 'v₀ part' : '(v₀/ω_n) sin ω_n t' }); }
+    list.push({ pts: pts.slice(0, Math.max(2, Math.round(pts.length * (S === 3 ? t : 1)))), cl: '--a', w: 2.5, label: 'x(t)' });
+    if (S >= 3 && s.z < 1) { const Ae = Math.hypot(s.x0, (s.v0 + s.z * s.wn * s.x0) / wd), env = pts.map(([tt]) => [tt, Ae * Math.exp(-s.z * s.wn * tt)]); list.push({ pts: env, cl: '--grey', w: 1, dash: [4, 3], label: 'envelope' }, { pts: env.map(p => [p[0], -p[1]]), cl: '--grey', w: 1, dash: [4, 3] }); }
+    P.series(list, { title: S <= 2 ? 'undamped: ẍ + ω_n² x = 0' : 'ζ = ' + f(s.z, 2), yl: 'rad' });
+    P.dot([0, s.x0], 5, '--b');
+    if (S === 2) { const phi = Math.atan2(s.v0 / s.wn, s.x0), tp = ((phi % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / s.wn; P.dot([tp, A0], 6, '--c'); P.text([tp, A0], 'first peak A = ' + f(A0, 3) + ' at t = ' + f(tp * 1000, 1) + ' ms', '--c', 8, -6, { size: 12 }); P.line([0, s.x0], [T, s.x0], '--b', 1, [3, 3]); P.text([T * .7, s.x0], 'x₀', '--b', 0, -6, { size: 12 }); }
+    let peaks = [];
+    if (S === 6) { for (let i = 1; i < N; i++) if (pts[i][1] > pts[i - 1][1] && pts[i][1] >= pts[i + 1][1] && pts[i][1] > 0) peaks.push(pts[i]); peaks.slice(0, 6).forEach((p, i) => { P.dot(p, 5, '--c'); P.text(p, f(p[1], 3), '--c', -10, -8, { size: 11 }); }); }
+    /* right: phasor or s-plane */
+    if (S <= 2) { const R = Pl.panel(.65, 0, .35, .64, [-ym, ym, -ym, ym]); R.frame('phasor: x = A cos(ω_n t − φ)'); R.axes(); R.circle([0, 0], A0, '--grey', 1, [4, 3]);
+      R.arrow([0, 0], [s.x0, 0], '--b', 2.5, 'x₀'); R.arrow([s.x0, 0], [0, s.v0 / s.wn], '--e', 2.5, 'v₀/ω_n'); R.arrow([0, 0], [s.x0, s.v0 / s.wn], '--a', 3, 'A');
+      R.text([0, -ym * .85], `A = ${f(A0, 3)}, φ = ${f(Math.atan2(s.v0 / s.wn, s.x0) * 180 / Math.PI, 1)}°`, '--a', -60, 0, { size: 12, mono: true }); }
+    else { const R = Pl.panel(.65, 0, .35, .64, [-2.6, .6, -1.6, 1.6]); R.frame('poles / ω_n'); R.axes(); R.circle([0, 0], 1, '--grey', 1, [4, 3]);
+      const roots = CTL.roots([1, 2 * s.z, 1]); roots.forEach(r => { R.line([r[0] - .07, r[1] - .07], [r[0] + .07, r[1] + .07], '--d', 3); R.line([r[0] - .07, r[1] + .07], [r[0] + .07, r[1] - .07], '--d', 3); });
+      R.text([-2.5, -1.4], s.z < 1 ? 'complex pair: rings' : s.z === 1 ? 'double real pole' : 'two real poles', '--d', 0, 0, { size: 12 }); }
+    const Bt = Pl.panel(0, .66, 1, .34, [0, 1, 0, 1], false); Bt.frame();
+    const L = (x, y, txt, cl) => Bt.label(Bt.x + Bt.w * x, Bt.y + Bt.h * y, txt, cl, { mono: true, size: 12 });
+    L(.02, .2, `ω_n = ${s.wn} rad/s (period ${f(2 * Math.PI / s.wn * 1000, 1)} ms), ζ = ${f(s.z, 2)}${s.z < 1 ? `, ω_d = ω_n√(1 − ζ²) = ${f(wd, 2)} rad/s` : ''}`, '--ink');
+    L(.02, .42, `x₀ = ${f(s.x0, 2)} rad, v₀ = ${f(s.v0, 1)} rad/s  →  A = √(x₀² + (v₀/ω_n)²) = ${f(A0, 3)} rad`, '--a');
+    if (S === 6 && peaks.length >= 2) { const d = Math.log(peaks[0][1] / peaks[1][1]); L(.02, .64, `δ = ln(${f(peaks[0][1], 3)}/${f(peaks[1][1], 3)}) = ${f(d, 4)}  →  ζ = δ/√(4π² + δ²) = ${f(d / Math.sqrt(4 * Math.PI * Math.PI + d * d), 4)}  (true ${f(s.z, 3)})`, '--c'); }
+    else L(.02, .64, `poles: s = ${CTL.roots([1, 2 * s.z * s.wn, s.wn * s.wn]).map(r => f(r[0], 1) + (r[1] ? (r[1] > 0 ? '+' : '−') + f(Math.abs(r[1]), 1) + 'j' : '')).join(', ')}`, '--d');
+    L(.02, .86, 'joint version: J θ̈ + B θ̇ + k θ = 0  with ω_n = √(k/J), ζ = B/(2√(Jk))', '--muted');
+  },
+  math(S) {
+    const s = st(), wd = s.z < 1 ? s.wn * Math.sqrt(1 - s.z * s.z) : 0, A0 = Math.hypot(s.x0, s.v0 / s.wn), phi = Math.atan2(s.v0 / s.wn, s.x0);
+    const head = `<p class="cg">x₀ = ${f(s.x0, 2)}, v₀ = ${f(s.v0, 1)}, ω_n = ${s.wn}, ζ = ${f(s.z, 2)}.</p>`;
+    const rows = [
+`${E(`m ẍ + k x = 0  ⇒  ẍ = −ω_n² x,  ω_n = √(k/m)  (joint: √(100/0.04) = 50 rad/s)
+try x = e^(st): s² + ω_n² = 0 ⇒ s = ±jω_n
+real solution: x(t) = C₁ cos ω_n t + C₂ sin ω_n t
+x(0) = C₁ = x₀ = ${f(s.x0, 3)},   ẋ(0) = C₂ ω_n = v₀ ⇒ C₂ = ${f(s.v0 / s.wn, 4)}`)}
+<p>Two constants because two stores (spring energy, kinetic energy): you must say where it starts and how fast.</p>`,
+`${E(`C₁ cos ω_n t + C₂ sin ω_n t = A cos(ω_n t − φ)
+A = √(C₁² + C₂²) = ${f(A0, 4)}
+φ = atan2(C₂, C₁) = ${f(phi * 180 / Math.PI, 2)}°`)}
+<p>The phasor (x₀, v₀/ω_n) spins at ω_n; x(t) is its projection on the real axis. Its length A is set by the energy you put in: ½k A² = ½k x₀² + ½m v₀².</p>`,
+`${E(`peak value = A = ${f(A0, 4)} ${A0 > Math.abs(s.x0) + 1e-9 ? '> |x₀|' : '= |x₀|'}
+first peak at t = φ/ω_n = ${f(((phi % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) / s.wn * 1000, 2)} ms`)}
+<p>Energy view: the shove adds ½m v₀² on top of the spring’s ½k x₀², so the swing must reach further than x₀ before turning back.</p>`,
+`${E(`ẍ + 2ζω_n ẋ + ω_n² x = 0,  s = −ζω_n ± jω_n√(1 − ζ²)
+x(t) = e^(−ζω_n t) [x₀ cos ω_d t + ((v₀ + ζω_n x₀)/ω_d) sin ω_d t]
+ω_d = ${f(wd, 3)} rad/s, decay rate ζω_n = ${f(s.z * s.wn, 3)} 1/s`)}
+<p>The √(1 − ζ²) barely matters for small ζ (ζ = 0.1: ω_d = 0.995 ω_n). It matters near ζ = 1, where the oscillation disappears.</p>`,
+`${E(`x(t) = x₀·h_x(t) + v₀·h_v(t)
+h_x(t) = e^(−ζω_n t)[cos ω_d t + (ζω_n/ω_d) sin ω_d t]   (released from rest)
+h_v(t) = e^(−ζω_n t) (1/ω_d) sin ω_d t                    (shoved from zero)`)}
+<p>Superposition: double x₀ and its part doubles; the v₀ part does not care. Each initial condition excites the same two poles with a different mix.</p>`,
+`${E(`ζ = 1:  x(t) = e^(−ω_n t)[x₀ + (v₀ + ω_n x₀) t]      double pole at −ω_n
+ζ > 1:  x(t) = c₁ e^(s₁t) + c₂ e^(s₂t),  s₁,₂ = −ω_n(ζ ∓ √(ζ² − 1))
+now ζ = ${f(s.z, 2)}`)}
+<p>Overdamped is slower than critical: one pole slides toward 0 (s₁ → −ω_n/(2ζ)), and that slow pole dominates. Critically damped is the fastest return without overshoot — a common design target for robot joints.</p>`,
+`${E(`x_{n+1}/x_n = e^(−ζω_n T_d),  T_d = 2π/ω_d
+δ = ln(x_n / x_{n+1}) = 2πζ/√(1 − ζ²)
+ζ = δ/√(4π² + δ²)`)}
+<p>Use peaks k apart and divide by k for a less noisy δ. For small ζ: ζ ≈ δ/(2π), and the number of cycles to halve the amplitude is ≈ 0.11/ζ.</p>`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>A</b>${f(Math.hypot(s.x0, s.v0 / s.wn), 3)}</span><span><b>ζ</b>${f(s.z, 2)}</span>`; },
+});
+</script>
+</body></html>
