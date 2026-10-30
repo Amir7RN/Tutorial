@@ -128,6 +128,11 @@ class LagrangePage(Page):
             "for gravity."))
         self.add(r)
         self.add(ch8.point_mass_2r_card())
+        self.add(ch8.velocity_product_card())
+        self.add(StepLab("velocity_2r.html", "2R spin scenarios: centripetal and Coriolis",
+                         height=820, prefix="Explore · "))
+        self.add(StepLab("velocity_3r.html", "3R velocity-product term c: pulls and levers",
+                         height=820, prefix="Explore · "))
         self.add(ch8.velocity_products_card())
 
         lab = Card("evaluate every term at a state")

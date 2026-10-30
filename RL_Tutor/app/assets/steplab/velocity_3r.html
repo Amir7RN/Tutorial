@@ -1,0 +1,242 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>3R Velocity-Product Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one screen. 3-D arm left; joint picker, pull table (click a row), sliders right */
+:root{
+  --bg:#f2f4f7; --panel:#ffffff; --ink:#1a2330; --muted:#5b6676; --line:#d4dae2; --hi:#eaf0ff;
+  --you:#2a4fd6; --cent:#0f8a86; --cor:#b5179e; --lever:#d9661f; --link:#3b4656; --mass:#8a5a12; --fade:#b7bfca;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --you:#7d9bff; --cent:#33c2bd; --cor:#f06ad0; --lever:#f08a45; --link:#b8c2cf; --mass:#d9b45c; --fade:#4a5463; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --you:#7d9bff; --cent:#33c2bd; --cor:#f06ad0; --lever:#f08a45; --link:#b8c2cf; --mass:#d9b45c; --fade:#4a5463; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{height:100%;display:flex;flex-direction:column;gap:8px;max-width:1500px;margin:0 auto;padding-block:10px;box-sizing:border-box;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+h1{font-size:1.15rem;margin:0}
+.sub{color:var(--muted);margin:0;font-size:.88rem}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.35fr) minmax(400px,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.view{position:relative;padding:6px;display:flex;flex-direction:column;min-height:0}
+#scene{flex:1;min-height:0;width:100%;display:block;touch-action:none;cursor:grab;border-radius:6px}
+.side{display:flex;flex-direction:column;gap:10px;min-width:0;overflow-y:auto}
+@media (max-width:900px){html,body{height:auto}.wrap{height:auto}.grid{grid-template-columns:minmax(0,1fr)}#scene{flex:none;aspect-ratio:1.1/1}.side{overflow:visible}}
+.h{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.8rem;color:var(--muted);padding:6px 4px 2px}
+.sw{display:inline-block;width:14px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.lbl{position:absolute;font-size:.76rem;font-weight:700;pointer-events:none;white-space:nowrap;transform:translate(-50%,-130%);
+  background:color-mix(in srgb,var(--panel) 88%,transparent);padding:1px 6px;border-radius:4px;font-family:var(--mono)}
+.cvec{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.cell{font:inherit;font-family:var(--mono);font-weight:600;font-size:1rem;padding:9px 0;border-radius:8px;border:1px solid var(--line);cursor:pointer;color:var(--ink);background:var(--panel)}
+.cell small{display:block;font-family:var(--body);font-size:.75rem;color:var(--muted);font-weight:700}
+.cell[aria-pressed="true"]{outline:3px solid var(--you);outline-offset:1px}
+button:focus-visible{outline:2px solid var(--you);outline-offset:2px}
+.exp p{margin:0 0 6px;font-size:.9rem}
+.exp ul{margin:0 0 6px;padding-left:18px;font-size:.9rem}
+.tw{overflow-x:auto}
+table.t{width:100%;border-collapse:collapse;font-size:.84rem;font-variant-numeric:tabular-nums}
+table.t th,table.t td{padding:5px 5px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t th{font-size:.74rem;color:var(--muted);font-weight:700}
+table.t tr.row{cursor:pointer}
+table.t tr.row:hover{background:var(--hi)}
+table.t tr.row[aria-selected="true"]{background:var(--hi);box-shadow:inset 3px 0 0 var(--lever)}
+.mono{font-family:var(--mono);font-size:.82rem}
+.focus{background:var(--hi);border-radius:8px;padding:8px 10px;font-size:.9rem;margin-top:8px}
+details{margin-top:8px;font-size:.88rem}
+summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.gam{display:grid;grid-template-columns:34px repeat(3,minmax(0,1fr));gap:4px;align-items:center;margin:6px 0}
+.gam .hd{font-size:.8rem;font-weight:700;text-align:center;font-family:var(--mono)}
+.gc{font-family:var(--mono);font-size:.88rem;text-align:center;padding:6px 0;border-radius:6px;border:1px solid var(--line)}
+.gc.d{border-color:var(--cent);color:var(--cent)} .gc.o{border-color:var(--cor);color:var(--cor)}
+.ctrls{display:grid;gap:5px}
+.ctrls label{display:grid;grid-template-columns:96px minmax(0,1fr) 54px;gap:8px;align-items:center;font-size:.86rem}
+.ctrls output{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%}
+.cc{color:var(--cent)} .co{color:var(--cor)} .cl{color:var(--lever)} .cy{color:var(--you)} .cm{color:var(--mass)} .mut{color:var(--muted)}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>3R velocity-product term c: pulls and levers</h1>
+    <p class="sub">All joints turn at their set speeds. Each mass curves, so it needs pulls. Stand at one joint and add up the torque those pulls cost you. Click a row to see it on the arm.</p>
+  </div>
+  <div class="grid">
+    <div class="card view" id="view">
+      <canvas id="scene" aria-label="3-D arm showing one pull and its lever about the chosen joint"></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--cent)"></span>centripetal pull (one joint's spin)</span>
+        <span><span class="sw" style="background:var(--cor)"></span>Coriolis pull (two joints spinning together)</span>
+        <span><span class="sw" style="background:var(--lever)"></span>lever: shortest distance from you to the pull's line</span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="h">1. Where do you stand?</div>
+        <div class="cvec" id="cvec"></div>
+      </div>
+      <div class="card exp" id="exp"></div>
+      <div class="card ctrls">
+        <div class="h">Pose, speeds, masses</div>
+        <label for="t1">θ₁ <input id="t1" type="range" min="-180" max="180" step="1" value="0"><output id="t1o"></output></label>
+        <label for="t2">θ₂ <input id="t2" type="range" min="-180" max="180" step="1" value="90"><output id="t2o"></output></label>
+        <label for="t3">θ₃ <input id="t3" type="range" min="-180" max="180" step="1" value="-90"><output id="t3o"></output></label>
+        <label for="w1">θ̇₁ (rad/s) <input id="w1" type="range" min="-3" max="3" step="0.1" value="1"><output id="w1o"></output></label>
+        <label for="w2">θ̇₂ (rad/s) <input id="w2" type="range" min="-3" max="3" step="0.1" value="1"><output id="w2o"></output></label>
+        <label for="w3">θ̇₃ (rad/s) <input id="w3" type="range" min="-3" max="3" step="0.1" value="0"><output id="w3o"></output></label>
+        <label for="m1">m₁ (kg) <input id="m1" type="range" min="0" max="3" step="0.1" value="1"><output id="m1o"></output></label>
+        <label for="m2">m₂ (kg) <input id="m2" type="range" min="0" max="3" step="0.1" value="1"><output id="m2o"></output></label>
+        <label for="m3">m₃ (kg) <input id="m3" type="range" min="0" max="3" step="0.1" value="1"><output id="m3o"></output></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(()=>{
+const L=[1,1,1];
+const S={th:[0,90,-90],w:[1,1,0],m:[1,1,1],sel:2,row:0};
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f=(x,d=2)=>(Math.abs(x)<5e-4?0:x).toFixed(d), vs=v=>'('+v.map(x=>f(x)).join(', ')+')';
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1]], sub=(a,b)=>[a[0]-b[0],a[1]-b[1]], scl=(a,k)=>[a[0]*k,a[1]*k], dot=(a,b)=>a[0]*b[0]+a[1]*b[1], crs=(a,b)=>a[0]*b[1]-a[1]*b[0], nrm=a=>Math.hypot(a[0],a[1]);
+const D2R=Math.PI/180, jn=['joint 1','joint 2','joint 3'], mn=['m₁','m₂','m₃'], sub3='₁₂₃';
+function geo(thR){const P=[[0,0]];let ang=0;for(let l=0;l<3;l++){ang+=thR[l];P.push(add(P[l],[L[l]*Math.cos(ang),L[l]*Math.sin(ang)]))}return P}
+// joints at P[0..2]; mass k at P[k+1]; joints 0..k move mass k.
+// Exact split of each mass's curving pull (θ̈ = 0):
+//   centripetal: joint j's spin → pull toward joint j, size m·θ̇j²·(distance to joint j)
+//   Coriolis:   joints j<k together → pull toward joint k, size 2·m·θ̇j·θ̇k·(distance to joint k)
+function pulls(P,w,m,i){const R=[];
+  for(let k=i;k<3;k++){const p=P[k+1];
+    for(let j=0;j<=k;j++){const r=sub(p,P[j]),d=nrm(r);if(d<1e-9)continue;
+      R.push({k,type:'cent',j,tgt:j,d,size:m[k]*w[j]*w[j]*d,coef:m[k]*w[j]*w[j],F:scl(r,-m[k]*w[j]*w[j])})}
+    for(let j=0;j<=k;j++)for(let q=j+1;q<=k;q++){const r=sub(p,P[q]),d=nrm(r);if(d<1e-9)continue;
+      R.push({k,type:'cor',j,q,tgt:q,d,size:2*m[k]*w[j]*w[q]*d,coef:2*m[k]*w[j]*w[q],F:scl(r,-2*m[k]*w[j]*w[q])})}}
+  R.forEach(t=>{const p=P[t.k+1],u=scl(sub(P[t.tgt],p),1/t.d),rr=sub(p,P[i]);t.u=u;t.lever=crs(rr,u);t.tq=crs(rr,t.F);t.foot=sub(p,scl(u,dot(rr,u)))});
+  return R.filter(t=>Math.abs(t.size)>1e-9);
+}
+const cvec=(thR,w,m)=>{const P=geo(thR);return [0,1,2].map(i=>pulls(P,w,m,i).reduce((s,t)=>s+t.tq,0))};
+function gamma(thR,m){const e=[[1,0,0],[0,1,0],[0,0,1]],G=[0,1,2].map(()=>[[0,0,0],[0,0,0],[0,0,0]]),cj=e.map(x=>cvec(thR,x,m));
+  for(let j=0;j<3;j++)for(let k=0;k<3;k++){if(j===k){for(let i=0;i<3;i++)G[i][j][j]=cj[j][i]}else{const s=cvec(thR,e[j].map((x,q)=>x+e[k][q]),m);for(let i=0;i<3;i++)G[i][j][k]=(s[i]-cj[j][i]-cj[k][i])/2}}return G}
+
+/* ---------- 3-D ---------- */
+const view=document.getElementById('view'),cv=document.getElementById('scene');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1.2,.05,100);
+scene.add(new THREE.AmbientLight(0xffffff,.65));const dl=new THREE.DirectionalLight(0xffffff,.7);dl.position.set(3,6,4);scene.add(dl);
+const W3=(p,y=0)=>new THREE.Vector3(p[0],y,-p[1]);
+const mat=c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c),roughness:.55,metalness:.1});
+let grid=null;
+const linkM=mat('#3b4656');const links=[0,1,2].map(()=>{const b=new THREE.Mesh(new THREE.BoxGeometry(1,.05,.07),linkM);scene.add(b);return b});
+const jointM=mat('#3b4656');const joints=[0,1,2].map(()=>{const j=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.16,24),jointM);scene.add(j);return j});
+const youM=new THREE.MeshBasicMaterial({color:0x2a4fd6});const you=new THREE.Mesh(new THREE.TorusGeometry(.15,.03,8,40),youM);you.rotation.x=Math.PI/2;scene.add(you);
+const tgtM=new THREE.MeshBasicMaterial({color:0x0f8a86});const tgt=new THREE.Mesh(new THREE.TorusGeometry(.12,.02,8,40),tgtM);tgt.rotation.x=Math.PI/2;scene.add(tgt);
+const massMats=[0,1,2].map(()=>new THREE.MeshStandardMaterial({color:0x8a5a12,roughness:.4,transparent:true,opacity:1}));
+const masses=massMats.map(m=>{const s=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),m);scene.add(s);return s});
+// thick segments via thin boxes
+function bar(color){const m=new THREE.Mesh(new THREE.BoxGeometry(1,.035,.035),new THREE.MeshBasicMaterial({color}));scene.add(m);return m}
+function setBar(b,a,c,y){const P=W3(a,y),Q=W3(c,y),len=P.distanceTo(Q);b.visible=len>1e-4;if(!b.visible)return;b.position.copy(P.clone().add(Q).multiplyScalar(.5));b.scale.set(len,1,1);b.rotation.set(0,Math.atan2(-(Q.z-P.z),Q.x-P.x),0)}
+const leverBar=bar(0xd9661f);
+const lineG=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);const lineL=new THREE.Line(lineG,new THREE.LineDashedMaterial({color:0x0f8a86,dashSize:.06,gapSize:.05}));scene.add(lineL);
+const footM=new THREE.Mesh(new THREE.SphereGeometry(.035,12,8),new THREE.MeshBasicMaterial({color:0xd9661f}));scene.add(footM);
+const mkA=(c,h)=>{const a=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,c,h||.12,.07);scene.add(a);return a};
+const mainA=mkA(0x0f8a86,.16);const faintA=Array.from({length:12},()=>mkA(0x999999,.07));
+const K=.22;
+function setA(a,o,v,k){const w=new THREE.Vector3(v[0],0,-v[1]).multiplyScalar(k);let n=w.length();a.visible=n>1e-3;if(!a.visible)return;if(n>1.6){w.multiplyScalar(1.6/n);n=1.6}
+  a.position.copy(o);a.setDirection(w.clone().normalize());a.setLength(n,Math.min(.16,n*.35),Math.min(.09,n*.25))}
+const labels=[];for(let q=0;q<8;q++){const d=document.createElement('div');d.className='lbl';d.hidden=true;view.appendChild(d);labels.push(d)}
+function place(d,v3,html,color){const p=v3.clone().project(cam);if(p.z>1||!html){d.hidden=true;return}const r=cv.getBoundingClientRect(),vr=view.getBoundingClientRect();
+  d.hidden=false;d.innerHTML=html;d.style.color=color||'';d.style.left=(r.left-vr.left+(p.x+1)/2*r.width)+'px';d.style.top=(r.top-vr.top+(1-p.y)/2*r.height)+'px'}
+function colorize(){const c=n=>new THREE.Color(css(n));scene.background=c('--panel');
+  if(grid)scene.remove(grid);grid=new THREE.GridHelper(6,24,c('--line'),c('--line'));grid.position.set(1,-.002,-1);scene.add(grid);
+  linkM.color=c('--link');jointM.color=c('--link');youM.color=c('--you');leverBar.material.color=c('--lever');footM.material.color=c('--lever');faintA.forEach(a=>a.setColor(c('--fade')))}
+function placeLink(m,a,b){const P=W3(a),Q=W3(b);m.position.copy(P.clone().add(Q).multiplyScalar(.5));m.position.y=.04;m.scale.set(P.distanceTo(Q),1,1);m.rotation.set(0,Math.atan2(-(Q.z-P.z),Q.x-P.x),0)}
+const orb={az:0,el:1.25,r:5.4,tgt:new THREE.Vector3(1,0,-.7)};
+function placeCam(){cam.position.set(orb.tgt.x+orb.r*Math.cos(orb.el)*Math.sin(orb.az),orb.tgt.y+orb.r*Math.sin(orb.el),orb.tgt.z+orb.r*Math.cos(orb.el)*Math.cos(orb.az));cam.lookAt(orb.tgt)}
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;orb.az-=(e.clientX-drag[0])*.008;orb.el=Math.max(.15,Math.min(1.5,orb.el+(e.clientY-drag[1])*.006));drag=[e.clientX,e.clientY];draw()});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>drag=null));
+cv.addEventListener('wheel',e=>{e.preventDefault();orb.r=Math.max(2.5,Math.min(11,orb.r*(1+Math.sign(e.deltaY)*.08)));draw()},{passive:false});
+
+/* ---------- draw ---------- */
+function draw(){
+  const thR=S.th.map(x=>x*D2R),P=geo(thR),i=S.sel,R=pulls(P,S.w,S.m,i);
+  if(S.row>=R.length)S.row=0;const t=R[S.row];
+  placeCam();
+  for(let q=0;q<3;q++){placeLink(links[q],P[q],P[q+1]);joints[q].position.copy(W3(P[q],.05))}
+  you.position.copy(W3(P[i],.16));
+  for(let k=0;k<3;k++){const r=.06+.05*Math.cbrt(S.m[k]);masses[k].scale.set(r,r,r);masses[k].position.copy(W3(P[k+1],.08));
+    const on=t?t.k===k:k>=i;massMats[k].color=new THREE.Color(k>=i?css('--mass'):css('--fade'));massMats[k].opacity=k>=i?(on?1:.55):.35}
+  faintA.forEach((a,q)=>{const s=R[q];if(!s||q===S.row){a.visible=false;return}setA(a,W3(P[s.k+1],.13),s.F,K*.6)});
+  const labs=labels.forEach(l=>l.hidden=true);
+  if(t){const col=css(t.type==='cent'?'--cent':'--cor');mainA.setColor(new THREE.Color(col));setA(mainA,W3(P[t.k+1],.2),t.F,K);
+    tgt.visible=true;tgtM.color=new THREE.Color(col);tgt.position.copy(W3(P[t.tgt],.2));
+    const ext=add(P[t.tgt],scl(t.u,.4)),back=sub(t.foot,scl(t.u,.25)),A=dot(sub(t.foot,P[t.k+1]),t.u)<0?back:ext;
+    const g=lineL.geometry.attributes.position,a=W3(sub(P[t.k+1],scl(t.u,.3)),.2),b=W3(dot(sub(t.foot,P[t.k+1]),t.u)>dot(sub(P[t.tgt],P[t.k+1]),t.u)?add(t.foot,scl(t.u,.3)):ext,.2);
+    g.setXYZ(0,a.x,a.y,a.z);g.setXYZ(1,b.x,b.y,b.z);g.needsUpdate=true;lineL.geometry.computeBoundingSphere();lineL.computeLineDistances();lineL.material.color=new THREE.Color(col);lineL.visible=true;
+    setBar(leverBar,P[i],t.foot,.2);footM.visible=Math.abs(t.lever)>1e-4;footM.position.copy(W3(t.foot,.2));
+    renderer.render(scene,cam);
+    place(labels[0],W3(add(P[t.k+1],scl(t.F,K*.5)),.3),`pull ${f(t.size)} N`,col);
+    place(labels[1],W3(scl(add(P[i],t.foot),.5),.25),`lever ${f(Math.abs(t.lever))} m`,css('--lever'));
+    place(labels[2],W3(P[t.tgt],.45),`aimed at ${jn[t.tgt]}`,col);
+  }else{mainA.visible=false;tgt.visible=false;lineL.visible=false;leverBar.visible=false;footM.visible=false;renderer.render(scene,cam)}
+  place(labels[3],W3(P[i],.4),`you stand at ${jn[i]}`,css('--you'));
+  for(let k=0;k<3;k++)place(labels[4+k],W3(P[k+1],.05),mn[k],k>=i?css('--mass'):css('--muted'));
+  panels(thR,P,R);
+}
+
+/* ---------- panels ---------- */
+function why(t){
+  if(t.type==='cent')return `<span class="cc">${jn[t.j]} spinning</span> swings ${mn[t.k]} on a circle around ${jn[t.j]}`;
+  return `<span class="co">${jn[t.j]} and ${jn[t.q]} spinning together</span>`;
+}
+function sizeTxt(t){return t.type==='cent'
+  ?`${f(S.m[t.k],1)} × ${f(S.w[t.j],1)}² × ${f(t.d)}`
+  :`2 × ${f(S.m[t.k],1)} × ${f(S.w[t.j],1)} × ${f(S.w[t.q],1)} × ${f(t.d)}`}
+function panels(thR,P,R){
+  const i=S.sel,c=cvec(thR,S.w,S.m);
+  document.getElementById('cvec').innerHTML=[0,1,2].map(q=>`<button class="cell" type="button" data-i="${q}" aria-pressed="${q===i}"><small>stand at ${jn[q]}</small>c${sub3[q]} = ${f(c[q])}</button>`).join('');
+  document.querySelectorAll('#cvec .cell').forEach(b=>b.onclick=()=>{S.sel=+b.dataset.i;S.row=0;draw()});
+  const t=R[S.row];
+  const rows=R.map((s,q)=>`<tr class="row" data-q="${q}" aria-selected="${q===S.row}"><td>${mn[s.k]}: ${why(s)}</td><td>${jn[s.tgt]}</td><td class="mono">${sizeTxt(s)} = ${f(s.size)}</td><td>${f(Math.abs(s.lever))}</td><td><b>${f(s.tq)}</b></td></tr>`).join('');
+  const before=[0,1,2].filter(k=>k<i).map(k=>mn[k]);
+  const G=gamma(thR,S.m);let g='<div></div>'+[0,1,2].map(k=>`<div class="hd">θ̇${sub3[k]}</div>`).join('');
+  for(let j=0;j<3;j++){g+=`<div class="hd">θ̇${sub3[j]}</div>`;for(let k=0;k<3;k++)g+=`<div class="gc ${j===k?'d':'o'}">${f(G[i][j][k])}</div>`}
+  const focus=t?`<div class="focus"><b>Selected row.</b> ${mn[t.k]} needs a pull aimed at <b>${jn[t.tgt]}</b>. Its size uses ${mn[t.k]}'s distance to ${jn[t.tgt]}: ${f(t.d)} m, so ${sizeTxt(t)} = <b>${f(t.size)} N</b>. You, at ${jn[i]}, feel it through the <b class="cl">lever</b>: the shortest distance from you to the line of that pull, <b>${f(Math.abs(t.lever))} m</b>${Math.abs(t.lever)<1e-3?' (the line passes right through you, so it costs you nothing)':''}. Torque = ${f(t.size)} × ${f(Math.abs(t.lever))} = <b>${f(Math.abs(t.tq))} N·m</b>${t.tq<0?', clockwise':t.tq>0?', counter-clockwise':''}.</div>`:'';
+  document.getElementById('exp').innerHTML=`
+  <div class="h">2. Every pull you have to pay for at ${jn[i]}</div>
+  <p>Only masses beyond you count${before.length?` (${before.join(', ')} ${before.length>1?'are':'is'} before ${jn[i]}, so skip)`:''}. Each mass needs two kinds of pull, each aimed at one joint:</p>
+  <ul><li><span class="cc"><b>Centripetal</b></span>: each spinning joint swings the mass around itself. Pull aimed at that joint, size <b>m × θ̇² × distance to that joint</b>.</li>
+  <li><span class="co"><b>Coriolis</b></span>: two joints spinning at once add a pull aimed at the outer one of the pair, size <b>2 × m × θ̇ × θ̇ × distance to that outer joint</b>.</li></ul>
+  <div class="tw"><table class="t"><tr><th>pull (click a row)</th><th>aimed at</th><th>size (N)</th><th>lever (m)</th><th>torque (N·m)</th></tr>${rows||'<tr><td colspan="5" class="mut">nothing is spinning</td></tr>'}</table></div>
+  ${focus}
+  <p style="margin-top:8px"><b>3. Add the torque column:</b> c${sub3[i]} = <b>${f(c[i])} N·m</b>.</p>
+  <details><summary>Optional: the Γ matrix in the book</summary>
+    <p>The book writes c${sub3[i]} = θ̇ᵀ Γ${sub3[i]} θ̇. Γ${sub3[i]} only stores the torque per unit of each speed product: <span class="cc">diagonal</span> = per θ̇ⱼ² (the centripetal rows), <span class="co">off-diagonal</span> = half of each Coriolis row per θ̇ⱼθ̇ₖ.</p>
+    <div class="gam">${g}</div>
+  </details>`;
+  document.querySelectorAll('tr.row').forEach(r=>r.onclick=()=>{S.row=+r.dataset.q;draw()});
+}
+
+/* ---------- controls ---------- */
+const bind=(ids,arr,unit,fmt)=>ids.forEach((id,k)=>{const el=document.getElementById(id),o=document.getElementById(id+'o');const up=()=>{arr[k]=+el.value;o.textContent=fmt(+el.value)+unit;draw()};el.addEventListener('input',up);o.textContent=fmt(+el.value)+unit});
+bind(['t1','t2','t3'],S.th,'°',x=>x);bind(['w1','w2','w3'],S.w,'',x=>x.toFixed(1));bind(['m1','m2','m3'],S.m,'',x=>x.toFixed(1));
+function size(){const w=cv.clientWidth,h=cv.clientHeight;if(!w)return;renderer.setPixelRatio(window.devicePixelRatio||1);renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();draw()}
+colorize();new ResizeObserver(size).observe(cv);
+const retheme=()=>{colorize();draw()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+size();
+})();
+</script>
+
+</body></html>

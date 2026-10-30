@@ -121,6 +121,54 @@ def velocity_products_card() -> Card:
     return c
 
 
+def velocity_product_card() -> Card:
+    c = Card("the velocity-product term c(θ, θ̇), plainly: pulls and levers")
+    c.add(in_words(
+        "If every joint spins at a steady speed with no acceleration, why do the motors still "
+        "need torque? Because the masses move on curves, and anything on a curve needs a pull "
+        "toward the centre even at constant speed. The motors supply that pull. That is c."))
+    c.add(body(_table(
+        ("step", "mass matrix (M θ̈)", "velocity product (c)"),
+        [("1. move", "each mass accelerates because joints speed up: J θ̈",
+          "each mass accelerates because it curves: every spinning link pulls it inward"),
+         ("2. push", "force = mass × that acceleration", "force = mass × that curving acceleration"),
+         ("3. feel", "each joint feels it through its moment arm (Jᵀ)", "the same: through the moment arm (Jᵀ)")])))
+    c.add(body(
+        "<b>Where the curving comes from.</b> Each link spins at its absolute rate, the sum of "
+        "the joint speeds before it: link 2 spins at θ̇₁ + θ̇₂. Each spinning link pulls "
+        "everything beyond it inward by (rate)² × length. Squaring a sum of speeds gives two "
+        "kinds of term: θ̇ⱼ² terms are <b>centripetal</b> (one joint's speed, squared); "
+        "θ̇ⱼθ̇ₖ terms are <b>Coriolis</b> (the cross pieces of the square)."))
+    c.add(math_label(r"c_i=\dot\theta^T\,\Gamma_i\,\dot\theta,\qquad "
+                     r"p_2=a_1+a_2,\quad \ddot p_2=-\dot\theta_1^2\,a_1-(\dot\theta_1+\dot\theta_2)^2\,a_2", 15))
+    c.add(body(
+        "<b>Γᵢ</b> collects, for joint i, the torque per speed product: entry (j, j) per θ̇ⱼ² "
+        "(centripetal); entry (j, k) per θ̇ⱼθ̇ₖ (Coriolis, counted twice since (j, k) and "
+        "(k, j) both appear). The Christoffel formula computes the same numbers from how M "
+        "changes with pose; it is bookkeeping, and the 3R explorer below checks they match."))
+    c.add(body(
+        "<b>Constant speed is not constant angle.</b> If θ̇₂ = 0 the elbow holds, the arm is "
+        "one rigid body, and m₂ rides a big circle about joint 1 with its pull aimed at joint "
+        "1. If θ̇₂ ≠ 0 the elbow keeps folding, and m₂ traces a looping path around no fixed "
+        "point: two epicycles, a₁ spinning at θ̇₁ and a₂ at θ̇₁ + θ̇₂, each with its own inward "
+        "pull (moon around planet around sun). “Circling joint 2” is true only in link 1's "
+        "rotating frame, and describing motion in a rotating frame costs the 2ω × v_rel term."))
+    c.add(body(
+        "<b>Coriolis, two ways.</b> (1) <b>Geometric</b>: v_rel is how fast the elbow alone "
+        "carries m₂ (perpendicular to link 2). Turn it 90° the way link 1 spins and scale by "
+        "2θ̇₁: that is the Coriolis pull, 2ω × v_rel, which lands back along link 2. "
+        "(2) <b>Ice skater</b>: as the elbow opens, m₂'s reach from joint 1 changes, so M₁₁ "
+        "changes while joint 1 spins. Holding θ̇₁ steady through a changing inertia costs"))
+    c.add(math_label(r"\tau_{1,\mathrm{Coriolis}}=\dot\theta_1\,\frac{dM_{11}}{dt}", 16))
+    c.add(plain(
+        "Coriolis is not a new force: it is the price of spinning while your inertia changes "
+        "shape. For the 2R arm, with h = m₂L₁L₂: θ̇₁'s own spin loads only joint 2 "
+        "(+h sin θ₂ θ̇₁²), θ̇₂'s own spin loads only joint 1 (−h sin θ₂ θ̇₂²), and Coriolis "
+        "loads only joint 1 (−2h sin θ₂ θ̇₁θ̇₂). At θ₂ = 0° or 180° all of it vanishes: every "
+        "pull lines up with both joints, and the reach is momentarily not changing."))
+    return c
+
+
 # ---------------------------------------------------------------- page 134
 def mass_matrix_video_card() -> Card:
     c = Card("video 8.1.3 — understanding the mass matrix")

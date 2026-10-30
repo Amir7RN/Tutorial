@@ -1,0 +1,303 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>2R Spin Scenarios</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 2R arm left, three scenarios + pull/torque table right. One screen. */
+:root{
+  --bg:#f2f4f7; --panel:#ffffff; --ink:#1a2330; --muted:#5b6676; --line:#d4dae2; --hi:#eaf0ff;
+  --pull:#0f8a86; --cor:#b5179e; --rel:#1f6feb; --j1:#7a4fd0; --j2:#c0398a; --link:#3b4656; --mass:#8a5a12; --zero:#9aa5b4;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --pull:#33c2bd; --cor:#f06ad0; --rel:#79b8ff; --j1:#a98bf0; --j2:#e46ab0; --link:#b8c2cf; --mass:#d9b45c; --zero:#5f6b7b; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --pull:#33c2bd; --cor:#f06ad0; --rel:#79b8ff; --j1:#a98bf0; --j2:#e46ab0; --link:#b8c2cf; --mass:#d9b45c; --zero:#5f6b7b; color-scheme:dark}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{height:100%;display:flex;flex-direction:column;gap:8px;max-width:1460px;margin:0 auto;padding-block:10px;box-sizing:border-box;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+h1{font-size:1.15rem;margin:0}
+.sub{color:var(--muted);margin:0;font-size:.88rem}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(430px,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.view{position:relative;padding:6px;display:flex;flex-direction:column;min-height:0}
+#scene{flex:1;min-height:0;width:100%;display:block;touch-action:none;cursor:grab;border-radius:6px}
+.side{display:flex;flex-direction:column;gap:10px;min-width:0;overflow-y:auto}
+@media (max-width:920px){html,body{height:auto}.wrap{height:auto}.grid{grid-template-columns:minmax(0,1fr)}#scene{flex:none;aspect-ratio:1.2/1}.side{overflow:visible}}
+.h{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.8rem;color:var(--muted);padding:6px 4px 2px}
+.sw{display:inline-block;width:14px;height:4px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.lbl{position:absolute;font-size:.76rem;font-weight:700;pointer-events:none;white-space:nowrap;transform:translate(-50%,-130%);
+  background:color-mix(in srgb,var(--panel) 88%,transparent);padding:1px 6px;border-radius:4px;font-family:var(--mono)}
+.scen{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.sc{font:inherit;font-size:.85rem;font-weight:700;padding:8px 6px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;text-align:center}
+.sc small{display:block;font-weight:400;font-size:.75rem;color:var(--muted);margin-top:2px}
+.sc[aria-pressed="true"]{background:var(--hi);border-color:var(--pull);outline:2px solid var(--pull)}
+.btns{display:flex;gap:6px;margin-top:6px}
+.btns button{font:inherit;font-size:.85rem;font-weight:700;padding:7px 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.btns button.primary{background:var(--pull);border-color:var(--pull);color:var(--panel)}
+button:focus-visible{outline:2px solid var(--pull);outline-offset:2px}
+table.t{width:100%;border-collapse:collapse;font-size:.85rem;font-variant-numeric:tabular-nums;margin-top:4px}
+table.t th,table.t td{padding:6px 5px;border-bottom:1px solid var(--line);text-align:right}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t th{font-size:.74rem;color:var(--muted);font-weight:700}
+table.t tr.row{cursor:pointer}
+table.t tr.row:hover{background:var(--hi)}
+table.t tr.row[aria-selected="true"]{background:var(--hi);box-shadow:inset 3px 0 0 var(--pull)}
+table.t tr.tot td{font-weight:700;border-top:2px solid var(--line);border-bottom:none}
+.z{color:var(--zero)}
+.note{background:var(--hi);border-radius:8px;padding:9px 11px;font-size:.89rem;margin-top:8px}
+.note ul{margin:5px 0 0;padding-left:18px}
+.note li{margin-bottom:3px}
+.ctrls{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
+.ctrls label{display:grid;grid-template-columns:48px minmax(0,1fr) 44px;gap:6px;align-items:center;font-size:.82rem}
+.ctrls output{font-family:var(--mono);text-align:right;font-size:.8rem;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%}
+.c1{color:var(--j1)} .c2{color:var(--j2)} .cp{color:var(--pull)} .cc{color:var(--cor)} .cr{color:var(--rel)} .mut{color:var(--muted)} .mono{font-family:var(--mono);font-size:.84rem}
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>2R arm: who feels what when the joints spin</h1>
+    <p class="sub">No acceleration. Just steady spin. Pick a scenario, click a pull to see it and its two levers.</p>
+  </div>
+  <div class="grid">
+    <div class="card view" id="view">
+      <canvas id="scene" aria-label="3-D view of a two-joint arm with centripetal pulls and levers"></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--pull)"></span>centripetal pull</span>
+        <span><span class="sw" style="background:var(--cor)"></span>Coriolis pull</span>
+        <span><span class="sw" style="background:var(--rel)"></span>v_rel, and m₂'s reach from joint 1</span>
+        <span><span class="sw" style="background:var(--j1)"></span>lever about joint 1</span>
+        <span><span class="sw" style="background:var(--j2)"></span>lever about joint 2</span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="h">Scenario</div>
+        <div class="scen" id="scen"></div>
+        <div class="btns"><button id="play" class="primary" type="button">Play</button><button id="reset" type="button">Reset pose</button></div>
+        <p class="mut" style="font-size:.8rem;margin:6px 0 0">Play turns the joints at the speeds below. Watch the arrows and the τ columns change as the pose does.</p>
+      </div>
+      <div class="card" id="out"></div>
+      <div class="card ctrls">
+        <div class="h">Arm and speeds</div>
+        <label for="t2">θ₂ <input id="t2" type="range" min="-180" max="180" step="1" value="63"><output id="t2o"></output></label>
+        <label for="t1">θ₁ <input id="t1" type="range" min="-180" max="180" step="1" value="17"><output id="t1o"></output></label>
+        <label for="L1">L₁ <input id="L1" type="range" min="0.4" max="1.5" step="0.1" value="1"><output id="L1o"></output></label>
+        <label for="L2">L₂ <input id="L2" type="range" min="0.4" max="1.5" step="0.1" value="0.8"><output id="L2o"></output></label>
+        <label for="m1">m₁ <input id="m1" type="range" min="0" max="3" step="0.1" value="1"><output id="m1o"></output></label>
+        <label for="m2">m₂ <input id="m2" type="range" min="0.1" max="3" step="0.1" value="1.5"><output id="m2o"></output></label>
+        <label for="w1">θ̇₁ <input id="w1" type="range" min="-2" max="2" step="0.1" value="1.4"><output id="w1o"></output></label>
+        <label for="w2">θ̇₂ <input id="w2" type="range" min="-2" max="2" step="0.1" value="-0.9"><output id="w2o"></output></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(()=>{
+const HOME={t1:17,t2:63};
+const S={t1:17,t2:63,L:[1,.8],m:[1,1.5],w:[1.4,-.9],scen:0,row:0};
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f=(x,d=2)=>(Math.abs(x)<5e-4?0:x).toFixed(d);
+const D2R=Math.PI/180;
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1]], add=(a,b)=>[a[0]+b[0],a[1]+b[1]], scl=(a,k)=>[a[0]*k,a[1]*k];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1], crs=(a,b)=>a[0]*b[1]-a[1]*b[0], nrm=a=>Math.hypot(a[0],a[1]);
+const SCEN=[{n:'Only θ̇₁',s:'joint 1 spins',w:()=>[S.w[0],0]},
+            {n:'Only θ̇₂',s:'joint 2 spins',w:()=>[0,S.w[1]]},
+            {n:'Both',s:'Coriolis appears',w:()=>[S.w[0],S.w[1]]}];
+function paths(){
+  const [w1,w2]=SCEN[S.scen].w(),[L1,L2]=S.L,fast=Math.max(Math.abs(w1),Math.abs(w2),.2);
+  const T=(Math.abs(w1)>1e-6&&Math.abs(w2)>1e-6?3:1)*2*Math.PI/fast,N=420,P1=[],P2=[];
+  for(let q=0;q<=N;q++){const t=T*q/N,a1=(S.t1+w1*t/D2R)*D2R,a2=a1+(S.t2+w2*t/D2R)*D2R;
+    const e=[L1*Math.cos(a1),L1*Math.sin(a1)];P1.push(e);P2.push([e[0]+L2*Math.cos(a2),e[1]+L2*Math.sin(a2)])}
+  return {P1,P2,w1,w2};
+}
+function model(){
+  const a1=S.t1*D2R,a2=a1+S.t2*D2R,[L1,L2]=S.L,[m1,m2]=S.m;
+  const P=[[0,0],[L1*Math.cos(a1),L1*Math.sin(a1)]];P.push([P[1][0]+L2*Math.cos(a2),P[1][1]+L2*Math.sin(a2)]);
+  const [w1,w2]=SCEN[S.scen].w(),R=[];
+  const push=(label,kind,at,tgt,size,expl)=>{const d=sub(tgt,at),r=nrm(d);if(r<1e-9||Math.abs(size)<1e-9)return;
+    const u=scl(d,1/r),F=scl(u,size),tq=[0,1].map(i=>{const rr=sub(at,P[i]);return crs(rr,F)}),
+      lev=[0,1].map(i=>{const rr=sub(at,P[i]);return crs(rr,u)}),
+      foot=[0,1].map(i=>{const rr=sub(at,P[i]);return sub(at,scl(u,dot(rr,u)))});
+    R.push({label,kind,at,tgt,u,size,r,F,tq,lev,foot,expl})};
+  push('m₁, pulled toward joint 1','cent',P[1],P[0],m1*w1*w1*L1,`m₁ × θ̇₁² × (distance m₁→joint 1 = ${f(L1)})`);
+  push('m₂, pulled toward joint 1','cent',P[2],P[0],m2*w1*w1*nrm(P[2]),`m₂ × θ̇₁² × (distance m₂→joint 1 = ${f(nrm(P[2]))})`);
+  push('m₂, pulled toward joint 2','cent',P[2],P[1],m2*w2*w2*L2,`m₂ × θ̇₂² × (distance m₂→joint 2 = ${f(L2)})`);
+  push('m₂, Coriolis toward joint 2','cor',P[2],P[1],2*m2*w1*w2*L2,`2 × m₂ × θ̇₁ × θ̇₂ × (distance m₂→joint 2 = ${f(L2)})`);
+  const tot=[0,1].map(i=>R.reduce((s,t)=>s+t.tq[i],0));
+  const lk2=sub(P[2],P[1]),zz=v=>[-v[1],v[0]],vrel=scl(zz(lk2),w2);
+  const h=m2*L1*L2,s2=Math.sin(S.t2*D2R),reach=nrm(P[2]);
+  const M11=(m1+m2)*L1*L1+m2*L2*L2+2*h*Math.cos(S.t2*D2R), dM11=-2*h*s2*w2, dreach=reach>1e-6?-L1*L2*s2*w2/reach:0;
+  return {P,R,tot,w1,w2,h,s2,vrel,M11,dM11,reach,dreach};
+}
+
+/* ---------- 3-D ---------- */
+const view=document.getElementById('view'),cv=document.getElementById('scene');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(42,1.2,.05,100);
+scene.add(new THREE.AmbientLight(0xffffff,.65));const dl=new THREE.DirectionalLight(0xffffff,.7);dl.position.set(3,6,4);scene.add(dl);
+const W3=(p,y=0)=>new THREE.Vector3(p[0],y,-p[1]);
+const mat=c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c),roughness:.55,metalness:.1});
+let grid=null;
+const linkM=mat('#3b4656');const links=[0,1].map(()=>{const b=new THREE.Mesh(new THREE.BoxGeometry(1,.06,.08),linkM);scene.add(b);return b});
+const jMat=[mat('#7a4fd0'),mat('#c0398a')];
+const joints=jMat.map(m=>{const j=new THREE.Mesh(new THREE.CylinderGeometry(.075,.075,.17,24),m);scene.add(j);return j});
+const massM=[0,1].map(()=>new THREE.MeshStandardMaterial({color:0x8a5a12,roughness:.4,transparent:true,opacity:1}));
+const masses=massM.map(m=>{const s=new THREE.Mesh(new THREE.SphereGeometry(1,22,14),m);scene.add(s);return s});
+function bar(){const m=new THREE.Mesh(new THREE.BoxGeometry(1,.04,.04),new THREE.MeshBasicMaterial({color:0xffffff}));scene.add(m);return m}
+const leverBar=[bar(),bar()];
+function setBar(b,a,c,y){const P=W3(a,y),Q=W3(c,y),len=P.distanceTo(Q);b.visible=len>.004;if(!b.visible)return;
+  b.position.copy(P.clone().add(Q).multiplyScalar(.5));b.scale.set(len,1,1);b.rotation.set(0,Math.atan2(-(Q.z-P.z),Q.x-P.x),0)}
+const lineG=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+const lineL=new THREE.Line(lineG,new THREE.LineDashedMaterial({color:0x0f8a86,dashSize:.07,gapSize:.05}));scene.add(lineL);
+const NP=421;
+function curve(c){const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(NP*3),3));
+  const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:c,transparent:true,opacity:.8}));scene.add(l);return l}
+const path1=curve(0x8a5a12),path2=curve(0x8a5a12);
+function setCurve(l,pts){const p=l.geometry.attributes.position;for(let q=0;q<NP;q++){const v=W3(pts[Math.min(q,pts.length-1)],.015);p.setXYZ(q,v.x,v.y,v.z)}
+  p.needsUpdate=true;l.geometry.setDrawRange(0,pts.length);l.geometry.computeBoundingSphere()}
+const mainA=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,0x0f8a86,.16,.09);scene.add(mainA);
+const relA=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,0x1f6feb,.13,.075);relA.visible=false;scene.add(relA);
+const arcG=new THREE.BufferGeometry();arcG.setAttribute('position',new THREE.BufferAttribute(new Float32Array(41*3),3));
+const turnArc=new THREE.Line(arcG,new THREE.LineBasicMaterial({color:0xb5179e}));turnArc.visible=false;scene.add(turnArc);
+const reachG=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+const reachL=new THREE.Line(reachG,new THREE.LineDashedMaterial({color:0x1f6feb,dashSize:.08,gapSize:.06}));reachL.visible=false;scene.add(reachL);
+const faint=[0,1,2,3].map(()=>{const a=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,0x999999,.08,.05);a.visible=false;scene.add(a);return a});
+const K=.16;
+function setA(a,o,v,k){const w=new THREE.Vector3(v[0],0,-v[1]).multiplyScalar(k);let n=w.length();a.visible=n>2e-3;if(!a.visible)return;
+  if(n>1.5){w.multiplyScalar(1.5/n);n=1.5}a.position.copy(o);a.setDirection(w.clone().normalize());a.setLength(n,Math.min(.16,n*.35),Math.min(.09,n*.25))}
+const labels=[];for(let q=0;q<6;q++){const d=document.createElement('div');d.className='lbl';d.hidden=true;view.appendChild(d);labels.push(d)}
+function place(d,v3,html,color){const p=v3.clone().project(cam);if(p.z>1||!html){d.hidden=true;return}const r=cv.getBoundingClientRect(),vr=view.getBoundingClientRect();
+  d.hidden=false;d.innerHTML=html;d.style.color=color;d.style.left=(r.left-vr.left+(p.x+1)/2*r.width)+'px';d.style.top=(r.top-vr.top+(1-p.y)/2*r.height)+'px'}
+function colorize(){const c=n=>new THREE.Color(css(n));scene.background=c('--panel');
+  if(grid)scene.remove(grid);grid=new THREE.GridHelper(6,24,c('--line'),c('--line'));scene.add(grid);
+  linkM.color=c('--link');jMat[0].color=c('--j1');jMat[1].color=c('--j2');massM.forEach(m=>m.color=c('--mass'));
+  leverBar[0].material.color=c('--j1');leverBar[1].material.color=c('--j2');relA.setColor(c('--rel'));turnArc.material.color=c('--cor');reachL.material.color=c('--rel');faint.forEach(a=>a.setColor(c('--zero')));path1.material.color=c('--zero');path2.material.color=c('--mass')}
+function placeLink(m,a,b){const P=W3(a),Q=W3(b);m.position.copy(P.clone().add(Q).multiplyScalar(.5));m.position.y=.04;m.scale.set(P.distanceTo(Q),1,1);m.rotation.set(0,Math.atan2(-(Q.z-P.z),Q.x-P.x),0)}
+const orb={az:0,el:1.32,r:6.6};
+function placeCam(){cam.position.set(orb.r*Math.cos(orb.el)*Math.sin(orb.az),orb.r*Math.sin(orb.el),orb.r*Math.cos(orb.el)*Math.cos(orb.az));cam.lookAt(0,0,0)}
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;orb.az-=(e.clientX-drag[0])*.008;orb.el=Math.max(.2,Math.min(1.5,orb.el+(e.clientY-drag[1])*.006));drag=[e.clientX,e.clientY];draw()});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>drag=null));
+cv.addEventListener('wheel',e=>{e.preventDefault();orb.r=Math.max(2.5,Math.min(13,orb.r*(1+Math.sign(e.deltaY)*.08)));draw()},{passive:false});
+
+function draw3(D){
+  placeCam();
+  const PA=paths();setCurve(path1,PA.P1);setCurve(path2,PA.P2);
+  for(let q=0;q<2;q++){placeLink(links[q],D.P[q],D.P[q+1]);joints[q].position.copy(W3(D.P[q],.05));
+    const r=.055+.05*Math.cbrt(S.m[q]||.01);masses[q].scale.set(r,r,r);masses[q].position.copy(W3(D.P[q+1],.08))}
+  if(S.row>=D.R.length)S.row=0;
+  const t=D.R[S.row];
+  faint.forEach((a,q)=>{const s=D.R[q];if(!s||q===S.row){a.visible=false;return}setA(a,W3(s.at,.13),s.F,K*.55)});
+  labels.forEach(l=>l.hidden=true);
+  if(t){const col=css(t.kind==='cor'?'--cor':'--pull');
+    mainA.setColor(new THREE.Color(col));setA(mainA,W3(t.at,.22),t.F,K);
+    const g=lineG.attributes.position,A=W3(add(t.at,scl(t.u,-.35)),.22),B=W3(add(t.tgt,scl(t.u,.45)),.22);
+    g.setXYZ(0,A.x,A.y,A.z);g.setXYZ(1,B.x,B.y,B.z);g.needsUpdate=true;lineG.computeBoundingSphere();lineL.computeLineDistances();
+    lineL.material.color=new THREE.Color(col);lineL.visible=true;
+    for(let i=0;i<2;i++)setBar(leverBar[i],D.P[i],t.foot[i],.22+ i*.012);
+    renderer.render(scene,cam);
+    place(labels[0],W3(add(t.at,scl(t.F,K*.55)),.3),`${f(Math.abs(t.size))} N`,col);
+    for(let i=0;i<2;i++){const mid=scl(add(D.P[i],t.foot[i]),.5),L=Math.abs(t.lev[i]);
+      place(labels[1+i],W3(mid,.3+i*.12),L<.004?'':`lever ${f(L)} → τ${i?'₂':'₁'} ${f(t.tq[i])}`,css(i?'--j2':'--j1'))}
+    if(t.kind==='cor'&&nrm(D.vrel)>1e-4){
+      setA(relA,W3(t.at,.36),D.vrel,.30);
+      const A0=Math.atan2(D.vrel[1],D.vrel[0]),A1=A0+(D.w1>=0?Math.PI/2:-Math.PI/2),RA=.34,q=arcG.attributes.position;
+      for(let n=0;n<=40;n++){const a=A0+(A1-A0)*n/40,v=W3([t.at[0]+RA*Math.cos(a),t.at[1]+RA*Math.sin(a)],.36);q.setXYZ(n,v.x,v.y,v.z)}
+      q.needsUpdate=true;arcG.computeBoundingSphere();turnArc.visible=true;
+      const rp=reachG.attributes.position,RA0=W3(D.P[0],.1),RA1=W3(t.at,.1);
+      rp.setXYZ(0,RA0.x,RA0.y,RA0.z);rp.setXYZ(1,RA1.x,RA1.y,RA1.z);rp.needsUpdate=true;reachG.computeBoundingSphere();reachL.computeLineDistances();reachL.visible=true;
+      renderer.render(scene,cam);
+      place(labels[5],W3(add(t.at,scl(D.vrel,.30*.6)),.44),`v_rel ${f(nrm(D.vrel))} m/s`,css('--rel'));
+    }else{relA.visible=false;turnArc.visible=false;reachL.visible=false}
+  }else{mainA.visible=false;lineL.visible=false;leverBar.forEach(b=>b.visible=false);relA.visible=false;turnArc.visible=false;reachL.visible=false;renderer.render(scene,cam)}
+  const z=t?[Math.abs(t.lev[0])<4e-3,Math.abs(t.lev[1])<4e-3]:[false,false];
+  place(labels[3],W3(D.P[0],.62),z[0]?'joint 1 — pull aims here, τ₁ = 0':'joint 1',css('--j1'));
+  place(labels[4],W3(D.P[1],.78),z[1]?'joint 2 — pull aims here, τ₂ = 0':'joint 2',css('--j2'));
+}
+
+/* ---------- panel ---------- */
+function render(D){
+  document.getElementById('scen').innerHTML=SCEN.map((s,q)=>`<button class="sc" type="button" data-q="${q}" aria-pressed="${q===S.scen}">${s.n}<small>${s.s}</small></button>`).join('');
+  document.querySelectorAll('.sc').forEach(b=>b.onclick=()=>{S.scen=+b.dataset.q;S.row=0;draw()});
+  const t=D.R[S.row];
+  const rows=D.R.map((s,q)=>`<tr class="row" data-q="${q}" aria-selected="${q===S.row}">
+    <td>${s.label.replace('Coriolis','<span class="cc">Coriolis</span>')}</td><td>${f(s.size)}</td>
+    <td class="${Math.abs(s.tq[0])<5e-3?'z':'c1'}">${f(s.tq[0])}</td><td class="${Math.abs(s.tq[1])<5e-3?'z':'c2'}">${f(s.tq[1])}</td></tr>`).join('');
+  const corBox=(t&&t.kind==='cor')?`<div class="note" style="border:1px solid var(--cor)">
+    <b class="cc">Why this pull exists, two ways to see it.</b>
+    <ul><li><b>Build it geometrically.</b> <span class="cr">v_rel = ${f(nrm(D.vrel))} m/s</span> is how fast the elbow bending alone carries m₂ (blue arrow). Link 1's frame spins at θ̇₁ = ${f(D.w1,1)}. Turn v_rel <b>90° the way that frame spins</b> (magenta arc) and scale by 2θ̇₁: that is the Coriolis pull, 2 × ${f(Math.abs(D.w1),1)} × ${f(nrm(D.vrel))} = <b>${f(Math.abs(2*D.w1*nrm(D.vrel)))} m/s²</b> × m₂ = ${f(Math.abs(t.size))} N. It is the classic <span class="mono">2 ω × v_rel</span>.</li>
+    <li><b>Or read it as the ice skater.</b> The blue dashed line is m₂'s reach from joint 1: <b>${f(D.reach)} m</b>, ${Math.abs(D.dreach)<5e-3?'not changing':(D.dreach>0?`<b>growing</b> at ${f(D.dreach)} m/s`:`<b>shrinking</b> at ${f(-D.dreach)} m/s`)}. So joint 1's own inertia M₁₁ = ${f(D.M11)} is changing at ${f(D.dM11)} per second. Spinning at θ̇₁ while your inertia changes needs torque, exactly like a skater pulling their arms in:
+      <div class="mono" style="margin-top:3px">τ = θ̇₁ × dM₁₁/dt = ${f(D.w1,1)} × ${f(D.dM11)} = <b>${f(D.w1*D.dM11)} N·m</b> — the Coriolis row's τ₁.</div></li></ul></div>`:'';
+  const sel=t?`<div class="note"><b>Selected pull.</b> Size = ${t.expl} = <b>${f(t.size)} N</b>.
+    <ul><li><span class="c1">Joint 1</span>: lever ${f(Math.abs(t.lev[0]))} m ${Math.abs(t.lev[0])<4e-3?'<b>(the pull points straight at joint 1, so nothing)</b>':''} → torque <b>${f(t.tq[0])}</b> N·m</li>
+    <li><span class="c2">Joint 2</span>: lever ${f(Math.abs(t.lev[1]))} m ${Math.abs(t.lev[1])<4e-3?'<b>(the pull points straight at joint 2, so nothing)</b>':''} → torque <b>${f(t.tq[1])}</b> N·m</li></ul></div>`:'';
+  const pathTxt=[
+    'A true circle around joint 1 — the elbow angle never changes, so the arm is rigid and m₂ rides the big circle. That is why its pull aims at joint 1.',
+    'A circle around joint 2 — link 1 is frozen, so joint 2 is a fixed pivot.',
+    'Not a circle around anything. θ̇₂ ≠ 0 means the elbow keeps opening, so m₂ loops around a moving pivot. Only the split into pulls still works.'][S.scen];
+  const story=[
+    `<b>Only joint 1 spins.</b> The whole arm turns rigidly about joint 1, so every pull points <b>straight at joint 1</b>. Joint 1 feels nothing at all. But those pulls miss joint 2, so joint 2 must hold against them: that is the arm trying to fling straight.`,
+    `<b>Only joint 2 spins.</b> Link 1 is still, so only m₂ circles, around joint 2. Its pull points <b>straight at joint 2</b>, so joint 2 feels nothing. The pull misses joint 1, so joint 1 feels it.`,
+    `<b>Both spin.</b> You get the two cases above, plus one extra <span class="cc">Coriolis</span> pull, from m₂ going round joint 2 while the whole frame also turns. It aims at joint 2 as well, so like the θ̇₂ pull it lands entirely on <b>joint 1</b>.`][S.scen];
+  document.getElementById('out').innerHTML=`
+   <div class="h">Every pull, and the torque it costs each joint</div>
+   <p style="font-size:.88rem;margin:0 0 2px">${story}</p>
+   <p style="font-size:.86rem;margin:4px 0 2px" class="mut"><b>Gold curve = the path m₂ actually traces.</b> ${pathTxt}</p>
+   <table class="t"><tr><th>pull (click a row)</th><th>size (N)</th><th>τ₁ (N·m)</th><th>τ₂ (N·m)</th></tr>
+    ${rows||'<tr><td colspan="4" class="mut">nothing spinning</td></tr>'}
+    <tr class="tot"><td>total</td><td></td><td class="c1">${f(D.tot[0])}</td><td class="c2">${f(D.tot[1])}</td></tr></table>
+   ${sel}${corBox}
+   <div class="note" style="background:none;border:1px solid var(--line)"><b>The whole 2R story, three lines.</b> With h sin θ₂ = m₂L₁L₂ sin θ₂ = <span class="mono">${f(D.h*D.s2)}</span>:
+     <ul><li>θ̇₁'s own spin → <b>only joint 2</b>: <span class="mono">+h sin θ₂ · θ̇₁²</span></li>
+     <li>θ̇₂'s own spin → <b>only joint 1</b>: <span class="mono">−h sin θ₂ · θ̇₂²</span></li>
+     <li>Coriolis → <b>only joint 1</b>: <span class="mono">−2h sin θ₂ · θ̇₁θ̇₂</span></li></ul>
+     <span class="mut">At θ₂ = 0° or 180°, sin θ₂ = 0 and all of it vanishes: the arm is straight or folded, and every pull lines up with both joints.</span></div>`;
+  document.querySelectorAll('tr.row').forEach(r=>r.onclick=()=>{S.row=+r.dataset.q;draw()});
+}
+function draw(){const D=model();draw3(D);render(D)}
+
+/* ---------- play ---------- */
+function syncAngles(){
+  const a=document.getElementById('t1'),b=document.getElementById('t2');
+  a.value=Math.round(S.t1);document.getElementById('t1o').textContent=Math.round(S.t1)+'°';
+  b.value=Math.round(S.t2);document.getElementById('t2o').textContent=Math.round(S.t2)+'°';
+}
+let playing=false,last=0;
+function tick(now){
+  if(!playing){last=0;return}
+  const dt=last?Math.min(.05,(now-last)/1000):0;last=now;
+  const [w1,w2]=SCEN[S.scen].w();
+  S.t1=((S.t1+w1*dt/D2R+540)%360)-180;
+  S.t2=((S.t2+w2*dt/D2R+540)%360)-180;
+  syncAngles();draw();requestAnimationFrame(tick);
+}
+document.getElementById('play').onclick=e=>{playing=!playing;e.target.textContent=playing?'Pause':'Play';if(playing)requestAnimationFrame(tick)};
+document.getElementById('reset').onclick=()=>{playing=false;document.getElementById('play').textContent='Play';S.t1=HOME.t1;S.t2=HOME.t2;syncAngles();draw()};
+
+/* ---------- controls ---------- */
+const bind=(id,set,fmt)=>{const el=document.getElementById(id),o=document.getElementById(id+'o');const up=()=>{set(+el.value);o.textContent=fmt(+el.value);draw()};el.addEventListener('input',up);o.textContent=fmt(+el.value)};
+bind('t1',v=>S.t1=v,v=>v+'°');bind('t2',v=>S.t2=v,v=>v+'°');
+bind('L1',v=>S.L[0]=v,v=>v.toFixed(1));bind('L2',v=>S.L[1]=v,v=>v.toFixed(1));
+bind('m1',v=>S.m[0]=v,v=>v.toFixed(1));bind('m2',v=>S.m[1]=v,v=>v.toFixed(1));
+bind('w1',v=>S.w[0]=v,v=>v.toFixed(1));bind('w2',v=>S.w[1]=v,v=>v.toFixed(1));
+function size(){const w=cv.clientWidth,h=cv.clientHeight;if(!w||!h)return;renderer.setPixelRatio(window.devicePixelRatio||1);renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();draw()}
+colorize();new ResizeObserver(size).observe(cv);
+const retheme=()=>{colorize();draw()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+size();draw();
+})();
+</script>
+
+</body></html>
