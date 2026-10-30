@@ -207,7 +207,7 @@ def mass_matrix_video_card() -> Card:
 
 
 def mass_matrix_build_card() -> Card:
-    c = Card("building M: move, push, feel — M = Σ J_kᵀ G_k J_k")
+    c = Card("building M: move, push, feel — M = Σ JₖᵀGₖJₖ")
     c.add(in_words(
         "M_ij is the inertia joint i feels when joint j accelerates. M₁₁: accelerate joint 1 "
         "at 1 rad/s² with joints 2 and 3 locked, so the whole arm swings about joint 1 as one "
@@ -258,7 +258,7 @@ def mass_matrix_build_card() -> Card:
 
 
 def link_vs_task_inertia_card() -> Card:
-    c = Card("G_k vs Λ: two inertias on opposite sides of M")
+    c = Card("Gₖ vs Λ: two inertias on opposite sides of M")
     c.add(in_words(
         "The JᵀGJ build of M and the lecturer's Λ = J⁻ᵀMJ⁻¹ are not the same formula "
         "inverted: they are two different matrices. G_k goes <b>into</b> M; Λ comes <b>out "
