@@ -235,6 +235,7 @@ class MassMatrixPage(Page):
 
         self.add(ch8.mass_matrix_video_card())
         self.add(ch8.mass_matrix_build_card())
+        self.add(ch8.link_vs_task_inertia_card())
         self.add(StepLab("mass_matrix_3r.html", "3R mass matrix, one entry at a time",
                          height=820, prefix="Explore · "))
 

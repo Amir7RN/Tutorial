@@ -257,6 +257,42 @@ def mass_matrix_build_card() -> Card:
     return c
 
 
+def link_vs_task_inertia_card() -> Card:
+    c = Card("G_k vs Λ: two inertias on opposite sides of M")
+    c.add(in_words(
+        "The JᵀGJ build of M and the lecturer's Λ = J⁻ᵀMJ⁻¹ are not the same formula "
+        "inverted: they are two different matrices. G_k goes <b>into</b> M; Λ comes <b>out "
+        "of</b> M. Kinetic energy is one number written in three sets of coordinates:"))
+    c.add(math_label(r"\mathcal{K}=\frac{1}{2}\sum_k\mathcal{V}_k^T\mathcal{G}_k\mathcal{V}_k"
+                     r"=\frac{1}{2}\dot\theta^TM\dot\theta=\frac{1}{2}\mathcal{V}_{hand}^T\Lambda\,\mathcal{V}_{hand}", 16))
+    c.add(body(_table(
+        ("", "G_k (link inertia)", "Λ(θ) (task-space inertia)"),
+        [("describes", "one link's own mass and inertia about its centre of mass",
+          "the whole arm's apparent inertia at the hand"),
+         ("size", "6 × 6, one per link", "6 × 6 (or m × m), one for the arm"),
+         ("depends on θ?", "no, constant in the link's frame", "yes, changes with pose"),
+         ("role", "an input you build M from", "an output you derive from M")])))
+    c.add(body(
+        "Substitute V_k = J_kθ̇ and you get M = Σ J_kᵀG_kJ_k (links → joints). Substitute "
+        "V_hand = Jθ̇ and you get M = JᵀΛJ (hand → joints). Same rule both times: "
+        "<b>Jᵀ (inertia) J pulls an inertia back into the input coordinates</b>. Going the "
+        "other way, from joints out to the hand, you invert, which is where J⁻ᵀ and J⁻¹ come "
+        "from:"))
+    c.add(math_label(r"\Lambda=J^{-T}MJ^{-1}\qquad\text{general form (redundant arms too):}\quad "
+                     r"\Lambda=\left(JM^{-1}J^T\right)^{-1}", 16))
+    c.add(body(
+        "<b>Check</b> (2R, L = 1, 0.8; m = 1, 1.5; θ = 0.3, 1.1): M = [4.549 1.504; 1.504 "
+        "0.960], Λ = J⁻ᵀMJ⁻¹ = [1.536 0.211; 0.211 2.723], JᵀΛJ = M ✓, and (JM⁻¹Jᵀ)⁻¹ gives "
+        "the same Λ. <b>Meaning</b>: the mass the hand feels when you push it. At this pose a "
+        "push along x meets 1.52 kg, along y 2.69 kg: same arm, different heft per direction. "
+        "That is why Λ is the centrepiece of operational-space control (Khatib): command the "
+        "hand as a free-floating object with direction-dependent mass (page 138)."))
+    c.add(plain(
+        "G_k is per <b>link</b>, about that link's centre of mass, not per joint. J⁻¹ exists "
+        "only for a square, non-singular J; use (JM⁻¹Jᵀ)⁻¹ otherwise."))
+    return c
+
+
 # ---------------------------------------------------------------- page 135
 def rigid_body_card() -> Card:
     c = Card("video 8.2, part 1 — the dynamics of one rigid body, from point masses")
