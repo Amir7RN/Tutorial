@@ -413,6 +413,9 @@ class NewtonEulerPage(Page):
         self.add(b)
         self.add(ch8.rigid_body_card())
         self.add(ch8.spatial_inertia_card())
+        self.add(ch8.rnea_video_card())
+        self.add(StepLab("rnea_steps.html", "the recursion in the book's notation, one link per step",
+                         height=900, prefix="Explore · "))
 
         r = Card("the recursion (planar revolute version, as coded)")
         r.add(body(
@@ -682,6 +685,9 @@ class ForwardDynamicsPage(Page):
             "every simulator (MuJoCo, Gazebo, Isaac) runs about a thousand "
             "times a second. How you take each step matters: some methods "
             "slowly invent energy that is not there."))
+        self.add(ch8.forward_dyn_video_card())
+        self.add(StepLab("fd_steps.html", "n + 1 Newton–Euler calls, solve, integrate",
+                         height=900, prefix="Explore · "))
 
         a = Card("three ways to get q̈")
         a.add(math_label(r"M(q)\ddot q=\tau-h(q,\dot q),\quad "
@@ -852,6 +858,7 @@ class TaskDynamicsPage(Page):
             "weighed Λ. Unlike a simple point mass, Λ depends on direction "
             "and posture — the hand is easy to shove sideways and very hard "
             "to shove along a straight arm."))
+        self.add(ch8.task_space_video_card())
 
         d = Card("from joint space to task space")
         d.add(math_label(r"\dot x=J\dot q,\ \ddot x=J\ddot q+\dot J\dot q,\ "
@@ -980,6 +987,7 @@ class ConstrainedDynamicsPage(Page):
             "keep the rule. Its sign matters: a wall can push but cannot "
             "pull, so if the calculation asks for a pull, the contact is "
             "about to break."))
+        self.add(ch8.constrained_video_card())
 
         e = Card("equations of motion with k constraints A(q)q̇ = 0")
         e.add(math_label(r"\begin{bmatrix}M&-A^T\\ A&0\end{bmatrix}"

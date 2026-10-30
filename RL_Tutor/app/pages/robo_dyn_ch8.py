@@ -355,3 +355,127 @@ def spatial_inertia_card() -> Card:
         "V̇_b = G_b⁻¹(F_b + [ad_Vb]ᵀG_bV_b). The next video chains these link by link: the "
         "recursive Newton–Euler algorithm below."))
     return c
+
+
+# ---------------------------------------------------------------- page 135
+def rnea_video_card() -> Card:
+    c = Card("video 8.3 — Newton–Euler inverse dynamics for an open chain")
+    c.add(video_tag(
+        "8.3", "newton–euler inverse dynamics",
+        "Chain the one-body equation F = GV̇ − ad_Vᵀ GV link by link. Forward iterations "
+        "carry twists and accelerations out from the base; backward iterations carry wrenches "
+        "back from the tip; each joint torque is the wrench projected on its own axis."))
+    c.add(body(
+        "<b>Frames.</b> {0} fixed in the world, {1} … {n} at the centres of mass of the links, "
+        "{n+1} at the end-effector. V_i is the twist of link i written in {i}. "
+        "<b>Given</b> θ, θ̇, θ̈ and the tip wrench F_tip; <b>find</b> τ."))
+    c.add(body(_table(
+        ("symbol", "meaning"),
+        [("M_{i,i−1}", "pose of {i−1} in {i} when joint i is at zero"),
+         ("A_i", "screw axis of joint i, written in {i}"),
+         ("G_i", "6 × 6 spatial inertia of link i (page 134)"),
+         ("F_{n+1} = F_tip", "wrench the end-effector applies to the environment"),
+         ("V₀ = 0, V̇₀ = (0, −g)", "gravity as an upward base acceleration: indistinguishable from it")])))
+    c.add(body("<b>Forward iterations</b>, i = 1 … n:"))
+    c.add(math_label(r"T_{i,i-1}=e^{-[\mathcal{A}_i]\theta_i}M_{i,i-1},\quad "
+                     r"\mathcal{V}_i=[\mathrm{Ad}_{T_{i,i-1}}]\mathcal{V}_{i-1}+\mathcal{A}_i\dot\theta_i,\quad "
+                     r"\dot{\mathcal{V}}_i=[\mathrm{Ad}_{T_{i,i-1}}]\dot{\mathcal{V}}_{i-1}"
+                     r"+[\mathrm{ad}_{\mathcal{V}_i}]\mathcal{A}_i\dot\theta_i+\mathcal{A}_i\ddot\theta_i", 14))
+    c.add(body("<b>Backward iterations</b>, i = n … 1:"))
+    c.add(math_label(r"\mathcal{F}_i=[\mathrm{Ad}_{T_{i+1,i}}]^T\mathcal{F}_{i+1}+\mathcal{G}_i\dot{\mathcal{V}}_i"
+                     r"-[\mathrm{ad}_{\mathcal{V}_i}]^T\mathcal{G}_i\mathcal{V}_i,\qquad "
+                     r"\tau_i=\mathcal{F}_i^T\mathcal{A}_i", 15))
+    c.add(body(_table(
+        ("term", "in words"),
+        [("[Ad]V_{i−1}", "the parent's twist, moved into this link's frame"),
+         ("A_iθ̇_i", "what joint i adds"),
+         ("[ad_V_i]A_iθ̇_i", "velocity product: joint i spins inside a frame that already moves"),
+         ("[Ad]ᵀF_{i+1}", "the wrench the child needs, moved back into this frame"),
+         ("G_iV̇_i − ad ᵀG_iV_i", "this link's own rigid-body needs (video 8.2)"),
+         ("F_iᵀA_i", "only the part along the joint axis is the motor's job; bearings carry the rest")])))
+    c.add(plain(
+        "Two passes: out from the base (each link's speed and acceleration builds on its "
+        "parent's), back from the tip (each link's wrench builds on its child's). "
+        "<b>No differentiation</b> anywhere, and the work grows linearly with the number of "
+        "links, so it runs at 1 kHz in real controllers. For simulation you need the forward "
+        "dynamics instead (page 137). The step lab below runs every line with live numbers on "
+        "a 3R arm, one link per step, and checks the result against the planar formulas."))
+    return c
+
+
+# ---------------------------------------------------------------- page 137
+def forward_dyn_video_card() -> Card:
+    c = Card("video 8.5 — forward dynamics of open chains")
+    c.add(video_tag(
+        "8.5", "forward dynamics of open chains",
+        "Solve for θ̈ given τ, θ, θ̇ (and F_tip), using nothing but the inverse dynamics "
+        "algorithm: n + 1 calls give M and h, then solve M θ̈ = τ − h and integrate."))
+    c.add(body(_table(
+        ("call", "inputs to RNEA", "output"),
+        [("0", "real θ, θ̇, g, F_tip; θ̈ = 0", "h = c(θ, θ̇) + g(θ) + JᵀF_tip"),
+         ("i = 1 … n", "g = 0, F_tip = 0, θ̇ = 0, θ̈ = e_i (joint i at 1, the rest 0)", "column i of M(θ)"),
+         ("then", "solve M θ̈ = τ − h with any efficient solver", "θ̈")])))
+    c.add(math_label(r"\theta[k+1]=\theta[k]+\dot\theta[k]\,\Delta t,\qquad "
+                     r"\dot\theta[k+1]=\dot\theta[k]+\ddot\theta[k]\,\Delta t", 15))
+    c.add(body(
+        "<b>Simulation</b>: at each timestep compute θ̈ by forward dynamics, then update θ and "
+        "θ̇ by numerical integration. The video drops a 6R arm in gravity with τ = 0. It looks "
+        "a little unreal because joint friction is not modelled; add your favourite friction "
+        "model as a torque that depends on θ̇."))
+    c.add(plain(
+        "<b>Energy test.</b> With zero friction and zero torque nothing dissipates energy, so "
+        "K + P must stay constant: the arm swings back to about the same height every time. "
+        "Integration drift changes the total slowly; a smaller Δt or a better integrator (RK4) "
+        "reduces it. The step lab below runs all n + 1 calls with their inner recursions, the "
+        "solve, one step, and then a full simulation with the energy plotted live."))
+    return c
+
+
+# ---------------------------------------------------------------- page 138
+def task_space_video_card() -> Card:
+    c = Card("video 8.6 — dynamics in the task space")
+    c.add(video_tag(
+        "8.6", "dynamics in the task space",
+        "The same dynamics written in end-effector motions and wrenches instead of joint "
+        "motions and torques."))
+    c.add(body(
+        "With V = Jθ̇ (space or body frame) and J invertible: V̇ = Jθ̈ + J̇θ̇. Solve for θ̇ "
+        "and θ̈, substitute into τ = Mθ̈ + h and τ = JᵀF:"))
+    c.add(math_label(r"\mathcal{F}=\Lambda(\theta)\dot{\mathcal{V}}+\eta(\theta,\mathcal{V}),\qquad "
+                     r"\Lambda=J^{-T}MJ^{-1},\quad \eta=J^{-T}h-\Lambda\dot JJ^{-1}\mathcal{V}", 15))
+    c.add(plain(
+        "Λ is the mass matrix seen at the end-effector (page 134); η collects velocity "
+        "products and gravity as an end-effector wrench. Both are written in θ, not in the "
+        "end-effector pose X, because one pose can have several robot configurations. A tip "
+        "wrench F_tip simply adds to the total wrench."))
+    return c
+
+
+# ---------------------------------------------------------------- page 139
+def constrained_video_card() -> Card:
+    c = Card("video 8.7 — constrained dynamics")
+    c.add(video_tag(
+        "8.7", "constrained dynamics",
+        "Loop closures, wheels, feet on the ground, a hand erasing a whiteboard: constraints "
+        "need forces to enforce them. Add those forces with Lagrange multipliers, then project "
+        "them away."))
+    c.add(body(
+        "Configuration constraints b(θ) = 0 hold at all times, so their derivative is zero "
+        "too: (∂b/∂θ)θ̇ = A(θ)θ̇ = 0, with A k × n (k velocity constraints). These "
+        "<b>Pfaffian</b> constraints can also be nonholonomic (chapter 2). Assume they are "
+        "<b>workless</b> (for the eraser: no friction on the board). Then τ_con · θ̇ = 0 for "
+        "every allowed θ̇, so τ_con is a combination of the rows of A:"))
+    c.add(math_label(r"\tau=M\ddot\theta+h+A^T\lambda,\qquad A\ddot\theta+\dot A\dot\theta=0", 15))
+    c.add(body(
+        "n + k equations in n + k unknowns: the k multipliers λ and either θ̈ (forward) or "
+        "τ (inverse). Eliminate λ with the n × n projection of rank n − k:"))
+    c.add(math_label(r"P(\theta)=I-A^T\left(AM^{-1}A^T\right)^{-1}AM^{-1},\qquad "
+                     r"P\tau=P\left(M\ddot\theta+h\right)", 15))
+    c.add(plain(
+        "P is not invertible, so you cannot cancel it. It projects joint torques onto the ones "
+        "that move the robot and removes the ones that only push against the constraints. "
+        "Inverse dynamics: plug θ, θ̇, θ̈ into the right side; then add <b>any</b> Aᵀλ, which "
+        "pushes on the constraint without changing the motion. Chapter 11 uses exactly this "
+        "freedom for hybrid motion–force control: motion along free directions, force along "
+        "constrained ones."))
+    return c

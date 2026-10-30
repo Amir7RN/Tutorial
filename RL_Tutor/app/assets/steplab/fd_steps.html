@@ -1,0 +1,147 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forward Dynamics Recursion</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script><script src="rnea6.js"></script>
+</head><body>
+<script>
+/* Video 8.5: forward dynamics from n + 1 calls of the Newton–Euler inverse
+   dynamics, then M θ̈ = τ − h, then integrate. Same planar 3R arm as page 135. */
+const L = [1, .8, .6], MS = [2, 1.5, 1];
+const R = R6.build(L, MS);
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul, v6 = R6.v6;
+const sb = ['₁', '₂', '₃'];
+let integ = 'rk4';
+const sim = { th: [0, 0, 0], thd: [0, 0, 0], t: 0, E: [], E0: 0 };
+const tauIn = () => [SL.v.u1, SL.v.u2, SL.v.u3].map(x => x / 2);
+const fd = (th, thd) => { const z = [0, 0, 0], h = R6.rnea(R, th, thd, z).tau, M = R6.massMatrix(R, th);
+  return MR.solve(M, MR.sub(tauIn(), h)); };
+const energy = () => { const e = R6.energy(R, sim.th, sim.thd); return e.K + e.P; };
+const resetSim = () => {
+  const v = SL.v; sim.th = [v.q1, v.q2, v.q3].map(x => x * Math.PI / 180); sim.thd = [v.d1, v.d2, v.d3].map(x => x / 10);
+  sim.t = 0; sim.E0 = energy(); sim.E = [[0, sim.E0]];
+};
+const step = dt => {
+  const { th, thd } = sim;
+  if (integ === 'euler') { const a = fd(th, thd); sim.thd = MR.add(thd, MR.scl(a, dt)); sim.th = MR.add(th, MR.scl(sim.thd, dt)); }
+  else {
+    const F = (q, w) => [w, fd(q, w)];
+    const k1 = F(th, thd), k2 = F(MR.add(th, MR.scl(k1[0], dt / 2)), MR.add(thd, MR.scl(k1[1], dt / 2)));
+    const k3 = F(MR.add(th, MR.scl(k2[0], dt / 2)), MR.add(thd, MR.scl(k2[1], dt / 2))), k4 = F(MR.add(th, MR.scl(k3[0], dt)), MR.add(thd, MR.scl(k3[1], dt)));
+    sim.th = th.map((x, i) => x + dt / 6 * (k1[0][i] + 2 * k2[0][i] + 2 * k3[0][i] + k4[0][i]));
+    sim.thd = thd.map((x, i) => x + dt / 6 * (k1[1][i] + 2 * k2[1][i] + 2 * k3[1][i] + k4[1][i]));
+  }
+  sim.t += dt; sim.E.push([sim.t, energy()]); if (sim.E.length > 1500) sim.E.shift();
+};
+const st = () => {
+  const th = sim.th, thd = sim.thd, z = [0, 0, 0], tau = tauIn();
+  const call0 = R6.rnea(R, th, thd, z);
+  const calls = [0, 1, 2].map(j => { const e = z.slice(); e[j] = 1; return R6.rnea(R, th, z, e, { g: 0 }); });
+  const M = MR.fromCols(calls.map(c => c.tau)), h = call0.tau, rhs = MR.sub(tau, h), thdd = MR.solve(M, rhs);
+  const back = R6.rnea(R, th, thd, thdd).tau, dt = SL.v.dt / 1000;
+  const thdN = MR.add(thd, MR.scl(thdd, dt)), thN = MR.add(th, MR.scl(thdN, dt));
+  return { th, thd, tau, call0, calls, M, h, rhs, thdd, back, dt, thdN, thN, G: R6.geom(R, th) };
+};
+const table = c => `<table class="t"><tr><th>link</th><th>ω_z</th><th>V̇ (ω̇_z | v̇ₓ, v̇_y)</th><th>F (m_z | fₓ, f_y)</th><th>τ = FᵀA</th></tr>${[0, 1, 2].map(i =>
+  `<tr><td>${i + 1}</td><td>${f(c.V[i][2], 2)}</td><td>${f(c.Vd[i][2], 2)} | ${f(c.Vd[i][3], 2)}, ${f(c.Vd[i][4], 2)}</td><td>${f(c.F[i][2], 2)} | ${f(c.F[i][3], 2)}, ${f(c.F[i][4], 2)}</td><td><b>${f(c.tau[i], 3)}</b></td></tr>`).join('')}</table>`;
+SL.app({
+  title: 'Forward dynamics: n + 1 Newton–Euler calls, then integrate',
+  sub: 'Given θ, θ̇ and τ, find θ̈ (video 8.5). Call the inverse dynamics once for h, n times for the columns of M, solve M θ̈ = τ − h, then step forward in time. Play to simulate; pause anywhere and step through the recursion at that state.',
+  view: '2d',
+  legend: [['--c', 'torque from the current call'], ['--d', 'θ̈ (solved)'], ['--grey', 'next pose after one step'], ['--b', 'total energy K + P']],
+  controls: [
+    { id: 'q1', label: 'θ₁ start', min: -180, max: 180, value: -30, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂ start', min: -180, max: 180, value: 40, fmt: x => x + '°' },
+    { id: 'q3', label: 'θ₃ start', min: -180, max: 180, value: 30, fmt: x => x + '°' },
+    { id: 'd1', label: 'θ̇₁ start', min: -30, max: 30, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd2', label: 'θ̇₂ start', min: -30, max: 30, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd3', label: 'θ̇₃ start', min: -30, max: 30, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'u1', label: 'τ₁ motor', min: -80, max: 80, value: 0, fmt: x => f(x / 2, 1) + ' N·m' },
+    { id: 'u2', label: 'τ₂ motor', min: -40, max: 40, value: 0, fmt: x => f(x / 2, 1) + ' N·m' },
+    { id: 'u3', label: 'τ₃ motor', min: -20, max: 20, value: 0, fmt: x => f(x / 2, 1) + ' N·m' },
+    { id: 'dt', label: 'time step dt', min: 1, max: 40, value: 5, fmt: x => x + ' ms' },
+  ],
+  onControl(id) { if (!['u1', 'u2', 'u3', 'dt'].includes(id)) resetSim(); },
+  play: { tick(dt) { const h = SL.v.dt / 1000; let k = Math.max(1, Math.round(dt / h)); while (k--) step(h); } },
+  reset() { resetSim(); },
+  buttons: [
+    { label: 'RK4', toggle: true, pressed: true, onclick: e => { integ = 'rk4'; [...e.parentNode.children].forEach(b => b.getAttribute('aria-pressed') !== null && b.setAttribute('aria-pressed', b === e)); resetSim(); SL.redraw(); } },
+    { label: 'Euler', toggle: true, pressed: false, onclick: e => { integ = 'euler'; [...e.parentNode.children].forEach(b => b.getAttribute('aria-pressed') !== null && b.setAttribute('aria-pressed', b === e)); resetSim(); SL.redraw(); } },
+  ],
+  steps: [
+    ['The problem: θ̈ from τ', 'Forward dynamics answers “what happens if I apply these torques?”. The equation is τ = M θ̈ + h; we know τ, θ, θ̇, but not M and h. The inverse dynamics can give us both.'],
+    ['Call 0: θ̈ = 0 gives h = c + g (+ JᵀF_tip)', 'Run Newton–Euler with the real θ, θ̇ and gravity, but zero acceleration. Whatever torque it still needs is the velocity-product and gravity part.'],
+    ['Call 1: θ̈ = e₁, no speed, no gravity → column 1 of M', 'Switch off gravity, speeds and tip wrench, accelerate joint 1 alone at 1 rad/s². The torques that come back are exactly column 1 of M.'],
+    ['Call 2: θ̈ = e₂ → column 2', 'Same, with joint 2 accelerating alone. Note that joint 1 still feels torque: the coupling term M₁₂.'],
+    ['Call 3: θ̈ = e₃ → column 3, M is complete', 'The last column. n + 1 = 4 calls in all give M(θ) and h(θ, θ̇). M comes out symmetric and positive definite, as it must.'],
+    ['Solve M θ̈ = τ − h', 'A small linear solve gives θ̈. Check: run the inverse dynamics with that θ̈ and you get back exactly the τ you applied.'],
+    ['One time step', 'Use θ̈ to move θ̇ forward, and θ̇ to move θ forward, by dt. The grey ghost is the arm one step later.'],
+    ['Many steps: simulate and watch the energy', 'Press Play: every frame repeats steps 1–6. With τ = 0 and no friction, K + P must stay constant: a test of the simulator. Euler drifts; RK4 or a smaller dt fixes it.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), G = s.G;
+    const A = Pl.panel(0, 0, 1, .7, [-2.6, 2.6, -2.5, 2.5]);
+    A.grid(.5); A.axes();
+    if (S === 6 || S === 7) { const g2 = R6.geom(R, s.thN); A.poly(g2.P, '--grey', 2, [4, 3]); }
+    A.arm(G.P);
+    const arcs = (v, cl, k, lab) => v.forEach((x, i) => { const a0 = G.ang[i] - .7; A.arc(G.P[i], 26 + 7 * i, a0, a0 + Math.max(-2.6, Math.min(2.6, x * k)) * t, cl, 3, true, (typeof lab === 'function' ? lab(i) : lab + sb[i]) + '=' + f(x, 2)); });
+    if (S === 0) arcs(s.tau, '--c', 1 / 12, 'τ');
+    if (S === 1) arcs(s.h, '--c', 1 / 12, 'h');
+    if (S >= 2 && S <= 4) { const j = S - 2; A.text(G.P[j], 'θ̈' + sb[j] + ' = 1', '--d', -30, -46, { size: 13 }); arcs(s.calls[j].tau, '--c', 1, i => 'M' + sb[i] + sb[j]); }
+    if (S === 5) arcs(s.thdd, '--d', 1 / 8, 'θ̈');
+    // energy strip
+    const B = Pl.panel(0, .72, 1, .28, [0, 1, 0, 1], false);
+    const Es = sim.E, tmax = Math.max(2, Es.length ? Es[Es.length - 1][0] : 2), e0 = sim.E0;
+    const dev = Math.max(.5, ...Es.map(p => Math.abs(p[1] - e0)));
+    B.b = [Math.max(0, tmax - 15), tmax, e0 - dev * 1.2, e0 + dev * 1.2]; B.fit(); B.frame('total energy K + P (J) vs time (s)');
+    B.line([B.b[0], e0], [B.b[1], e0], '--grey', 1, [4, 3]);
+    if (Es.length > 1) B.poly(Es, '--b', 2);
+    B.text([B.b[0], B.b[3]], `drift ${f((Es.length ? Es[Es.length - 1][1] : e0) - e0, 4)} J · ${integ.toUpperCase()} · dt ${SL.v.dt} ms`, '--muted', 6, 34, { size: 12 });
+  },
+  math(S) {
+    const s = st(), j = S - 2;
+    const head = `<p class="cg">State now (t = ${f(sim.t, 2)} s): θ = (${s.th.map(SL.deg).join(', ')}), θ̇ = ${vs(s.thd, 2)}, τ = ${vs(s.tau, 1)} N·m. Same arm as page 135.</p>`;
+    const rows = [
+`${E(`τ = M(θ) θ̈ + h(θ, θ̇),      h = c(θ, θ̇) + g(θ) + Jᵀ F_tip
+known:  θ, θ̇, τ          unknown: θ̈`)}
+${ul(['Inverse dynamics (page 135) maps (θ, θ̇, θ̈) → τ in O(n), with no derivatives.',
+      'Trick: choose θ̈, θ̇, gravity cleverly, and read M and h off its output. That costs n + 1 calls.',
+      'Then θ̈ = M⁻¹(τ − h). Never form M⁻¹ explicitly: solve the linear system.'])}`,
+`${E(`call 0:  RNEA(θ, θ̇, θ̈ = 0, g = 9.81) = M·0 + h = h
+h = ${vs(s.h, 4)} N·m`)}
+<p>The recursion inside this call (each link in its own frame):</p>${table(s.call0)}
+${ul(['ω_z ≠ 0 because the joints already turn: those terms are c(θ, θ̇).', 'V̇ is not zero even with θ̈ = 0: the fake upward g and the velocity products.'])}`,
+...[0, 1, 2].map(k => `${E(`call ${k + 1}:  RNEA(θ, θ̇ = 0, θ̈ = e${sb[k]}, g = 0, F_tip = 0) = M e${sb[k]} = column ${k + 1} of M
+column ${k + 1} = ${vs(s.calls[k].tau, 4)}`)}
+<p>The recursion inside this call:</p>${table(s.calls[k])}
+${ul([`All twists are zero (θ̇ = 0), so every velocity-product term vanishes. Only joint ${k + 1}’s unit acceleration drives V̇.`,
+      `Links before joint ${k + 1} don’t move (V̇ = 0) but still need torque: they hold the base of the accelerating part.`,
+      `Read the torques down the column: joint i feels M_i${sb[k]} when joint ${k + 1} alone accelerates.`])}
+${k === 2 ? E(`${SL.mat(s.M, 4, 'M')}
+symmetric: M₁₂ − M₂₁ = ${f(s.M[0][1] - s.M[1][0], 8)}   eigenvalues ${vs(MR.eigSym(s.M).vals, 3)}`) : ''}`),
+`${E(`τ − h = ${vs(s.tau, 3)} − ${vs(s.h, 3)}
+      = ${vs(s.rhs, 4)}
+${SL.mat(s.M, 4, 'M')}
+θ̈ = M⁻¹(τ − h) = ${vs(s.thdd, 4)} rad/s²`)}
+${E(`check:  RNEA(θ, θ̇, θ̈) = ${vs(s.back, 4)} = τ ✓
+        difference ${f(MR.norm(MR.sub(s.back, s.tau)), 10)}`)}
+${ul(['Any good solver works (Cholesky, since M is symmetric positive definite). M is always invertible, unlike J.',
+      'Faster methods exist (articulated-body algorithm, O(n)), but this one reuses the code you already have.'])}`,
+`${E(`dt = ${f(s.dt * 1000, 0)} ms   (semi-implicit Euler shown; Play uses ${integ === 'rk4' ? 'RK4' : 'this Euler step'})
+θ̇[k+1] = θ̇[k] + θ̈ dt = ${vs(s.thd, 3)} + ${vs(s.thdd, 3)} × ${f(s.dt, 3)} = ${vs(s.thdN, 4)}
+θ[k+1]  = θ[k] + θ̇[k+1] dt = (${s.th.map(SL.deg).join(', ')}) → (${s.thN.map(SL.deg).join(', ')})`)}
+${ul(['Each time step = steps 1–5 (n + 1 inverse-dynamics calls and one solve) + this update.',
+      'Joint friction would enter here as an extra torque depending on θ̇, added to τ.'])}`,
+`${E(`E = K + P = ½ θ̇ᵀ M θ̇ + Σ m_i g y_ci
+E(0) = ${f(sim.E0, 4)} J      E(now) = ${f(energy(), 4)} J      drift = ${f(energy() - sim.E0, 5)} J`)}
+${ul(['τ = 0 and no friction → no energy enters or leaves, so the curve should be flat: one test that the simulator is right.',
+      'The arm swings back to about the same height each time: the same potential energy at each turnaround.',
+      'Euler with a big dt gains energy; RK4 or a smaller dt keeps it flat. Try Euler at 30 ms, then RK4.',
+      'Nonzero τ adds work τ·θ̇, so the energy changes for a real reason.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>θ̈</b>${vs(s.thdd, 2)}</span><span><b>E drift</b>${f(energy() - sim.E0, 4)} J</span>`; },
+});
+resetSim(); SL.redraw();
+</script>
+</body></html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Newton–Euler Recursion</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="steplab.js"></script><script src="rnea6.js"></script>
+</head><body>
+<script>
+/* Video 8.3: the recursive Newton–Euler inverse dynamics, one link per step, in
+   the book's notation (T_{i,i-1}, A_i, Ad, ad, G_i). Planar 3R arm of rods. */
+const L = [1, .8, .6], MS = [2, 1.5, 1];
+const R = R6.build(L, MS), arm = MR.arm({ L, m: MS });
+const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul, v6 = R6.v6;
+const sb = ['₁', '₂', '₃', '₄'], sbm = ['₀', '₁', '₂', '₃'];
+const st = () => {
+  const v = SL.v, th = [v.q1, v.q2, v.q3].map(x => x * Math.PI / 180);
+  const thd = [v.d1, v.d2, v.d3].map(x => x / 10), thdd = [v.a1, v.a2, v.a3].map(x => x / 10), fw = [v.fx, v.fy];
+  const tr = R6.rnea(R, th, thd, thdd, { ftipWorld: fw }), G = R6.geom(R, th);
+  const chk = MR.rnea(arm, th, thd, thdd, { ftip: fw });
+  return { th, thd, thdd, fw, tr, G, chk };
+};
+const rot = (a, p) => [Math.cos(a) * p[0] - Math.sin(a) * p[1], Math.sin(a) * p[0] + Math.cos(a) * p[1]];
+const steps = [
+  ['Set up: frames, A_i, G_i, and gravity', 'Frames {1}, {2}, {3} sit at the centres of mass, {4} at the tip, {0} at the base. Each joint axis is written in its own link frame (A_i), each link has a 6×6 spatial inertia G_i, and gravity is replaced by an upward base acceleration.'],
+  ['Forward, i = 1: pose, twist, acceleration of link 1', 'Where is {0} seen from {1}? Then link 1’s twist = base twist moved into {1} + A₁θ̇₁, and its acceleration = base acceleration moved into {1} + a velocity-product term + A₁θ̈₁.'],
+  ['Forward, i = 2: build on link 1', 'The same three lines, now starting from V₁ and V̇₁. Link 2 inherits everything link 1 does, and adds what joint 2 does.'],
+  ['Forward, i = 3: the last link', 'Same again from V₂ and V̇₂. The forward pass is done: every link’s twist and acceleration is known, in its own centre-of-mass frame.'],
+  ['Backward, i = 3: start at the tip', 'Link 3 must supply its own G₃V̇₃ − ad ᵀ G₃V₃, plus the wrench it pushes on the world. Project onto A₃: that is τ₃. The rest is carried by the bearings.'],
+  ['Backward, i = 2: add the child', 'Link 2 passes on what link 3 needs (moved into {2} with Adᵀ) and adds its own needs. Project onto A₂: τ₂.'],
+  ['Backward, i = 1: back to the base', 'Same with link 2’s wrench. F₁ is everything the base must push into link 1; only its component along A₁ is the motor torque τ₁.'],
+  ['Result: τ, check, and why it is fast', 'All three torques, compared with the planar formulas of the lab above. No derivatives anywhere, and the work grows only linearly with the number of links.'],
+];
+SL.app({
+  title: 'Newton–Euler recursion, one link at a time',
+  sub: 'The book’s algorithm (video 8.3) on a planar 3R arm of rods: out from the base for twists and accelerations, back from the tip for wrenches and torques. Every number is live.',
+  view: '2d',
+  legend: [['--a', 'centre-of-mass velocity (from V_i)'], ['--d', 'centre-of-mass acceleration (from V̇_i, incl. fake +g)'], ['--bad', 'force from link i−1 (from F_i)'], ['--b', 'tip pushes world'], ['--c', 'τ_i = F_iᵀA_i']],
+  controls: [
+    { id: 'q1', label: 'θ₁', min: -180, max: 180, value: 20, fmt: x => x + '°' },
+    { id: 'q2', label: 'θ₂', min: -180, max: 180, value: 50, fmt: x => x + '°' },
+    { id: 'q3', label: 'θ₃', min: -180, max: 180, value: -40, fmt: x => x + '°' },
+    { id: 'd1', label: 'θ̇₁', min: -30, max: 30, value: 10, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd2', label: 'θ̇₂', min: -30, max: 30, value: 5, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'd3', label: 'θ̇₃', min: -30, max: 30, value: 0, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'a1', label: 'θ̈₁', min: -50, max: 50, value: 0, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'a2', label: 'θ̈₂', min: -50, max: 50, value: 0, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'a3', label: 'θ̈₃', min: -50, max: 50, value: 0, fmt: x => f(x / 10, 1) + ' rad/s²' },
+    { id: 'fx', label: 'tip pushes world, fₓ', min: -20, max: 20, value: 0, fmt: x => x + ' N' },
+    { id: 'fy', label: 'tip pushes world, f_y', min: -20, max: 20, value: 0, fmt: x => x + ' N' },
+  ],
+  buttons: [
+    { label: 'Gravity only', onclick: () => { ['d1', 'd2', 'd3', 'a1', 'a2', 'a3', 'fx', 'fy'].forEach(k => SL.setControl(k, 0)); SL.redraw(); } },
+    { label: 'Spin, no gravity load', onclick: () => { SL.setControl('d1', 15); SL.setControl('d2', -10); SL.setControl('d3', 8); SL.redraw(); } },
+  ],
+  steps,
+  draw(Pl) {
+    const s = st(), S = SL.st, t = SL.ease(SL.anim), tr = s.tr, G = s.G, n = 3;
+    const A = Pl.panel(0, 0, 1, 1, [-2.6, 2.6, -2.2, 2.4]);
+    A.grid(.5); A.axes();
+    A.arm(G.P);
+    const cur = S >= 1 && S <= 3 ? S - 1 : S >= 4 && S <= 6 ? 6 - S : -1;
+    if (cur >= 0) A.line(G.P[cur], G.P[cur + 1], '--e', 5);
+    // frames {i} at the COMs and {4} at the tip
+    const tri = (p, a, lab, cl) => { A.arrow(p, MR.scl([Math.cos(a), Math.sin(a)], .22), cl, 1.5); A.arrow(p, MR.scl([-Math.sin(a), Math.cos(a)], .22), cl, 1.5); A.text(p, lab, cl, -16, 14, { size: 12 }); };
+    G.C.forEach((c, i) => { A.dot(c, 4, '--ink'); tri(c, G.ang[i], '{' + (i + 1) + '}', i === cur ? '--e' : '--grey'); });
+    tri(G.P[3], G.ang[2], '{4}', S === 4 ? '--e' : '--grey'); tri([0, 0], 0, '{0}', S === 1 ? '--e' : '--grey');
+    if (S === 0) { A.arrow([-.6, -.2], [0, 1.1 * t], '--d', 3.5, 'V̇₀: base “accelerates up” at g'); }
+    const kv = .35, ka = .045, kf = 1 / 45;
+    const nOut = S === 0 || S >= 4 ? 0 : S;
+    for (let i = 0; i < nOut; i++) {
+      const g = S <= 3 && i === S - 1 ? t : 1, V = tr.V[i], Vd = tr.Vd[i], w = V[2];
+      const vel = rot(G.ang[i], [V[3], V[4]]), acc = rot(G.ang[i], [Vd[3] - w * V[4], Vd[4] + w * V[3]]);
+      A.arrow(G.C[i], MR.scl(vel, kv * g), '--a', 2.5, S <= 3 ? 'v' + sb[i] : null);
+      A.arrow(G.C[i], MR.scl(acc, ka * g), '--d', 2.5, S <= 3 ? 'a' + sb[i] : null, [5, 3]);
+    }
+    if (S >= 4) {
+      if (MR.norm(s.fw) > 0) A.arrow(G.P[3], MR.scl(s.fw, kf * 2), '--b', 3, 'F_tip');
+      const from = S === 7 ? 0 : 6 - S;
+      for (let i = 2; i >= from; i--) {
+        const g = S <= 6 && i === 6 - S ? t : 1, Fi = tr.F[i], fwd = rot(G.ang[i], [Fi[3], Fi[4]]);
+        A.arrow(G.P[i], MR.scl(fwd, kf * g), '--bad', 3, 'f' + sb[i], null, 8, 16);
+        const tau = tr.tau[i], a0 = G.ang[i] - .7;
+        A.arc(G.P[i], 30, a0, a0 + Math.max(-2.6, Math.min(2.6, tau / 12)) * g, '--c', 3, true, 'τ' + sb[i] + '=' + f(tau, 2));
+      }
+    }
+  },
+  math(S) {
+    const s = st(), tr = s.tr, fw = tr.fw, bw = tr.bw;
+    const head = `<p class="cg">L = ${vs(L, 1)} m, m = ${vs(MS, 1)} kg, rods (centre of mass at the middle). θ = (${s.th.map(SL.deg).join(', ')}), θ̇ = ${vs(s.thd, 1)}, θ̈ = ${vs(s.thdd, 1)}. Twists and wrenches are written (angular | linear).</p>`;
+    const fwdStep = i => {
+      const Vprev = i ? `V${sb[i - 1]}` : 'V₀', Vdprev = i ? `V̇${sb[i - 1]}` : 'V̇₀';
+      return `${E(`T${sb[i]},${sbm[i]} = e^{−[A${sb[i]}]θ${sb[i]}} M${sb[i]},${sbm[i]}   ← {${i}} seen from {${i + 1}}
+${SL.mat(tr.T[i], 3, 'T' + sb[i] + ',' + sbm[i])}`)}
+${E(`V${sb[i]} = [Ad_T${sb[i]},${sbm[i]}] ${Vprev}  +  A${sb[i]} θ̇${sb[i]}
+   = ${v6(fw.VAd[i], 3)}
+   + ${v6(fw.Ath[i], 3)}
+   = ${v6(tr.V[i], 3)}`)}
+${E(`V̇${sb[i]} = [Ad_T${sb[i]},${sbm[i]}] ${Vdprev}  +  [ad_V${sb[i]}] A${sb[i]} θ̇${sb[i]}  +  A${sb[i]} θ̈${sb[i]}
+   = ${v6(fw.VdAd[i], 3)}  ← from parent
+   + ${v6(fw.adTerm[i], 3)}  ← velocity product
+   + ${v6(fw.Athdd[i], 3)}  ← this joint
+   = ${v6(tr.Vd[i], 3)}`)}
+${ul([`ω_z of V${sb[i]} = ${f(tr.V[i][2], 2)} = θ̇₁${i > 0 ? ' + θ̇₂' : ''}${i > 1 ? ' + θ̇₃' : ''}: link spins add up joint by joint.`,
+      `The linear part (${f(tr.V[i][3], 3)}, ${f(tr.V[i][4], 3)}) is the centre-of-mass velocity written in {${i + 1}} (blue arrow, turned into world axes).`,
+      `[ad_V]Aθ̇ is the velocity-product term: joint ${i + 1} spins inside a frame that already moves, so its axis is dragged along. Here it is (${f(fw.adTerm[i][3], 3)}, ${f(fw.adTerm[i][4], 3)}) in the linear part.`,
+      `V̇'s linear part is the rate of change of v in a frame that turns with the link. The classical centre-of-mass acceleration adds ω × v (dashed violet arrow).`])}`;
+    };
+    const bwdStep = i => {
+      const child = i === 2 ? 'F₄ = F_tip' : `F${sb[i + 1]}`, Tn = i === 2 ? 'T₄,₃ = M₄,₃' : `T${sb[i + 1]},${sbm[i + 1]}`;
+      return `${E(`F${sb[i]} = [Ad_${Tn}]ᵀ ${child}  +  G${sb[i]} V̇${sb[i]}  −  [ad_V${sb[i]}]ᵀ G${sb[i]} V${sb[i]}
+   = ${v6(bw.pass[i], 3)}  ← ${i === 2 ? 'tip wrench' : 'from link ' + (i + 2)}
+   + ${v6(bw.GVd[i], 3)}  ← own G·V̇
+   + ${v6(bw.cor[i], 3)}  ← velocity product
+   = ${v6(tr.F[i], 3)}`)}
+${E(`τ${sb[i]} = F${sb[i]}ᵀ A${sb[i]},   A${sb[i]} = ${v6(R.A[i], 2)}
+   = m_z + ${f(R.r[i], 2)}·f_y = ${f(tr.F[i][2], 3)} + ${f(R.r[i], 2)} × ${f(tr.F[i][4], 3)} = <b>${f(tr.tau[i], 3)} N·m</b>`)}
+${ul([`F${sb[i]} is the wrench link ${i} (or the base) pushes into link ${i + 1} through joint ${i + 1}, written in {${i + 1}}: moment about the centre of mass, then force.`,
+      `Only the part along the joint axis A${sb[i]} must come from the motor. A${sb[i]} picks the moment about the joint: m_z at the centre plus lever ${f(R.r[i], 2)} m × the sideways force.`,
+      `The other five components (forces along the link, moments about x and y) are carried passively by the bearings and the structure.`])}`;
+    };
+    const rows = [
+`<p><b>Given</b> θ, θ̇, θ̈ and the tip wrench; <b>find</b> τ. Frames and constants, all at θ = 0:</p>
+${E(`M${sb[0]},₀ : {0} seen from {1} = translate by (−${f(L[0] / 2, 2)}, 0, 0)
+M₂,₁ : translate by (−${f(L[0] / 2 + L[1] / 2, 2)}, 0, 0)      M₃,₂ : (−${f(L[1] / 2 + L[2] / 2, 2)}, 0, 0)      M₄,₃ : (−${f(L[2] / 2, 2)}, 0, 0)
+A${sb[0]} = ${v6(R.A[0], 2)}   A₂ = ${v6(R.A[1], 2)}   A₃ = ${v6(R.A[2], 2)}
+G_i = diag(I_x, I_y, I_z, m, m, m),  I_z = m L²/12:  G₁ = diag(≈0, ${f(R.G[0][1][1], 3)}, ${f(R.G[0][2][2], 3)}, 2, 2, 2) …`)}
+${E(`V₀ = 0,     V̇₀ = (0, 0, 0 | 0, +g, 0) = (0, 0, 0 | 0, 9.81, 0)      F₄ = F_tip = ${v6(tr.Ftip, 2)}`)}
+${ul(['A_i = (0, 0, 1 | 0, r_i, 0): a rotation about z, with the joint a distance r_i behind the centre of mass. That is Ad_{M_i⁻¹} S_i.',
+      'Gravity trick: gravity is indistinguishable from the base accelerating upward. Put that in V̇₀ and every link “feels” its weight automatically.',
+      'F_tip is the wrench the tip applies to the world, written in {4}. The world force you set is turned into {4} axes.'])}`,
+fwdStep(0), fwdStep(1),
+`${fwdStep(2)}<p>Forward pass complete. Every V_i and V̇_i is known, each written in its own frame {i}.</p>`,
+bwdStep(2), bwdStep(1), bwdStep(0),
+`${E(`τ (6-D recursion)   = ${vs(tr.tau, 4)} N·m
+τ (planar formulas) = ${vs(s.chk, 4)} N·m      difference ${f(MR.norm(MR.sub(tr.tau, s.chk)), 10)} ✓`)}
+${ul(['<b>No differentiation</b>: only matrix–vector products, link by link.',
+      '<b>Recursive</b>: link i’s twist and acceleration reuse link i−1’s; link i’s wrench reuses link i+1’s. Work grows like n, not n³.',
+      'Set θ̇ = θ̈ = 0 and F_tip = 0 (“Gravity only”): τ = g(θ), the holding torques.',
+      'Set g = 0, θ̇ = 0 and θ̈ = e_j: τ is column j of M(θ). Forward dynamics (page 137) calls this n + 1 times.',
+      'Used at 1 kHz in computed-torque control. For simulation we need the forward dynamics instead.'])}`];
+    return head + rows[S];
+  },
+  stats() { const s = st(); return `<span><b>τ</b>${vs(s.tr.tau, 3)} N·m</span><span><b>check</b>${f(MR.norm(MR.sub(s.tr.tau, s.chk)), 8)}</span>`; },
+});
+</script>
+</body></html>
