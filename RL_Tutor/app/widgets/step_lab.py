@@ -79,8 +79,9 @@ def lab_path(name: str) -> str:
 class StepLab(Card):
     """Card holding one step lab in a QWebEngineView, with an open-in-browser link."""
 
-    def __init__(self, html: str, title: str, height: int = 1000, parent=None):
-        super().__init__("Step through the idea · " + title, parent)
+    def __init__(self, html: str, title: str, height: int = 1000, parent=None,
+                 prefix: str = "Step through the idea · "):
+        super().__init__(prefix + title, parent)
         url = QUrl.fromLocalFile(lab_path(html))
         self.view = None
         QWebEngineView = None

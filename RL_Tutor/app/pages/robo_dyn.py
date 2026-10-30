@@ -24,6 +24,7 @@ from ctrlcore import robodyn as rd
 from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
+from ..widgets.step_lab import StepLab
 from .base import Page
 from . import robo_dyn_ch8 as ch8
 from .robo_common import (
@@ -228,6 +229,9 @@ class MassMatrixPage(Page):
             "can never create energy."))
 
         self.add(ch8.mass_matrix_video_card())
+        self.add(ch8.mass_matrix_build_card())
+        self.add(StepLab("mass_matrix_3r.html", "3R mass matrix, one entry at a time",
+                         height=820, prefix="Explore · "))
 
         p = Card("the four properties, and why each holds")
         p.add(body(

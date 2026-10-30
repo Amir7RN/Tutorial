@@ -158,6 +158,57 @@ def mass_matrix_video_card() -> Card:
     return c
 
 
+def mass_matrix_build_card() -> Card:
+    c = Card("building M: move, push, feel — M = Σ J_kᵀ G_k J_k")
+    c.add(in_words(
+        "M_ij is the inertia joint i feels when joint j accelerates. M₁₁: accelerate joint 1 "
+        "at 1 rad/s² with joints 2 and 3 locked, so the whole arm swings about joint 1 as one "
+        "rigid piece; how much torque does joint 1 need? Every link's mass gets pushed through "
+        "its moment arm to joint 1, and joint 1 feels each push back through that same arm."))
+    c.add(math_label(r"M(\theta)=\sum_{k=1}^{n}J_k^T(\theta)\,\mathcal{G}_k\,J_k(\theta),\qquad "
+                     r"\mathcal{G}_k=\left[\ \mathcal{I}_k\ \ 0\ ;\ \ 0\ \ m_kI_3\ \right]", 16))
+    c.add(body(
+        "<b>J_k</b> is the body Jacobian (6 × n) of link k's centre-of-mass frame, as if that "
+        "frame were the end effector. Joints after link k cannot move it, so their columns are "
+        "<b>zero</b>. For a 3R arm: J₁ = [B₁ 0 0], J₂ = [Ad·B₁ B₂ 0], J₃ = [Ad·B₁ Ad·B₂ B₃], "
+        "with the usual adjoints of the exponentials. Read JᵀGJ right to left, one link at a "
+        "time:"))
+    c.add(body(_table(
+        ("step", "matrix", "meaning"),
+        [("1. move", "J_k", "accelerate joint j alone at 1 rad/s²: link k accelerates by column j of J_k "
+                            "(joint j's arm to the mass, turned 90°)"),
+         ("2. push", "G_k J_k", "the force (and moment) the link needs: mass × that acceleration"),
+         ("3. feel", "J_kᵀ G_k J_k", "each joint i feels that push through its own arm, the statics rule τ = JᵀF"),
+         ("sum", "Σ_k", "each link's torques simply add, so one product per link gives all n² entries")])))
+    c.add(body(
+        "<b>G_k</b> is the 6 × 6 spatial inertia, block-diagonal in the twist order (ω, v): "
+        "top-left 𝓘_k, the rotational inertia about the link's own centre of mass in its own "
+        "frame; bottom-right m_k·I₃; off-diagonal blocks zero. Fully diagonal only when the frame "
+        "is on the principal axes: G = diag(I_xx, I_yy, I_zz, m, m, m). Point mass: 𝓘 = 0, "
+        "G = diag(0, 0, 0, m, m, m). Thin rod of length ℓ along x, frame at its centre: "
+        "G = diag(0, mℓ²/12, mℓ²/12, m, m, m). That is why K = ½ωᵀ𝓘ω + ½m|v|²."))
+    c.add(body(
+        "<b>One entry.</b> For point masses, (i, j) = Σ_k m_k (arm_i · arm_j): column i dotted "
+        "with m × column j. On the diagonal that is Σ (m_k r_k² + 𝓘_k), the "
+        "<b>parallel-axis theorem</b> appearing on its own: each link counts as spin about its "
+        "own centre plus mass × distance². Off the diagonal, the two arms' dot product says how "
+        "much the two joints swing that mass the same way."))
+    c.add(body(
+        "<b>Check</b> (m₃ = 1 kg, joint 2 accelerating). Move: m₃'s column for joint 2 is "
+        "ẑ × (1, 1) = (−1, 1). Push: 1 kg × (−1, 1) = (−1, 1) N. Feel: joint 1, arm (−1, 2): "
+        "(−1, 2)·(−1, 1) = 3, m₃'s share of M₁₂. Joint 3, arm (0, 1): (0, 1)·(−1, 1) = 1, all "
+        "of M₃₂."))
+    c.add(plain(
+        "<b>“Accelerate joint 2 alone”</b> means joints 1 and 3 are held at zero acceleration: "
+        "locked, not loose. Joint 3 still works to keep link 3 from bending as it is swung, "
+        "which is why M₃₂ = 1, not 0. Every joint reports the torque it needs to hold its own "
+        "angle while joint 2 speeds up. <b>Why the compact form:</b> by hand you would sum the "
+        "torque at joint 1 from every link separately; JᵀGJ gives the diagonal and coupling "
+        "terms of all joints at once. <b>Notation</b>: τ = M(θ)θ̈ + c(θ, θ̇) + g(θ), where "
+        "c = C(θ, θ̇)θ̇ is the velocity-product vector, not “c·θ̇”."))
+    return c
+
+
 # ---------------------------------------------------------------- page 135
 def rigid_body_card() -> Card:
     c = Card("video 8.2, part 1 — the dynamics of one rigid body, from point masses")

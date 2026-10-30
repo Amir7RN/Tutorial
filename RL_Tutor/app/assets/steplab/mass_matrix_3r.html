@@ -1,0 +1,213 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>3R Mass Matrix Explorer</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one screen. 3-D arm left; clickable mass matrix + explanation + sliders right */
+:root{
+  --bg:#f2f4f7; --panel:#ffffff; --ink:#1a2330; --muted:#5b6676; --line:#d4dae2; --hi:#eaf0ff;
+  --push:#d9661f; --arm:#2a4fd6; --ok:#1f8a4c; --link:#3b4656; --mass:#8a5a12; --fade:#b7bfca;
+  --j1:#7a4fd0; --j2:#c0398a; --j3:#2e8b57;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --push:#f08a45; --arm:#7d9bff; --ok:#4fd08a; --link:#b8c2cf; --mass:#d9b45c; --fade:#4a5463;
+  --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --push:#f08a45; --arm:#7d9bff; --ok:#4fd08a; --link:#b8c2cf; --mass:#d9b45c; --fade:#4a5463;
+  --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a; color-scheme:dark}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+[hidden]{display:none!important}
+.wrap{height:100%;display:flex;flex-direction:column;gap:8px;max-width:1500px;margin:0 auto;padding:10px 16px;box-sizing:border-box}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+h1{font-size:1.15rem;margin:0}
+.sub{color:var(--muted);margin:0;font-size:.88rem}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.5fr) minmax(360px,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.view{position:relative;padding:6px;display:flex;flex-direction:column;min-height:0}
+#scene{flex:1;min-height:0;width:100%;display:block;touch-action:none;cursor:grab;border-radius:6px}
+.side{display:flex;flex-direction:column;gap:10px;min-width:0;overflow-y:auto}
+@media (max-width:900px){html,body{height:auto}.wrap{height:auto}.grid{grid-template-columns:minmax(0,1fr)}#scene{flex:none;aspect-ratio:1.1/1}.side{overflow:visible}}
+.h{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:12px;font-size:.8rem;color:var(--muted);padding:6px 4px 2px}
+.sw{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.lbl{position:absolute;font-size:.78rem;font-weight:700;pointer-events:none;white-space:nowrap;transform:translate(-50%,-130%);
+  background:color-mix(in srgb,var(--panel) 85%,transparent);padding:1px 6px;border-radius:4px;font-family:var(--mono)}
+.mx{display:grid;grid-template-columns:28px repeat(3,minmax(0,1fr));gap:4px;align-items:center}
+.mx .hd{font-size:.8rem;font-weight:700;text-align:center}
+.cell{font:inherit;font-family:var(--mono);font-weight:600;font-size:1rem;padding:10px 0;border-radius:8px;border:1px solid var(--line);cursor:pointer;color:var(--ink);background:var(--panel)}
+.cell[aria-pressed="true"]{outline:3px solid var(--push);outline-offset:1px}
+.cell:focus-visible{outline:2px solid var(--arm);outline-offset:2px}
+.exp p{margin:0 0 6px;font-size:.9rem}
+.exp details{font-size:.86rem;margin-top:4px}.exp summary{cursor:pointer;font-weight:700;color:var(--muted)}
+.exp ul{margin:0 0 6px;padding-left:18px;font-size:.9rem}
+.eq{font-family:var(--mono);font-size:.84rem;white-space:nowrap}
+.ctrls{display:grid;gap:6px}
+.ctrls label{display:grid;grid-template-columns:90px minmax(0,1fr) 46px;gap:8px;align-items:center;font-size:.86rem}
+.ctrls output{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%}
+.c1{color:var(--j1)} .c2{color:var(--j2)} .c3{color:var(--j3)} .cp{color:var(--push)} .ca{color:var(--arm)} .ck{color:var(--ok)} .cm{color:var(--mass)} .mut{color:var(--muted)}
+</style></head><body>
+
+<div class="wrap">
+  <div class="top">
+    <h1>3R mass matrix, one entry at a time</h1>
+    <p class="sub">Click any entry of M. The arm shows which masses count and why. Drag to orbit.</p>
+  </div>
+  <div class="grid">
+    <div class="card view" id="view">
+      <canvas id="scene" aria-label="3-D arm showing the moment arms behind one mass-matrix entry"></canvas>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--push)"></span>how each mass is swung by the column joint</span>
+        <span><span class="sw" style="background:var(--arm)"></span>row joint's arm to that mass</span>
+        <span><span class="sw" style="background:var(--fade)"></span>mass not moved by both joints</span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="h">Mass matrix M, τ = M θ̈ (click an entry)</div><p class="mut" style="margin:0 0 6px;font-size:.84rem">Rows: which joint feels it (τ). Columns: which joint accelerates (θ̈).</p>
+        <div class="mx" id="mx"></div>
+      </div>
+      <div class="card exp" id="exp"></div>
+      <div class="card ctrls">
+        <div class="h">Pose and masses</div>
+        <label for="t1">θ₁ <input id="t1" type="range" min="-180" max="180" step="1" value="0"><output id="t1o"></output></label>
+        <label for="t2">θ₂ <input id="t2" type="range" min="-180" max="180" step="1" value="90"><output id="t2o"></output></label>
+        <label for="t3">θ₃ <input id="t3" type="range" min="-180" max="180" step="1" value="-90"><output id="t3o"></output></label>
+        <label for="m1">m₁ (kg) <input id="m1" type="range" min="0" max="3" step="0.1" value="1"><output id="m1o"></output></label>
+        <label for="m2">m₂ (kg) <input id="m2" type="range" min="0" max="3" step="0.1" value="1"><output id="m2o"></output></label>
+        <label for="m3">m₃ (kg) <input id="m3" type="range" min="0" max="3" step="0.1" value="1"><output id="m3o"></output></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(()=>{
+const L=[1,1,1];
+const S={th:[0,90,-90],m:[1,1,1],sel:[0,1]};
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f=(x,d=2)=>(Math.abs(x)<5e-4?0:x).toFixed(d), vs=v=>'('+v.map(x=>f(x)).join(', ')+')';
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1]], dot=(a,b)=>a[0]*b[0]+a[1]*b[1], perp=a=>[-a[1],a[0]];
+function fk(){const P=[[0,0]];let a=0;for(let i=0;i<3;i++){a+=S.th[i]*Math.PI/180;const p=P[i];P.push([p[0]+L[i]*Math.cos(a),p[1]+L[i]*Math.sin(a)])}return P}
+// joints at P[0..2]; masses at P[1..3]; mass k (0..2) at P[k+1]; joint i moves mass k iff i<=k
+function model(){
+  const P=fk(),mass=[P[1],P[2],P[3]],joint=[P[0],P[1],P[2]];
+  const arm=(i,k)=>i<=k?sub(mass[k],joint[i]):null;
+  const M=[[0,0,0],[0,0,0],[0,0,0]],parts=[[[],[],[]],[[],[],[]],[[],[],[]]];
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++)for(let k=0;k<3;k++){const a=arm(i,k),b=arm(j,k);
+    const v=a&&b?S.m[k]*dot(a,b):null;parts[i][j].push(v);if(v!=null)M[i][j]+=v}
+  return {P,mass,joint,arm,M,parts};
+}
+
+/* ---------- 3-D ---------- */
+const view=document.getElementById('view'),cv=document.getElementById('scene');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1.2,.05,100);
+scene.add(new THREE.AmbientLight(0xffffff,.6));const dl=new THREE.DirectionalLight(0xffffff,.75);dl.position.set(3,6,4);scene.add(dl);
+const W3=(p,y=0)=>new THREE.Vector3(p[0],y,-p[1]);
+const mat=c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c),roughness:.55,metalness:.1});
+let grid=null;
+const linkM=mat('#3b4656');const links=[0,1,2].map(()=>{const m=new THREE.Mesh(new THREE.BoxGeometry(1,.06,.08),linkM);scene.add(m);return m});
+const jMats=[mat('#7a4fd0'),mat('#c0398a'),mat('#2e8b57')];
+const joints=jMats.map(m=>{const j=new THREE.Mesh(new THREE.CylinderGeometry(.07,.07,.16,24),m);scene.add(j);return j});
+const ringM=[0,1,2].map(()=>new THREE.MeshBasicMaterial({color:0xd9661f,transparent:true,opacity:0}));
+const rings=ringM.map(m=>{const r=new THREE.Mesh(new THREE.TorusGeometry(.13,.02,8,40),m);r.rotation.x=Math.PI/2;scene.add(r);return r});
+const massMats=[0,1,2].map(()=>new THREE.MeshStandardMaterial({color:0x8a5a12,roughness:.4,transparent:true,opacity:1}));
+const masses=massMats.map(m=>{const s=new THREE.Mesh(new THREE.SphereGeometry(1,24,16),m);scene.add(s);return s});
+function mkLine(){const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);const l=new THREE.Line(g,new THREE.LineDashedMaterial({color:0x2a4fd6,dashSize:.06,gapSize:.04}));scene.add(l);return l}
+const armLines=[0,1,2].map(mkLine);
+function setLine(l,a,b){const p=l.geometry.attributes.position;p.setXYZ(0,a.x,a.y,a.z);p.setXYZ(1,b.x,b.y,b.z);p.needsUpdate=true;l.geometry.computeBoundingSphere();l.computeLineDistances()}
+const mkA=c=>{const a=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,c,.1,.06);scene.add(a);return a};
+const forceA=[0,1,2].map(()=>mkA(0xd9661f));
+function setA(a,o,v,k){const w=new THREE.Vector3(v[0],0,-v[1]).multiplyScalar(k);const L=w.length();a.visible=L>1e-3;if(!a.visible)return;a.position.copy(o);a.setDirection(w.clone().normalize());a.setLength(L,Math.min(.12,L*.35),Math.min(.07,L*.25))}
+// swing circles (diagonal entries)
+const circ=[0,1,2].map(()=>{const pts=[];for(let i=0;i<=96;i++){const a=i/96*2*Math.PI;pts.push(new THREE.Vector3(Math.cos(a),0,Math.sin(a)))}
+  const l=new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineDashedMaterial({color:0x2a4fd6,dashSize:.05,gapSize:.05,transparent:true,opacity:.6}));l.computeLineDistances();scene.add(l);return l});
+const labels=[];for(let k=0;k<6;k++){const d=document.createElement('div');d.className='lbl';d.hidden=true;view.appendChild(d);labels.push(d)}
+function place(d,v3,html,color){const p=v3.clone().project(cam);if(p.z>1||!html){d.hidden=true;return}const r=cv.getBoundingClientRect(),vr=view.getBoundingClientRect();
+  d.hidden=false;d.innerHTML=html;d.style.color=color||'';d.style.left=(r.left-vr.left+(p.x+1)/2*r.width)+'px';d.style.top=(r.top-vr.top+(1-p.y)/2*r.height)+'px'}
+function colorize(){const c=n=>new THREE.Color(css(n));scene.background=c('--panel');
+  if(grid)scene.remove(grid);grid=new THREE.GridHelper(6,24,c('--line'),c('--line'));grid.position.set(1,-.002,-1);scene.add(grid);
+  linkM.color=c('--link');jMats[0].color=c('--j1');jMats[1].color=c('--j2');jMats[2].color=c('--j3');
+  armLines.forEach(l=>l.material.color=c('--arm'));forceA.forEach(a=>a.setColor(c('--push')));ringM.forEach(m=>m.color=c('--push'));circ.forEach(l=>l.material.color=c('--arm'))}
+function placeLink(m,a,b){const P=W3(a),Q=W3(b);m.position.copy(P.clone().add(Q).multiplyScalar(.5));m.position.y=.04;m.scale.set(P.distanceTo(Q),1,1);m.rotation.set(0,Math.atan2(-(Q.z-P.z),Q.x-P.x),0)}
+const orb={az:-.3,el:1.05,r:5.4,tgt:new THREE.Vector3(1.1,0,-.9)};
+function placeCam(){cam.position.set(orb.tgt.x+orb.r*Math.cos(orb.el)*Math.sin(orb.az),orb.tgt.y+orb.r*Math.sin(orb.el),orb.tgt.z+orb.r*Math.cos(orb.el)*Math.cos(orb.az));cam.lookAt(orb.tgt)}
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;orb.az-=(e.clientX-drag[0])*.008;orb.el=Math.max(.15,Math.min(1.5,orb.el+(e.clientY-drag[1])*.006));drag=[e.clientX,e.clientY];draw()});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>drag=null));
+cv.addEventListener('wheel',e=>{e.preventDefault();orb.r=Math.max(2.5,Math.min(11,orb.r*(1+Math.sign(e.deltaY)*.08)));draw()},{passive:false});
+
+/* ---------- draw ---------- */
+const jn=['joint 1','joint 2','joint 3'],mn=['m₁','m₂','m₃'],jc=['c1','c2','c3'];
+function draw(){
+  const D=model(),[i,j]=S.sel;placeCam();
+  for(let k=0;k<3;k++){placeLink(links[k],D.P[k],D.P[k+1]);joints[k].position.copy(W3(D.joint[k],.05));rings[k].position.copy(W3(D.joint[k],.15))}
+  ringM.forEach((m,k)=>{m.opacity=k===j?1:0});ringM[i].opacity=Math.max(ringM[i].opacity,0);
+  for(let k=0;k<3;k++){
+    const counted=D.parts[i][j][k]!=null;const r=.06+.06*Math.cbrt(S.m[k]);masses[k].scale.set(r,r,r);masses[k].position.copy(W3(D.mass[k],.08));
+    massMats[k].color=new THREE.Color(counted?css('--mass'):css('--fade'));massMats[k].opacity=counted?1:.5;
+    if(counted){setLine(armLines[k],W3(D.joint[i],.08),W3(D.mass[k],.08));armLines[k].visible=true;
+      setA(forceA[k],W3(D.mass[k],.2),perp(D.arm(j,k)).map(x=>x*S.m[k]),.35);
+    }else{armLines[k].visible=false;forceA[k].visible=false}
+    // swing circle for diagonal entries: radius = arm length
+    if(i===j&&counted){const rr=Math.hypot(...D.arm(i,k));circ[k].visible=true;circ[k].position.copy(W3(D.joint[i],.01));circ[k].scale.set(rr,1,rr)}else circ[k].visible=false;
+  }
+  renderer.render(scene,cam);
+  labels.forEach(l=>l.hidden=true);
+  for(let k=0;k<3;k++){const v=D.parts[i][j][k];
+    place(labels[k],W3(D.mass[k],.3),v!=null?`${mn[k]}: ${f(v)}`:`${mn[k]}: not counted`,v!=null?css('--mass'):css('--muted'))}
+  place(labels[3],W3(D.joint[j],.25),`${jn[j]} accelerates (column)`,css('--push'));
+  if(i!==j)place(labels[4],W3(D.joint[i],.25),`${jn[i]} feels it (row)`,css('--arm'));
+  matrix(D);explain(D);
+}
+
+/* ---------- matrix + explanation ---------- */
+const mxEl=document.getElementById('mx');
+function matrix(D){
+  let mx=0;D.M.forEach(r=>r.forEach(v=>mx=Math.max(mx,Math.abs(v))));
+  let h='<div></div>'+[0,1,2].map(j=>`<div class="hd ${jc[j]}">θ̈${'₁₂₃'[j]}</div>`).join('');
+  for(let i=0;i<3;i++){h+=`<div class="hd ${jc[i]}">τ${'₁₂₃'[i]}</div>`;
+    for(let j=0;j<3;j++){const v=D.M[i][j],a=mx?Math.abs(v)/mx:0;
+      h+=`<button class="cell" type="button" data-i="${i}" data-j="${j}" aria-pressed="${S.sel[0]===i&&S.sel[1]===j}" style="background:color-mix(in srgb,var(--push) ${Math.round(a*35)}%,var(--panel))" aria-label="M ${i+1},${j+1} = ${f(v)}">${f(v)}</button>`}}
+  mxEl.innerHTML=h;
+  mxEl.querySelectorAll('.cell').forEach(b=>b.onclick=()=>{S.sel=[+b.dataset.i,+b.dataset.j];draw()});
+}
+function explain(D){
+  const [i,j]=S.sel,E=s=>`<span class="eq">${s}</span>`,R=v=>Math.hypot(v[0],v[1]);
+  const diag=i===j;
+  const rows=[0,1,2].map(k=>{const v=D.parts[i][j][k];
+    if(v==null){const why=k<Math.max(i,j)?`${jn[Math.max(i,j)]} can't move it (it sits before or at that joint)`:'';return `<li class="mut">${mn[k]}: not counted. ${why}</li>`}
+    const a=D.arm(i,k),b=D.arm(j,k),ra=R(a),rb=R(b);
+    if(diag)return `<li>${mn[k]}: m = ${f(S.m[k],1)} kg, r = ${f(ra)} m → m r² = ${E(f(S.m[k],1)+' × '+f(ra)+'²')} = <b class="cm">${f(v)}</b></li>`;
+    const ang=Math.acos(Math.max(-1,Math.min(1,dot(a,b)/(ra*rb))))*180/Math.PI;
+    return `<li>${mn[k]}: m = ${f(S.m[k],1)} kg, r to ${jn[i]} = ${f(ra)} m, r to ${jn[j]} = ${f(rb)} m, angle between them ${f(ang,0)}° → ${E(f(S.m[k],1)+' × '+f(ra)+' × '+f(rb)+' × cos '+f(ang,0)+'°')} = <b class="cm">${f(v)}</b></li>`}).join('');
+  const head=`<div class="h">M${i+1}${j+1}: row = ${jn[i]} (who feels it), column = ${jn[j]} (who accelerates)</div>
+  <p><b>How to read any entry:</b> τ = M θ̈. Entry M${i+1}${j+1} is the inertia ${jn[i]} feels when ${jn[j]} accelerates. Units: kg·m², the same as m r².</p>`;
+  const story=diag
+   ?`<p><b>Diagonal: plain I = m r².</b> Each mass that ${jn[i]} swings adds its mass × (its distance from ${jn[i]})². The dashed circles are those swings. Masses ${jn[i]} can't move add nothing.</p>`
+   :`<p><b>Off-diagonal: the same m r², but with two different r's.</b> For each mass that both joints swing, use its distance to ${jn[i]} and its distance to ${jn[j]}, and multiply by the cosine of the angle between those two arms (blue dashed lines). The cosine says how much the two joints swing that mass the same way: 1 if aligned, 0 if perpendicular, negative if opposite.</p>`;
+  const meaning=diag
+   ?`<p>Total <b>${f(D.M[i][i])} kg·m²</b>: how heavy ${jn[i]} feels when it speeds up on its own.</p>`
+   :`<p>Total <b>${f(D.M[i][j])} kg·m²</b>: speeding up ${jn[j]} also loads ${jn[i]} with this much inertia. In torque terms: if ${jn[j]} accelerates at 1 rad/s² and ${jn[i]} must not bend, ${jn[i]} has to supply ${f(D.M[i][j])} N·m. M${j+1}${i+1} is the same number, because swapping the two r's doesn't change the product.</p>
+     <details><summary>Where the cosine comes from</summary><p>When ${jn[j]} accelerates, each mass is pushed sideways with force m × r${j+1} (perpendicular to its arm to ${jn[j]}). ${jn[i]} feels that push with lever r${i+1}. Lever × force, taking only the perpendicular part, gives m × r${i+1} × r${j+1} × cos(angle).</p></details>`;
+  document.getElementById('exp').innerHTML=head+story+`<ul>${rows}</ul>`+meaning;
+}
+/* ---------- controls ---------- */
+['t1','t2','t3'].forEach((id,k)=>{const el=document.getElementById(id),o=document.getElementById(id+'o');const up=()=>{S.th[k]=+el.value;o.textContent=el.value+'°';draw()};el.addEventListener('input',up);o.textContent=el.value+'°'});
+['m1','m2','m3'].forEach((id,k)=>{const el=document.getElementById(id),o=document.getElementById(id+'o');const up=()=>{S.m[k]=+el.value;o.textContent=(+el.value).toFixed(1);draw()};el.addEventListener('input',up);o.textContent=(+el.value).toFixed(1)});
+function size(){const w=cv.clientWidth,h=cv.clientHeight;if(!w)return;renderer.setPixelRatio(window.devicePixelRatio||1);renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();draw()}
+colorize();new ResizeObserver(size).observe(cv);
+const retheme=()=>{colorize();draw()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+size();
+})();
+</script>
+</body></html>
