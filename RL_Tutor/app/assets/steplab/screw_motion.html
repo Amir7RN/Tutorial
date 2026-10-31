@@ -1,0 +1,73 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Screw motion and wrenches</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="three.min.js"></script><script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+const st = () => { const v = SL.v; return { th: v.th * D2R, h: v.h / 100, qx: v.qx / 10, qy: v.qy / 10, tilt: v.tilt * D2R, m: v.m / 100, wr: v.wr * D2R }; };
+const axis = s => MR.unit([Math.sin(s.tilt), 0, Math.cos(s.tilt)]);
+const screw = s => { const w = axis(s), q = [s.qx, s.qy, 0]; return [...w, ...MR.add(MR.scl(MR.cross(w, q), -1), MR.scl(w, s.h))]; };
+const T0 = MR.makeT(MR.eye(3), [1, 0, .3]);
+const G = (w, th) => { const W = MR.skew(w), W2 = MR.mul(W, W); return MR.madd(MR.madd(MR.mscl(MR.eye(3), th), MR.mscl(W, 1 - Math.cos(th))), MR.mscl(W2, th - Math.sin(th))); };
+SL.app({
+  title: 'Screw motion: e^[S]θ, left vs right, and wrenches',
+  sub: 'Ride a screw S for θ and land at T = e^[S]θ T₀: Rodrigues for the turn, G(θ)S_v for the position. World-axis screws go on the left, body-axis screws on the right. Forces pack the same way, as wrenches. Drag to orbit.',
+  view: '3d', orbit: { az: .9, el: .35, r: 5.5, tgt: [.3, 0, .8] },
+  controls: [
+    { id: 'th', label: 'ride θ', min: 0, max: 360, value: 200, fmt: x => x + '°' }, { id: 'h', label: 'pitch h', min: 0, max: 40, value: 15, fmt: x => f(x / 100, 2) + ' m/rad' },
+    { id: 'qx', label: 'axis point q_x', min: -15, max: 15, value: 0, fmt: x => f(x / 10, 1) }, { id: 'qy', label: 'axis point q_y', min: -15, max: 15, value: 0, fmt: x => f(x / 10, 1) }, { id: 'tilt', label: 'axis tilt', min: 0, max: 60, value: 0, fmt: x => x + '°' },
+    { id: 'm', label: 'apple mass (step 5)', min: 5, max: 100, value: 30, fmt: x => f(x / 100, 2) + ' kg' }, { id: 'wr', label: 'wrist angle (step 5)', min: -90, max: 90, value: 30, fmt: x => x + '°' },
+  ],
+  steps: [
+    ['Constant twist ⇒ exponential', 'Ṫ = [V_s]T or Ṫ = T[V_b]. With V constant this is linear, so T(t) = e^{[V_s]t}T₀ or T₀e^{[V_b]t}. Write V = Sθ̇ with a unit screw axis S and ride it for θ: T = e^{[S_s]θ}T₀ = T₀e^{[S_b]θ}.'],
+    ['Ride the screw', 'S = (ŝ, −ŝ × q + hŝ): an axis direction ŝ through point q with pitch h. The frame spins about the axis and slides h per radian — a helix. Pitch 0 is a pure revolute joint; ŝ = 0 with |v| = 1 is a pure prismatic one.'],
+    ['Position: p(θ) = G(θ)S_v', 'The turn is Rodrigues; the translation integrates the turning velocity: p(θ) = ∫₀^θ e^{[ω̂]φ}S_v dφ = G(θ)S_v with G(θ) = Iθ + (1 − cos θ)[ω̂] + (θ − sin θ)[ω̂]². The math panel checks it against the full matrix exponential.'],
+    ['Left vs right', 'e^{[S]θ}T₀ moves the frame about an axis fixed in {s}; T₀e^{[S]θ} reads the same six numbers as an axis fixed in the BODY. Solid: left (space); faded: right (body).'],
+    ['Every joint is a screw: product of exponentials', 'T(θ) = e^{[S₁]θ₁}e^{[S₂]θ₂}…e^{[Sₙ]θₙ}M — page 123\'s forward kinematics is just this page applied once per joint, starting from the home pose M.'],
+    ['A wrench F = (m, f), and its frame change', 'Moment and force pack like a twist. Power is frame-independent: V_bᵀF_b = V_sᵀF_s ⇒ F_s = [Ad_T_bs]ᵀF_b. Hand holding an apple: the wrist sensor reads the apple\'s weight plus the moment of that weight about the sensor; transform it to the base and the moment picks up p × f.'],
+    ['Interview: a wrist force sensor reads F_b', '"What torque does it produce about the base?" Transform: F_s = [Ad_T_bs]ᵀF_b — the moment part picks up p × f. Joint torques are τ = J_bᵀF_b = J_sᵀF_s: the same answer, because both are power balances.'],
+  ],
+  draw(sc) {
+    const s = st(), S = SL.st, Sx = screw(s), w = axis(s), q = [s.qx, s.qy, 0];
+    sc.grid(5, 20); sc.frame(MR.eye(4), .5, '{s}');
+    if (S <= 4) {
+      sc.line([MR.add(q, MR.scl(w, -.2)), MR.add(q, MR.scl(w, 2.6))], '#e5c07b'); sc.label(MR.add(q, MR.scl(w, 2.6)), 'screw axis', '#e5c07b');
+      const path = [...Array(61)].map((_, i) => MR.pof(MR.mul(MR.expTwist(Sx, s.th * i / 60), T0))); sc.line(path, '--e');
+      sc.frame(T0, .4, 'T₀'); const Tl = MR.mul(MR.expTwist(Sx, s.th), T0); sc.frame(Tl, .55, S === 3 ? 'left' : 'T');
+      if (S === 3) { const Tr = MR.mul(T0, MR.expTwist(Sx, s.th)); sc.frame(Tr, .55, 'right'); }
+      if (S === 4) { const S1 = [0, 0, 1, 0, 0, 0], S2 = [0, -1, 0, 0, 0, -1], M = MR.makeT(MR.eye(3), [1.5, 0, 1]); const a = s.th / 3, b = s.th / 4;
+        const P1 = MR.mul(MR.expTwist(S1, a), MR.makeT(MR.eye(3), [0, 0, 1])), P2 = MR.mul(MR.mul(MR.expTwist(S1, a), MR.expTwist(S2, b)), M);
+        sc.cyl([0, 0, 0], [0, 0, 1], .05, '--link'); sc.cyl(MR.pof(P1), MR.pof(P2), .05, '--link'); sc.frame(P2, .4, 'e^[S₁]θ₁ e^[S₂]θ₂ M'); }
+    } else {
+      const R = MR.expRot([0, 1, 0], s.wr), p = [.9, 0, 1.2], Tsb = MR.makeT(R, p), g = 9.81;
+      sc.cyl([0, 0, 0], [0, 0, 1.2], .05, '--link'); sc.cyl([0, 0, 1.2], p, .05, '--link'); sc.frame(Tsb, .35, '{b} sensor');
+      const apple = MR.add(p, MR.mv(R, [.25, 0, 0])); sc.sphere(apple, .08, '--bad'); sc.arrow(apple, [0, 0, -s.m * g * .25], '--bad', 1); sc.label(apple, 'apple', '--bad');
+      sc.arrow([0, 0, 0], MR.scl(MR.cross(apple, [0, 0, -s.m * g]), .2), '--c', 1); sc.label(MR.scl(MR.cross(apple, [0, 0, -s.m * g]), .2), 'base moment', '--c');
+    }
+  },
+  math(S) {
+    const s = st(), Sx = screw(s), w = axis(s), T = MR.mul(MR.expTwist(Sx, s.th), T0);
+    if (S === 5 || S === 6) {
+      const R = MR.expRot([0, 1, 0], s.wr), p = [.9, 0, 1.2], Tsb = MR.makeT(R, p), fs = [0, 0, -s.m * 9.81], rb = [.25, 0, 0], fb = MR.mv(MR.T(R), fs), Fb = [...MR.cross(rb, fb), ...fb];
+      const Fs = MR.mv(MR.T(MR.adj(MR.invT(Tsb))), Fb), apple = MR.add(p, MR.mv(R, rb));
+      return `${E(`F_b (sensor frame) = (m; f) = (${Fb.map(x => f(x, 2)).join(', ')})
+F_s = [Ad_T_bs]ᵀ F_b = (${Fs.map(x => f(x, 2)).join(', ')})
+check: apple × weight = ${SL.vs(MR.cross(apple, fs))}`)}<p>V_bᵀF_b = V_sᵀF_s (power) ⇒ F_s = [Ad_T_bs]ᵀF_b. ${S === 6 ? 'τ = J_bᵀF_b = J_sᵀF_s.' : ''}</p>`;
+    }
+    const pG = MR.mv(G(w, s.th), Sx.slice(3));
+    const rows = [`${E(`Ṫ = [V_s]T ⇒ T(t) = e^{[V_s]t}T₀;   Ṫ = T[V_b] ⇒ T(t) = T₀e^{[V_b]t}`)}`,
+`${E(`S = (ŝ, −ŝ × q + hŝ) = (${Sx.map(x => f(x, 2)).join(', ')})
+ride θ = ${f(s.th / D2R, 0)}°: slide along axis = hθ = ${f(s.h * s.th, 3)} m`)}`,
+`${E(`G(θ) = Iθ + (1 − cos θ)[ω̂] + (θ − sin θ)[ω̂]²
+G(θ)S_v       = ${SL.vs(pG, 4)}
+e^{[S]θ} trans = ${SL.vs(MR.pof(MR.expTwist(Sx, s.th)), 4)}`)}`,
+`${E(`left : e^{[S]θ} T₀ → p = ${SL.vs(MR.pof(T), 3)}
+right: T₀ e^{[S]θ} → p = ${SL.vs(MR.pof(MR.mul(T0, MR.expTwist(Sx, s.th))), 3)}`)}`,
+`${E(`T(θ) = e^{[S₁]θ₁} e^{[S₂]θ₂} ⋯ e^{[Sₙ]θₙ} M`)}`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

@@ -1,0 +1,61 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Robot mechanics roadmap</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180, L1 = 1, L2 = .8;
+const st = () => { const v = SL.v; return { q: [v.q1 * D2R, v.q2 * D2R], qd: [v.d1 / 10, v.d2 / 10], F: [v.fx, v.fy] }; };
+const kin = s => { const [a, b] = s.q, e = [L1 * Math.cos(a), L1 * Math.sin(a)], p = [e[0] + L2 * Math.cos(a + b), e[1] + L2 * Math.sin(a + b)];
+  const J = [[-L1 * Math.sin(a) - L2 * Math.sin(a + b), -L2 * Math.sin(a + b)], [L1 * Math.cos(a) + L2 * Math.cos(a + b), L2 * Math.cos(a + b)]];
+  return { e, p, phi: a + b, J, v: MR.mv(J, s.qd), tau: MR.mv(MR.T(J), s.F), det: MR.det(J) }; };
+const PL = [['1', 'ch. 2', 'Configuration Space', 'C-space, DOF, Grübler; constraints, task space, workspace'], ['2', 'ch. 3', 'Rigid-Body Motions', 'SO(3), exp. coordinates; SE(3), twists, screws, wrenches'], ['3', 'ch. 4', 'Forward Kinematics', 'product of exponentials, space/body, D-H'], ['4', 'ch. 5', 'Velocity Kinematics & Statics', 'Jacobians, τ = JᵀF, singularities, manipulability'], ['5', 'ch. 6', 'Inverse Kinematics', 'analytic 2R, Newton–Raphson, redundancy, null space'], ['6', 'ch. 7', 'Closed Chains', 'four-bar, Stewart, actuated vs passive'], ['7', 'ch. 8', 'Dynamics of Open Chains', 'Lagrange, M(q), Christoffel, Newton–Euler'], ['8', 'ch. 9', 'Trajectory Generation', 'cubic/quintic/trapezoid, time-optimal'], ['9', 'ch. 10', 'Motion Planning', 'C-obstacles, A*, RRT, potential fields'], ['10', 'ch. 11', 'Robot Control', 'computed torque, task space, force, hybrid'], ['11', 'ch. 12', 'Grasping & Manipulation', 'contact, friction cones, form/force closure'], ['12', 'ch. 13', 'Wheeled Mobile Robots', 'omni vs nonholonomic, unicycle, mobile manip.']];
+SL.app({
+  title: 'Robot mechanics: the missing half',
+  sub: 'The control pages assumed a plant M(q)q̈ + c + g = τ. This block derives it: configuration, pose, Jacobian, statics, then dynamics — here all on one planar 2R arm you can drag.',
+  view: '2d',
+  legend: [['--link', 'arm'], ['--a', 'hand velocity V = J q̇'], ['--e', 'hand force F'], ['--c', 'joint torques τ = JᵀF'], ['--b', 'workspace']],
+  controls: [
+    { id: 'q1', label: 'q₁', min: -180, max: 180, value: 30, fmt: x => x + '°' }, { id: 'q2', label: 'q₂', min: -180, max: 180, value: 60, fmt: x => x + '°' },
+    { id: 'd1', label: 'q̇₁', min: -20, max: 20, value: 6, fmt: x => f(x / 10, 1) + ' rad/s' }, { id: 'd2', label: 'q̇₂', min: -20, max: 20, value: -4, fmt: x => f(x / 10, 1) + ' rad/s' },
+    { id: 'fx', label: 'hand force F_x', min: -10, max: 10, value: 4, fmt: x => x + ' N' }, { id: 'fy', label: 'hand force F_y', min: -10, max: 10, value: -6, fmt: x => x + ' N' },
+  ],
+  steps: [
+    ['Three questions, in order', 'Where is the hand? (kinematics, 115–123). How fast and how hard can it move when the motors turn? (the Jacobian, 124–132). What torques does a motion need? (dynamics, 133–139). Then plan and control with the answers. Needed: a matrix times a vector is a weighted sum of columns; a derivative is a rate.'],
+    ['The chain, one link per page', 'q → T(q) → V = J(q)q̇ → τ = JᵀF → τ = M(q)q̈ + c(q, q̇) + g(q). q are the knob settings; T is where the hand is; J is the table "hand motion per unit joint motion"; flipped, it maps a hand force to motor torques; the last arrow is F = ma for a robot.'],
+    ['Why the control pages were not enough', 'Pages 1–51 took the plant as given. An interviewer asks where M(q)q̈ + Cq̇ + g = τ comes from, why M is symmetric positive definite, what J\'s null space is for, how to make a hand follow a line while the elbow does something else — kinematics and dynamics, which pole placement never answers.'],
+    ['Twelve playlists (Modern Robotics)', 'One per chapter, 2–13, in this order. Each page names its playlist and opens with a Watch-alongside link.'],
+    ['How to study: both, one page at a time', '1 Read START HERE and the plain-words boxes (~5 min, skip formulas). 2 Watch the playlist; pause on each boxed equation and say every symbol in words. 3 Do the lab: one slider at a time, predict before you look. 4 Say the interview answer aloud; if you cannot, repeat step 1 for that page. Pages 115–122 are vocabulary — abstract until 124 uses them.'],
+    ['What to master for an interview, ranked', '1 the Jacobian both ways (ẋ = Jq̇, τ = JᵀF — power is frame-independent). 2 singularities and null space (J⁺, N = I − J⁺J). 3 inverse vs forward dynamics (RNEA O(n); Mq̈ = τ − h). 4 M and C properties (SPD; Ṁ − 2C skew). 5 task-space dynamics (Λ, J̄). 6 controllers built on all of it. One idea only? The Jacobian.'],
+    ['Why a planar arm', 'A 2R/3R planar arm has every structure of a 7-DOF manipulator — coupling, Coriolis, gravity, singularities, redundancy — with matrices small enough to check by hand on a whiteboard, which is where the interview puts you. Drag q₂ to 0: J loses rank.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, k = kin(s);
+    if (S === 3) { const T = Pl.panel(0, 0, 1, 1, [0, 1, 0, 1], false); T.frame('the twelve playlists'); NN.lines(T, PL.map(([n, c, t, d]) => [n.padStart(2) + '  ' + c.padEnd(6) + t.padEnd(31) + d, '--ink']), { top: .07, gap: .075 }); return; }
+    const P = Pl.panel(0, 0, .56, 1, [-2, 2, -2, 2]); P.frame('planar 2R arm, L₁ = 1, L₂ = 0.8'); P.grid(1, '--line');
+    P.circle([0, 0], L1 + L2, '--b', 1, [4, 4]); P.circle([0, 0], L1 - L2, '--b', 1, [4, 4]);
+    P.arm([[0, 0], k.e, k.p]);
+    if (S !== 2 && S !== 4) { P.arrow(k.p, MR.scl(k.v, .35), '--a', 2.5, 'V'); P.arrow(k.p, MR.scl(s.F, .08), '--e', 2.5, 'F', null, 8, 14); P.arc([0, 0], 30, 0, s.q[0], '--c', 2, true, 'τ₁ ' + f(k.tau[0], 1)); P.arc(k.e, 26, s.q[0], s.q[0] + s.q[1], '--c', 2, true, 'τ₂ ' + f(k.tau[1], 1)); }
+    const R = Pl.panel(.57, 0, .43, 1, [0, 1, 0, 1], false); R.frame(['the chain, live', 'q → T → V → τ → dynamics', 'what the interviewer asks', '', 'study loop', 'ranked', 'why planar'][S]);
+    const rows = S <= 1 || S === 6 ? [['q = (' + f(s.q[0] / D2R, 0) + '°, ' + f(s.q[1] / D2R, 0) + '°)', '--ink'], ['T: hand p = ' + SL.vs(k.p) + ', φ = ' + f(k.phi / D2R, 0) + '°', '--link'], ...SL.mat(k.J, 2, 'J').split('\n').map(l => [l, '--ink']), ['V = J q̇ = ' + SL.vs(k.v), '--a'], ['τ = JᵀF = ' + SL.vs(k.tau), '--c'], ['det J = ' + f(k.det, 3) + (Math.abs(k.det) < .05 ? '  SINGULAR' : ''), Math.abs(k.det) < .05 ? '--bad' : '--muted'], ['', ''], ['dynamics: τ = M(q)q̈ + c + g', '--muted'], [' (pages 133–139)', '--muted']]
+      : S === 2 ? [['where does M q̈ + C q̇ + g = τ', '--ink'], [' come from?', '--ink'], ['why is M symmetric PD?', '--ink'], ['what is J\'s null space for?', '--ink'], ['hand on a line, elbow free?', '--ink'], ['', ''], ['→ kinematics & dynamics,', '--c'], ['  not pole placement', '--c']]
+      : S === 4 ? [['1 START HERE + plain words', '--ink'], ['2 watch, say each symbol', '--ink'], ['3 lab: predict, then look', '--ink'], ['4 interview answer aloud', '--ink'], ['', ''], ['formula still opaque?', '--muted'], [' carry the RESULT forward;', '--muted'], [' later pages use results', '--muted']]
+      : [['1 Jacobian both ways', '--a'], ['2 singularities, null space', '--a'], ['3 inverse vs forward dyn.', '--ink'], ['4 M SPD, Ṁ − 2C skew', '--ink'], ['5 Λ = (JM⁻¹Jᵀ)⁻¹, J̄', '--ink'], ['6 computed torque, OSC,', '--ink'], ['  impedance, hybrid force', '--ink'], ['', ''], ['1–2: pages 123–132', '--muted'], ['3–5: 133–139 · 6: 143–145', '--muted']];
+    NN.lines(R, rows, { top: .07, gap: .075 });
+  },
+  math(S) {
+    const s = st(), k = kin(s);
+    const rows = [`${E(`where?  T(q)      how fast/hard?  J(q)      what torque?  M, c, g`)}`,
+`${E(`q → T(q) → V = J(q)q̇ → τ = JᵀF → τ = M(q)q̈ + c(q,q̇) + g(q)
+V = (${f(k.v[0])}, ${f(k.v[1])}),  τ = (${f(k.tau[0])}, ${f(k.tau[1])})`)}`,
+`<p>Configuration space and task space are different spaces with different dimensions.</p>`,
+`<p>Watch alongside, then break the result with the sliders until it stops surprising you.</p>`,
+`<p>Pages 115–122 are vocabulary; it is normal for them to feel abstract until the Jacobian uses them.</p>`,
+`${E(`power: τᵀq̇ = Fᵀv  ⇒  τ = JᵀF   (same J, both directions)`)}`,
+`${E(`det J = L₁L₂ sin q₂ = ${f(k.det, 3)}`)}`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

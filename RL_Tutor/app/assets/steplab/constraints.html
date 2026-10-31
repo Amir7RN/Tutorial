@@ -1,0 +1,76 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Constraints, task space, workspace</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+const st = () => { const v = SL.v; return { a: v.a * D2R, q1: v.q1 * D2R, q2: v.q2 * D2R, L1: v.L1 / 10, L2: v.L2 / 10, L3: v.L3 / 10, phi: v.phi * D2R }; };
+let PATH = [];
+SL.app({
+  title: 'Constraints, task space and workspace',
+  sub: 'Holonomic constraints shrink the C-space; nonholonomic ones only restrict velocities. Task space is where you describe the job; workspace is where the hand can actually reach.',
+  view: '2d',
+  legend: [['--a', 'configuration'], ['--c', 'allowed velocity'], ['--bad', 'forbidden direction'], ['--b', 'workspace'], ['--e', 'path / bracket']],
+  controls: [
+    { id: 'a', label: 'bead angle (step 0)', min: -180, max: 180, value: 40, fmt: x => x + '°' },
+    { id: 'q1', label: 'θ₁ (steps 1, 6)', min: -180, max: 180, value: 20, fmt: x => x + '°' }, { id: 'q2', label: 'θ₂', min: -180, max: 180, value: 70, fmt: x => x + '°' },
+    { id: 'L1', label: 'L₁ (step 6)', min: 3, max: 15, value: 10, fmt: x => f(x / 10, 1) }, { id: 'L2', label: 'L₂', min: 3, max: 15, value: 8, fmt: x => f(x / 10, 1) }, { id: 'L3', label: 'L₃ (3R)', min: 0, max: 10, value: 3, fmt: x => f(x / 10, 1) },
+    { id: 'phi', label: 'car heading φ (step 3)', min: -180, max: 180, value: 30, fmt: x => x + '°' },
+  ],
+  buttons: [{ label: 'parallel park (step 4)', onclick: () => { SL.go(4); } }],
+  steps: [
+    ['Holonomic: a constraint on q', 'g(q) = 0 ⇒ (∂g/∂q)q̇ = A(q)q̇ = 0. Bead on a hoop: g = x² + y² − 1, A = [2x 2y], so 2xẋ + 2yẏ = 0 — velocity along the hoop is free, across it forbidden. The constraint removes a dimension of C-space.'],
+    ['One row of A, measured: a fingertip on a wall', '2R fingertip pressed on the wall x = const: g(θ) = L₁c₁ + L₂c₁₂ − x_wall. A = [−L₁s₁ − L₂s₁₂, −L₂s₁₂]: joint rates with Aθ̇ = 0 keep the tip on the wall. The null-space direction slides the tip along the wall.'],
+    ['The four-bar: a 1-D C-space in 4-D joint space', 'g(θ) = loop closure (x, y and Σθ = 2π): 3 equations, 4 joints. A(θ) is 3 × 4, rank 3, so one direction survives — the 1 DOF. A = [[0 1 1 0], [0 0 1 1], [1 1 1 1]] at a symmetric pose has null vector (1, −1, 1, −1).'],
+    ['Nonholonomic: same-looking equation, no g', 'Car (unicycle): ẋ = v cos φ, ẏ = v sin φ ⇒ ẋ sin φ − ẏ cos φ = 0, i.e. [0 sin φ −cos φ]q̇ = 0. There is no g with ∂g/∂q ∝ A: the mixed partials disagree (∂/∂φ ∂g/∂x = cos φ ≠ 0). It restricts velocity, not configuration — the car can still reach every (x, y, φ).'],
+    ['The Lie bracket: parallel parking', 'Drive, turn, drive back, turn back: alternating the two allowed motions nets a sideways displacement — the forbidden direction. The bracket of drive and turn produces it, so the reachable set is all of C-space (Chow). Consequence: a car needs a planner, and cannot be stabilised to a point by smooth time-invariant feedback (Brockett).'],
+    ['Three spaces people confuse', 'C-space: the joint values (dimension = DOF). Task space: the coordinates the job is described in (planar position: 2; pose in space: 6) — a 6R arm doing a 3-D position task is redundant by 3. Workspace: the set of hand poses actually reachable.'],
+    ['Workspace with geometry and limits', '2R: an annulus |L₁ − L₂| ≤ ‖p‖ ≤ L₁ + L₂. 3R with a fixed hand orientation to be reachable in every direction (dexterous workspace): |L₁ − L₂| + L₃ ≤ ‖p‖ ≤ L₁ + L₂ − L₃, empty if the inner exceeds the outer.'],
+    ['Interview', '"Is a car\'s rolling constraint holonomic?" No: −sin φ ẋ + cos φ ẏ = 0 has no integrating factor. The Lie bracket of drive and turn gives the sideways direction, so all of C-space is reachable (Chow), but smooth time-invariant feedback cannot stabilise a point (Brockett).'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S === 0) { const P = Pl.panel(0, 0, .6, .82, [-1.6, 1.6, -1.6, 1.6]); P.frame('bead on a hoop'); P.circle([0, 0], 1, '--grey', 3); const p = [Math.cos(s.a), Math.sin(s.a)];
+      P.dot(p, 8, '--a'); P.arrow(p, [-p[1] * .5, p[0] * .5], '--c', 3, 'free'); P.arrow(p, [p[0] * .4, p[1] * .4], '--bad', 3, 'A row: forbidden');
+      NN.lines(Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false), [['q = (' + f(p[0]) + ', ' + f(p[1]) + ')', '--a'], ['A = [2x 2y] = [' + f(2 * p[0]) + ' ' + f(2 * p[1]) + ']', '--bad'], ['along hoop: Aq̇ = 0', '--c'], ['across: Aq̇ ≠ 0', '--bad'], ['C-space: 2-D → 1-D', '--ink']], { top: .15, gap: .12 }); }
+    else if (S === 1) { const e = [Math.cos(s.q1), Math.sin(s.q1)], p = [e[0] + .8 * Math.cos(s.q1 + s.q2), e[1] + .8 * Math.sin(s.q1 + s.q2)], A = [-Math.sin(s.q1) - .8 * Math.sin(s.q1 + s.q2), -.8 * Math.sin(s.q1 + s.q2)], nz = [A[1], -A[0]];
+      const P = Pl.panel(0, 0, .6, .82, [-2, 2, -2, 2]); P.frame('fingertip on the wall x = ' + f(p[0])); P.line([p[0], -2], [p[0], 2], '--grey', 4); P.arm([[0, 0], e, p]);
+      const J = [[A[0], A[1]], [Math.cos(s.q1) + .8 * Math.cos(s.q1 + s.q2), .8 * Math.cos(s.q1 + s.q2)]], vt = MR.mv(J, MR.scl(nz, 1 / Math.hypot(...nz)));
+      P.arrow(p, MR.scl(vt, .6), '--c', 3, 'Aθ̇ = 0 → slides');
+      NN.lines(Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false), [['g = L₁c₁ + L₂c₁₂ − x_wall', '--ink'], ['A = [' + f(A[0]) + '  ' + f(A[1]) + ']', '--bad'], ['null(A) ∝ (' + f(nz[0]) + ', ' + f(nz[1]) + ')', '--c'], ['tip velocity (x, y) =', '--muted'], ['  (' + f(vt[0], 3) + ', ' + f(vt[1]) + ')', '--c']], { top: .15, gap: .12 }); }
+    else if (S === 2) { const A = [[0, 1, 1, 0], [0, 0, 1, 1], [1, 1, 1, 1]], n = [1, -1, 1, -1]; const P = Pl.panel(0, 0, .55, .82, [-1.2, 2.2, -1, 2]); P.frame('four-bar, square pose');
+      const t = Math.sin(SL.anim * Math.PI) * .25, a = Math.PI / 2 + t, B = [Math.cos(a), Math.sin(a)], C2 = [1 + Math.cos(Math.PI / 2 + t), Math.sin(Math.PI / 2 + t)]; P.line([0, 0], [1, 0], '--grey', 6); P.arm([[0, 0], B, C2, [1, 0]]);
+      NN.lines(Pl.panel(.56, 0, .44, .82, [0, 1, 0, 1], false), [['3 equations, 4 joints', '--ink'], ...SL.mat(A, 0, 'A').split('\n').map(l => [l, '--ink']), ['A·(1, −1, 1, −1)ᵀ = ' + SL.vs(MR.mv(A, n), 0), '--c'], ['rank 3 → 4 − 3 = 1 DOF', '--c'], ['', ''], ['implicit description:', '--muted'], [' all joints + g(θ) = 0', '--muted']], { top: .1, gap: .1 }); }
+    else if (S <= 4) { const P = Pl.panel(0, 0, .62, .82, [-2, 2, -2, 2]); P.frame(S === 3 ? 'car: allowed velocities' : 'parallel parking: bracket = sideways');
+      const car = (x, y, ph, c) => { const pts = [[-.3, -.15], [.3, -.15], [.3, .15], [-.3, .15]].map(p => { const q = MR.rot2(p, ph); return [x + q[0], y + q[1]]; }); P.poly(pts, c, 2, null, c, true); };
+      if (S === 3) { car(0, 0, s.phi, '--a'); P.arrow([0, 0], [Math.cos(s.phi), Math.sin(s.phi)], '--c', 3, 'drive'); P.arc([0, 0], 40, s.phi, s.phi + 1, '--c', 2.5, true, 'turn'); P.arrow([0, 0], [-Math.sin(s.phi) * .8, Math.cos(s.phi) * .8], '--bad', 3, 'sideways: forbidden'); }
+      else { let x = 0, y = 0, ph = 0; const seq = [[1, 0], [0, .8], [-1, 0], [0, -.8]], pts = [[0, 0]], N = Math.floor(SL.anim * 4 * 40);
+        for (let k = 0; k < N; k++) { const [v, w] = seq[Math.floor(k / 40)]; ph += w * .025 * 2; x += v * .025 * Math.cos(ph); y += v * .025 * Math.sin(ph); pts.push([x, y]); }
+        P.poly(pts, '--e', 2.5); car(x, y, ph, '--a'); car(0, 0, 0, '--grey'); P.text([x, y], 'net Δy = ' + f(y, 3), '--e', 10, -10); }
+      NN.lines(Pl.panel(.63, 0, .37, .82, [0, 1, 0, 1], false), [['q = (φ, x, y)', '--ink'], ['A(q) = [0  sin φ  −cos φ]', '--bad'], ['= [0 ' + f(Math.sin(s.phi)) + ' ' + f(-Math.cos(s.phi)) + ']', '--bad'], ['∂/∂φ(∂g/∂x) = cos φ ≠ 0', '--muted'], [' = ∂/∂x(∂g/∂φ) → no g', '--muted'], ['', ''], ['restricts q̇, not q', '--c'], ['Chow: all reachable', '--c'], ['Brockett: no smooth', '--bad'], [' static feedback to a point', '--bad']], { top: .1, gap: .085 }); }
+    else if (S === 5) { NN.lines(Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false), [['C-space    joint values                      dim = DOF (2R: 2, 6R: 6)', '--a'], ['task space coordinates the job is written in      planar position: 2 · spatial pose: 6', '--e'], ['workspace  hand poses actually reachable         a subset of task space', '--b'], ['', ''], ['6R arm, 3-D position task: redundant by 6 − 3 = 3', '--c'], ['2R arm, planar (x, y) task: not redundant; 3R: redundant by 1', '--c']], { top: .15, gap: .12 }); }
+    else { const P = Pl.panel(0, 0, .6, .82, [-3, 3, -3, 3]); P.frame('workspace'); const o2 = s.L1 + s.L2, i2 = Math.abs(s.L1 - s.L2), o3 = o2 - s.L3, i3 = i2 + s.L3;
+      P.circle([0, 0], o2, '--b', 2.5); P.circle([0, 0], Math.max(.001, i2), '--b', 2.5); if (o3 > i3) { P.circle([0, 0], o3, '--c', 2, [5, 4]); P.circle([0, 0], i3, '--c', 2, [5, 4]); }
+      const e = [s.L1 * Math.cos(s.q1), s.L1 * Math.sin(s.q1)], p = [e[0] + s.L2 * Math.cos(s.q1 + s.q2), e[1] + s.L2 * Math.sin(s.q1 + s.q2)]; P.arm([[0, 0], e, p]);
+      NN.lines(Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false), [['2R annulus (blue)', '--b'], ['  ' + f(i2) + ' ≤ ‖p‖ ≤ ' + f(o2), '--b'], ['  area ' + f(Math.PI * (o2 * o2 - i2 * i2), 2), '--b'], ['3R dexterous (green)', '--c'], [o3 > i3 ? '  ' + f(i3) + ' ≤ ‖p‖ ≤ ' + f(o3) : '  EMPTY: inner > outer', o3 > i3 ? '--c' : '--bad']], { top: .15, gap: .12 }); }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S <= 2 ? 'holonomic: A = ∂g/∂q ⇒ dg/dt = Aq̇ = 0 ⇒ g(q(t)) = g(q(0)) = 0' : S <= 4 ? 'nonholonomic: A(q)q̇ = 0 but no g with ∂g/∂q = A (or any multiple of A)' : 'C-space ≠ task space ≠ workspace', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st();
+    const rows = [`${E(`g(q) = x² + y² − 1 = 0,  A(q) = [2x 2y],  Aq̇ = 2xẋ + 2yẏ = 0`)}`,
+`${E(`A = [L₁sin θ₁ + L₂sin(θ₁+θ₂)  L₂sin(θ₁+θ₂)] (sign by convention)`)}`,
+`${E(`g(θ) = [L₁c₁ + L₂c₁₂ + L₃c₁₂₃ + L₄c₁₂₃₄; L₁s₁ + … ; θ₁ + θ₂ + θ₃ + θ₄ − 2π] = 0
+A(θ) ∈ ℝ^(3×4)`)}`,
+`${E(`ẋ sin φ − ẏ cos φ = 0  ⇔  [0  sin φ  −cos φ](φ̇, ẋ, ẏ)ᵀ = 0`)}`,
+`${E(`[drive, turn] = sideways  ⇒  span = all of T_qC (Chow)`)}`,
+`<p>Redundancy = dim C − dim task.</p>`,
+`${E(`|L₁ − L₂| + L₃ ≤ ‖p‖ ≤ L₁ + L₂ − L₃   (3R dexterous)`)}`,
+`<p>Car: nonholonomic; needs a planner.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

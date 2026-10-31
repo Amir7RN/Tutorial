@@ -1,0 +1,56 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Angular velocity from RᵀR = I</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="three.min.js"></script><script src="mr.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+let T0 = 0, BODY = false;
+const st = () => { const v = SL.v; return { w: [v.wx / 10, v.wy / 10, v.wz / 10], a: v.a * D2R, b: v.b * D2R }; };
+const R0 = s => MR.mul(MR.expRot([0, 0, 1], s.a), MR.expRot([1, 0, 0], s.b));
+const Rnow = s => { const ws = BODY ? MR.mv(R0(s), s.w) : s.w, n = MR.norm(ws); return n > 1e-9 ? MR.mul(MR.expRot(MR.scl(ws, 1 / n), n * T0), R0(s)) : R0(s); };
+SL.app({
+  title: 'Angular velocity from RᵀR = I',
+  sub: 'Differentiate RᵀR = I and only three numbers survive: ω. Ṙ = [ω_s]R = R[ω_b], ω_b = Rᵀω_s. Press Play to spin the frame; arrows at the axis tips are their velocities.',
+  view: '3d', orbit: { az: .9, el: .4, r: 4.3, tgt: [0, 0, .5] },
+  controls: [
+    { id: 'wx', label: 'ω_x', min: -20, max: 20, value: 3, fmt: x => f(x / 10, 1) }, { id: 'wy', label: 'ω_y', min: -20, max: 20, value: -2, fmt: x => f(x / 10, 1) }, { id: 'wz', label: 'ω_z', min: -20, max: 20, value: 8, fmt: x => f(x / 10, 1) },
+    { id: 'a', label: 'start yaw', min: -180, max: 180, value: 30, fmt: x => x + '°' }, { id: 'b', label: 'start roll', min: -180, max: 180, value: 20, fmt: x => x + '°' },
+  ],
+  buttons: [{ label: 'ω given in body frame', toggle: true, onclick: e => { BODY = !BODY; e.setAttribute('aria-pressed', BODY); SL.redraw(); } }],
+  play: { tick(dt) { T0 += dt; } }, reset() { T0 = 0; },
+  steps: [
+    ['Differentiate the six rules', 'RᵀR = I ⇒ ṘᵀR + RᵀṘ = 0 ⇒ RᵀṘ is skew-symmetric (and so is ṘRᵀ). A 3 × 3 skew matrix has 3 free numbers: of Ṙ\'s 9 entries only 3 are free — the bead-on-a-hoop story retold for R.'],
+    ['Every axis tip moves as ω × axis', 'A rigid spin moves each unit axis by ẋ = ω × x̂, ẏ = ω × ŷ, ż = ω × ẑ — the SAME ω for all three. That keeps every rule: e.g. ŷ·(ω × x̂) = ω·ẑ and x̂·(ω × ŷ) = −ω·ẑ, so d(x̂·ŷ)/dt = 0.'],
+    ['Ṙ = [ω_s]R', 'Stack the tip velocities: Ṙ = [ω_s × x̂_b  ω_s × ŷ_b  ω_s × ẑ_b] = [ω_s]R. The 3-vector ω_s becomes the cross-product machine [ω_s]; multiply by R on the right ⇒ ṘRᵀ = [ω_s].'],
+    ['The body version', 'RᵀṘ = Rᵀ[ω_s]R = [Rᵀω_s] = [ω_b], so Ṙ = R[ω_b]. Same physical spin, written in the body\'s own axes. Toggle "ω given in body frame": now the slider vector rides with the frame.'],
+    ['Interview: where does Ṙ = [ω]R come from?', 'RᵀR = I is six rules on nine numbers; their rates give a rank-6 constraint on vec(Ṙ), leaving a 3-D space. A rigid spin moves each axis at ω × axis, keeping every rule, and different ω give different Ṙ — so Ṙ = [ω_s]R covers it all. Equivalently RᵀṘ = [ω_b], ω_b = Rᵀω_s.'],
+  ],
+  draw(sc) {
+    const s = st(), S = SL.st, R = Rnow(s), ws = BODY ? MR.mv(R0(s), s.w) : s.w, o = [0, 0, .5];
+    sc.grid(4, 16); sc.frame(MR.eye(4), .5, '{s}'); sc.frame(MR.makeT(R, o), 1, '{b}');
+    sc.arrow(o, MR.scl(ws, .5), '#e5c07b', 1); sc.label(MR.add(o, MR.scl(ws, .5)), 'ω', '#e5c07b');
+    if (S >= 1) [0, 1, 2].forEach(j => { const ax = MR.col(R, j), tip = MR.add(o, ax); sc.arrow(tip, MR.scl(MR.cross(ws, ax), .35), ['#e05555', '#3fb950', '#4e8cff'][j], 1); });
+  },
+  math(S) {
+    const s = st(), R = Rnow(s), ws = BODY ? MR.mv(R0(s), s.w) : s.w, wb = MR.mv(MR.T(R), ws), W = MR.skew(ws), Rd = MR.mul(W, R), RtRd = MR.mul(MR.T(R), Rd);
+    const rows = [
+`${E(`ṘᵀR + RᵀṘ = 0  ⇒  RᵀṘ = −(RᵀṘ)ᵀ
+${SL.mat(RtRd, 3, 'RᵀṘ')}   (skew)`)}`,
+`${E(`ẋ_b = ω × x̂_b = ${SL.vs(MR.cross(ws, MR.col(R, 0)))}
+ẏ_b = ω × ŷ_b = ${SL.vs(MR.cross(ws, MR.col(R, 1)))}
+ż_b = ω × ẑ_b = ${SL.vs(MR.cross(ws, MR.col(R, 2)))}
+d(x̂·ŷ)/dt = ${f(MR.dot(MR.cross(ws, MR.col(R, 0)), MR.col(R, 1)) + MR.dot(MR.col(R, 0), MR.cross(ws, MR.col(R, 1))), 6)}`)}`,
+`${E(`ω_s = ${SL.vs(ws)}
+${SL.mat(W, 2, '[ω_s]')}
+${SL.mat(Rd, 3, 'Ṙ = [ω_s]R')}`)}`,
+`${E(`ω_b = Rᵀ ω_s = ${SL.vs(wb)}
+Ṙ = R[ω_b]  (same matrix as [ω_s]R)
+max |[ω_s]R − R[ω_b]| = ${f(Math.max(...MR.msub(Rd, MR.mul(R, MR.skew(wb))).flat().map(Math.abs)), 9)}`)}`,
+`<p>Ṙ has 9 entries but only 3 freedoms; ω carries exactly those 3.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

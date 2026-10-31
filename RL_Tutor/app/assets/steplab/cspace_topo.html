@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C-space topology and representation</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+const st = () => ({ th: SL.v.th, td: SL.v.td, lat: SL.v.lat * D2R, v: SL.v.v / 10 });
+const wrap = e => ((e + 180) % 360 + 360) % 360 - 180;
+const SHAPES = [['line ℝ¹', 'prismatic joint (no limits)'], ['circle S¹', 'revolute joint'], ['plane ℝ²', 'point in the plane'], ['cylinder ℝ¹ × S¹', 'prismatic + revolute'], ['torus T² = S¹ × S¹', '2R arm'], ['sphere S²', 'pointing direction'], ['ℝ³ × SO(3)', 'rigid body in space (6-D)']];
+SL.app({
+  title: 'C-space topology and representation',
+  sub: 'Two questions about the map: what shape it is (the robot decides), and which numbers you store for a point on it (you decide). The shape tells you which choice is safe.',
+  view: '2d',
+  legend: [['--a', 'current / desired'], ['--bad', 'naive (long way round)'], ['--c', 'wrapped (short way)'], ['--b', 'singular coordinate rate']],
+  controls: [
+    { id: 'th', label: 'joint angle θ', min: -180, max: 180, value: 170, fmt: x => x + '°' }, { id: 'td', label: 'desired θ_d', min: -180, max: 180, value: -170, fmt: x => x + '°' },
+    { id: 'lat', label: 'latitude φ (step 3)', min: 0, max: 89, value: 60, fmt: x => x + '°' }, { id: 'v', label: 'ground speed v (step 3)', min: 1, max: 30, value: 10, fmt: x => f(x / 10, 1) },
+  ],
+  steps: [
+    ['Topology vs representation', 'Topology: the shape of C-space, independent of coordinates — the robot decides it. Representation: the numbers you store for a point — you decide. Same dimension does not mean same shape.'],
+    ['Same dimension, different shape', 'A line and a circle are both 1-D; a plane, cylinder, torus and sphere are all 2-D — and none can be continuously deformed into another. Each joint type and body adds its own factor.'],
+    ['Jumps in coordinates: the long-way-round bug', 'Angles on a circle jump at ±180°. A controller that computes e = θ_d − θ from 170° to −170° commands −340° instead of +20°. Wrap it: e = ((θ_d − θ + 180°) mod 360°) − 180°. Averages too: the naive mean of 170° and −170° is 0°, the circle mean is 180°.'],
+    ['Explicit charts can blow up', 'Latitude–longitude on a sphere: r = R cos φ and λ̇ = v/(R cos φ) → ∞ as φ → 90°. Moving at constant ground speed, the longitude rate explodes near the pole although nothing physical happens. The point moves fine; the coordinates do not.'],
+    ['Which do I use?', 'Explicit (minimal numbers) is safe when the chart only has jumps, never blow-ups: joint angles on circles — just wrap. Implicit (more numbers + constraints) when every minimal chart breaks somewhere: the sphere as a unit vector, orientation as R ∈ SO(3) or a quaternion; a closed chain as all its joints plus g(θ) = 0.'],
+    ['Interview', '"Why can\'t three numbers represent orientation everywhere?" SO(3) is a 3-D manifold not homeomorphic to any open set of ℝ³, so every 3-parameter chart (ZYX Euler, roll-pitch-yaw) has a singularity — pitch ±90° for ZYX. Compute with R or unit quaternions; use 3-number exponential coordinates only locally.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S <= 1) { const T = Pl.panel(0, 0, 1, 1, [0, 1, 0, 1], false); T.frame('C-space shapes'); NN.lines(T, SHAPES.map(([a, b], i) => [(i < 2 ? '1-D  ' : i < 6 ? '2-D  ' : '6-D  ') + a.padEnd(22) + b, i === 4 ? '--a' : '--ink']).concat([['', ''], ['same dimension ≠ same shape: a circle is not a line, a torus is not a plane', '--muted']]), { top: .12, gap: .09 }); return; }
+    if (S === 2) {
+      const C = Pl.panel(0, 0, .5, .82, [-1.4, 1.4, -1.4, 1.4]); C.frame('the circle of angles'); C.circle([0, 0], 1, '--grey', 2);
+      const pt = a => [Math.cos(a * D2R), Math.sin(a * D2R)], en = s.td - s.th, ew = wrap(en);
+      C.dot(pt(s.th), 7, '--a'); C.dot(pt(s.td), 7, '--e'); C.text(pt(s.th), 'θ', '--a', 10, 0); C.text(pt(s.td), 'θ_d', '--e', 10, 0);
+      C.arc([0, 0], 95, s.th * D2R, (s.th + en) * D2R, '--bad', 2.5, true); C.arc([0, 0], 70, s.th * D2R, (s.th + ew) * D2R, '--c', 3, true);
+      const nm = (s.th + s.td) / 2, cm = Math.atan2(Math.sin(s.th * D2R) + Math.sin(s.td * D2R), Math.cos(s.th * D2R) + Math.cos(s.td * D2R)) / D2R;
+      NN.lines(Pl.panel(.51, 0, .49, .82, [0, 1, 0, 1], false), [['naive  e = θ_d − θ = ' + f(en, 0) + '°', '--bad'], ['wrapped e = ' + f(ew, 0) + '°', '--c'], ['wasted rotation ' + f(Math.abs(en) - Math.abs(ew), 0) + '°', '--bad'], ['', ''], ['average, naive  ' + f(nm, 0) + '°', '--bad'], ['average, circle ' + f(cm, 0) + '°', '--c'], ['', ''], ['PID, planners, interpolation:', '--muted'], [' always wrap angle errors', '--muted']], { top: .1, gap: .1 });
+    } else if (S === 3) {
+      const phis = [...Array(90)].map((_, i) => i), P = Pl.panel(0, 0, .58, .82, [0, 90, 0, 12], false);
+      P.series([{ pts: phis.map(p => [p, Math.min(12, s.v / Math.cos(p * D2R))]), cl: '--b', w: 2.5, label: 'λ̇ = v/(R cos φ)' }, { pts: phis.map(p => [p, s.v]), cl: '--c', w: 2, label: '‖ṗ‖ = v (nothing physical changes)' }], { title: 'longitude rate vs latitude (R = 1)' });
+      P.line([s.lat / D2R, 0], [s.lat / D2R, 12], '--ink', 1, [3, 3]);
+      const G = Pl.panel(.59, 0, .41, .82, [-1.3, 1.3, -1.3, 1.3]); G.frame('lap time on the circle of latitude'); G.circle([0, 0], 1, '--grey', 1.5); G.line([-1, 0], [1, 0], '--line', 1); G.circle([0, 0], Math.cos(s.lat), '--a', 2.5);
+      G.text([0, -1.2], 'one lap: 2πR cos φ / v = ' + f(2 * Math.PI * Math.cos(s.lat) / s.v, 2) + ' s', '--a', 0, 0, { size: 12, align: 'center' });
+    } else {
+      const T = Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false); T.frame(S === 4 ? 'explicit, implicit, or just wrap' : 'SO(3) has no global 3-number chart');
+      NN.lines(T, S === 4 ? [['explicit (minimal)  joint angles q         safe: a circle only has jumps → WRAP', '--c'], ['implicit            unit vector on a sphere  n numbers + constraint, no singularity', '--a'], ['implicit            R ∈ SO(3) / quaternion  9 (4) numbers + RᵀR = I (‖q‖ = 1)', '--a'], ['implicit            closed chain            all joints + g(θ) = 0', '--a'], ['avoid               Euler angles in a controller (gimbal lock)', '--bad']]
+        : [['dof of a rigid body in space: 6 = 3 position + 3 orientation', '--ink'], ['SO(3): 3-D manifold, not homeomorphic to an open set of ℝ³', '--ink'], ['→ every 3-parameter chart is singular somewhere (ZYX at pitch ±90°)', '--bad'], ['compute with R or unit quaternions', '--c'], ['exponential coordinates: only locally', '--muted']], { top: .15, gap: .13 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 2 ? 'e_wrap = ((θ_d − θ + 180°) mod 360°) − 180° ∈ [−180°, 180°)' : S === 3 ? 'the chart blows up at the pole; the sphere does not' : 'the shape tells you which representation is safe', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st();
+    const rows = [`<p>Shape: decided by the robot. Numbers: decided by you.</p>`, `<p>Dimension is not shape.</p>`,
+`${E(`e_naive = θ_d − θ = ${f(s.td - s.th, 0)}°
+e_wrap  = ((θ_d − θ + 180°) mod 360°) − 180° = ${f(wrap(s.td - s.th), 0)}°`)}`,
+`${E(`r = R cos φ,  λ̇ = v/r = v/(R cos φ) = ${f(s.v / Math.cos(s.lat), 2)}
+ṗ = R cos φ λ̇ (−sin λ, cos λ, 0),  ‖ṗ‖ = v`)}`,
+`<p>Explicit for joints (wrap), implicit for orientation (R, quaternion) and closed chains (g(θ) = 0).</p>`,
+`<p>Use R or quaternions; express orientation error as log(R_dᵀR).</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

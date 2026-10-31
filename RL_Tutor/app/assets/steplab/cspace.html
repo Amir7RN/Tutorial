@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Configuration space and DOF</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+const MECH = [['planar 3R arm', 3, 4, [1, 1, 1], 'open chain: dof = number of joints'], ['planar four-bar', 3, 4, [1, 1, 1, 1], 'closing the loop costs two freedoms'], ['slider-crank', 3, 4, [1, 1, 1, 1], '3 R + 1 P'], ['planar five-bar', 3, 5, [1, 1, 1, 1, 1], 'two inputs needed'], ['parallelogram + extra link', 3, 5, [1, 1, 1, 1, 1, 1], 'Grübler says 0 — it moves with 1 (dependent constraints)'], ['Stewart platform (6 UPS)', 6, 14, [...Array(6).fill(2), ...Array(6).fill(1), ...Array(6).fill(3)], 'six legs, six actuators'], ['spatial 4-joint arm (this tutor)', 6, 5, [1, 1, 1, 1], '4 DOF: cannot reach an arbitrary 6-D hand pose']];
+let MI = 0;
+const grub = ([, m, N, fs]) => m * (N - 1 - fs.length) + fs.reduce((a, b) => a + b, 0);
+const st = () => ({ q1: SL.v.q1 * D2R, q2: SL.v.q2 * D2R });
+SL.app({
+  title: 'Configuration space and degrees of freedom',
+  sub: 'The configuration is the smallest list of numbers that pins every point of the robot. Its length is the DOF; Grübler\'s formula counts it without drawing; and the map of all configurations has a shape as well as a dimension.',
+  view: '2d',
+  legend: [['--link', 'arm'], ['--a', 'C-space point'], ['--b', 'glued edges'], ['--c', 'dof'], ['--bad', 'formula fails']],
+  controls: [{ id: 'q1', label: 'q₁', min: -180, max: 180, value: 40, fmt: x => x + '°' }, { id: 'q2', label: 'q₂', min: -180, max: 180, value: 70, fmt: x => x + '°' }],
+  buttons: [...MECH.map((m, i) => ({ label: m[0].split(' (')[0], onclick: () => { MI = i; SL.go(3, false); } }))],
+  steps: [
+    ['The smallest list that pins the pose', 'For a two-motor arm it is two angles. The length of that list is the degrees of freedom; the set of all lists is configuration space, a map where one point is one complete pose. Planning, kinematics and dynamics all happen on this map.'],
+    ['So what? Where each idea is used', 'DOF sets the size of everything (q has n entries, M is n × n, J has n columns). Topology: wrap angle errors, joint limits are walls, closed chains can have separate pieces. Explicit representation: joint angles q — exactly the q in the dynamics. Implicit: store hand orientation as R (or a quaternion), never Euler angles. Velocity ≠ coordinate rate: use ω and twists.'],
+    ['DOF = body freedoms − joint constraints', 'dof = m(N − 1 − J) + Σfᵢ, m = 3 planar, 6 spatial. N counts links INCLUDING ground; each free body has m freedoms; each joint removes m − fᵢ (revolute, prismatic f = 1; universal 2; spherical 3). Assumes independent constraints.'],
+    ['Count it: pick a mechanism', 'Planar 3R: 3(4 − 1 − 3) + 3 = 3. Four-bar: 3(4 − 1 − 4) + 4 = 1 — the loop cost two freedoms. Open chains have dof = joints; closed chains fewer, because loops force joints to agree. Use the buttons; work it out before you read.'],
+    ['When Grübler lies', 'Special geometry makes constraints dependent: a parallelogram with an extra parallel link counts 0 but moves with 1. Then the true DOF is n minus the rank of the constraint Jacobian at that pose (pages 117, 132).'],
+    ['The shape: a torus, not a plane', 'Two revolute joints give a 2-D C-space shaped T² = S¹ × S¹: turning q₁ by 2π returns the same arm. Glue left to right and top to bottom. Drag q₁ past 180°: the dot reappears on the left — a short smooth motion, not a jump. A rigid body in space: ℝ³ × SO(3), 6-D, and SO(3) cannot be covered by three angles without a singularity.'],
+    ['Interview', '"How many DOF does a planar four-bar have, and when does Grübler fail?" One. It fails when joint constraints are not independent; then DOF = n − rank of the constraint Jacobian at that pose. And four joints do not reach an arbitrary 6-D hand pose: the spatial 4-joint arm has 6(5 − 1 − 4) + 4 = 4 DOF.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, e = [Math.cos(s.q1), Math.sin(s.q1)], p = [e[0] + .8 * Math.cos(s.q1 + s.q2), e[1] + .8 * Math.sin(s.q1 + s.q2)];
+    if (S === 2 || S === 3 || S === 4) {
+      const m = MECH[S === 4 ? 4 : MI], d = grub(m), T = Pl.panel(0, 0, 1, 1, [0, 1, 0, 1], false); T.frame(m[0]);
+      NN.lines(T, [['m = ' + m[1] + (m[1] === 3 ? '  (planar)' : '  (spatial)'), '--ink'], ['N = ' + m[2] + ' links incl. ground', '--ink'], ['J = ' + m[3].length + ' joints,  Σfᵢ = ' + m[3].reduce((a, b) => a + b, 0), '--ink'], ['', ''], ['dof = m(N − 1 − J) + Σfᵢ', '--muted'], ['    = ' + m[1] + '(' + m[2] + ' − 1 − ' + m[3].length + ') + ' + m[3].reduce((a, b) => a + b, 0) + ' = ' + d, '--c'], ['', ''], [m[4], S === 4 || MI === 4 ? '--bad' : '--muted'], ...(S === 4 ? [['true DOF = n − rank(∂g/∂θ) at that pose', '--c']] : [])], { top: .12, gap: .085 });
+      return;
+    }
+    const A = Pl.panel(0, 0, .5, .82, [-2, 2, -2, 2]); A.frame('workspace: the arm'); A.grid(1, '--line'); A.arm([[0, 0], e, p]);
+    const C = Pl.panel(.5, 0, .5, .82, [-180, 180, -180, 180]); C.frame('C-space: one point = one pose'); C.grid(90, '--line');
+    if (S >= 5) { [[-180, -180, 180, -180], [-180, 180, 180, 180]].forEach(([a, b, c, d]) => C.line([a, b], [c, d], '--b', 3, [8, 5])); [[-180, -180, -180, 180], [180, -180, 180, 180]].forEach(([a, b, c, d]) => C.line([a, b], [c, d], '--d', 3, [8, 5])); C.text([0, 165], 'top ≡ bottom', '--b', 0, 0, { size: 11, align: 'center' }); C.text([-170, 0], 'left ≡ right', '--d', 0, 0, { size: 11 }); }
+    const w = x => ((x / D2R + 180) % 360 + 360) % 360 - 180; C.dot([w(s.q1), w(s.q2)], 7, '--a');
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 5 ? 'T² = S¹ × S¹ — a donut; a rigid body in space lives in ℝ³ × SO(3)' : S === 1 ? 'DOF → sizes · topology → wrapping, walls · representation → q for joints, R for orientation · ω, twists for velocity' : 'q = (q₁, q₂): 2 numbers → 2 DOF → C-space is 2-dimensional', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const m = MECH[S === 4 ? 4 : MI];
+    const rows = [`${E(`q = (θ₁, θ₂) ∈ C,  dim C = dof = 2`)}`, `<p>q has n entries; M(q) is n × n; the Jacobian has n columns.</p>`,
+`${E(`dof = m(N − 1 − J) + Σᵢ fᵢ,   m = 3 planar, 6 spatial`)}`,
+`${E(`${m[0]}: ${m[1]}(${m[2]} − 1 − ${m[3].length}) + ${m[3].reduce((a, b) => a + b, 0)} = ${grub(m)}`)}`,
+`${E(`dof = n − rank(∂g/∂θ)   when constraints are dependent`)}`,
+`${E(`C(2R) = S¹ × S¹ = T²     C(rigid body) = ℝ³ × SO(3)`)}`,
+`<p>Four-bar: 1 DOF. Spatial 4-joint arm: 4 DOF.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

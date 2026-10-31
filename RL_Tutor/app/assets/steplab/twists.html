@@ -1,0 +1,76 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Transforms and twists</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+let T = 0;
+const st = () => { const v = SL.v; return { x: v.x / 10, y: v.y / 10, ph: v.ph * D2R, w: v.w / 10, vx: v.vx / 10, vy: v.vy / 10, pbx: v.pbx / 10, pby: v.pby / 10 }; };
+/* planar SE(2) helpers: pose (x, y, φ); body twist (ω, v_x, v_y) */
+const R2 = a => [[Math.cos(a), -Math.sin(a)], [Math.sin(a), Math.cos(a)]];
+const apply = (P, pb) => { const r = MR.mv(R2(P[2]), pb); return [P[0] + r[0], P[1] + r[1]]; };
+const compose = (A, B) => { const r = MR.mv(R2(A[2]), [B[0], B[1]]); return [A[0] + r[0], A[1] + r[1], A[2] + B[2]]; };
+const bodyToSpace = (P, w, vb) => { const vr = MR.mv(R2(P[2]), vb); return [w, vr[0] + w * P[1], vr[1] - w * P[0]]; };  // v_s = R v_b + p × ω (planar: (ω p_y, −ω p_x))
+const flow = (P0, w, vb, t) => { if (Math.abs(w) < 1e-9) return compose(P0, [vb[0] * t, vb[1] * t, 0]); const a = w * t, d = [(Math.sin(a) * vb[0] - (1 - Math.cos(a)) * vb[1]) / w, ((1 - Math.cos(a)) * vb[0] + Math.sin(a) * vb[1]) / w]; return compose(P0, [d[0], d[1], a]); };
+const drawFrame = (P, Pose, L, c, lab) => { const o = [Pose[0], Pose[1]], ex = MR.mv(R2(Pose[2]), [L, 0]), ey = MR.mv(R2(Pose[2]), [0, L]); P.arrow(o, ex, c || '--bad', 2.5); P.arrow(o, ey, c || '--c', 2.5); if (lab) P.text(o, lab, '--muted', -14, 16, { size: 12 }); };
+const body = (P, Pose, c) => P.poly([[-.4, -.25], [.6, -.25], [.6, .25], [-.4, .25]].map(p => apply(Pose, p)), c || '--a', 2, null, c || '--a', true);
+SL.app({
+  title: 'Transforms and twists: where a body is and how it moves',
+  sub: 'Pages 118–120 again with position added: T = (R, p) for where a body is, and a twist V = (ω, v) for how it moves — always one spin about a line plus a slide along it, a screw. Drawn in the plane (screws there have pitch 0); the spatial formulas are in the math.',
+  view: '2d',
+  legend: [['--a', 'body'], ['--bad', 'x axis'], ['--c', 'y axis'], ['--e', 'point velocities'], ['--d', 'screw centre / axis'], ['--b', 'displaced frames']],
+  controls: [
+    { id: 'x', label: 'body x', min: -20, max: 20, value: 6, fmt: x => f(x / 10, 1) }, { id: 'y', label: 'body y', min: -20, max: 20, value: 4, fmt: x => f(x / 10, 1) }, { id: 'ph', label: 'body angle φ', min: -180, max: 180, value: 30, fmt: x => x + '°' },
+    { id: 'w', label: 'twist ω (body)', min: -20, max: 20, value: 8, fmt: x => f(x / 10, 1) }, { id: 'vx', label: 'twist v_x (body)', min: -20, max: 20, value: 6, fmt: x => f(x / 10, 1) }, { id: 'vy', label: 'twist v_y (body)', min: -20, max: 20, value: 0, fmt: x => f(x / 10, 1) },
+    { id: 'pbx', label: 'point p_b x (step 0)', min: -10, max: 10, value: 5, fmt: x => f(x / 10, 1) }, { id: 'pby', label: 'point p_b y', min: -10, max: 10, value: 2, fmt: x => f(x / 10, 1) },
+  ],
+  play: { tick(dt) { T += dt; } }, reset() { T = 0; },
+  steps: [
+    ['T = (R, p): one point, two frames', '(p_s, 1) = T_sb(p_b, 1) ⇔ p_s = R_sb p_b + p_sb. The 1 at the end is what lets one matrix both rotate and translate; a direction gets a 0 and ignores the translation.'],
+    ['Displace a frame: T on the left vs on the right', 'T = Trans(2ŷ)Rot(ẑ, 90°). T T_sb applies it in SPACE axes (about the {s} origin); T_sb T applies it in BODY axes (about the body\'s own origin). Same T, two different landing poses.'],
+    ['A twist is the rigid-body velocity rule', 'V = (ω, v): the spin plus the velocity of the body point at the frame\'s origin. Every other point: v_P = v + ω × r. One small vector field over the whole body — press Play to move the body along it.'],
+    ['Always one screw (Chasles)', 'Pick the point where the velocity is purely along ω: r = ω × v/|ω|² (in the plane: the instantaneous centre of rotation). Spatially the motion is a spin about that line plus a slide of pitch h = ω·v/|ω|². Every point moves on a helix: tan(helix angle) = h/r.'],
+    ['Same motion, different frames: the adjoint', 'V_s = [Ad_T_sb]V_b: ω_s = Rω_b, v_s = Rv_b + p × ω_s. Body twist: "how the body sees itself move"; spatial twist: the velocity of the body point that happens to be at the {s} origin. Neither is "the velocity of the body\'s origin" unless frames coincide.'],
+    ['Two routes to the same twist', 'From the hardware: V = Sθ̇ with S = (ŝ, −ŝ × q + hŝ). From measured motion: [V_s] = ṪT⁻¹, [V_b] = T⁻¹Ṫ. The math panel checks the finite-difference route against the formula.'],
+    ['Interview: what is a twist, why not Ṫ?', 'Ṫ has 12 entries but a rigid body has 6 velocity freedoms. V = (ω, v) keeps exactly those. By Chasles it is one screw: a spin about the line through ω × v/|ω|² plus a slide of pitch ω·v/|ω|². Get it as Sθ̇ from hardware, or [V_s] = ṪT⁻¹ from motion.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, P0 = [s.x, s.y, s.ph], vb = [s.vx, s.vy], Pose = S >= 2 ? flow(P0, s.w, vb, T) : P0;
+    const P = Pl.panel(0, 0, .64, 1, [-3, 3, -3, 3]); P.frame(['a point in two frames', 'left vs right', 'velocity field', 'one screw', 'adjoint', 'two routes', 'twist'][S]); P.grid(1, '--line');
+    drawFrame(P, [0, 0, 0], .6, null, '{s}');
+    if (S === 1) { const Tm = [0, 2, Math.PI / 2]; body(P, P0, '--grey'); drawFrame(P, P0, .5, null, '{b}'); const L = compose(Tm, P0), Rr = compose(P0, Tm); body(P, L, '--b'); drawFrame(P, L, .5, null, "T·T_sb"); body(P, Rr, '--d'); drawFrame(P, Rr, .5, null, "T_sb·T"); }
+    else {
+      body(P, Pose); drawFrame(P, Pose, .5, null, '{b}');
+      if (S === 0) { const ps = apply(P0, [s.pbx, s.pby]); P.dot(ps, 6, '--e'); P.arrow([P0[0], P0[1]], [ps[0] - P0[0], ps[1] - P0[1]], '--e', 1.5, null, [4, 3]); P.text(ps, 'p', '--e', 8, -6); }
+      if (S >= 2) { [[-.4, -.25], [.6, -.25], [.6, .25], [-.4, .25], [0, 0], [.3, 0]].forEach(pb => { const r = MR.mv(R2(Pose[2]), pb), vbP = [vb[0] - s.w * pb[1], vb[1] + s.w * pb[0]], vs = MR.mv(R2(Pose[2]), vbP); P.arrow(apply(Pose, pb), MR.scl(vs, .4), '--e', 2); }); }
+      if (S >= 3 && Math.abs(s.w) > 1e-6) { const cb = [-vb[1] / s.w, vb[0] / s.w], c = apply(Pose, cb); P.dot(c, 7, '--d', true); P.text(c, 'screw axis (ICR)', '--d', 10, 4, { size: 12 });
+        if (S === 3) [[.6, .25], [-.4, -.25]].forEach(pb => { const pc = apply(Pose, pb); P.line(c, pc, '--d', 1, [3, 3]); }); }
+    }
+    const Vs = bodyToSpace(Pose, s.w, MR.mv(R2(0), vb));
+    const R = Pl.panel(.65, 0, .35, 1, [0, 1, 0, 1], false); R.frame();
+    const ps = apply(P0, [s.pbx, s.pby]);
+    NN.lines(R, S === 0 ? [['T_sb = (R(φ), p)', '--ink'], ['p_sb = (' + f(s.x) + ', ' + f(s.y) + ')', '--ink'], ['φ = ' + f(s.ph / D2R, 0) + '°', '--ink'], ['p_b = (' + f(s.pbx) + ', ' + f(s.pby) + ')', '--e'], ['p_s = R p_b + p_sb', '--e'], ['    = (' + f(ps[0]) + ', ' + f(ps[1]) + ')', '--e'], ['', ''], ['direction (·, ·, 0):', '--muted'], [' ignores translation', '--muted']]
+      : S === 1 ? [['T = Trans(2ŷ)Rot(ẑ, 90°)', '--ink'], ['left  T·T_sb: space axes', '--b'], ['right T_sb·T: body axes', '--d'], ['', ''], ['grey: T_sb', '--grey']]
+      : [['V_b = (ω, v) = (' + f(s.w) + '; ' + f(s.vx) + ', ' + f(s.vy) + ')', '--a'], ['V_s = (' + f(Vs[0]) + '; ' + f(Vs[1]) + ', ' + f(Vs[2]) + ')', '--b'], ['v_P = v + ω × r', '--e'], ...(Math.abs(s.w) > 1e-6 ? [['centre r_b = ω × v/|ω|²', '--d'], ['  = (' + f(-s.vy / s.w) + ', ' + f(s.vx / s.w) + ') in {b}', '--d'], ['pitch h = 0 (planar)', '--muted']] : [['ω = 0: pure translation', '--d'], [' (pitch ∞)', '--muted']]), ['', ''], [S === 4 ? 'ω_s = ω_b (planar), v_s = Rv_b + p × ω' : S === 5 ? 'check below: ṪT⁻¹ vs V_s' : 'Play: the body flows', '--muted']], { top: .07, gap: .085 });
+  },
+  math(S) {
+    const s = st(), P0 = [s.x, s.y, s.ph], vb = [s.vx, s.vy], Pose = flow(P0, s.w, vb, T), Vs = bodyToSpace(Pose, s.w, vb);
+    const h = 1e-5, A = flow(P0, s.w, vb, T + h), B = flow(P0, s.w, vb, T - h), xd = (A[0] - B[0]) / 2 / h, yd = (A[1] - B[1]) / 2 / h, fd = [s.w, xd + s.w * Pose[1], yd - s.w * Pose[0]];
+    const rows = [`${E(`(p_s, 1) = T_sb (p_b, 1)  ⇔  p_s = R_sb p_b + p_sb`)}`,
+`${E(`T_sb′ = T T_sb (space axes),   T_sb″ = T_sb T (body axes)`)}`,
+`${E(`v_P = v_A + ω × r_{P/A}`)}`,
+`${E(`r = ω × v_A/|ω|²,   h = ω·v_A/|ω|²
+v_P = ω × (P − q) + hω,   tan(helix) = h/r`)}`,
+`${E(`V_a = [Ad_T_ab] V_b:  ω_a = Rω_b,  v_a = Rv_b + p × (Rω_b)
+V_s = (${f(Vs[0], 3)}; ${f(Vs[1], 3)}, ${f(Vs[2], 3)})`)}`,
+`${E(`[V_s] = Ṫ T⁻¹ (finite difference) = (${f(fd[0], 3)}; ${f(fd[1], 3)}, ${f(fd[2], 3)})
+[Ad] V_b                          = (${f(Vs[0], 3)}; ${f(Vs[1], 3)}, ${f(Vs[2], 3)})
+S = (ŝ, −ŝ × q + hŝ),  V = S θ̇`)}`,
+`<p>Six velocity freedoms, one screw.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

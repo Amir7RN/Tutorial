@@ -87,6 +87,16 @@ STEP_LABS = {
     "FaultEstimationPage": ("fault_estimation.html", "a GP's variance is the threshold"),
     "FaultLatencyPage": ("fault_latency.html", "43 ms or 103 ms: build the latency budget"),
     "FaultResultsPage": ("fault_results.html", "four channels, one mechanism, a bounded claim"),
+    # configuration space and rigid motion
+    "RoboRoadmapPage": ("robo_roadmap.html", "q → T → V → τ on one planar arm"),
+    "CSpacePage": ("cspace.html", "count the DOF, then see the torus"),
+    "CSpaceTopoPage": ("cspace_topo.html", "shape vs representation: wrap, charts, SO(3)"),
+    "ConstraintsPage": ("constraints.html", "holonomic, nonholonomic, task space, workspace"),
+    "RotationsPage": ("rotations.html", "R as a frame: six rules, SO(3), left vs right"),
+    "AngularVelocityPage": ("angular_velocity.html", "differentiate RᵀR = I: Ṙ = [ω]R"),
+    "ExpCoordsPage": ("exp_coords.html", "ω vs Euler rates, e^[ω]θ and log R"),
+    "TwistsPage": ("twists.html", "T = (R, p) and the twist: one screw"),
+    "ScrewMotionPage": ("screw_motion.html", "ride a screw, PoE, and wrenches"),
     # kinematics
     "PoEPage": ("poe.html", "forward kinematics, one exponential at a time"),
     "JacobianPage": ("jacobian.html", "the space Jacobian, column by column"),
