@@ -1,0 +1,78 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forward propagation</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, vs = (v, d = 2) => '[' + v.map(x => f(x, d)).join('  ') + ']';
+let SEED = 7, NET = NN.net([3, 4, 4, 2], ['tanh', 'tanh', 'linear'], SEED);
+const SIZES = [3, 4, 4, 2], MACS = [12, 16, 8];
+const st = () => ({ x: [SL.v.x1, SL.v.x2, SL.v.x3].map(v => v / 100) });
+/* how many layers the signal has crossed at this step */
+const reach = S => S === 0 ? 0 : S === 1 ? 1 : S === 2 ? 1 : S === 3 ? 2 : 3;
+SL.app({
+  title: 'Forward propagation: one input vector crosses the network',
+  sub: 'Three inputs, two hidden layers of four tanh units, two linear outputs — the shape of an actor. Multiply, add the bias, squash, hand on: a fixed number of multiply-adds in a fixed order.',
+  view: '2d',
+  legend: [['--c', 'positive weight'], ['--bad', 'negative weight'], ['--f', 'signal in flight'], ['--a', 'layer being computed']],
+  controls: [
+    { id: 'x1', label: 'x₁ (ankle angle, scaled)', min: -150, max: 150, value: 60, fmt: x => f(x / 100) },
+    { id: 'x2', label: 'x₂ (ankle velocity, scaled)', min: -150, max: 150, value: -40, fmt: x => f(x / 100) },
+    { id: 'x3', label: 'x₃ (gait phase, scaled)', min: -150, max: 150, value: 90, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'new weights', onclick: () => { SEED += 11; NET = NN.net(SIZES, ['tanh', 'tanh', 'linear'], SEED); SL.go(SL.st); } }, { label: 'replay this layer', onclick: () => SL.go(SL.st) }],
+  steps: [
+    ['Read the sensors', 'One instant of the gait: three scaled numbers. A feedforward net has no memory — if history matters, you must hand it a window. Nothing has been computed yet.'],
+    ['Layer 1: every node fans out to every edge', 'Each input sends its value down all four edges at once; each hidden unit collects three arrivals, sums them and adds its bias: z⁽¹⁾ = xW⁽¹⁾ + b⁽¹⁾. Twelve dots, one per weight. That fan-out is why the backward pass will be a sum.'],
+    ['Squash, element-wise', 'a⁽¹⁾ = tanh(z⁽¹⁾). Four tanh calls and no mixing — the squash never looks at its neighbours.'],
+    ['Layer 2 mixes features, not inputs', 'z⁽²⁾ = a⁽¹⁾W⁽²⁾ + b⁽²⁾: sixteen multiply-adds over the first layer\'s features, then tanh again.'],
+    ['Linear output', 'y = a⁽²⁾W⁽³⁾ + b⁽³⁾: eight more, no squash, because this answer has no natural bound. (A real actor puts tanh here: the torque has a hardware limit.)'],
+    ['A batch is the same three lines', 'Make x a 64 × 3 array: same W, b broadcast across rows, 64 independent passes from one multiply. Sample i never affects sample j — true for every layer here, false for exactly one layer type: batch norm.'],
+    ['What the forward pass must remember', 'cached_x (the layer\'s input: half of every weight gradient, gW = xᵀδ) and z (to get σ′(z)). Training keeps one cache per layer per sample; inference can overwrite. That memory decides whether a learner can share a machine with a controller.'],
+    ['Why this is allowed in a 1 kHz loop', 'No data-dependent branching, no iteration to a tolerance, no allocation if buffers are preallocated. The tutor\'s actor: ~4 500 multiply-adds and 128 tanh, the same every cycle — microseconds, three orders inside a 1 ms budget.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, c = NN.forward(NET, s.x), R = reach(S), t = SL.ease(SL.anim);
+    const D = Pl.panel(0, 0, .64, .74, [0, 10, 0, 10], false); D.frame(S >= 5 ? 'the same graph, every sample at once' : 'x → h⁽¹⁾ → h⁽²⁾ → y');
+    const flying = S === 1 ? 0 : S === 3 ? 1 : S === 4 ? 2 : -1;
+    const vals = c.a.map((a, k) => k <= R ? a : null); if (S === 1) vals[1] = flying >= 0 && t < 1 ? null : c.z[0];
+    const pos = NN.draw(D, SIZES, { W: NET.map(l => l.W), vals, hl: S === 0 ? 0 : S === 2 ? 1 : R, names: ['x', 'h⁽¹⁾ tanh', 'h⁽²⁾ tanh', 'y linear'], y0: 1.3, y1: 9 });
+    if (flying >= 0 && t < 1) for (let i = 0; i < SIZES[flying]; i++) for (let j = 0; j < SIZES[flying + 1]; j++) D.dot(SL.lerp(pos[flying][i], pos[flying + 1][j], t), 4, '--f');
+    const R2 = Pl.panel(.65, 0, .35, .74, [0, 1, 0, 1], false); R2.frame('values');
+    const done = MACS.slice(0, R).reduce((a, b) => a + b, 0);
+    NN.lines(R2, [['x  = ' + vs(s.x), '--ink'], ['z⁽¹⁾= ' + (R >= 1 ? vs(c.z[0]) : '…'), R >= 1 ? '--ink' : '--muted'], ['a⁽¹⁾= ' + (R >= 1 && S !== 1 ? vs(c.a[1]) : '…'), S >= 2 ? '--a' : '--muted'], ['z⁽²⁾= ' + (R >= 2 ? vs(c.z[1]) : '…'), R >= 2 ? '--ink' : '--muted'], ['a⁽²⁾= ' + (R >= 2 ? vs(c.a[2]) : '…'), R >= 2 ? '--a' : '--muted'], ['y  = ' + (R >= 3 ? vs(c.a[3]) : '…'), R >= 3 ? '--b' : '--muted'], ['', ''], ['multiply-adds so far: ' + done + ' / 36', '--f'], ['tanh calls so far: ' + (R >= 2 ? 8 : S >= 2 ? 4 : 0) + ' / 8', '--f']], { top: .12, gap: .095, size: 11 });
+    const B = Pl.panel(0, .76, 1, .24, [0, 1, 0, 1], false); B.frame();
+    const rows = S <= 4 ? [['z⁽¹⁾ = xW⁽¹⁾ + b⁽¹⁾      (1×3)(3×4) + (4) → 1×4    12 mults   each unit: its own sum of all 3 inputs', R >= 1 ? '--ink' : '--muted'], ['a⁽¹⁾ = tanh(z⁽¹⁾)       1×4 → 1×4                  4 tanh     element-wise, no mixing', S >= 2 ? '--ink' : '--muted'], ['z⁽²⁾,a⁽²⁾               (1×4)(4×4) → 1×4           16 mults   mixes FEATURES, not raw inputs', R >= 2 ? '--ink' : '--muted'], ['y = a⁽²⁾W⁽³⁾ + b⁽³⁾      (1×4)(4×2) → 1×2           8 mults    linear: no natural bound', R >= 3 ? '--ink' : '--muted']]
+      : S === 5 ? [['X: 64×3   X W⁽¹⁾ + b⁽¹⁾: 64×4   …   Y: 64×2', '--a'], ['b is broadcast across the 64 rows; row i depends only on row i of X', '--ink'], ['exception: batch norm uses the batch mean/variance (page 86)', '--bad']]
+      : S === 6 ? [['void forward(...) { cached_x = x;  z = b;  z[n][j] += x[n][i]*W[i][j];  a = σ(z); }', '--ink'], ['cached_x → gW = xᵀδ ("blame × how big the thing it multiplied was")', '--a'], ['z → σ′(z) in backward; inference-only can overwrite its buffers as it goes', '--b']]
+      : [['actor 5→64→64→2: 5·64 + 64·64 + 64·2 = ' + (5 * 64 + 64 * 64 + 64 * 2) + ' multiply-adds, 128 tanh', '--a'], ['bounded, repeatable time: no branch, no iteration, no allocation (a GC in a 1 kHz loop is jitter = lost phase margin)', '--ink'], ['compare: solving maxₐ Q(s,a) numerically at runtime takes as many iterations as it takes — the argmax problem', '--bad']];
+    NN.lines(B, rows, { top: .22, gap: .22, size: 11 });
+  },
+  math(S) {
+    const s = st(), c = NN.forward(NET, s.x), L1 = NET[0];
+    const rows = [
+`${E(`a⁽⁰⁾ = x = ${vs(s.x)}
+z⁽ᵏ⁾ = a⁽ᵏ⁻¹⁾W⁽ᵏ⁾ + b⁽ᵏ⁾,   a⁽ᵏ⁾ = σₖ(z⁽ᵏ⁾)`)}
+<p>A direct torque policy reads this every sample within a stride; a stride-level policy reads a finished stride summary instead and cannot read future samples.</p>`,
+`${E([0, 1, 2, 3].map(j => `z⁽¹⁾${j + 1} = ${s.x.map((x, i) => f(x) + '·' + f(L1.W[i][j])).join(' + ')} + ${f(L1.b[j])} = ${f(c.z[0][j], 3)}`).join('\n'))}
+<p>Twelve weights, twelve dots in flight, three arrivals per hidden unit.</p>`,
+`${E(c.z[0].map((z, j) => `tanh(${f(z, 3)}) = ${f(c.a[1][j], 3)}`).join('\n'))}`,
+`${E(`z⁽²⁾ = a⁽¹⁾W⁽²⁾ + b⁽²⁾ = ${vs(c.z[1], 3)}
+a⁽²⁾ = tanh(z⁽²⁾)       = ${vs(c.a[2], 3)}`)}`,
+`${E(`y = a⁽²⁾W⁽³⁾ + b⁽³⁾ = ${vs(c.a[3], 4)}
+total: 12 + 16 + 8 = 36 multiply-adds, 8 tanh`)}
+<p>One number for a critic, one action vector for an actor.</p>`,
+`${E(`X ∈ ℝ^(64×3) → Z⁽¹⁾ = XW⁽¹⁾ + 1·b⁽¹⁾ ∈ ℝ^(64×4) → … → Y ∈ ℝ^(64×2)`)}
+<p>Nothing about the maths changes; the batch rides in front.</p>`,
+`${ul(['<b>cached_x</b>: the weight gradient is xᵀ·dz, so the input is half of every weight update.', '<b>z</b>: backward needs σ′(z), and z is the cheapest thing to keep that recovers it.', 'Training memory ≈ one cached activation per layer per sample until backward consumes it.'])}`,
+`${E(`actor MACs = 5·64 + 64·64 + 64·2 = ${5 * 64 + 64 * 64 + 64 * 2}
+tanh calls = 64 + 64 = 128
+time ≈ single-digit µs  ≪  1 ms deadline`)}
+<p>Carry forward: multiply, add the bias, squash, hand on; fan out at every node; cache x and z. The next page runs the identical graph backwards.</p>`];
+    return rows[S];
+  },
+  stats() { const c = NN.forward(NET, st().x); return `<span><b>y</b>${vs(c.a[3], 3)}</span>`; },
+});
+</script>
+</body></html>

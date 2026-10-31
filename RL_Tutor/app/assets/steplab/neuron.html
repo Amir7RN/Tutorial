@@ -1,0 +1,141 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What a neuron computes</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+let ACT = 'tanh';
+const st = () => { const v = SL.v; return { x: [v.x1, v.x2, v.x3].map(a => a / 100), w: [v.w1, v.w2, v.w3].map(a => a / 100), b: v.b / 100, c: [v.c1, v.c2, v.c3].map(a => a / 100), bb: [v.b1, v.b2, v.b3].map(a => a / 100) }; };
+const neuron = s => { const p = s.x.map((x, i) => x * s.w[i]), z = p.reduce((a, b) => a + b, 0) + s.b, A = NN.act[ACT]; return { p, z, y: A.f(z), d: A.d(z) }; };
+/* a fixed 2-layer linear net on a scalar input, to show the collapse */
+const W1 = [[.8, -1.1, .5]], b1 = [.2, -.3, .1], W2 = [[.6], [.4], [-.9]], b2 = [.15];
+const lin2 = x => { const h = W1[0].map((w, j) => x * w + b1[j]); return h.reduce((s, hj, j) => s + hj * W2[j][0], 0) + b2[0]; };
+const Wstar = W1[0].reduce((s, w, j) => s + w * W2[j][0], 0), bstar = b1.reduce((s, b, j) => s + b * W2[j][0], 0) + b2[0];
+const approx = (s, x) => s.c.reduce((a, c, k) => a + c * Math.tanh(3 * (x - s.bb[k])), 0);
+SL.app({
+  title: 'What a neuron computes',
+  sub: 'A weight is a gain, a bias is an offset, an activation is a saturation. One neuron is one line of arithmetic; everything impressive comes from stacking it.',
+  view: '2d',
+  legend: [['--c', 'positive weight / contribution'], ['--bad', 'negative'], ['--a', 'z and y'], ['--b', 'slope σ′(z)'], ['--d', 'tanh units']],
+  controls: [
+    { id: 'x1', label: 'input x₁', min: -200, max: 200, value: 120, fmt: x => f(x / 100) },
+    { id: 'x2', label: 'input x₂', min: -200, max: 200, value: -60, fmt: x => f(x / 100) },
+    { id: 'x3', label: 'input x₃', min: -200, max: 200, value: 80, fmt: x => f(x / 100) },
+    { id: 'w1', label: 'weight w₁', min: -200, max: 200, value: 90, fmt: x => f(x / 100) },
+    { id: 'w2', label: 'weight w₂', min: -200, max: 200, value: 140, fmt: x => f(x / 100) },
+    { id: 'w3', label: 'weight w₃', min: -200, max: 200, value: -70, fmt: x => f(x / 100) },
+    { id: 'b', label: 'bias b', min: -300, max: 300, value: -30, fmt: x => f(x / 100) },
+    { id: 'c1', label: 'unit 1 output weight (step 7)', min: -200, max: 200, value: 110, fmt: x => f(x / 100) },
+    { id: 'c2', label: 'unit 2 output weight', min: -200, max: 200, value: -90, fmt: x => f(x / 100) },
+    { id: 'c3', label: 'unit 3 output weight', min: -200, max: 200, value: 70, fmt: x => f(x / 100) },
+    { id: 'b1', label: 'unit 1 bend point', min: -200, max: 200, value: -100, fmt: x => f(x / 100) },
+    { id: 'b2', label: 'unit 2 bend point', min: -200, max: 200, value: 10, fmt: x => f(x / 100) },
+    { id: 'b3', label: 'unit 3 bend point', min: -200, max: 200, value: 110, fmt: x => f(x / 100) },
+  ],
+  buttons: ['tanh', 'relu', 'sigmoid', 'linear'].map(a => ({ label: a, toggle: true, pressed: a === 'tanh', onclick: e => { ACT = a; document.querySelectorAll('#btns button').forEach(b => b.setAttribute('aria-pressed', b.textContent === a ? 'true' : 'false')); SL.redraw(); } }))
+    .concat([{ label: 'b = −2 (threshold at 2)', onclick: () => { SL.setControl('b', -200); SL.redraw(); } }]),
+  steps: [
+    ['One line of arithmetic', 'Multiply each input by its own number, add them up, add one more number, squash through a fixed curve: z = w·x + b, y = σ(z). Nothing else is inside a neuron.'],
+    ['A weight is a gain', 'The bars are the products wᵢxᵢ — literally all the neuron did before the squash. Sign says push up or down, size says how hard. A big weight on a small input and a small weight on a big input look identical: only the product arrives. Hence input scaling.'],
+    ['A bias is an offset', 'b shifts the threshold: with b = −2 the unit stays quiet until the weighted sum passes 2. Without it every neuron is forced through the origin. (This b is not mechanical damping b.)'],
+    ['An activation is a saturation', 'σ is a fixed, parameter-free curve: tanh is a soft limiter, ReLU a half-wave rectifier. The backward pass needs its slope σ′(z), which is why z gets its own name and is cached.'],
+    ['The control dictionary', 'weight = gain K (learned, not placed on a root locus) · bias = setpoint offset · activation = limiter · layer = bank of parallel gains · depth = cascaded blocks with a limiter in between.'],
+    ['A layer is one matrix multiply', 'n neurons looking at the same x: z = xW + b with W of shape n_in × n_out, one column per neuron. x is a row, so a batch of 64 is a 64 × n_in array and one multiply does all 64.'],
+    ['Without an activation, depth is a lie', 'Two linear layers: (xW₁ + b₁)W₂ + b₂ = x(W₁W₂) + (b₁W₂ + b₂) — one layer. Fifty collapse to one. A linear actor is just u = −Kx, the state-feedback page.'],
+    ['With one, you can bend anything', 'Shifted, scaled tanh units summed by an output neuron: each bias puts a bend somewhere, each output weight sets its height. Wider layer, more bends — universal approximation without the epsilons.'],
+    ['Count the parameters once', 'Actor 5 → 64 → 64 → 2: 4 674 numbers. Critic 7 → 64 → 64 → 1: 4 737. Targets: another 9 411. Under ten thousand live numbers, against 259 million table cells — and they describe a smooth function, so one sample informs its neighbours.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, n = neuron(s), A = NN.act[ACT];
+    if (S <= 4) {
+      const D = Pl.panel(0, 0, .56, .62, [0, 10, 0, 6], false); D.frame('one neuron: inputs × weights → Σ + b → σ');
+      const ins = [[1.3, 4.8], [1.3, 3], [1.3, 1.2]], sum = [5.4, 3], out = [8.6, 3];
+      ins.forEach((p, i) => { D.dot(p, 14, '--grey', true); D.text(p, f(s.x[i]), '--ink', 0, 4, { size: 11, align: 'center' }); D.text(p, 'x' + (i + 1), '--muted', -30, 4, { size: 12 });
+        D.line([p[0] + .45, p[1]], [sum[0] - .5, sum[1]], s.w[i] >= 0 ? '--c' : '--bad', Math.max(1, Math.abs(s.w[i]) * 3.5));
+        D.text([(p[0] + sum[0]) / 2, (p[1] + sum[1]) / 2], 'w' + (i + 1) + '=' + f(s.w[i]), s.w[i] >= 0 ? '--c' : '--bad', -20, -6, { size: 11 }); });
+      D.dot(sum, 20, S === 2 ? '--b' : '--a', true); D.text(sum, 'Σ+b', '--ink', 0, 4, { size: 12, align: 'center' }); D.text(sum, 'z = ' + f(n.z), '--a', 0, 40, { size: 12, align: 'center' });
+      D.line([sum[0] + .6, 3], [out[0] - .5, 3], '--a', 3); D.dot(out, 18, S === 3 ? '--b' : '--a', true); D.text(out, 'σ', '--ink', 0, 5, { size: 13, align: 'center' }); D.text(out, 'y = ' + f(n.y), '--a', 0, 38, { size: 12, align: 'center' });
+      D.text([5.4, 5.4], 'bias b = ' + f(s.b), '--b', 0, 0, { size: 12, align: 'center' });
+      const B = Pl.panel(.57, 0, .43, .62, [0, 4, -4, 4], false); B.frame('contributions wᵢxᵢ, then + b'); B.clip(() => NN.bars(B, [...n.p, s.b, n.z], { labels: ['w₁x₁', 'w₂x₂', 'w₃x₃', 'b', 'z'], cols: [...n.p.map(v => v >= 0 ? '--c' : '--bad'), '--b', '--a'] }));
+      const C = Pl.panel(0, .64, .56, .36, [-4, 4, -1.3, 1.3], false), curve = [...Array(161)].map((_, i) => { const z = -4 + i / 20; return [z, Math.max(-1.3, Math.min(1.3, A.f(z)))]; });
+      C.series([{ pts: curve, cl: '--a', w: 2.5, label: ACT + '(z)' }, { pts: curve.map(p => [p[0], A.d(p[0])]), cl: '--b', w: 1.5, dash: [4, 3], label: 'σ′(z)' }], { title: 'the squash, and its slope' });
+      const zc = Math.max(-4, Math.min(4, n.z)); C.line([zc, -1.3], [zc, 1.3], '--grey', 1, [3, 3]); C.dot([zc, Math.max(-1.3, Math.min(1.3, n.y))], 5, '--a');
+      if (S >= 3) C.line([zc - .8, n.y - .8 * n.d], [zc + .8, n.y + .8 * n.d], '--b', 2.5);
+      if (S === 2) { C.line([-s.b, -1.3], [-s.b, 1.3], '--b', 2); C.text([-s.b, 1.1], 'threshold: w·x = ' + f(-s.b), '--b', 4, 0, { size: 11 }); }
+      const R = Pl.panel(.57, .64, .43, .36, [0, 1, 0, 1], false); R.frame();
+      const rows = S === 4 ? [['weight w  ↔  gain K', '--c'], ['bias b    ↔  setpoint offset', '--b'], ['σ         ↔  saturation / limiter', '--a'], ['layer     ↔  bank of parallel gains', '--ink'], ['depth     ↔  cascade, limiter between', '--ink']]
+        : [['z = ' + n.p.map(v => f(v)).join(' + ') + ' + ' + f(s.b), '--ink'], ['  = ' + f(n.z, 3), '--a'], ['y = ' + ACT + '(z) = ' + f(n.y, 3), '--a'], ['σ′(z) = ' + f(n.d, 3), '--b'], [S === 1 ? 'only the PRODUCT wᵢxᵢ reaches the unit' : S === 2 ? 'b moves where the unit switches on' : 'cache z: backward needs σ′(z)', '--muted']];
+      NN.lines(R, rows, { top: .2, gap: .17 });
+    } else if (S === 5) {
+      const r = NN.rng(5), W = [...Array(3)].map(() => [...Array(4)].map(() => (2 * r() - 1))), b = [.1, -.2, .05, .3];
+      const z = b.map((bj, j) => bj + s.x.reduce((a, x, i) => a + x * W[i][j], 0));
+      const D = Pl.panel(0, 0, .5, 1, [0, 10, 0, 10], false); D.frame('a layer of four neurons on the same x');
+      NN.draw(D, [3, 4], { W: [W], vals: [s.x, z.map(Math.tanh)], hl: 1, names: ['x (1×3)', 'y = σ(xW+b) (1×4)'], y0: 1.4, y1: 8.6 });
+      const M = Pl.panel(.5, 0, .5, 1, [0, 1, 0, 1], false); M.frame('the same thing as one matrix product');
+      NN.lines(M, [['x = [' + s.x.map(v => f(v)).join('  ') + ']   (1 × 3)', '--ink'], ['', ''], ...SL.mat(W, 2, 'W').split('\n').map(l => [l, '--c']), ['   (3 × 4: one column per neuron)', '--muted'], ['', ''], ['z = xW + b = [' + z.map(v => f(v)).join('  ') + ']', '--a'], ['', ''], ['batch of 64:  (64×3)(3×4) + b  →  64×4', '--b'], ['one multiply, 64 independent samples', '--muted']], { top: .1, gap: .075 });
+    } else if (S === 6) {
+      const P = Pl.panel(0, 0, .55, 1, [-2, 2, -2.5, 2.5], false), pts = [...Array(81)].map((_, i) => { const x = -2 + i / 20; return [x, lin2(x)]; });
+      P.series([{ pts, cl: '--a', w: 5, label: 'two linear layers' }, { pts: pts.map(p => [p[0], Wstar * p[0] + bstar]), cl: '--b', w: 2, dash: [6, 4], label: 'one layer W*, b*' }], { title: 'stacked linear layers draw one straight line' });
+      const M = Pl.panel(.56, 0, .44, 1, [0, 1, 0, 1], false); M.frame();
+      NN.lines(M, [['W₁ = [' + W1[0].map(v => f(v)).join(' ') + ']', '--ink'], ['W₂ = [' + W2.map(r => f(r[0])).join(' ') + ']ᵀ', '--ink'], ['W* = W₁W₂ = ' + f(Wstar, 3), '--b'], ['b* = b₁W₂ + b₂ = ' + f(bstar, 3), '--b'], ['', ''], ['critic: could never curve Q', '--bad'], ['actor: μ(s) = linear feedback', '--bad'], ['       = u = −Kx  (page 18)', '--muted'], ['', ''], ['the activation is the only thing', '--a'], ['that lets a net be more than a gain', '--a']], { top: .1, gap: .075 });
+    } else if (S === 7) {
+      const xs = [...Array(161)].map((_, i) => -3 + i * 6 / 160);
+      const U = Pl.panel(0, 0, .5, 1, [-3, 3, -2.2, 2.2], false);
+      U.series(s.c.map((c, k) => ({ pts: xs.map(x => [x, c * Math.tanh(3 * (x - s.bb[k]))]), cl: ['--d', '--e', '--f'][k], w: 2, label: 'unit ' + (k + 1) })), { title: 'three tanh units: cₖ·tanh(3(x − bₖ))' });
+      s.bb.forEach((b, k) => U.line([b, -2.2], [b, 2.2], ['--d', '--e', '--f'][k], 1, [3, 3]));
+      const Y = Pl.panel(.51, 0, .49, 1, [-3, 3, -3.2, 3.2], false), tgt = x => 1.2 * Math.sin(1.4 * x);
+      Y.series([{ pts: xs.map(x => [x, approx(s, x)]), cl: '--a', w: 3, label: 'output = Σ units' }, { pts: xs.map(x => [x, tgt(x)]), cl: '--grey', w: 1.5, dash: [5, 4], label: 'a curve to imitate' }], { title: 'what the output neuron sees' });
+    } else {
+      const P = Pl.panel(0, 0, .6, 1, [0, 4, 0, 9.2], false); P.frame('parameters, log₁₀ scale');
+      const vals = [4674, 4737, 9411, 259e6], lab = ['actor', 'critic', 'targets', 'table cells'];
+      NN.bars(P, vals.map(Math.log10), { labels: lab, cols: ['--a', '--b', '--grey', '--bad'], show: false });
+      vals.forEach((v, i) => P.text([i + .5, Math.log10(v)], v >= 1e6 ? '259 M' : v.toLocaleString('en-US'), '--ink', 0, -6, { size: 12, align: 'center' }));
+      const M = Pl.panel(.61, 0, .39, 1, [0, 1, 0, 1], false); M.frame();
+      NN.lines(M, [['actor  μ(s): 5 → 64 → 64 → 2', '--a'], [' 5·64+64 + 64·64+64 + 64·2+2', '--muted'], [' = ' + NN.nParams([5, 64, 64, 2]) + ', output tanh', '--a'], ['critic Q(s,a): 7 → 64 → 64 → 1', '--b'], [' 7·64+64 + 64·64+64 + 64+1', '--muted'], [' = ' + NN.nParams([7, 64, 64, 1]) + ', output linear', '--b'], ['targets: copies, +9 411,', '--grey'], [' moved by a crawl, never a gradient', '--grey']], { top: .1, gap: .1 });
+    }
+  },
+  math(S) {
+    const s = st(), n = neuron(s);
+    const rows = [
+`${E(`z = w₁x₁ + w₂x₂ + w₃x₃ + b = w·x + b
+  = ${n.p.map(v => f(v, 3)).join(' + ')} + ${f(s.b, 3)} = ${f(n.z, 4)}
+y = σ(z) = ${ACT}(${f(n.z, 3)}) = ${f(n.y, 4)}`)}
+${ul(['<b>x</b>: what the neuron looks at (in a critic: part joint angle, part torque).', '<b>w</b>: one gain per input. <b>b</b>: the offset. <b>z</b>: pre-activation. <b>σ</b>: fixed curve, no parameters.'])}`,
+`${E(n.p.map((v, i) => `w${i + 1}x${i + 1} = ${f(s.w[i], 2)} × ${f(s.x[i], 2)} = ${f(v, 3)}`).join('\n'))}
+<p>The weight is the same object as a proportional gain — learned by gradient descent rather than dialled in. Because only wᵢxᵢ arrives, a state whose components have wildly different units must be <b>normalised</b> before it is fed to a critic.</p>`,
+`${E(`unit is "on" (z > 0) when  w·x > −b = ${f(-s.b, 2)}
+now w·x = ${f(n.z - s.b, 3)}  →  z = ${f(n.z, 3)}`)}
+<p>b = −2 means: quiet until the weighted sum climbs past 2. The neural-net bias is a setpoint offset, not the damping coefficient b of the mechanics pages.</p>`,
+`${E(`σ′(z) = ${ACT === 'tanh' ? '1 − tanh²(z)' : ACT === 'relu' ? '1 if z > 0 else 0' : ACT === 'sigmoid' ? 'σ(z)(1 − σ(z))' : '1'} = ${f(n.d, 4)}`)}
+<p>The forward pass uses σ(z); the backward pass uses only σ′(z). z, not y, is the thing worth keeping. Next page: which curve, judged by its slope.</p>`,
+`${E(`neural net        control
+weight w          gain K
+bias b            offset / setpoint bias
+activation σ      saturation / limiter
+layer             bank of parallel gain blocks
+depth             cascaded blocks (limiter between)`)}`,
+`${E(`z = xW + b,   y = σ(z),   W ∈ ℝ^(n_in × n_out)
+x: 1 × 3   W: 3 × 4   b: 4   →  z: 1 × 4
+batch: X is 64 × 3  →  Z = XW + b is 64 × 4`)}
+<p>The batch dimension rides along in front; every backprop formula has the same shape for a batch of 1 and of 256.</p>`,
+`${E(`y = (xW₁ + b₁)W₂ + b₂ = x·(W₁W₂) + (b₁W₂ + b₂)
+W* = ${f(Wstar, 4)},   b* = ${f(bstar, 4)}
+check at x = 1: two layers ${f(lin2(1), 4)}, one layer ${f(Wstar + bstar, 4)}`)}
+<p>A linear network is a gain matrix. Depth without a nonlinearity buys a slower matrix multiply and nothing else.</p>`,
+`${E(`ŷ(x) = Σₖ cₖ·tanh(3(x − bₖ))
+c = (${s.c.map(v => f(v)).join(', ')}),  bends at (${s.bb.map(v => f(v)).join(', ')})
+ŷ(0) = ${f(approx(s, 0), 3)},  ŷ(1) = ${f(approx(s, 1), 3)}`)}
+<p>All cₖ equal: one big smooth step. Spread the bends: one bend per unit. This is a one-hidden-layer network, and widening it lets you bend anywhere.</p>`,
+`${E(`actor  5→64→64→2 : 5·64+64 + 64·64+64 + 64·2+2 = ${NN.nParams([5, 64, 64, 2])}
+critic 7→64→64→1 : 7·64+64 + 64·64+64 + 64·1+1 = ${NN.nParams([7, 64, 64, 1])}
+targets (copies)                         = ${NN.nParams([5, 64, 64, 2]) + NN.nParams([7, 64, 64, 1])}
+table for the same problem               ≈ 259 000 000 cells`)}
+<p>Actor output tanh (the bound is a hardware fact); critic output linear (Q is a discounted sum, no reason to be in [−1, 1]). The win is not storage: a smooth function generalises across nearby gait cycles.</p>`];
+    return rows[S];
+  },
+  stats() { const n = neuron(st()); return `<span><b>z</b>${f(n.z, 3)}</span><span><b>y</b>${f(n.y, 3)}</span><span><b>σ′(z)</b>${f(n.d, 3)}</span>`; },
+});
+</script>
+</body></html>

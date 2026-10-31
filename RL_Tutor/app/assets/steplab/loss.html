@@ -1,0 +1,127 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Losses and their gradients</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { y: v.y / 100, d: v.d / 100, out: v.out / 10, zc: v.zc / 100, r: v.r / 100, g: v.g / 1000, qn: v.qn / 100, q: v.q / 100 }; };
+const L = { mse: (e) => e * e, mae: e => Math.abs(e), hub: (e, d) => Math.abs(e) <= d ? .5 * e * e : d * (Math.abs(e) - .5 * d) };
+const G = { mse: e => 2 * e, mae: e => Math.sign(e), hub: (e, d) => Math.max(-d, Math.min(d, e)) };
+const DATA = [1.0, 1.4, 0.8, 1.2, 1.1, 0.9];
+/* minimiser of Σ loss(c − tᵢ) by bisection on the (monotone) gradient sum */
+const fit = (ts, g, d) => { let lo = -20, hi = 30; for (let i = 0; i < 80; i++) { const m = (lo + hi) / 2, s = ts.reduce((a, t) => a + g(m - t, d), 0); s > 0 ? hi = m : lo = m; } return (lo + hi) / 2; };
+SL.app({
+  title: 'Losses, and what they do to the gradient',
+  sub: 'You never optimise the loss — you ride its derivative. What reaches the weights is dL/dy, so a loss is chosen by how big that is when you are badly wrong and how fast it dies as you get close.',
+  view: '2d',
+  legend: [['--a', 'MSE'], ['--d', 'MAE'], ['--c', 'Huber'], ['--b', 'prediction / fit'], ['--bad', 'outlier / dead gradient']],
+  controls: [
+    { id: 'y', label: 'prediction y (target 0)', min: -300, max: 300, value: 150, fmt: x => f(x / 100) },
+    { id: 'd', label: 'Huber δ', min: 10, max: 300, value: 100, fmt: x => f(x / 100) },
+    { id: 'out', label: 'one outlier target (step 4)', min: -50, max: 200, value: 120, fmt: x => f(x / 10, 1) },
+    { id: 'zc', label: 'logit of the right class (step 5)', min: -600, max: 600, value: -400, fmt: x => f(x / 100) },
+    { id: 'r', label: 'reward r (step 7)', min: -200, max: 200, value: 50, fmt: x => f(x / 100) },
+    { id: 'g', label: 'γ', min: 800, max: 999, value: 990, fmt: x => f(x / 1000, 3) },
+    { id: 'qn', label: "Q′(s′, μ′(s′))", min: -500, max: 500, value: 200, fmt: x => f(x / 100) },
+    { id: 'q', label: 'Q(s, a) now', min: -500, max: 500, value: 120, fmt: x => f(x / 100) },
+  ],
+  steps: [
+    ['A loss is a slope generator', 'Top: three losses of the error y − t. Bottom: their gradients. The loss curves rank models almost identically; the gradient curves do not — and only the gradient reaches the weights.'],
+    ['MSE: grows with the error', '(y − t)², gradient 2(y − t). Smooth everywhere, its minimiser is the MEAN of the targets — exactly what a value function is. Weakness: one outlier target moves the fit a long way.'],
+    ['MAE: only which side', '|y − t|, gradient ±1 whatever the error. Minimiser is the MEDIAN, robust to outliers — but the constant gradient never shrinks near the optimum, so it rattles instead of settling.'],
+    ['Huber: clipped at ±δ', 'L2 inside |e| ≤ δ, L1 outside. MSE\'s settling with MAE\'s tolerance. The standard DQN/DDPG critic loss on hard problems: one bad bootstrapped target cannot produce one enormous step.'],
+    ['Mean, median, and a bad target', 'Six good targets near 1 and one outlier. Drag the outlier: the MSE fit (mean) follows it, MAE (median) ignores it, Huber moves a bounded amount. Manufactured targets will produce outliers.'],
+    ['Cross-entropy is glued to softmax', 'L = −Σ tᵢ log pᵢ with p = softmax(z) gives ∂L/∂z = p − t: predicted minus wanted, no σ′ factor. Softmax + MSE carries p(1 − p): confidently wrong (p ≈ 0) means gradient ≈ 0 — the more wrong, the less it learns.'],
+    ['Output activation ↔ paired loss', 'softmax ↔ cross-entropy (p − t), sigmoid ↔ binary CE (p − t), linear ↔ MSE/Huber (2(y − t)), tanh ↔ usually no loss: a bounded actor output whose gradient arrives from a critic.'],
+    ['The critic: honest loss, manufactured target', 'L = mean(Q(s,a) − y)², textbook MSE — but y = r + γ(1 − d)Q′(s′, μ′(s′)) contains the network\'s own opinion, held fixed. One real reward per target is the only fact in it.'],
+    ['The actor has no loss', 'No target action exists — that is why this is RL. The code minimises −Q(s, μ(s)): the seed is −1, it flows through the critic to its action input and on into the actor. Critic gradients on that pass are thrown away. The printed actor "loss" is no progress measure — watch returns.'],
+    ['Three seeds, one backward pass', 'Regression → 2(y − t). Softmax classification → p − t. Actor → −1 routed through a critic. The loss\'s only job is to produce the seed.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, e = s.y;
+    if (S <= 3) {
+      const show = S === 0 ? ['mse', 'mae', 'hub'] : [['mse'], ['mae'], ['hub']][S - 1], cl = { mse: '--a', mae: '--d', hub: '--c' };
+      const es = [...Array(241)].map((_, i) => -3 + i / 40);
+      const T = Pl.panel(0, 0, .62, .5, [-3, 3, -.2, 9.2], false), B = Pl.panel(0, .51, .62, .49, [-3, 3, -6.5, 6.5], false);
+      T.series(['mse', 'mae', 'hub'].map(k => ({ pts: es.map(x => [x, L[k](x, s.d)]), cl: show.includes(k) ? cl[k] : '--line', w: show.includes(k) ? 2.5 : 1, label: { mse: 'MSE', mae: 'MAE', hub: 'Huber' }[k] })), { title: 'loss L(e)' });
+      B.series(['mse', 'mae', 'hub'].map(k => ({ pts: es.map(x => [x, G[k](x, s.d)]), cl: show.includes(k) ? cl[k] : '--line', w: show.includes(k) ? 2.5 : 1 })), { title: 'gradient dL/dy — what reaches the weights' });
+      [T, B].forEach(P => P.line([e, P.b[2]], [e, P.b[3]], '--b', 1, [3, 3]));
+      show.forEach(k => { T.dot([e, Math.min(9.2, L[k](e, s.d))], 5, cl[k]); B.dot([e, G[k](e, s.d)], 5, cl[k]); });
+      if (show.includes('hub')) [s.d, -s.d].forEach(x => B.line([x, -6.5], [x, 6.5], '--c', 1, [2, 4]));
+      const R = Pl.panel(.63, 0, .37, 1, [0, 1, 0, 1], false); R.frame('at this error');
+      NN.lines(R, [['e = y − t = ' + f(e), '--b'], ['', ''], ['MSE   L ' + f(L.mse(e), 3), '--a'], ['      g ' + f(G.mse(e), 3), '--a'], ['MAE   L ' + f(L.mae(e), 3), '--d'], ['      g ' + f(G.mae(e), 3), '--d'], ['Huber L ' + f(L.hub(e, s.d), 3), '--c'], ['      g ' + f(G.hub(e, s.d), 3), '--c'], ['', ''], [Math.abs(e) > s.d ? 'outside the elbow: Huber' : 'inside the elbow: Huber', '--muted'], [Math.abs(e) > s.d ? 'clips; MSE is ' + f(Math.abs(G.mse(e) / G.hub(e, s.d)), 1) + '× larger' : '= ½·MSE, settles smoothly', '--muted']], { top: .1, gap: .075, size: 11 });
+    } else if (S === 4) {
+      const ts = [...DATA, s.out], fm = fit(ts, G.mse), fa = fit(ts, G.mae), fh = fit(ts, G.hub, s.d);
+      const P = Pl.panel(0, 0, .65, 1, [-.5, 7.5, Math.min(-.5, s.out - .5), Math.max(2.5, s.out + .8)], false); P.frame('targets and the three fits');
+      ts.forEach((t, i) => P.dot([i, t], 6, i === 6 ? '--bad' : '--ink'));
+      [[fm, '--a', 'MSE fit = mean'], [fa, '--d', 'MAE fit = median'], [fh, '--c', 'Huber fit']].forEach(([v, c, l], k) => { P.line([-.5, v], [7.5, v], c, 2.5, k === 1 ? [6, 4] : null); P.text([7.5, v], l + ' ' + f(v, 2), c, -150 - 150 * k, -6, { size: 12 }); });
+      const R = Pl.panel(.66, 0, .34, 1, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['outlier = ' + f(s.out, 1), '--bad'], ['', ''], ['mean   ' + f(fm, 3), '--a'], ['median ' + f(fa, 3), '--d'], ['Huber  ' + f(fh, 3), '--c'], ['', ''], ['MSE moved by', '--muted'], ['  ' + f(fm - 1.067, 2) + ' from the clean mean', '--a']], { top: .1, gap: .09, size: 11 });
+    } else if (S <= 6) {
+      const zs = [s.zc, 1.5, .5], p = NN.softmax(zs), t = [1, 0, 0], ce = p.map((pi, i) => pi - t[i]);
+      const mseG = (() => { const g = p.map((pi, i) => 2 * (pi - t[i])); return p.map((pj, j) => g.reduce((a, gi, i) => a + gi * pj * ((i === j ? 1 : 0) - p[i]), 0)); })();
+      const A = Pl.panel(0, 0, .32, .62, [0, 3, 0, 1.1], false); A.frame('p = softmax(z); right class = 1'); NN.bars(A, p, { labels: ['right', 'wrong', 'wrong'], cols: ['--c', '--grey', '--grey'] });
+      const B = Pl.panel(.33, 0, .33, .62, [0, 3, -1.1, 1.1], false); B.frame('∂L/∂z: cross-entropy = p − t'); NN.bars(B, ce, { labels: ['z₁', 'z₂', 'z₃'], cols: ['--a', '--a', '--a'] });
+      const C = Pl.panel(.67, 0, .33, .62, [0, 3, -1.1, 1.1], false); C.frame('∂L/∂z: softmax + MSE'); NN.bars(C, mseG, { labels: ['z₁', 'z₂', 'z₃'], cols: ['--bad', '--bad', '--bad'], d: 3 });
+      const R = Pl.panel(0, .64, 1, .36, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 5 ? [[`p(right) = ${f(p[0], 4)}   p(1 − p) = ${f(p[0] * (1 - p[0]), 4)}`, '--ink'], [`cross-entropy pushes the right logit with ${f(ce[0], 3)} — strongest when most wrong`, '--a'], [`softmax+MSE pushes it with ${f(mseG[0], 4)} — ${Math.abs(mseG[0]) < .05 ? 'almost nothing: confidently wrong, never corrects' : 'fine while p is moderate'}`, Math.abs(mseG[0]) < .05 ? '--bad' : '--ink'], ['drag the right logit far negative: the more wrong, the less MSE learns', '--muted']]
+        : [['softmax  ↔ cross-entropy        seed p − t       discrete distribution: PPO discrete, classifier', '--a'], ['sigmoid  ↔ binary cross-entropy seed p − t       one probability (e.g. terminal predictor)', '--a'], ['linear   ↔ MSE / Huber          seed 2(y − t)    every critic here, any regression', '--b'], ['tanh     ↔ (usually no loss)    n/a              bounded ACTOR output; gradient comes from a critic', '--e']], { top: .2, gap: .2, size: 11 });
+    } else {
+      const y = s.r + s.g * s.qn, err = s.q - y;
+      const D = Pl.panel(0, 0, .62, .74, [0, 10, 0, 10], false); D.frame(S === 7 ? 'critic update: regress Q onto a manufactured target' : S === 8 ? 'actor update: seed −1, through the critic, into the actor' : 'three seeds');
+      const box = (x, y0, w, h, txt, cl) => { D.poly([[x, y0], [x + w, y0], [x + w, y0 + h], [x, y0 + h]], cl, 2, null, cl, true); D.text([x + w / 2, y0 + h / 2], txt, '--ink', 0, 5, { size: 12, align: 'center' }); };
+      if (S === 7) { box(.5, 6, 2.6, 1.6, 'r (real)', '--c'); box(3.6, 6, 2.6, 1.6, "Q′(s′,μ′(s′))", '--grey'); box(7, 6, 2.6, 1.6, 'y (held fixed)', '--b'); box(3.6, 2, 2.6, 1.6, 'Q(s,a)', '--a'); box(7, 2, 2.6, 1.6, 'L = (Q − y)²', '--d');
+        D.arrow([3.1, 6.8], [3.8, 0], '--ink', 2); D.arrow([6.2, 6.8], [.8, 0], '--ink', 2); D.arrow([6.2, 2.8], [.8, 0], '--ink', 2); D.arrow([8.3, 6], [0, -2.4], '--b', 2); D.text([3.4, 7.6], '+γ·', '--ink', 0, 0, { size: 12 }); D.text([1.4, 4.4], 'target nets: no gradient flows into y', '--muted', 0, 0, { size: 12 }); }
+      else if (S === 8) { box(.4, 4, 2.4, 2, 'actor μ(s)', '--e'); box(3.8, 4, 2.6, 2, 'critic Q(s,a)', '--a'); box(7.4, 4, 2.2, 2, '−Q', '--d');
+        D.arrow([2.8, 5.4], [1, 0], '--e', 2.5, 'a'); D.arrow([6.4, 5.4], [1, 0], '--ink', 2); const t = SL.ease(SL.anim);
+        D.arrow([7.4, 4.5], [-1, 0], '--b', 3, 'seed −1', null, -60, 22); D.arrow([3.8, 4.5], [-1, 0], '--b', 3, '∂Q/∂a', null, -50, 22); D.text([5.1, 3.3], 'critic weight grads: computed, discarded', '--bad', 0, 0, { size: 11, align: 'center' }); D.text([1.6, 3.3], 'actor optimiser steps', '--e', 0, 0, { size: 11, align: 'center' });
+        D.dot([7.4 - 5.8 * t, 4.5], 6, '--b'); }
+      else { box(.5, 7, 9, 1.4, 'regression:   seed = 2(y − t)', '--b'); box(.5, 4.6, 9, 1.4, 'softmax + cross-entropy:   seed = p − t', '--a'); box(.5, 2.2, 9, 1.4, 'actor:   seed = −1, routed through a critic', '--e'); D.text([5, 1.2], 'one identical backward pass under all three', '--muted', 0, 0, { size: 12, align: 'center' }); }
+      const R = Pl.panel(.63, 0, .37, .74, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['y = r + γQ′ = ' + f(s.r) + ' + ' + f(s.g, 3) + '·' + f(s.qn), '--b'], ['  = ' + f(y, 4), '--b'], ['Q − y = ' + f(err, 4), '--a'], ['L = ' + f(err * err, 4), '--d'], ['∂L/∂Q = 2(Q − y) = ' + f(2 * err, 4), '--d'], ['', ''], ['actor: L = −Q = ' + f(-s.q, 3), '--e'], ['∂(−Q)/∂Q = −1', '--e']], { top: .1, gap: .1, size: 11 });
+      const B = Pl.panel(0, .76, 1, .24, [0, 1, 0, 1], false); B.frame();
+      NN.lines(B, S === 7 ? [['supervised: a human wrote the label.  here: the label is partly the network\'s own guess, improving as it trains', '--ink'], ['the method is a mechanism for leaking real rewards backwards through time', '--muted']]
+        : S === 8 ? [['J(θ) = E[Q(s, μθ(s))] maximise  ⇔  L_actor = −J(θ) minimise', '--ink'], ['a wrong critic gives a confident wrong direction; actor "loss" = −Q drifts with the critic — watch the RETURNS', '--bad']]
+        : [['the loss\'s only job is to produce a seed', '--ink'], ['fundamentals: neuron, layer, forward, backward, loss → next: housekeeping that keeps numbers in range', '--muted']], { top: .35, gap: .32, size: 11 });
+    }
+  },
+  math(S) {
+    const s = st(), e = s.y, y = s.r + s.g * s.qn;
+    const rows = [
+`${E(`e = ${f(e)}:  MSE g = ${f(G.mse(e), 3)},  MAE g = ${f(G.mae(e), 3)},  Huber g = ${f(G.hub(e, s.d), 3)}`)}
+<p>Two losses that rank every model identically can still train completely differently.</p>`,
+`${E(`L = (y − t)²,   dL/dy = 2(y − t) = ${f(G.mse(e), 3)}
+argmin_c Σ(c − tᵢ)² = mean(tᵢ)`)}`,
+`${E(`L = |y − t|,   dL/dy = sign(y − t) = ${f(G.mae(e), 0)}
+argmin_c Σ|c − tᵢ| = median(tᵢ)`)}`,
+`${E(`L = ½e²              if |e| ≤ δ
+L = δ(|e| − ½δ)       otherwise
+dL/dy = clip(e, −δ, δ) = ${f(G.hub(e, s.d), 3)}   (δ = ${f(s.d)})`)}
+<p>${Math.abs(e) > s.d ? `Error ${f(e)} is outside the elbow: Huber hands over ${f(G.hub(e, s.d))} while MSE hands over ${f(G.mse(e))}. That factor decides whether one bad target nudges the critic or throws it across the room.` : 'Inside the elbow Huber behaves like (half) MSE.'}</p>`,
+(() => { const ts = [...DATA, s.out]; return `${E(`targets: ${ts.map(t => f(t, 1)).join(', ')}
+mean   = ${f(fit(ts, G.mse), 3)}
+median = ${f(fit(ts, G.mae), 3)}
+Huber  = ${f(fit(ts, G.hub, s.d), 3)}`)}`; })(),
+(() => { const p = NN.softmax([s.zc, 1.5, .5]); return `${E(`L = −Σ tᵢ log pᵢ,  p = softmax(z)  ⇒  ∂L/∂z = p − t
+p(right) = ${f(p[0], 4)},  ∂L/∂z_right = ${f(p[0] - 1, 4)}
+softmax + MSE carries p(1 − p) = ${f(p[0] * (1 - p[0]), 4)}`)}
+<p>Softmax's derivative and the log cancel exactly; that cancellation is why the pair is always used together.</p>`; })(),
+`${ul(['softmax → cross-entropy: p − t', 'sigmoid → binary cross-entropy: p − t', 'linear → MSE / Huber: 2(y − t)', 'tanh → no loss; actor gradient from a critic'])}`,
+`${E(`L_critic(w) = (1/N)Σ (Q(sᵢ,aᵢ;w) − yᵢ)²
+yᵢ = rᵢ + γ(1 − dᵢ)Q′(s′ᵢ, μ′(s′ᵢ))   (held fixed)
+here y = ${f(y, 4)},  Q − y = ${f(s.q - y, 4)}`)}`,
+`${E(`J(θ) = E[Q(s, μθ(s))]  (maximise)
+L_actor = −J(θ)
+seed ∂(−Q)/∂Q = −1  →  ∂Q/∂a  →  ∂a/∂θ`)}
+<p>"Minimise the loss" and "climb the critic" are the same instruction with a minus sign between them.</p>`,
+`${E(`regression        2(y − t)
+softmax + CE      p − t
+actor             −1 through the critic`)}`];
+    return rows[S];
+  },
+  stats() { const s = st(); return `<span><b>MSE g</b>${f(G.mse(s.y), 2)}</span><span><b>Huber g</b>${f(G.hub(s.y, s.d), 2)}</span>`; },
+});
+</script>
+</body></html>

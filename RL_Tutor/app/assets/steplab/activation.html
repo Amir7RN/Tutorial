@@ -1,0 +1,122 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Activations and their slopes</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const ACTS = ['sigmoid', 'tanh', 'relu', 'leaky', 'linear'], COL = { sigmoid: '--e', tanh: '--a', relu: '--c', leaky: '--f', linear: '--grey' };
+const FOCUS = { 1: 'sigmoid', 2: 'tanh', 3: 'relu', 4: 'linear' };
+const st = () => { const v = SL.v; return { z: v.z / 100, L: v.L, az: v.az / 100, sc: [v.s1, v.s2, v.s3, v.s4].map(x => x / 100), T: v.T / 100 }; };
+const survive = (a, az, L) => Math.pow(NN.act[a].d(az), L);
+SL.app({
+  title: 'Activations, judged by their slopes',
+  sub: 'The forward pass evaluates σ(z) once. The backward pass multiplies by σ′(z) at every layer it crosses — so pick an activation by the curve underneath it.',
+  view: '2d',
+  legend: [['--e', 'sigmoid'], ['--a', 'tanh'], ['--c', 'ReLU'], ['--f', 'leaky ReLU'], ['--grey', 'linear'], ['--b', 'probe z']],
+  controls: [
+    { id: 'z', label: 'probe z', min: -500, max: 500, value: 100, fmt: x => f(x / 100) },
+    { id: 'L', label: 'layers (step 5)', min: 1, max: 30, value: 12 },
+    { id: 'az', label: 'typical |z| per unit (step 5)', min: 0, max: 300, value: 100, fmt: x => f(x / 100) },
+    { id: 's1', label: 'score z₁ (steps 7–8)', min: -300, max: 300, value: 120, fmt: x => f(x / 100) },
+    { id: 's2', label: 'score z₂', min: -300, max: 300, value: 40, fmt: x => f(x / 100) },
+    { id: 's3', label: 'score z₃', min: -300, max: 300, value: -60, fmt: x => f(x / 100) },
+    { id: 's4', label: 'score z₄', min: -300, max: 300, value: 190, fmt: x => f(x / 100) },
+    { id: 'T', label: 'temperature T', min: 5, max: 400, value: 100, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'saturate: z = 3.5', onclick: () => { SL.setControl('z', 350); SL.redraw(); } }, { label: 'T → 0.05', onclick: () => { SL.setControl('T', 5); SL.redraw(); } }, { label: 'T → 4', onclick: () => { SL.setControl('T', 400); SL.redraw(); } }],
+  steps: [
+    ['Backprop only sees the derivative', 'Top row: σ(z). Bottom row: σ′(z) on a shared 0–1.1 axis. A slope that is usually small makes a deep network untrainable; a slope that is exactly zero makes a unit permanently dead.'],
+    ['sigmoid: a gate, not a hidden layer', 'Range (0, 1), slope σ(1−σ) never above 0.25. Use it for one probability or a gate. In hidden layers ten of them multiply to 10⁻⁶, and it is not zero-centred so every gradient into a weight row shares a sign.'],
+    ['tanh: zero-centred and four times steeper', 'Range (−1, 1), slope 1 − tanh², 1 at the centre. Good for bounded outputs and small networks. Still saturates: past |z| ≈ 3 the slope is under 0.01 and the unit stops learning. Sane init keeps z small.'],
+    ['ReLU, and the rescue rope', 'max(0, z): slope exactly 1 or exactly 0. The default for deep hidden layers — one comparison, no saturation on the positive side. A unit pushed below zero for every sample is dead forever (usually a too-large learning rate). Leaky ReLU keeps a 0.01 slope.'],
+    ['linear: outputs only', 'Slope 1 everywhere. The output of every regression, including every critic here — Q is a sum of discounted rewards. Never in a hidden layer: the stack collapses to one matrix.'],
+    ['Multiply the slopes: what survives depth', 'The blame reaching layer 1 of an L-layer net has been multiplied by one slope per layer. Below 1 it compounds into nothing, above 1 into overflow. Raise |z| and tanh joins sigmoid in the basement.'],
+    ['Why the tutor uses two tanh layers', 'At depth 2, tanh saturation costs a factor of a few. At depth 20 it costs everything — ReLU, normalisation layers and residual connections are all answers to that one product. A five-number state does not need the depth.'],
+    ['softmax vs argmax', 'Both pick the biggest score. softmax returns a smooth distribution (positive, sums to 1) with a derivative everywhere; argmax returns an index: gradient zero, or undefined when it jumps. T → 0 turns softmax into argmax, T → ∞ into uniform.'],
+    ['Where each one lives in RL', 'Tabular Q and DQN: argmax, nothing differentiated through it. Discrete PPO: softmax, because the policy must be differentiable. DDPG: neither — the action is a real number, the output is tanh, and an actor replaces the argmax search.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, F = FOCUS[S];
+    if (S <= 4) {
+      ACTS.forEach((a, k) => {
+        const A = NN.act[a], x0 = k / 5, w = .2 - .005, foc = !F || F === a || (F === 'relu' && a === 'leaky');
+        const top = Pl.panel(x0, 0, w, .44, [-5, 5, -1.3, 1.6], false), bot = Pl.panel(x0, .45, w, .36, [-5, 5, -.05, 1.15], false);
+        const zs = [...Array(201)].map((_, i) => -5 + i / 20), cl = foc ? COL[a] : '--grey';
+        top.series([{ pts: zs.map(z => [z, Math.max(-1.3, Math.min(1.6, A.f(z)))]), cl, w: foc ? 2.5 : 1 }], { title: a });
+        bot.series([{ pts: zs.map(z => [z, A.d(z)]), cl, w: foc ? 2.5 : 1, dash: [5, 3] }], { title: 'σ′' });
+        bot.line([-5, .25], [5, .25], '--grey', 1, [2, 4]); bot.line([-5, .01], [5, .01], '--bad', 1, [2, 4]);
+        [top, bot].forEach(P => P.line([s.z, P.b[2]], [s.z, P.b[3]], '--b', 1, [3, 3]));
+        top.dot([s.z, Math.max(-1.3, Math.min(1.6, A.f(s.z)))], 4.5, '--b'); bot.dot([s.z, A.d(s.z)], 4.5, '--b');
+        bot.text([5, 1.15], 'σ′ = ' + f(A.d(s.z), 3), foc ? COL[a] : '--muted', -4, 30, { size: 12, align: 'right' });
+      });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame();
+      const msg = [
+        [['grey dashed line: 0.25 (sigmoid\'s best case)   red dashed: 0.01 (a unit that has stopped learning)', '--muted'], [`at z = ${f(s.z)}:  ` + ACTS.map(a => a + ' ' + f(NN.act[a].d(s.z), 3)).join('   '), '--ink']],
+        [['sigmoid: range (0,1), σ′ = σ(1−σ) ≤ 0.25', '--e'], [`ten sigmoid layers at best: 0.25¹⁰ = ${NN.e(Math.pow(.25, 10))}`, '--bad']],
+        [['tanh: range (−1,1), σ′ = 1 − tanh²(z) ≤ 1', '--a'], [`σ′(3) = ${f(NN.act.tanh.d(3), 4)} (< 0.01: stops learning);  now σ′(${f(s.z)}) = ${f(NN.act.tanh.d(s.z), 4)}`, NN.act.tanh.d(s.z) < .01 ? '--bad' : '--a']],
+        [['ReLU: σ′ ∈ {0, 1}; leaky ReLU: σ′ ∈ {0.01, 1}', '--c'], [s.z > 0 ? 'z > 0: full gradient passes' : 'z ≤ 0: ReLU passes nothing — if this holds for every sample, the unit is dead', s.z > 0 ? '--c' : '--bad']],
+        [['linear: σ′ = 1, range unbounded → the output of a critic / regression', '--ink'], ['in a hidden layer: (xW₁)W₂ = x(W₁W₂) — depth collapses', '--bad']]][S];
+      NN.lines(R, msg, { top: .38, gap: .35 });
+    } else if (S <= 6) {
+      const P = Pl.panel(0, 0, .62, .8, [1, Math.max(2, s.L), -20, 1], false);
+      const sets = ['sigmoid', 'tanh', 'relu'].map(a => ({ pts: [...Array(Math.max(2, s.L))].map((_, i) => [i + 1, Math.max(-20, Math.log10(Math.max(1e-30, survive(a, s.az, i + 1))))]), cl: COL[a], w: 2.5, label: a }));
+      P.series(sets, { title: 'log₁₀ of the blame surviving to layer 1, vs depth', yl: 'log₁₀' });
+      [-3, -6, -9, -12, -15].forEach(y => P.text([1, y], '1e' + y, '--muted', 4, 4, { size: 10 }));
+      const B = Pl.panel(.63, 0, .37, .8, [0, 3, -20, 1], false); B.frame('at layer 1 (log₁₀)');
+      NN.bars(B, ['sigmoid', 'tanh', 'relu'].map(a => Math.max(-20, Math.log10(Math.max(1e-30, survive(a, s.az, s.L))))), { labels: ['sigmoid', 'tanh', 'ReLU'], cols: ['--e', '--a', '--c'], d: 1 });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 5 ? [[`L = ${s.L} layers, |z| = ${f(s.az)}:  sigmoid ${NN.e(survive('sigmoid', s.az, s.L))}   tanh ${NN.e(survive('tanh', s.az, s.L))}   ReLU ${NN.e(survive('relu', s.az, s.L))}`, '--ink'], ['where z sits is set by initialisation and input scaling — page 86 treats them as load-bearing', '--muted']]
+        : [[`tutor's nets: 2 tanh layers → tanh costs ${f(1 / survive('tanh', s.az, 2), 1)}× at |z| = ${f(s.az)};  at 20 layers: ${NN.e(1 / survive('tanh', s.az, 20))}×`, '--a'], ['the fixes for depth (ReLU, normalisation, residuals) answer this one product; a control-sized problem skips them', '--muted']], { top: .38, gap: .35 });
+    } else {
+      const p = NN.softmax(s.sc, s.T), am = s.sc.indexOf(Math.max(...s.sc)), one = s.sc.map((_, i) => i === am ? 1 : 0);
+      const A = Pl.panel(0, 0, .5, .62, [0, 4, 0, 1.1], false); A.frame(`softmax(z / T), T = ${f(s.T)}`); NN.bars(A, p, { labels: ['a₁', 'a₂', 'a₃', 'a₄'], cols: ['--a', '--a', '--a', '--a'] });
+      const B = Pl.panel(.51, 0, .49, .62, [0, 4, 0, 1.1], false); B.frame('argmax (one-hot): moves only when a score overtakes'); NN.bars(B, one, { labels: ['a₁', 'a₂', 'a₃', 'a₄'], cols: one.map(v => v ? '--b' : '--grey'), d: 0 });
+      const R = Pl.panel(0, .64, 1, .36, [0, 1, 0, 1], false); R.frame();
+      const sorted = s.sc.slice().sort((a, b) => b - a);
+      NN.lines(R, S === 7 ? [[`top probability ${f(Math.max(...p), 3)}   gap between best two scores ${f(sorted[0] - sorted[1])}`, '--a'], [`∂p_best/∂z_best = p(1 − p) = ${f(p[am] * (1 - p[am]), 3)}  (smooth, never undefined)`, '--a'], ['∂argmax/∂z = 0 almost everywhere, undefined at a tie: a decision, not a layer', '--b'], ['T → 0: softmax → argmax ("soft" argmax).  T → ∞: uniform — how an entropy bonus keeps SAC exploring', '--muted']]
+        : [['tabular Q-learning   argmax   nothing is differentiated', '--ink'], ['DQN                  argmax   max builds a DETACHED target; loss fits Q of the action taken', '--ink'], ['PPO (discrete)       softmax  policy must be differentiable in its own parameters', '--a'], ['DDPG                 neither  action is a real number: tanh output, actor replaces argmax', '--b'], ['outputs: linear → value · tanh → bounded action · softmax → discrete dist. · sigmoid → one probability', '--muted']], { top: .17, gap: .17 });
+    }
+  },
+  math(S) {
+    const s = st(), p = NN.softmax(s.sc, s.T);
+    const rows = [
+`${E(`forward : a = σ(z)            (once)
+backward: δ = (∂L/∂a) ⊙ σ′(z)  (every layer)
+at z = ${f(s.z)}: ${ACTS.map(a => a + ' ' + f(NN.act[a].d(s.z), 3)).join(', ')}`)}
+<p>The forward curve decides what the network can represent; the slope decides whether it can learn it.</p>`,
+`${E(`σ(z) = 1/(1 + e^(−z)) ∈ (0, 1)
+σ′(z) = σ(1 − σ) ≤ 0.25 at z = 0
+σ′(${f(s.z)}) = ${f(NN.act.sigmoid.d(s.z), 4)}`)}
+${ul(['Use: one probability, an LSTM gate.', 'Watch out: max slope 0.25 → 10 layers ≈ 10⁻⁶; outputs all positive, so gradients into a row share one sign.'])}`,
+`${E(`tanh(z) = (e^z − e^(−z))/(e^z + e^(−z)) = 2σ(2z) − 1
+tanh′(z) = 1 − tanh²(z) ≤ 1
+tanh′(${f(s.z)}) = ${f(NN.act.tanh.d(s.z), 4)}`)}
+${ul(['Use: bounded outputs (an actor\'s action), small networks.', 'Watch out: |z| > 3 → slope < 0.01. Keep z small with √(1/n_in) init and scaled inputs.'])}`,
+`${E(`ReLU(z) = max(0, z),  ReLU′ = 1 if z > 0 else 0
+leaky(z) = z if z > 0 else 0.01z
+at z = ${f(s.z)}: ReLU′ = ${NN.act.relu.d(s.z)}, leaky′ = ${NN.act.leaky.d(s.z)}`)}
+${ul(['Use: hidden layers of anything deep. Cheap, no positive-side saturation.', 'Watch out: dead units (z &lt; 0 for all samples → gradient exactly 0 forever). Leaky ReLU: one more hyperparameter for a usually-small gain.'])}`,
+`${E(`linear: σ(z) = z, σ′ = 1, range (−∞, ∞)`)}
+<p>The output layer of any regression — every critic in the tutor — because the answer has no natural bound. Never hidden.</p>`,
+`${E(`∂L/∂z⁽¹⁾ ∝ Πₖ σ′(z⁽ᵏ⁾)·W⁽ᵏ⁾
+L = ${s.L}, |z| = ${f(s.az)}:
+  sigmoid  ${f(NN.act.sigmoid.d(s.az), 4)}^${s.L} = ${NN.e(survive('sigmoid', s.az, s.L))}
+  tanh     ${f(NN.act.tanh.d(s.az), 4)}^${s.L} = ${NN.e(survive('tanh', s.az, s.L))}
+  ReLU     1^${s.L} = 1 (if active)`)}
+<p>Weights multiply in too: slopes &lt; 1 vanish, gains &gt; 1 explode.</p>`,
+`${E(`depth 2 : tanh survives ${f(survive('tanh', s.az, 2), 3)}
+depth 20: tanh survives ${NN.e(survive('tanh', s.az, 20))}`)}
+<p>Carry forward. Hidden: ReLU by default, tanh when the net is small. Output: linear for a value, tanh for a bounded action, softmax for a discrete distribution, sigmoid for one probability. The physical range of the quantity decides.</p>`,
+`${E(`softmax(z)ᵢ = e^(zᵢ/T) / Σⱼ e^(zⱼ/T),  T = ${f(s.T)}
+p = (${p.map(v => f(v, 3)).join(', ')})
+argmax = a${s.sc.indexOf(Math.max(...s.sc)) + 1}`)}
+<p>softmax has a derivative everywhere, so it can sit inside a network being trained. argmax is used at the end, after training, and never differentiated through.</p>`,
+`${ul(['<b>Tabular Q</b>: argmax, no gradient needed.', '<b>DQN</b>: argmax over a fixed output list; the max builds a detached next-state target.', '<b>Discrete PPO</b>: softmax policy, differentiable w.r.t. θ.', '<b>DDPG</b>: no list to search. tanh output μ(s), trained toward high Q — the subject of the deep-RL block.'])}`];
+    return rows[S];
+  },
+  stats() { const s = st(); return SL.st >= 7 ? `<span><b>T</b>${f(s.T)}</span><span><b>p_max</b>${f(Math.max(...NN.softmax(s.sc, s.T)), 3)}</span>` : `<span><b>z</b>${f(s.z)}</span><span><b>tanh′</b>${f(NN.act.tanh.d(s.z), 3)}</span><span><b>sigmoid′</b>${f(NN.act.sigmoid.d(s.z), 3)}</span>`; },
+});
+</script>
+</body></html>

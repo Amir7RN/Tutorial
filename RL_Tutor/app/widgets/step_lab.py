@@ -50,6 +50,13 @@ STEP_LABS = {
     "BodePage": ("bode.html", "build a loop on a Bode plot and read the margins"),
     "NyquistPage": ("nyquist.html", "the Nyquist plot: one curve, one point, one count"),
     "ZerosPage": ("zeros.html", "what a zero does: the hole, the speed-up, the dip"),
+    # neural networks
+    "NeuronPage": ("neuron.html", "one neuron: gain, offset, saturation, then layers"),
+    "ActivationPage": ("activation.html", "activations judged by their slopes"),
+    "ForwardPropPage": ("forward_prop.html", "one input vector crosses the network"),
+    "BackpropPage": ("backprop.html", "multiply along each path, sum across paths"),
+    "LossPage": ("loss.html", "a loss is a slope generator: MSE, MAE, Huber, CE, RL"),
+    "RegularisationPage": ("regularisation.html", "regularise, normalise, initialise, clip"),
     # kinematics
     "PoEPage": ("poe.html", "forward kinematics, one exponential at a time"),
     "JacobianPage": ("jacobian.html", "the space Jacobian, column by column"),

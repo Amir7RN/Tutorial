@@ -1,0 +1,156 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Regularisation, normalisation, initialisation</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { deg: v.deg, lam: v.lam === 0 ? 0 : Math.pow(10, v.lam / 10 - 7), n: v.n, nin: v.nin, drop: v.drop / 100, clip: v.clip / 10 }; };
+const truth = x => .8 * Math.sin(Math.PI * x) + .3 * x;
+const samples = n => { const r = NN.rng(17); return [...Array(n)].map((_, i) => { const x = -1 + 2 * (i + .5) / n + (r() - .5) * .08; return [x, truth(x) + .18 * NN.gauss(r)]; }); };
+/* ridge polynomial fit: solve (ΦᵀΦ + λI)c = Φᵀy */
+const polyfit = (pts, d, lam) => { const m = d + 1, A = [...Array(m)].map(() => Array(m + 1).fill(0));
+  pts.forEach(([x, y]) => { const ph = [...Array(m)].map((_, k) => Math.pow(x, k)); for (let i = 0; i < m; i++) { for (let j = 0; j < m; j++) A[i][j] += ph[i] * ph[j]; A[i][m] += ph[i] * y; } });
+  for (let i = 1; i < m; i++) A[i][i] += lam * pts.length + 1e-12;
+  for (let c = 0; c < m; c++) { let p = c; for (let r = c + 1; r < m; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r; [A[c], A[p]] = [A[p], A[c]];
+    for (let r = 0; r < m; r++) if (r !== c) { const k = A[r][c] / A[c][c]; for (let j = c; j <= m; j++) A[r][j] -= k * A[c][j]; } }
+  return A.map((r, i) => r[m] / r[i]); };
+const pv = (c, x) => c.reduce((a, ck, k) => a + ck * Math.pow(x, k), 0);
+const errs = s => { const P = samples(s.n), c = polyfit(P, Math.min(s.deg, s.n - 1), s.lam), tr = P.reduce((a, [x, y]) => a + (pv(c, x) - y) ** 2, 0) / P.length;
+  const te = [...Array(200)].reduce((a, _, i) => { const x = -1 + 2 * i / 199; return a + (pv(c, x) - truth(x)) ** 2; }, 0) / 200 + .18 * .18; return { P, c, tr, te, big: Math.max(...c.map(Math.abs)) }; };
+/* a toy critic Q(a) with dropout masks, to show the noisy slope */
+const Qd = (a, mask) => [1.2, -.8, .9, .5, -.6, 1.1].reduce((s, w, k) => s + (mask ? mask[k] : 1) * w * Math.tanh(1.5 * a + [-1, -.4, .1, .6, 1, -.2][k]), 0);
+SL.app({
+  title: 'Regularisation, normalisation, initialisation, clipping',
+  sub: 'Four things done to a network that are not the network: stop it memorising, keep its numbers centred, start it somewhere sane, and stop one bad step from ruining it — and which of them survive inside an RL loop.',
+  view: '2d',
+  legend: [['--grey', 'true curve'], ['--a', 'fit / healthy'], ['--b', 'train error'], ['--bad', 'test error / saturated'], ['--d', 'noisy (dropout) copies']],
+  controls: [
+    { id: 'deg', label: 'capacity (poly degree)', min: 1, max: 11, value: 9 },
+    { id: 'lam', label: 'L2 strength λ', min: 0, max: 70, value: 0, fmt: x => x === 0 ? '0' : NN.e(Math.pow(10, x / 10 - 7), 0) },
+    { id: 'n', label: 'training samples', min: 6, max: 40, value: 12 },
+    { id: 'drop', label: 'dropout rate (step 2)', min: 0, max: 60, value: 30, fmt: x => x + '%' },
+    { id: 'nin', label: 'fan-in n_in (step 8)', min: 2, max: 512, value: 64 },
+    { id: 'clip', label: 'clip norm (step 10)', min: 1, max: 50, value: 10, fmt: x => f(x / 10, 1) },
+  ],
+  buttons: [{ label: 'λ = 1e−3', onclick: () => { SL.setControl('lam', 40); SL.redraw(); } }, { label: 'λ = 0', onclick: () => { SL.setControl('lam', 0); SL.redraw(); } }],
+  steps: [
+    ['What regularisation is for: fitting the noise', 'Twelve noisy samples of a smooth curve. Raise capacity and training error goes to zero by threading every sample, noise included; test error goes the other way and the coefficients explode. Every technique here buys capacity without buying this.'],
+    ['L2 / weight decay', 'Add λ‖w‖²: every weight is pulled to zero unless the data pays for it (gradient +2λw). Push λ up: wiggles and coefficients collapse while capacity stays. In RL: fine and common, small (≤ 1e−4), and it keeps the critic free of huge local slopes that make the actor\'s step wild.'],
+    ['Dropout: a noisy critic', 'Randomly zero units in training so none can rely on another. Great on big supervised nets. In a critic it makes Q(s,a) noisy — and the actor\'s gradient is the SLOPE of that surface, which now changes every evaluation. Rare in RL, usually a mistake.'],
+    ['Early stopping and small networks', 'Early stopping needs a held-out set and a fixed distribution; RL has neither, so checkpoint on evaluated RETURN instead. Small networks — the crudest regulariser — are usually the right trade here: two hidden layers of 64–256; bigger makes DDPG less stable.'],
+    ['Input scaling: never optional', 'An angle (±0.5 rad) next to a stiffness (±300 N·m/rad): the big one dominates every z and saturates the units; the small one is invisible. Divide each component by its typical size, once, outside the network.'],
+    ['Batch normalisation', 'A layer that normalises each feature with the current batch mean/variance, then a learned γ, β. Keeps layers centred, allows big learning rates and depth. But sample i now depends on the batch, and training uses batch stats while inference uses stored running stats.'],
+    ['Why batch norm and DDPG fight', '1) the controller runs batch 1 at 1 kHz, the learner batch 64; 2) target copies must also copy running stats, which crawl at another rate; 3) replay batches mix policies months apart; 4) Q of one sample depends on the other 63 actions, so ∂Q/∂a is not about this state.'],
+    ['Layer normalisation instead', 'Same formula, but mean and variance across the features of ONE sample. No batch dependence, no train/run difference, nothing to copy. TD3 and SAC implementations use it; DDPG\'s batch norm was quietly dropped.'],
+    ['Initialisation: scale = √(1/n_in)', 'A unit with n_in inputs sums n_in products. A fixed weight range makes z grow like √n_in, so units are born saturated with σ′ ≈ 0. Scaling the draw by 1/√n_in keeps Var(z) ≈ 1 at any width (Xavier for tanh; He doubles it for ReLU).'],
+    ['The tiny last layer: 3e−3', 'An RL trick. The actor starts commanding ≈ 0 action — the only acceptable first step on a robot — with tanh in its steep middle, not pinned at ±1. The critic starts flat at Q ≈ 0: an honest "I know nothing", not random peaks to run toward.'],
+    ['Gradient clipping', 'If ‖g‖ exceeds a bound, rescale the whole vector to that length: direction kept, length capped. With targets manufactured from the net\'s own predictions, freak targets are a certainty, not a possibility.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S <= 1 || S === 3) {
+      const e = errs(s), xs = [...Array(201)].map((_, i) => -1 + i / 100);
+      const P = Pl.panel(0, 0, .64, 1, [-1.05, 1.05, -2, 2], false);
+      P.series([{ pts: xs.map(x => [x, truth(x)]), cl: '--grey', w: 1.5, dash: [5, 4], label: 'true curve' }, { pts: xs.map(x => [x, Math.max(-2, Math.min(2, pv(e.c, x)))]), cl: '--a', w: 2.5, label: `degree ${s.deg} fit, λ = ${s.lam ? NN.e(s.lam, 0) : 0}` }], { title: 'fit to noisy samples' });
+      e.P.forEach(p => P.dot(p, 4.5, '--ink'));
+      const B = Pl.panel(.65, 0, .35, .55, [0, 3, 0, Math.max(.12, e.te * 1.2)], false); B.frame('error');
+      NN.bars(B, [e.tr, e.te, 0], { labels: ['train', 'test', ''], cols: ['--b', '--bad', '--grey'], d: 4 });
+      const R = Pl.panel(.65, .56, .35, .44, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 3 ? [['early stopping → no held-out set,', '--ink'], [' no "converged": data moves', '--ink'], [' with the policy', '--ink'], ['→ checkpoint on evaluated return', '--a'], ['small nets: 2 × 64–256', '--a'], [' bigger → less stable DDPG', '--bad']]
+        : [['train/test = ' + f(e.te / Math.max(1e-9, e.tr), 1) + '×', '--ink'], ['largest |coef| = ' + f(e.big, 1), e.big > 10 ? '--bad' : '--a'], ['', ''], ['L2: loss + λ‖w‖²', '--ink'], ['grad picks up +2λw', '--ink'], [S === 1 ? 'RL: λ ≲ 1e−4' : 'memorising = huge coefs', '--muted']], { top: .14, gap: .14, size: 11 });
+    } else if (S === 2) {
+      const as = [...Array(121)].map((_, i) => -2 + i / 30), r = NN.rng(5 + Math.floor(SL.anim * 3)), a0 = .3;
+      const masks = [...Array(6)].map(() => [...Array(6)].map(() => r() < s.drop ? 0 : 1 / (1 - s.drop)));
+      const P = Pl.panel(0, 0, .64, 1, [-2, 2, -5, 5], false);
+      P.series([...masks.map(m => ({ pts: as.map(a => [a, Qd(a, m)]), cl: '--d', w: 1 })), { pts: as.map(a => [a, Qd(a)]), cl: '--a', w: 3, label: 'Q(s, a) without dropout' }], { title: 'the critic seen through six dropout masks' });
+      P.line([a0, -5], [a0, 5], '--b', 1, [3, 3]);
+      const slope = (m) => (Qd(a0 + 1e-4, m) - Qd(a0 - 1e-4, m)) / 2e-4, sl = masks.map(slope);
+      const B = Pl.panel(.65, 0, .35, .6, [0, 7, -6, 6], false); B.frame('∂Q/∂a at a = 0.3'); NN.bars(B, [slope(), ...sl], { labels: ['clean', '1', '2', '3', '4', '5', '6'], cols: ['--a', ...sl.map(() => '--d')], d: 1 });
+      const R = Pl.panel(.65, .61, .35, .39, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['dropout ' + Math.round(s.drop * 100) + '%', '--d'], ['actor gradient spread:', '--ink'], ['  ' + f(Math.min(...sl), 2) + ' … ' + f(Math.max(...sl), 2), '--bad'], ['a direction from a function', '--muted'], ['that changes every call', '--muted']], { top: .15, gap: .16, size: 11 });
+    } else if (S === 4) {
+      const r = NN.rng(9), pts = [...Array(80)].map(() => [.5 * (2 * r() - 1), 300 * (2 * r() - 1)]), w = [.7, -.5], sat = (sc) => pts.filter(p => Math.abs(Math.tanh(w[0] * p[0] / sc[0] + w[1] * p[1] / sc[1])) > .995).length / pts.length;
+      const A = Pl.panel(0, 0, .48, .78, [-1.2, 1.2, -1.2, 1.2], false); A.frame('raw: z = 0.7·θ − 0.5·k');
+      pts.forEach(p => { const z = w[0] * p[0] + w[1] * p[1] / 1; A.dot([p[0] / .5, p[1] / 300], 3.5, Math.abs(Math.tanh(z)) > .995 ? '--bad' : '--a'); });
+      A.text([-1.1, -1.05], 'x: angle ±0.5 rad   y: stiffness ±300 (axes rescaled to fit)', '--muted', 0, 0, { size: 11 });
+      const B = Pl.panel(.5, 0, .5, .78, [-1.2, 1.2, -1.2, 1.2], false); B.frame('scaled: x̂ = (x − μ)/σ per component');
+      pts.forEach(p => { const z = w[0] * p[0] / .29 + w[1] * p[1] / 173; B.dot([p[0] / .5, p[1] / 300], 3.5, Math.abs(Math.tanh(z)) > .995 ? '--bad' : '--a'); });
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [[`saturated units (|tanh| > 0.995): raw ${Math.round(100 * sat([1, 1]))}%   scaled ${Math.round(100 * sat([.29, 173]))}%`, '--ink'], ['raw: z is set by the stiffness alone — the angle is invisible to the network', '--bad']], { top: .38, gap: .35 });
+    } else if (S <= 7) {
+      const r = NN.rng(3), B4 = [...Array(4)].map(() => [...Array(5)].map(() => 2 + 1.5 * NN.gauss(r)));
+      const bn = B4.map(row => row.map((v, j) => { const col = B4.map(rr => rr[j]), m = col.reduce((a, b) => a + b) / 4, sd = Math.sqrt(col.reduce((a, b) => a + (b - m) ** 2, 0) / 4 + 1e-5); return (v - m) / sd; }));
+      const ln = B4.map(row => { const m = row.reduce((a, b) => a + b) / 5, sd = Math.sqrt(row.reduce((a, b) => a + (b - m) ** 2, 0) / 5 + 1e-5); return row.map(v => (v - m) / sd); });
+      const grid = (P, M, title, dir) => { P.frame(title); M.forEach((row, i) => row.forEach((v, j) => { const x = .5 + j, y = 3.5 - i, c = v >= 0 ? '--a' : '--b';
+        P.poly([[x - .45, y - .4], [x + .45, y - .4], [x + .45, y + .4], [x - .45, y + .4]], c, 1, null, c, true); P.text([x, y], f(v, 1), '--ink', 0, 4, { size: 11, align: 'center' }); }));
+        if (dir === 'col') P.poly([[.05, -.1], [.95, -.1], [.95, 4.0], [.05, 4.0]], '--d', 3, [5, 3]); if (dir === 'row') P.poly([[0, 3.05], [5, 3.05], [5, 3.95], [0, 3.95]], '--d', 3, [5, 3]); };
+      grid(Pl.panel(0, 0, .32, .7, [-.2, 5.2, -.6, 4.4], false), B4, 'z: 4 samples × 5 features');
+      grid(Pl.panel(.34, 0, .32, .7, [-.2, 5.2, -.6, 4.4], false), bn, 'batch norm: per FEATURE (column)', 'col');
+      grid(Pl.panel(.68, 0, .32, .7, [-.2, 5.2, -.6, 4.4], false), ln, 'layer norm: per SAMPLE (row)', 'row');
+      const R = Pl.panel(0, .72, 1, .28, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 5 ? [['BN(zⱼ) = γⱼ (zⱼ − μⱼ^batch)/√(σⱼ^batch² + ε) + βⱼ', '--ink'], ['sample i\'s output depends on the other samples — the one exception to "samples don\'t interact"', '--bad'], ['training: batch stats   inference: stored running stats, even for a batch of one', '--bad']]
+        : S === 6 ? [['1  controller: batch of 1 at 1 kHz; learner: batch of 64 → the deployed policy is not the trained one', '--bad'], ['2  target copies must copy running stats too, which crawl at a different rate than the weights', '--bad'], ['3  replay batches mix transitions from policies months apart — the stats describe no distribution', '--bad'], ['4  with BN in the critic, Q of one sample depends on 63 other actions → ∂Q/∂a is not about this state', '--bad']]
+        : [['LN: normalise over the units of one layer for one sample, then the same γ, β', '--a'], ['no batch dependence · no train/run difference · no running statistics to copy', '--a'], ['TD3 / SAC implementations use it routinely', '--muted']], { top: .2, gap: S === 6 ? .2 : .26, size: 11 });
+    } else if (S === 8) {
+      const r = NN.rng(11), trial = sc => { let sat = 0, vz = 0; for (let k = 0; k < 300; k++) { let z = 0; for (let i = 0; i < s.nin; i++) z += (2 * r() - 1) * sc * (2 * r() - 1) * 1.7; vz += z * z; if (Math.abs(Math.tanh(z)) > .99) sat++; } return { sd: Math.sqrt(vz / 300), sat: sat / 300 }; };
+      const fixed = trial(1), scaled = trial(Math.sqrt(1 / s.nin));
+      const ns = [2, 4, 8, 16, 32, 64, 128, 256, 512];
+      const P = Pl.panel(0, 0, .62, .78, [0, 8, 0, 14], false);
+      P.series([{ pts: ns.map((n, i) => [i, Math.sqrt(n) * .98]), cl: '--bad', w: 2.5, label: 'std(z), fixed range ±1' }, { pts: ns.map((n, i) => [i, .98]), cl: '--a', w: 2.5, label: 'std(z), scale √(1/n_in)' }], { title: 'spread of the pre-activation vs fan-in (n = 2 … 512)' });
+      P.line([0, 3], [8, 3], '--grey', 1, [3, 3]); P.text([0, 3], '|z| ≈ 3: tanh slope < 0.01', '--muted', 4, -4, { size: 11 });
+      const B = Pl.panel(.63, 0, .37, .78, [0, 2, 0, 1.05], false); B.frame(`saturated at n_in = ${s.nin}`); NN.bars(B, [fixed.sat, scaled.sat], { labels: ['fixed ±1', '√(1/n_in)'], cols: ['--bad', '--a'] });
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [[`n_in = ${s.nin}: std(z) fixed = ${f(fixed.sd, 2)}, scaled = ${f(scaled.sd, 2)}`, '--ink'], ['Xavier/Glorot (tanh): Var w = 1/n_in.  He (ReLU): 2/n_in — ReLU discards half its input', '--muted']], { top: .38, gap: .35 });
+    } else if (S === 9) {
+      const ss = [...Array(61)].map((_, i) => -1 + i / 30), r = NN.rng(2), W = [...Array(8)].map(() => [2 * r() - 1, 2 * r() - 1]);
+      const out = sc => ss.map(x => [x, Math.tanh(W.reduce((a, w) => a + sc * w[1] * Math.tanh(2 * w[0] * x + w[1]) * 3, 0))]);
+      const A = Pl.panel(0, 0, .5, .78, [-1, 1, -1.1, 1.1], false); A.series([{ pts: out(1), cl: '--bad', w: 2.5, label: 'last layer ±1/√n: random torques' }, { pts: out(3e-3), cl: '--a', w: 3, label: 'last layer ±3e−3: ≈ 0' }], { title: 'initial actor μ(s) = tanh(…) over the state' });
+      const Bq = Pl.panel(.51, 0, .49, .78, [-1, 1, -3, 3], false); Bq.series([{ pts: ss.map(x => [x, W.reduce((a, w) => a + w[0] * 1.5 * Math.tanh(3 * w[1] * x + w[0]), 0)]), cl: '--bad', w: 2.5, label: 'random critic: confident peaks' }, { pts: ss.map(x => [x, 3e-3 * W.reduce((a, w) => a + w[0] * 1.5 * Math.tanh(3 * w[1] * x + w[0]), 0)]), cl: '--a', w: 3, label: 'tiny last layer: Q ≈ 0' }], { title: 'initial critic Q(s, a) along a' });
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['actor: ≈ 0 action on step one, tanh in its steep middle (slope ≈ 1), not pinned at ±1 (slope ≈ 0)', '--a'], ['critic: flat honest "I know nothing" — nothing for the actor to run toward before any reward is seen', '--a']], { top: .38, gap: .35 });
+    } else {
+      const g = [2.4, -1.6, .9], n = Math.hypot(...g), k = Math.min(1, s.clip / n), gc = g.map(x => x * k);
+      const P = Pl.panel(0, 0, .55, 1, [-3, 3, -3, 3]); P.frame('gradient (first two components)'); P.axes(); P.circle([0, 0], s.clip, '--d', 1.5, [5, 4]);
+      P.arrow([0, 0], [g[0], g[1]], '--bad', 2.5, 'raw g'); P.arrow([0, 0], [gc[0], gc[1]], '--a', 4, 'clipped');
+      const R = Pl.panel(.56, 0, .44, 1, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['‖g‖ = ' + f(n, 3), '--bad'], ['bound c = ' + f(s.clip, 1), '--d'], ['g ← g · min(1, c/‖g‖)', '--ink'], ['  = ' + SL.vs(gc, 2), '--a'], ['direction unchanged,', '--muted'], ['only the length is capped', '--muted'], ['', ''], ['fundamentals block done:', '--ink'], ['neuron, layer, forward,', '--muted'], ['backward, loss, housekeeping', '--muted']], { top: .1, gap: .085, size: 11 });
+    }
+  },
+  math(S) {
+    const s = st(), e = errs(s);
+    const rows = [
+`${E(`degree ${s.deg}, ${s.n} samples, λ = ${s.lam ? NN.e(s.lam, 0) : 0}
+train MSE = ${f(e.tr, 4)}   test MSE = ${f(e.te, 4)}
+largest |coefficient| = ${f(e.big, 1)}`)}
+<p>${e.te > 3 * e.tr ? 'The fit passes through the samples and does something absurd between them: memorisation, visible as huge coefficients.' : 'Train and test agree: the model is not memorising.'}</p>`,
+`${E(`L = L_data + λ‖w‖²   ⇒   ∂L/∂w = ∂L_data/∂w + 2λw
+now: test ${f(e.te, 4)}, largest coef ${f(e.big, 2)}`)}
+<p>The model keeps its capacity and stops being allowed to use it. Supervised: the default. RL: fine, small.</p>`,
+`${E(`training: hᵢ ← hᵢ·mᵢ/(1 − p),  mᵢ ~ Bernoulli(1 − p)
+eval: everything on
+actor step ∝ ∂Q/∂a — taken from a surface that changes every call`)}`,
+`${ul(['<b>Early stopping</b>: supervised standard; RL replaces it with checkpointing on evaluated return.', '<b>Small networks</b>: supervised — usually the wrong trade; RL — usually right. 2 × 64–256 is the standard continuous-control critic.'])}`,
+`${E(`x̂ⱼ = (xⱼ − μⱼ)/σⱼ    per input dimension, fixed
+angle: σ ≈ 0.29 rad    stiffness: σ ≈ 173 N·m/rad`)}
+<p>The gait environment on the case-study page does exactly this before anything reaches a network.</p>`,
+`${E(`BN(zⱼ) = γⱼ (zⱼ − μⱼ^batch) / √((σⱼ^batch)² + ε) + βⱼ`)}
+${ul(['Output for sample i depends on the batch.', 'Train-time batch stats ≠ run-time running stats.'])}`,
+`${ul(['batch-1 control vs batch-64 learning', 'target copies of running stats', 'off-policy batches with no single distribution', '∂Q/∂a contaminated by the other actions in the batch'])}<p>The original DDPG paper used batch norm; later work dropped it.</p>`,
+`${E(`LN(z) = γ (z − mean_units(z)) / √(var_units(z) + ε) + β`)}`,
+`${E(`w ~ U(−a, a),  a = √(1/n_in)  ⇒  Var(z) ≈ const
+n_in = ${s.nin}: a = ${f(Math.sqrt(1 / s.nin), 4)}`)}
+<p>Born saturated means σ′ ≈ 0 means unable to learn — init is load-bearing, not cosmetic.</p>`,
+`${E(`final layer: w ~ U(−3e−3, 3e−3)
+actor:  μ(s) = tanh(≈ 0) ≈ 0,  tanh′ ≈ 1
+critic: Q(s, a) ≈ 0 everywhere`)}
+<p>Three characters in a constructor, and in the DDPG paper for a reason.</p>`,
+`${E(`if ‖g‖ > c:  g ← c · g/‖g‖
+‖g‖ = ${f(Math.hypot(2.4, -1.6, .9), 3)},  c = ${f(s.clip, 1)}`)}`];
+    return rows[S];
+  },
+  stats() { const e = errs(st()); return `<span><b>train</b>${f(e.tr, 4)}</span><span><b>test</b>${f(e.te, 4)}</span>`; },
+});
+</script>
+</body></html>

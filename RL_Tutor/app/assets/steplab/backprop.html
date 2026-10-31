@@ -1,0 +1,111 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Backpropagation</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, vs = (v, d = 3) => '[' + v.map(x => f(x, d)).join('  ') + ']';
+const SIZES = [2, 3, 3, 1], NET = NN.net(SIZES, ['tanh', 'tanh', 'linear'], 21);
+NET.forEach(l => l.W.forEach(r => r.forEach((_, j) => r[j] *= 1.6)));
+let WRT = 0;
+const st = () => ({ x: [SL.v.x1 / 100, SL.v.x2 / 100], t: SL.v.t / 100, eta: SL.v.eta / 100 });
+const paths = (x, i) => { const c = NN.forward(NET, x), out = [];
+  for (let j = 0; j < 3; j++) for (let k = 0; k < 3; k++) {
+    const e1 = NET[0].W[i][j] * NN.act.tanh.d(c.z[0][j]), e2 = NET[1].W[j][k] * NN.act.tanh.d(c.z[1][k]), e3 = NET[2].W[k][0];
+    out.push({ j, k, e1, e2, e3, p: e1 * e2 * e3, w1: NET[0].W[i][j], s1: NN.act.tanh.d(c.z[0][j]), w2: NET[1].W[j][k], s2: NN.act.tanh.d(c.z[1][k]) }); }
+  return out; };
+const fd = (x, i, h = 1e-5) => { const a = x.slice(), b = x.slice(); a[i] += h; b[i] -= h; return (NN.forward(NET, a).a[3][0] - NN.forward(NET, b).a[3][0]) / (2 * h); };
+SL.app({
+  title: 'Backpropagation: multiply along each path, sum across paths',
+  sub: 'A 2 → 3 → 3 → 1 tanh network. The loss seeds the blame, each hop multiplies by its weight and the slope of the unit it lands on, and every node adds what arrives — one number per weight for the price of about two passes.',
+  view: '2d',
+  legend: [['--c', 'positive weight / path'], ['--bad', 'negative'], ['--b', 'blame (backward wave)'], ['--a', 'highlighted path']],
+  controls: [
+    { id: 'x1', label: 'input x₁', min: -200, max: 200, value: 60, fmt: x => f(x / 100) },
+    { id: 'x2', label: 'input x₂', min: -200, max: 200, value: -40, fmt: x => f(x / 100) },
+    { id: 't', label: 'target t (step 0, 7)', min: -200, max: 200, value: 50, fmt: x => f(x / 100) },
+    { id: 'eta', label: 'learning rate η (step 7)', min: 1, max: 100, value: 10, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'd/dx₁', toggle: true, pressed: true, onclick: e => { WRT = 0; document.querySelectorAll('#btns button').forEach(b => b.textContent.startsWith('d/dx') && b.setAttribute('aria-pressed', b.textContent === 'd/dx₁')); SL.redraw(); } },
+    { label: 'd/dx₂', toggle: true, onclick: e => { WRT = 1; document.querySelectorAll('#btns button').forEach(b => b.textContent.startsWith('d/dx') && b.setAttribute('aria-pressed', b.textContent === 'd/dx₂')); SL.redraw(); } },
+    { label: 'saturate (x₁ = 2)', onclick: () => { SL.setControl('x1', 200); SL.redraw(); } }],
+  steps: [
+    ['Start from one scalar: the loss', 'Nothing can be differentiated until there is one number. MSE L = (1/N)Σ(y − t)² hands the output layer its seed ∂L/∂y = 2(y − t)/N. Change the loss and only the seed changes; the machinery below is identical.'],
+    ['One input, nine routes', 'x fans out to all three units, each of those to all three of the next: 3 × 3 = 9 paths to y. Every path is listed with its product; their sum equals a brute-force finite difference to rounding.'],
+    ['Along a path: multiply', 'Each hop contributes the weight it crossed times the slope σ′(z) of the unit it landed on — the chain rule taken literally. The highlighted path is the largest one; it is not "the" chain.'],
+    ['Across paths: add', 'A nudge in xᵢ reaches y by every route at once and the effects superpose. Some push up, some down. A small sum can mean no paths or cancelling paths. Saturate x₁: paths through flat units collapse — a vanishing gradient, one path at a time.'],
+    ['Why nobody enumerates paths', 'n^(L−1) paths per input–output pair: 4 096 for a 64-wide 3-layer net, 10¹⁸ for 10 layers. Backprop carries one blame number per node and sums early — overlapping subproblems, the same trick as dynamic programming.'],
+    ['The backward wave', 'Blame starts at y, is multiplied by each edge weight, and at each node by σ′(z), summing arrivals. When the wave has passed a layer, its weight gradients are known: blame at the output end × value at the input end. No weight changes yet.'],
+    ['Three lines do all of it', 'δ = ∂L/∂a ⊙ σ′(z);  ∂L/∂W = xᵀδ;  ∂L/∂b = δ;  ∂L/∂x = δWᵀ. The last line is the gradient w.r.t. the layer\'s INPUT — chained through a critic it gives ∂Q/∂a, the actor\'s whole training signal.'],
+    ['Then, separately, the step', 'w ← w − η ∂L/∂w. Minus because the gradient points uphill. Flip the seed and the same machinery climbs — the actor\'s −dQ/da. With Adam, steps are divided by a running gradient size, so the sign pattern carries most of the information.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, c = NN.forward(NET, s.x), y = c.a[3][0], P9 = paths(s.x, WRT), big = P9.reduce((a, b) => Math.abs(b.p) > Math.abs(a.p) ? b : a);
+    const g = NN.backward(NET, c, [2 * (y - s.t)]);
+    const D = Pl.panel(0, 0, .58, .7, [0, 10, 0, 10], false); D.frame(S === 5 ? 'blame flows right to left' : S >= 1 && S <= 3 ? `every path from x${WRT + 1} to y` : '2 → 3 → 3 → 1');
+    const t = SL.ease(SL.anim), wave = S === 5 ? Math.min(2.999, t * 3) : -1;
+    let edge = null;
+    if (S >= 1 && S <= 3) edge = (k, i, j) => { if (k === 0 && i !== WRT) return '--line';
+      const on = S === 2 ? ((k === 0 && j === big.j) || (k === 1 && i === big.j && j === big.k) || (k === 2 && i === big.k)) : true;
+      if (!on) return '--line'; if (S === 2) return '--a';
+      const sum = P9.filter(p => (k === 0 ? p.j === j : k === 1 ? p.j === i && p.k === j : p.k === i)).reduce((a, p) => a + p.p, 0); return sum >= 0 ? '--c' : '--bad'; };
+    if (S === 5) edge = (k) => (2 - k) <= wave ? '--b' : '--line';
+    const vals = S === 5 ? [g.dx, g.delta[0], g.delta[1], [2 * (y - s.t)]] : c.a;
+    const pos = NN.draw(D, SIZES, { W: NET.map(l => l.W), vals, edge, hl: S === 5 ? 3 - Math.floor(wave) : -1, names: S === 5 ? ['∂L/∂x', 'δ⁽¹⁾', 'δ⁽²⁾', 'seed'] : ['x', 'h⁽¹⁾', 'h⁽²⁾', 'y'], y0: 1.4, y1: 8.8 });
+    if (S === 5 && t < 1) { const k = 2 - Math.floor(wave), fr = wave - Math.floor(wave); for (let i = 0; i < SIZES[k]; i++) for (let j = 0; j < SIZES[k + 1]; j++) D.dot(SL.lerp(pos[k + 1][j], pos[k][i], fr), 4, '--b'); }
+    const R = Pl.panel(.59, 0, .41, .7, [0, 1, 0, 1], false); R.frame();
+    if (S === 0) NN.lines(R, [['y = ' + f(y, 4) + '   t = ' + f(s.t, 2), '--ink'], ['L = (y − t)² = ' + f((y - s.t) ** 2, 4), '--ink'], ['seed ∂L/∂y = 2(y − t) = ' + f(2 * (y - s.t), 4), '--b'], ['', ''], ['MSE   → 2(y − t)', '--a'], ['softmax + CE → p − t', '--a'], ['actor → −1 through a critic', '--a'], ['same backward() under all three', '--muted']], { top: .1, gap: .1, size: 11 });
+    else if (S <= 3) { const rows = P9.map(p => [`h${p.j + 1}→h${p.k + 1}: ${f(p.w1)}·${f(p.s1)} × ${f(p.w2)}·${f(p.s2)} × ${f(p.e3)} = ${f(p.p, 4)}`, p === big && S === 2 ? '--a' : p.p >= 0 ? '--c' : '--bad']);
+      const sum = P9.reduce((a, p) => a + p.p, 0), fdv = fd(s.x, WRT);
+      NN.lines(R, [...rows, ['Σ 9 paths = ' + f(sum, 5), '--ink'], ['finite diff = ' + f(fdv, 5) + '  (gap ' + NN.e(Math.abs(sum - fdv), 0) + ')', '--muted']], { top: .07, gap: .082, size: 10 }); }
+    else if (S === 4) { const B = Pl.panel(.6, .05, .39, .6, [0, 4, 0, 19], false); NN.bars(B, [Math.log10(9), Math.log10(64 ** 2), Math.log10(64 ** 9), 0], { labels: ['this net', '64-wide L=3', '64-wide L=10', ''], cols: ['--a', '--b', '--bad', '--grey'], show: false });
+      [[9, 0], [4096, 1], ['10¹⁶', 2]].forEach(([v, i]) => B.text([i + .5, i === 2 ? 16.3 : Math.log10(v)], String(v), '--ink', 0, -6, { size: 12, align: 'center' })); B.text([0, 18], 'paths per pair, log₁₀', '--muted', 4, 0, { size: 11 }); }
+    else if (S === 5) NN.lines(R, [['seed 2(y − t) = ' + f(2 * (y - s.t), 4), '--b'], ['δ⁽²⁾ = ' + vs(g.delta[1]), wave >= 1 ? '--b' : '--muted'], ['δ⁽¹⁾ = ' + vs(g.delta[0]), wave >= 2 ? '--b' : '--muted'], ['∂L/∂x = ' + vs(g.dx), t >= 1 ? '--b' : '--muted'], ['', ''], ['∂L/∂W⁽¹⁾ = xᵀδ⁽¹⁾ (2×3):', '--ink'], ...g.gW[0].map(r => ['  ' + vs(r), '--ink'])], { top: .1, gap: .1, size: 11 });
+    else if (S === 6) NN.lines(R, [['double dz = dout*deriv;', '--b'], ['  δ = ∂L/∂a ⊙ σ′(z)  ONLY place σ appears', '--muted'], ['gW[i][j] += x[i]*dz/batch;', '--b'], ['  ∂L/∂W = xᵀδ/N   blame × input', '--muted'], ['gb[j] += dz/batch;', '--b'], ['  ∂L/∂b = mean(δ)', '--muted'], ['dx[i] += dz*W[i][j];', '--b'], ['  ∂L/∂x = δWᵀ   → previous layer', '--muted'], ['return dz @ W.T  ⇒  ∂Q/∂a', '--a']], { top: .1, gap: .095, size: 11 });
+    else { const N2 = NN.clone(NET), c2 = NN.forward(N2, s.x); NN.step(N2, NN.backward(N2, c2, [2 * (c2.a[3][0] - s.t)]), s.eta); const y2 = NN.forward(N2, s.x).a[3][0];
+      NN.lines(R, [['w ← w − η·∂L/∂w,  η = ' + f(s.eta), '--ink'], ['before: y = ' + f(y, 4) + ', L = ' + f((y - s.t) ** 2, 4), '--ink'], ['after : y = ' + f(y2, 4) + ', L = ' + f((y2 - s.t) ** 2, 4), (y2 - s.t) ** 2 < (y - s.t) ** 2 ? '--c' : '--bad'], ['', ''], ['seed +∂L/∂y → descend the loss', '--a'], ['seed −1 (−Q) → climb the critic', '--b'], ['Adam: g / √v̂ → scale-free steps', '--muted']], { top: .1, gap: .11, size: 11 }); }
+    const B = Pl.panel(0, .72, 1, .28, [0, 1, 0, 1], false); B.frame();
+    const lines = [
+      [['L = (1/N) Σ (yᵢ − tᵢ)²   ⇒   ∂L/∂yᵢ = 2(yᵢ − tᵢ)/N', '--ink'], ['the seed is the only part of backward that knows which loss you chose', '--muted']],
+      [['∂y/∂xᵢ = Σ_paths Π_edges (w_e · σ′(z_e))', '--ink'], [`${P9.filter(p => p.p > 0).length} paths push up, ${P9.filter(p => p.p < 0).length} push down`, '--muted']],
+      [[`largest path: ${f(big.p, 5)} = ${f(100 * Math.abs(big.p) / P9.reduce((a, p) => a + Math.abs(p.p), 0), 0)}% of the total absolute traffic`, '--a'], ['picking any single route as "the chain" gives the wrong answer', '--muted']],
+      [['slopes now: h⁽¹⁾ σ′ = ' + vs(c.z[0].map(NN.act.tanh.d)), '--ink'], ['a unit with σ′ ≈ 0 deletes every path through it', '--bad']],
+      [['backprop = the path sum, refactored: add early, share, linear time', '--ink'], ['cost ≈ 2 forward passes for ALL weights, vs one forward pass per weight by nudging', '--muted']],
+      [['gradient of a weight = blame at its output end × value at its input end', '--b'], ['the wave only computes numbers; the optimiser moves the weights afterwards, all at once', '--muted']],
+      [['stop at the weights → train this net;   carry on to the input → train whatever produced the input', '--a'], ['that second one is DDPG', '--muted']],
+      [['gradient = local snapshot of the surface; too big a step with it is the classic way to diverge', '--ink'], ['Carry forward: seed at the loss, multiply along paths, sum across, stop where you want the derivative', '--muted']]][S];
+    NN.lines(B, lines, { top: .32, gap: .32, size: 11 });
+  },
+  math(S) {
+    const s = st(), c = NN.forward(NET, s.x), y = c.a[3][0], P9 = paths(s.x, WRT), sum = P9.reduce((a, p) => a + p.p, 0);
+    const rows = [
+`${E(`L = (1/N)Σ(yᵢ − tᵢ)²  ⇒  ∂L/∂yᵢ = 2(yᵢ − tᵢ)/N
+y = ${f(y, 4)}, t = ${f(s.t, 2)}, N = 1  ⇒  seed = ${f(2 * (y - s.t), 4)}`)}
+<p>The same backward() serves a critic regressed onto a target and an actor pushed uphill on a critic — the second has no target at all, only a seed.</p>`,
+`${E(`∂y/∂x${WRT + 1} = Σ over 9 paths = ${f(sum, 6)}
+finite difference (±1e−5)  = ${f(fd(s.x, WRT), 6)}`)}`,
+`${E(`one path = (w₁·σ′₁)(w₂·σ′₂)(w₃)
+largest: ${f(P9.reduce((a, b) => Math.abs(b.p) > Math.abs(a.p) ? b : a).p, 5)}`)}`,
+`${E(`Σ⁺ = ${f(P9.filter(p => p.p > 0).reduce((a, p) => a + p.p, 0), 5)}
+Σ⁻ = ${f(P9.filter(p => p.p < 0).reduce((a, p) => a + p.p, 0), 5)}
+total = ${f(sum, 5)}`)}
+<p>Small because no paths, or small because paths cancel: identical from the outside, very different inside.</p>`,
+`${E(`paths per input–output pair = n^(L−1)
+64 wide, 3 layers: 64² = 4 096
+64 wide, 10 layers: 64⁹ ≈ 1.8 × 10¹⁶`)}`,
+`${E(`δ⁽ᴸ⁾ = seed ⊙ σ′(z⁽ᴸ⁾)
+δ⁽ᵏ⁾ = (δ⁽ᵏ⁺¹⁾ W⁽ᵏ⁺¹⁾ᵀ) ⊙ σ′(z⁽ᵏ⁾)
+∂L/∂W⁽ᵏ⁾ = a⁽ᵏ⁻¹⁾ᵀ δ⁽ᵏ⁾`)}`,
+`${E(`δ = ∂L/∂a ⊙ σ′(z)
+∂L/∂W = xᵀδ,  ∂L/∂b = δ,  ∂L/∂x = δWᵀ`)}
+<p><b>return dz @ W.T</b> is the load-bearing line: no autograd, no special case, and it is how ∂Q/∂a reaches the actor.</p>`,
+`${E(`w ← w − η ∂L/∂w
+Adam: w ← w − η m̂ / (√v̂ + ε)`)}
+<p>A gradient of 100 and one of 0.1 give steps of comparable size under Adam: sign and relative pattern carry the information, absolute scale much less.</p>`];
+    return rows[S];
+  },
+  stats() { const s = st(), c = NN.forward(NET, s.x); return `<span><b>y</b>${f(c.a[3][0], 4)}</span><span><b>∂y/∂x${WRT + 1}</b>${f(paths(s.x, WRT).reduce((a, p) => a + p.p, 0), 5)}</span>`; },
+});
+</script>
+</body></html>
