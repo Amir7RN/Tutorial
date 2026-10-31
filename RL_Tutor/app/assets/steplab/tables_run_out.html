@@ -1,0 +1,107 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tables run out</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { Bs: v.bs, ds: v.ds, Ba: v.ba, da: v.da, n: v.n, a0: v.a0 / 100 }; };
+const count = s => { const cells = Math.pow(s.Bs, s.ds) * Math.pow(s.Ba, s.da), visits = 10 * cells; return { cells, visits, years: visits / 3600 / 24 / 365.25 }; };
+const Qtrue = x => Math.sin(5 * x) * .6 + .5 * x;
+const samplesQ = n => { const r = NN.rng(4); return [...Array(n)].map(() => { const x = r(); return [x, Qtrue(x) + .08 * NN.gauss(r)]; }); };
+/* "network": a smooth kernel fit; "table": per-bin average, unknown where never visited */
+const smooth = (P, x) => { let a = 0, b = 0; P.forEach(([xi, yi]) => { const w = Math.exp(-(((x - xi) / .07) ** 2)); a += w * yi; b += w; }); return b > 1e-6 ? a / b : 0; };
+const Qa = (a, s0 = .2) => -2 * (a - .55) ** 2 + .3 * Math.sin(6 * a) + s0;
+SL.app({
+  title: 'Tables run out',
+  sub: 'Frozen Lake is a 16 × 4 array. Make either axis continuous and three things must be replaced at once: how Q is stored, how it is updated, and how the best action is found.',
+  view: '2d',
+  legend: [['--grey', 'true Q'], ['--b', 'table (per bin)'], ['--a', 'smooth function'], ['--bad', 'never visited'], ['--e', 'search iterations']],
+  controls: [
+    { id: 'bs', label: 'bins per state dim', min: 2, max: 50, value: 20 },
+    { id: 'ds', label: 'state dimensions', min: 1, max: 10, value: 5 },
+    { id: 'ba', label: 'bins per action dim', min: 2, max: 20, value: 9 },
+    { id: 'da', label: 'action dimensions', min: 1, max: 4, value: 2 },
+    { id: 'n', label: 'samples collected (step 2)', min: 3, max: 60, value: 12 },
+    { id: 'a0', label: 'search start a₀ (step 6)', min: -100, max: 100, value: -60, fmt: x => f(x / 100) },
+  ],
+  steps: [
+    ['Everything so far fitted in a table', 'Frozen Lake: 16 states × 4 actions = 64 numbers, and "learning" meant filling them in. That is not a simplified real problem — it is a different regime.'],
+    ['Count the cells', 'Prosthesis: 5 continuous state variables (four landmark errors and a phase lag) and 2 continuous actions. At 20 bins per state dim and 9 per action: 20⁵ × 9² = 259 million cells. Ten visits each at one gait cycle per second: about 82 years of walking.'],
+    ['The fatal part: a table generalises nothing', 'Cell (12,7,3,9,4) learns nothing from (12,7,3,9,5), though a human could not tell those gait cycles apart. A smooth function fitted to the same samples says something about the states in between.'],
+    ['Store a function instead', 'Q[s][a] becomes Q(s, a; w) with a few thousand weights. Storage shrinks (least important); generalisation arrives free (the real reason); and the update stops being an assignment — it becomes regression: build a target y, minimise (Q − y)².'],
+    ['The price: the deadly triad', 'Tabular Q-learning converges to Q* with probability 1. Function approximation + bootstrapping + off-policy data has no guarantee, and simple examples diverge. Replay, target networks, small learning rates and clipping are engineering against that.'],
+    ['Where the action enters: the max', 'y = r + γ maxₐ′ Q(s′, a′) and π(s) = argmaxₐ Q(s, a). In a table: look at four numbers. DQN keeps the structure — one output per action, a scan over a fixed list — which is why it plays Atari (18 buttons) and does not drive a joint.'],
+    ['A continuous max is an optimisation', 'With a real-valued action the max is a search of its own, run twice per sample: once for the target, once every time the controller acts. Its iteration count depends on the start and the surface — in a 1 kHz loop that is not a cost, it is an impossibility.'],
+    ['DDPG: train a network to output the argmax', 'Keep μ(s) whose job is to already be at the maximum, and push it uphill on the critic. The max is never computed — it is amortised into weights, and acting is one bounded forward pass.'],
+    ['What each family needs', 'DP needs the model. MC needs episodes to end. TD needs a max over actions. DDPG needs none of them — only a critic differentiable in a, which you get free once Q is a network.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, c = count(s);
+    if (S <= 1) {
+      if (S === 0) { const G = Pl.panel(0, 0, .55, 1, [0, 4, 0, 4]); G.frame('Frozen Lake Q: 16 × 4 = 64 numbers'); const r = NN.rng(2);
+        for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) { G.poly([[j + .05, i + .05], [j + .95, i + .05], [j + .95, i + .95], [j + .05, i + .95]], '--line', 1, null, '--a', true);
+          [[.5, .8], [.85, .5], [.5, .2], [.15, .5]].forEach(([dx, dy]) => G.text([j + dx, i + dy], f(r() * .6, 2), '--ink', 0, 4, { size: 10, align: 'center' })); } }
+      const B = Pl.panel(S === 0 ? .56 : 0, 0, S === 0 ? .44 : .6, .75, [0, 4, 0, 12], false); B.frame('log₁₀ size');
+      NN.bars(B, [Math.log10(64), Math.log10(c.cells), Math.log10(c.visits), Math.log10(4737)], { labels: ['Frozen Lake', 'cells', 'visits ×10', 'network'], cols: ['--c', '--bad', '--bad', '--a'], d: 1 });
+      const R = Pl.panel(S === 0 ? .56 : .61, .76, S === 0 ? .44 : .39, .24, [0, 1, 0, 1], false); R.frame();
+      if (S === 1) { const R2 = Pl.panel(.61, 0, .39, .75, [0, 1, 0, 1], false); R2.frame('the arithmetic');
+        NN.lines(R2, [[`cells = Bs^ds × Ba^da`, '--ink'], [`      = ${s.Bs}^${s.ds} × ${s.Ba}^${s.da}`, '--ink'], [`      = ${NN.e(c.cells)}`, '--bad'], ['', ''], [`visits (10 each) = ${NN.e(c.visits)}`, '--bad'], [`at 1 s per gait cycle:`, '--muted'], [`  ${c.years > 1 ? f(c.years, 1) + ' years' : f(c.years * 365.25 * 24, 1) + ' hours'}`, '--bad'], ['', ''], ['network: ~5 000 weights', '--a']], { top: .12, gap: .095 }); }
+      NN.lines(R, [[S === 0 ? 'max, argmax: scan 4 numbers' : 'cells grow EXPONENTIALLY in dimension', '--ink'], [S === 0 ? 'update: assignment Q ← …' : 'add one state dim: × ' + s.Bs, '--muted']], { top: .38, gap: .34 });
+    } else if (S <= 4) {
+      const P = samplesQ(s.n), xs = [...Array(201)].map((_, i) => i / 200), NB = 20;
+      const bins = [...Array(NB)].map((_, k) => { const inb = P.filter(([x]) => Math.floor(x * NB) === k); return inb.length ? inb.reduce((a, p) => a + p[1], 0) / inb.length : null; });
+      const A = Pl.panel(0, 0, .5, .74, [0, 1, -1.2, 1.4], false); A.series([{ pts: xs.map(x => [x, Qtrue(x)]), cl: '--grey', w: 1.5, dash: [5, 4], label: 'true Q along one state axis' }], { title: `table, ${NB} bins: ${bins.filter(b => b !== null).length} filled, ${bins.filter(b => b === null).length} know nothing` });
+      bins.forEach((b, k) => { const x0 = k / NB, x1 = (k + 1) / NB; if (b === null) A.poly([[x0, -1.2], [x1, -1.2], [x1, 1.4], [x0, 1.4]], null, 0, null, '--bad', true); else A.line([x0, b], [x1, b], '--b', 3); });
+      P.forEach(p => A.dot(p, 4, '--ink'));
+      const B = Pl.panel(.5, 0, .5, .74, [0, 1, -1.2, 1.4], false); B.series([{ pts: xs.map(x => [x, Qtrue(x)]), cl: '--grey', w: 1.5, dash: [5, 4] }, { pts: xs.map(x => [x, smooth(P, x)]), cl: '--a', w: 2.5, label: 'smooth Q(s; w) through the same samples' }], { title: 'a function: neighbours inform each other' });
+      P.forEach(p => B.dot(p, 4, '--ink'));
+      const R = Pl.panel(0, .76, 1, .24, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 2 ? [['a table is a lookup structure: it has no notion that nearby states are similar', '--b'], ['the network wins not by storage but by interpolation: collected samples constrain the ones you did not collect', '--a']]
+        : S === 3 ? [['DP: V(s) ← maxₐ Q(s,a)  (assignment)   →   network: w ← w − η ∇w (Q(s,a;w) − y)²  (regression onto a target)', '--ink'], ['storage 259 M → ~5 000 (least important) · generalisation for free (the reason) · update becomes a gradient step', '--a']]
+        : [['deadly triad = function approximation + bootstrapping (target contains your own estimate) + off-policy data', '--bad'], ['tabular convergence is a theorem; deep-RL convergence is a hope — every stabiliser is engineering against this', '--muted']], { top: .35, gap: .32, size: 11 });
+    } else {
+      const as = [...Array(201)].map((_, i) => -1 + i / 100);
+      if (S === 5) { const D = Pl.panel(0, 0, .5, .74, [0, 4, 0, 1.1], false); D.frame('discrete: maxₐ = scan a fixed list'); const q = [.31, .52, .44, .18]; NN.bars(D, q, { labels: ['←', '↓', '→', '↑'], cols: q.map(v => v === Math.max(...q) ? '--c' : '--grey') });
+        const C = Pl.panel(.51, 0, .49, .74, [-1, 1, -1.6, .8], false); C.series([{ pts: as.map(a => [a, Qa(a)]), cl: '--a', w: 2.5, label: 'Q(s, a), a ∈ ℝ: no list to scan' }], { title: 'continuous: maxₐ is an optimisation problem' }); }
+      else { let a = s.a0, path = [a]; for (let k = 0; k < 60; k++) { const g = (Qa(a + 1e-4) - Qa(a - 1e-4)) / 2e-4; const na = Math.max(-1, Math.min(1, a + .08 * g)); if (Math.abs(na - a) < 1e-4) break; a = na; path.push(a); }
+        const C = Pl.panel(0, 0, .62, .74, [-1, 1, -1.6, .8], false); C.series([{ pts: as.map(a => [a, Qa(a)]), cl: '--a', w: 2.5, label: 'critic Q(s, a)' }], { title: S === 6 ? `gradient-ascent search from a₀: ${path.length - 1} iterations` : S === 7 ? 'actor μ(s): one forward pass lands near the peak' : 'what each method needs' });
+        if (S === 6) path.forEach((p, i) => C.dot([p, Qa(p)], i === path.length - 1 ? 6 : 3, i === path.length - 1 ? '--c' : '--e'));
+        if (S >= 7) { const am = as.reduce((b, x) => Qa(x) > Qa(b) ? x : b, -1); C.line([am, -1.6], [am, .8], '--c', 2, [4, 3]); C.dot([am, Qa(am)], 7, '--c'); C.text([am, Qa(am)], 'μ(s)', '--c', 8, -8, { size: 12 }); }
+        const R2 = Pl.panel(.63, 0, .37, .74, [0, 1, 0, 1], false); R2.frame();
+        NN.lines(R2, S === 6 ? [['each act / each target:', '--ink'], [' iterate until tolerance', '--e'], [' iterations: ' + (path.length - 1), '--e'], [' depends on a₀ and surface', '--bad'], [' unbounded time', '--bad'], ['', ''], ['twice per sample:', '--ink'], [' y needs maxₐ′ Q(s′,a′)', '--muted'], [' π(s) needs argmaxₐ Q', '--muted']]
+          : S === 7 ? [['μ(s): 1 forward pass', '--c'], ['~4 500 MACs, always', '--c'], ['trained by ∂Q/∂a uphill', '--a'], ['the max is amortised', '--ink'], [' into weights', '--ink']]
+          : [['DP    needs the model P', '--ink'], ['MC    needs episodes to end', '--ink'], ['TD    needs maxₐ Q', '--ink'], ['DDPG  needs ∂Q/∂a', '--c'], ['      (free: Q is a network)', '--muted']], { top: .12, gap: .095 }); }
+      const R = Pl.panel(0, .76, 1, .24, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['y = r + γ maxₐ′ Q(s′, a′)        π(s) = argmaxₐ Q(s, a)', '--ink'], [S === 5 ? 'DQN: network outputs one value per action → the max is still a scan: Atari yes, a joint no' : S === 6 ? 'a 1 kHz loop allows only bounded, repeatable computation (page 1)' : S === 7 ? 'DDPG = Q-learning with the argmax replaced by a network' : 'Carry forward: continuous states kill the table → function approximation; continuous actions kill the argmax → an actor', '--muted']], { top: .35, gap: .32, size: 11 });
+    }
+  },
+  math(S) {
+    const s = st(), c = count(s);
+    const rows = [
+`${E(`Frozen Lake: |S| × |A| = 16 × 4 = 64 cells`)}<p>Learning = filling in 64 numbers; max and argmax = look at four numbers.</p>`,
+`${E(`cells = B_s^d_s × B_a^d_a = ${s.Bs}^${s.ds} × ${s.Ba}^${s.da} = ${NN.e(c.cells)}
+visits (×10) = ${NN.e(c.visits)}
+time at 1 s/cycle = ${f(c.years, 2)} years`)}
+<p>Every cell must be visited several times before its average means anything.</p>`,
+`${E(`table: Q[bin] = average of samples in that bin (or nothing)
+function: Q(s; w) smooth → samples constrain neighbours`)}`,
+`${E(`Q[s][a]  →  Q(s, a; w)
+update: w ← w − η ∇w ½(Q(s,a;w) − y)²`)}
+${ul(['Storage 259 M floats → ≈ 5 000.', 'Generalisation for free — the real reason.', 'Assignment → regression onto a target (the Adam page\'s last paragraph).'])}`,
+`${ul(['<b>Function approximation</b>: updating one state moves others.', '<b>Bootstrapping</b>: the target contains your own estimate.', '<b>Off-policy data</b>: the distribution is not the one you evaluate.', 'Together: no convergence guarantee; known divergent counterexamples.'])}`,
+`${E(`y = r + γ maxₐ′ Q(s′, a′)
+π(s) = argmaxₐ Q(s, a)
+DQN: Q(s; w) ∈ ℝ^|A|  →  max over |A| outputs`)}`,
+`${E(`continuous: a* = argmaxₐ Q(s, a) needs an inner optimiser
+cost per sample: 2 searches (target + action)`)}`,
+`${E(`μ(s) ≈ argmaxₐ Q(s, a)
+∇θ J = E[∇ₐQ(s,a)|ₐ₌μ(s) · ∇θ μ(s)]`)}<p>One forward pass with bounded, deterministic execution time — the only kind allowed in a control loop.</p>`,
+`${ul(['DP: model.', 'MC: terminating episodes.', 'TD (Q-learning, DQN): a max over actions.', 'DDPG: none of these; a critic differentiable w.r.t. a.'])}`];
+    return rows[S];
+  },
+  stats() { const c = count(st()); return `<span><b>cells</b>${NN.e(c.cells)}</span><span><b>years</b>${f(c.years, 1)}</span>`; },
+});
+</script>
+</body></html>

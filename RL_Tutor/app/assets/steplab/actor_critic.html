@@ -1,0 +1,106 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Actor-critic</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { mu: v.mu / 100, sp: v.sp / 100, sn: v.sn / 100, p1: v.p1 / 100, deploy: DEPLOY }; };
+let DEPLOY = false, SAMP = [];
+const gauss = (x, m, s) => Math.exp(-.5 * ((x - m) / s) ** 2) / (s * Math.sqrt(2 * Math.PI));
+const Q3 = [1.8, -0.6, 0.9];
+const draw = s => { const r = NN.rng(31 + Math.floor(performance.now() / 700)); return [...Array(14)].map(() => ({ pi: s.mu + s.sp * NN.gauss(r), mu: s.mu + (s.deploy ? 0 : s.sn * NN.gauss(r)) })); };
+SL.app({
+  title: 'Actor-critic: one network judges, one acts',
+  sub: 'Generalised policy iteration with both halves replaced by networks — and the split that names the algorithms: is the actor a distribution π(a|s), or a number μ(s)?',
+  view: '2d',
+  legend: [['--a', 'critic / value'], ['--e', 'actor'], ['--d', 'stochastic π(a|s)'], ['--b', 'deterministic μ(s) + noise'], ['--c', 'chosen / best']],
+  controls: [
+    { id: 'mu', label: 'mean action μ(s)', min: -100, max: 100, value: 30, fmt: x => f(x / 100) },
+    { id: 'sp', label: "π's learned σ", min: 2, max: 80, value: 30, fmt: x => f(x / 100) },
+    { id: 'sn', label: 'injected noise σ (training only)', min: 0, max: 80, value: 20, fmt: x => f(x / 100) },
+    { id: 'p1', label: 'π(a₁|s) (step 2)', min: 0, max: 100, value: 50, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'deployment: noise off', toggle: true, pressed: false, onclick: e => { DEPLOY = !DEPLOY; e.setAttribute('aria-pressed', DEPLOY); SL.redraw(); } }],
+  steps: [
+    ['GPI again, with two networks', 'Policy evaluation becomes the critic (predict value); policy improvement becomes the actor (output actions the critic scores highly). They chase each other as in the DP pages — except neither step is exact, so neither ever finishes.'],
+    ['Why the actor cannot just read V(s)', 'V says you are in a bad state, not which way is out. Turning V into an action needs V(s′) for every reachable s′ weighted by P(s′|s,a) — and P is exactly what a model-free agent lacks. Q(s,a) attaches the value to the button, so choosing needs no model.'],
+    ['V is a policy-weighted average of Q', 'V^π(s) = Σₐ π(a|s) Q^π(s,a). Left to right: V summarises Q and throws away what the actor needs. Right to left: from V alone you cannot recover Q without the transition probabilities.'],
+    ['PPO gets away with a V-critic', 'PPO uses V only to compute the advantage of actions it already sampled — it never asks what another action would have been worth. DDPG\'s actor asks exactly that on every update, so its critic is Q(s,a), differentiated w.r.t. a.'],
+    ['Stochastic actor: π(a|s)', 'The network outputs a mean and a σ; the action is sampled. Exploration is built in and σ is learned — it is part of the policy and of the gradient (SAC even pays it an entropy bonus). Stochastic does not mean on-policy: PPO is on-policy, SAC uses replay.'],
+    ['Deterministic actor: μ(s)', 'The network outputs the action: the same state gives the same 15.5 N·m forever. Exploration must be bolted on — Gaussian noise added after the network, invisible to the gradient. In exchange the critic\'s action derivative drives the update directly.'],
+    ['At deployment', 'Switch the noise off. μ emits exactly μ(s) every time — what a joint controller should do. π keeps sampling (or is evaluated at its mean). That is the practical difference between the families.'],
+    ['Who is in which family', 'DDPG, TD3: deterministic μ, Q-critic, off-policy. SAC: stochastic π, Q-critic, off-policy. PPO, A2C/A3C: stochastic π, V-critic, on-policy. DQN: implicit argmax, Q, off-policy.'],
+    ['Keep two distinctions apart', 'Deterministic vs stochastic: how the actor chooses. On- vs off-policy: how the data-collecting policy relates to the one being learned. V- or Q-critic: an algorithm choice. Sample efficiency and robustness depend on the whole algorithm, not one adjective.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S === 0) {
+      const D = Pl.panel(0, 0, 1, .8, [0, 10, 0, 6], false); D.frame('evaluate ⇄ improve, forever');
+      const box = (x, y, w, h, t1, t2, c) => { D.poly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], c, 2.5, null, c, true); D.text([x + w / 2, y + h * .62], t1, '--ink', 0, 0, { size: 14, align: 'center' }); D.text([x + w / 2, y + h * .3], t2, '--muted', 0, 0, { size: 12, align: 'center' }); };
+      box(.8, 2, 3.4, 2, 'critic Q(s, a; w)', 'policy EVALUATION: how good?', '--a'); box(5.8, 2, 3.4, 2, 'actor μ(s; θ)', 'policy IMPROVEMENT: what to do?', '--e');
+      const t = SL.anim; D.arc([5, 3], 70, .3, 2.84, '--a', 2.5, true); D.arc([5, 3], 70, 3.44, 5.98, '--e', 2.5, true);
+      D.text([5, 5.2], 'actions to score', '--e', 0, 0, { size: 12, align: 'center' }); D.text([5, .7], '∂Q/∂a: which way is uphill', '--a', 0, 0, { size: 12, align: 'center' });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['DP page: V ← evaluate(π); π ← greedy(V); repeat until stable', '--muted'], ['here: one gradient step on each, interleaved — neither is exact, so neither ever finishes', '--ink']], { top: .38, gap: .35 });
+    } else if (S <= 3) {
+      const D = Pl.panel(0, 0, .6, .8, [0, 10, 0, 8], false); D.frame(S === 1 ? 'V tells you the state is bad, not which way is out' : 'V = Σ π(a|s) Q(s, a)');
+      const sx = [1.5, 4], nxt = [[7.5, 7], [7.5, 4], [7.5, 1]], P1 = [s.p1, (1 - s.p1) * .6, (1 - s.p1) * .4], V = P1.reduce((a, p, i) => a + p * Q3[i], 0);
+      D.dot(sx, 22, '--a', true); D.text(sx, 'V=' + f(V), '--ink', 0, 4, { size: 11, align: 'center' });
+      nxt.forEach((p, i) => { D.arrow([2.4, 4], [p[0] - 3.2, p[1] - 4], i === Q3.indexOf(Math.max(...Q3)) ? '--c' : '--grey', 2 + 3 * P1[i]);
+        D.dot(p, 18, '--grey', true); D.text(p, S === 1 ? "s′ ?" : 'Q=' + f(Q3[i], 1), '--ink', 0, 4, { size: 11, align: 'center' });
+        D.text([(2.4 + p[0]) / 2, (4 + p[1]) / 2], 'a' + (i + 1) + (S >= 2 ? '  π=' + f(P1[i]) : ''), '--e', -10, -8, { size: 12 }); });
+      if (S === 1) D.text([5, .4], 'needs P(s′|s,a) — model-free agents do not have it', '--bad', 0, 0, { size: 12, align: 'center' });
+      const R = Pl.panel(.61, 0, .39, .8, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 1 ? [['V(s) alone:', '--ink'], [' "this state is bad"', '--a'], ['to act from V:', '--ink'], [' Σₛ′ P(s′|s,a)V(s′) per a', '--bad'], ['to act from Q:', '--ink'], [' argmax over the buttons', '--c'], [' or ∂Q/∂a uphill', '--c']]
+        : S === 2 ? [['Q = (' + Q3.map(q => f(q, 1)).join(', ') + ')', '--ink'], ['π = (' + P1.map(p => f(p)).join(', ') + ')', '--e'], ['V = Σ πQ = ' + f(V, 3), '--a'], ['', ''], ['different (π, Q) pairs', '--muted'], ['give this same V:', '--muted'], ['V cannot be un-averaged', '--bad']]
+        : [['PPO advantage:', '--ink'], [' A = r + γV(s′) − V(s)', '--a'], [' only for the sampled a', '--a'], ['DDPG actor asks:', '--ink'], [' "what is a nearby', '--e'], ['  action worth?" → ∂Q/∂a', '--e'], [' needs a Q-critic', '--e']], { top: .12, gap: .12 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['V^π(s) = Σₐ π(a|s) Q^π(s, a)  — V is the policy-weighted average of Q', '--ink'], ['Q attaches value to the button rather than to the destination', '--muted']], { top: .38, gap: .35 });
+    } else if (S <= 6) {
+      SAMP = draw(s); const xs = [...Array(241)].map((_, i) => -1.5 + i / 80);
+      const A = Pl.panel(0, 0, .5, .72, [-1.5, 1.5, 0, 2.2], false);
+      A.series([{ pts: xs.map(x => [x, Math.min(2.2, gauss(x, s.mu, s.sp))]), cl: '--d', w: 2.5, label: 'π(a|s) = N(μ, σ_π): σ is a network output' }], { title: 'stochastic actor' });
+      SAMP.forEach((q, i) => A.dot([q.pi, .08 + .05 * (i % 4)], 4, '--d')); A.line([s.mu, 0], [s.mu, 2.2], '--grey', 1, [3, 3]);
+      const B = Pl.panel(.5, 0, .5, .72, [-1.5, 1.5, 0, 2.2], false);
+      B.series([{ pts: s.deploy || s.sn < .01 ? [] : xs.map(x => [x, Math.min(2.2, gauss(x, s.mu, s.sn))]), cl: '--b', w: 1.5, dash: [5, 4], label: s.deploy ? 'deployed: no noise' : 'exploration noise N(0, σ) — training only' }], { title: 'deterministic actor μ(s)' });
+      B.line([s.mu, 0], [s.mu, 2.1], '--e', 4); B.text([s.mu, 2.1], 'μ(s) = ' + f(s.mu), '--e', 6, 14, { size: 12 }); SAMP.forEach((q, i) => B.dot([q.mu, .08 + .05 * (i % 4)], 4, '--b'));
+      const H = .5 * Math.log(2 * Math.PI * Math.E * s.sp * s.sp);
+      const R = Pl.panel(0, .74, 1, .26, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 4 ? [[`a ~ N(${f(s.mu)}, ${f(s.sp)}):  entropy H = ½ln(2πeσ²) = ${f(H, 2)} nats — learned, differentiated, SAC pays a bonus to keep it wide`, '--d'], ['stochastic ≠ on-policy: PPO uses current-policy rollouts; SAC learns off-policy from replay', '--muted']]
+        : S === 5 ? [[`a = μ(s) + N(0, ${f(s.sn)}):  the spread is a random number added AFTER the network — invisible to the gradient`, '--b'], ['update: differentiate the critic w.r.t. the action and push (still an estimate: sampled states, approximate critic)', '--muted']]
+        : [[s.deploy ? `deployed: μ emits exactly ${f(s.mu)} every time;  π still samples with σ = ${f(s.sp)} (or is run at its mean)` : 'press "deployment: noise off" and watch the right panel stop exploring completely', s.deploy ? '--c' : '--ink'], ['repeatable output is what a joint controller should do — and what a sampled policy cannot promise', '--muted']], { top: .33, gap: .33, size: 11 });
+    } else {
+      const T = Pl.panel(0, 0, 1, .8, [0, 1, 0, 1], false); T.frame(S === 7 ? 'who is in which family' : 'three independent choices');
+      const rows = S === 7 ? [['algorithm   actor                 critic learns   data', '--muted'], ['DDPG        deterministic μ(s)    Q(s, a)         off-policy', '--b'], ['TD3         deterministic μ(s)    Q(s, a) ×2      off-policy', '--b'], ['SAC         stochastic π(a|s)     Q(s, a)         off-policy', '--d'], ['PPO         stochastic π(a|s)     V(s)            on-policy', '--d'], ['A2C/A3C     stochastic π(a|s)     V(s)            on-policy', '--d'], ['DQN         implicit argmaxₐ Q    Q(s, a)         off-policy', '--grey']]
+        : [['1  how the actor chooses      deterministic μ(s)   |  stochastic π(a|s)', '--e'], ['2  where the data comes from  on-policy (current π) |  off-policy (replay of older behaviour)', '--a'], ['3  what the critic learns     V(s)                 |  Q(s, a)', '--c'], ['', ''], ['DDPG = deterministic + off-policy + Q', '--b'], ['SAC  = stochastic + off-policy + Q', '--d'], ['PPO  = stochastic + on-policy + V   (usually)', '--d']];
+      NN.lines(T, rows, { top: .15, gap: .1 });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['Carry forward: critic answers "how good", actor answers "what to do".', '--ink'], ['a deterministic actor: critic-derivative updates and off-policy replay — and you add exploration yourself', '--muted']], { top: .38, gap: .35 });
+    }
+  },
+  math(S) {
+    const s = st(), P1 = [s.p1, (1 - s.p1) * .6, (1 - s.p1) * .4];
+    const rows = [
+`${E(`critic:  Q(s, a; w) ≈ Q^μ(s, a)        (evaluation)
+actor:   μ(s; θ) → argmaxₐ Q(s, a; w)   (improvement)`)}`,
+`${E(`from V:  a* = argmaxₐ Σₛ′ P(s′|s,a)[r + γV(s′)]   ← needs P
+from Q:  a* = argmaxₐ Q(s, a)                  ← no model`)}`,
+`${E(`V^π(s) = Σₐ π(a|s) Q^π(s, a)
+= ${P1.map((p, i) => f(p) + '·' + f(Q3[i], 1)).join(' + ')}
+= ${f(P1.reduce((a, p, i) => a + p * Q3[i], 0), 3)}`)}`,
+`${E(`PPO:  Â = r + γV(s′) − V(s)   for a already taken
+DDPG: ∇ₐQ(s, a)|ₐ₌μ(s)        for an action NOT taken`)}`,
+`${E(`πθ(a|s) = N(μθ(s), σθ(s)),  a ~ πθ
+μ = ${f(s.mu)}, σ = ${f(s.sp)}, H = ${f(.5 * Math.log(2 * Math.PI * Math.E * s.sp * s.sp), 3)} nats`)}
+<p>Gradients use likelihood ratios (PPO) or reparameterisation (SAC).</p>`,
+`${E(`a = μθ(s)
+a_explore = μθ(s) + N(0, σ),  σ = ${f(s.sn)}  (training only)`)}`,
+`${E(`deployed μ: a = ${f(s.mu)} (always)
+π: a ~ N(${f(s.mu)}, ${f(s.sp)})  or  a = mean`)}`,
+`<p>Deterministic/stochastic describes action selection; on/off-policy describes the data. Keep them separate.</p>`,
+`${ul(['DDPG: deterministic and off-policy.', 'SAC: stochastic and off-policy.', 'PPO: usually stochastic and on-policy.', 'V vs Q critic: an algorithm choice, not a universal restriction.'])}`];
+    return rows[S];
+  },
+  stats() { const s = st(); return `<span><b>μ</b>${f(s.mu)}</span><span><b>σ_π</b>${f(s.sp)}</span><span><b>noise</b>${s.deploy ? 'off' : f(s.sn)}</span>`; },
+});
+</script>
+</body></html>

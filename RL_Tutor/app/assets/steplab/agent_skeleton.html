@@ -1,0 +1,127 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>One rulebook</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const ALG = ['Tabular Q', 'DQN', 'DDPG', 'PPO'];
+const ROWS = [
+  ['Transition (s,a,r,s′,done)', ['same', 'same', 'same (float vectors)', '+ log π(a|s), V(s)'], [1, 1, 1, 0]],
+  ['StepResult (s′,r,done,info)', ['same', 'same', 'same', 'same'], [1, 1, 1, 1]],
+  ['Env .reset() / .step(a)', ['same', 'same', 'same (box actions)', 'same'], [1, 1, 1, 1]],
+  ['experience store', ['none: update, discard', 'replay, uniform 32–256', 'replay, uniform 64–256', 'rollout: ordered, cleared'], [0, 0, 0, 0]],
+  ['act(s)', ['argmax row, ε-greedy', 'argmax net head, ε-greedy', 'μ(s) + Gaussian noise', 'sample π, keep log π'], [0, 0, 0, 0]],
+];
+const DIFF = {
+  'stores': ['nothing — update on the spot, discard', 'replay buffer, uniform minibatch', 'replay buffer, uniform minibatch', 'rollout buffer: ordered, ~2048 steps, a few epochs, cleared'],
+  'acts': ['argmax over a table row + ε-greedy', 'argmax over the network head + ε-greedy', 'μ(s) + Gaussian noise; no comparison', 'sample from π(a|s); record log-prob and V(s)'],
+  'data': ['behaves ε-greedy, learns greedy (off-policy target)', 'off-policy', 'off-policy', 'on-policy'],
+  'approx.': ['none: Q is a literal array', 'one Q network + target copy', 'actor + critic + two target copies', 'π network + V network'],
+  'defining': ['converges to Q* w.p. 1 — no other column can claim it', 'Q-learning with a network; Atari-sized action lists', 'continuous actions; argmax amortised into the actor', 'clipped policy step; data from the current policy only'],
+};
+let A1 = 0, A2 = 2, RING = [], W = 0, R = 0;
+const st = () => { const v = SL.v; return { cap: v.cap, dmu: v.dmu / 100, g: v.g / 1000, T: v.T }; };
+SL.app({
+  title: 'One rulebook: Experience, StepResult, Env, buffer, act()',
+  sub: 'Every agent in the tutor is the same five objects. Three are genuinely universal; the experience store and act() encode the algorithm — and PPO is the counter-example that shows which two.',
+  view: '2d',
+  legend: [['--c', 'shared verbatim'], ['--bad', 'differs: the algorithm lives here'], ['--a', 'write index (RT side)'], ['--b', 'read / sample'], ['--d', 'policy ratio']],
+  controls: [
+    { id: 'cap', label: 'ring capacity (step 2)', min: 4, max: 12, value: 8 },
+    { id: 'dmu', label: 'policy moved since collection Δμ (step 4)', min: 0, max: 200, value: 40, fmt: x => f(x / 100) },
+    { id: 'g', label: 'γ (step 8)', min: 900, max: 999, value: 990, fmt: x => f(x / 1000, 3) },
+    { id: 'T', label: 'time limit (step 8)', min: 50, max: 1000, step: 50, value: 1000 },
+  ],
+  buttons: [{ label: 'push transition', onclick: () => { const cap = SL.v.cap; if (RING.length < cap) RING.push(W); else RING[W % cap] = W; W++; SL.redraw(); } }, { label: 'clear ring', onclick: () => { RING = []; W = 0; SL.redraw(); } },
+    ...ALG.map((a, i) => ({ label: 'compare ' + a, onclick: () => { A1 = A2; A2 = i; if (A1 === A2) A1 = (i + 1) % 4; SL.go(9, false); } }))],
+  steps: [
+    ['Five objects, one skeleton', 'A transition record, a step result, an environment with reset/step, a store of past experience, and act(s). They appear in tabular Q, DQN, DDPG, SAC. Green cells are shared verbatim across all four columns; red cells are where the algorithm lives.'],
+    ['The transition: almost universal', '(s, a, r, s′, done) is identical for Q-learning, DQN and DDPG (DDPG just uses float vectors). PPO also needs log π(a|s) and V(s) recorded AT COLLECTION TIME — the old policy will be gone when the update runs.'],
+    ['The ring buffer mechanics are shared', 'Write at an index; once full, overwrite the oldest: items[index] = t; index = (index + 1) % capacity. Press "push transition" past the capacity and watch it wrap.'],
+    ['Same class, three contracts', 'Tabular: one sample, nothing stored. DQN/DDPG: uniform minibatches from ~1e5–1e6 transitions kept for the whole run; order deliberately destroyed. PPO: the whole rollout (~2 048 steps), several passes, ORDERED for GAE, then cleared.'],
+    ['Facts about the world vs facts about a policy', 'A replay transition stays true when the policy changes. PPO\'s gradient is weighted by π_new(a|s)/π_old(a|s); once the policy has moved, that ratio explodes. Reuse a replay buffer for PPO and the advantages are silently wrong.'],
+    ['act(): the body names the algorithm', 'tabular_action and dqn_action are the same function — DQN only changed how the row of Q values is produced. ddpg_action has no argmax and no comparison. ppo_action samples, and returns three things.'],
+    ['Where exploration lives, and the structural break', 'ε-greedy sometimes ignores the policy; Gaussian noise perturbs a policy with no randomness of its own; PPO\'s policy IS the randomness. PPO\'s act() returns (a, log π, V) — the one requirement that makes it on-policy and its buffer disposable.'],
+    ['The seven-line loop around all of it', 'a = act(s); (s′, r, done) = step(a); store(...); train_step(); s = done ? reset() : s′. Tabular: store is a no-op. DQN/DDPG: a push and a minibatch. PPO: nothing for 2 047 steps, then 10 epochs and clear. The skeleton does not care.'],
+    ['done does two jobs — keep them apart', 'Termination: the episode truly ended, V(s′) = 0, y = r. Truncation: you stopped it at a time limit; s′ has a real value. In y = r + γ(1 − d)Q′, d must be TERMINATION only, or every state at the limit is taught to be worthless. Modern APIs return terminated and truncated separately.'],
+    ['Diff any two, field by field', 'Pick two with the compare buttons. Always identical: the transition core, StepResult, Env, the seven-line loop. Off-policy (Q-learning, DQN, DDPG, TD3, SAC) stores facts about the world forever; on-policy (PPO, A2C, TRPO) stores facts about the current policy and throws them away.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S <= 1 || S === 3) {
+      const T = Pl.panel(0, 0, 1, .78, [0, 1, 0, 1], false); T.frame(S === 3 ? 'one buffer class, three contracts' : 'the five objects across four algorithms');
+      if (S === 3) NN.lines(T, [['                     Tabular Q        DQN / DDPG                       PPO', '--muted'], ['samples per update   1 (just now)     random minibatch 64–256         whole rollout, minibatches, epochs', '--ink'], ['old samples valid?   n/a              YES — a fact about the world     NO — ratio to current π blows up', '--ink'], ['lifetime             one step         whole run; capacity 1e5–1e6      one iteration (~2 048), then cleared', '--ink'], ['order matters?       n/a              no — destroyed on purpose        YES — GAE walks it backwards', '--ink'], ['why                  online TD        decorrelate + reuse              on-policy estimation', '--muted']], { top: .14, gap: .13 });
+      else { const c = T.c, x0 = T.x + 10, cw = [205, 165, 185, 185, 200], hdr = ['object', ...ALG];
+        hdr.forEach((h, j) => T.label(x0 + cw.slice(0, j).reduce((a, b) => a + b, 0), T.y + 30, h, '--muted', { size: 13 }));
+        ROWS.forEach(([name, cells, same], i) => { const y = T.y + 64 + i * 46, hl = S === 1 && i === 0;
+          T.label(x0, y, name, hl ? '--a' : '--ink', { size: 13 });
+          cells.forEach((t, j) => { const x = x0 + cw.slice(0, j + 1).reduce((a, b) => a + b, 0); c.fillStyle = SL.css(same[j] ? '--c' : '--bad'); c.globalAlpha = hl && j === 3 ? .35 : .14; c.fillRect(x - 4, y - 16, cw[j + 1] - 6, 26); c.globalAlpha = 1; T.label(x, y, t, same[j] ? '--c' : '--bad', { size: 12, bold: false }); }); }); }
+      const B = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); B.frame();
+      NN.lines(B, S === 1 ? [['PPO transition = (s, a, r, s′, done, log π_old(a|s), V(s)) — the probability cannot be recovered later: the old policy is gone', '--a']] : S === 3 ? [['"PPO has a buffer too" — true and misleading: different fields, ordered access, a lifetime of one iteration', '--ink']] : [['three of five shared verbatim; the experience store and act() encode the algorithm\'s actual commitments', '--ink']], { top: .5, gap: .3 });
+    } else if (S === 2) {
+      const cap = s.cap, P = Pl.panel(0, 0, .62, .8, [-1.3, 1.3, -1.3, 1.3]); P.frame('ring buffer, capacity ' + cap);
+      for (let i = 0; i < cap; i++) { const a0 = Math.PI / 2 - 2 * Math.PI * i / cap, p = [Math.cos(a0), Math.sin(a0)], has = RING.length > i, idx = W % cap;
+        P.dot(p, 22, i === idx ? '--a' : has ? '--c' : '--grey', true); P.text(p, has ? 't' + RING[i] : '·', '--ink', 0, 4, { size: 12, align: 'center' }); P.text([p[0] * 1.25, p[1] * 1.25], '[' + i + ']', '--muted', 0, 4, { size: 10, align: 'center' }); }
+      const ia = Math.PI / 2 - 2 * Math.PI * (W % cap) / cap; P.arrow([0, 0], [.7 * Math.cos(ia), .7 * Math.sin(ia)], '--a', 3, 'index');
+      const R2 = Pl.panel(.63, 0, .37, .8, [0, 1, 0, 1], false); R2.frame();
+      NN.lines(R2, [['pushed so far: ' + W, '--ink'], ['stored: ' + RING.length + ' / ' + cap, '--c'], ['index: ' + (W % cap), '--a'], ['', ''], ['if size < capacity:', '--muted'], ['  items.push_back(t)', '--ink'], ['else:', '--muted'], ['  items[index] = t', '--ink'], ['index = (index+1) % cap', '--a'], ['oldest overwritten first', '--muted']], { top: .1, gap: .085 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['identical mechanics wherever the structure appears — the tutor\'s ReplayBuffer::push', '--ink']], { top: .5, gap: .3 });
+    } else if (S === 4) {
+      const xs = [...Array(241)].map((_, i) => -3 + i / 40), g = (x, m) => Math.exp(-.5 * (x - m) ** 2 / .25) / Math.sqrt(2 * Math.PI * .25);
+      const P = Pl.panel(0, 0, .55, .8, [-3, 3, 0, 1], false); P.series([{ pts: xs.map(x => [x, g(x, 0)]), cl: '--grey', w: 2, dash: [5, 4], label: 'π_old (collected the data)' }, { pts: xs.map(x => [x, g(x, s.dmu)]), cl: '--d', w: 2.5, label: 'π_new (being updated)' }], { title: 'the policy moved after collection' });
+      const r = NN.rng(4), acts = [...Array(10)].map(() => .5 * NN.gauss(r)), ratios = acts.map(a => g(a, s.dmu) / g(a, 0)); acts.forEach(a => P.dot([a, .03], 4, '--ink'));
+      const B = Pl.panel(.56, 0, .44, .8, [0, 10, 0, Math.max(3, Math.min(60, Math.max(...ratios) * 1.1))], false); B.frame('ratio π_new/π_old per stored action'); NN.bars(B, ratios.map(v => Math.min(60, v)), { cols: ratios.map(v => v > 1.2 || v < .8 ? '--bad' : '--c'), d: 1 }); B.line([0, 1], [10, 1], '--grey', 1, [3, 3]);
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [[`Δμ = ${f(s.dmu)}: ratios ${f(Math.min(...ratios), 2)} … ${f(Math.max(...ratios), 2)} (PPO clips to [0.8, 1.2]); a replay transition has no ratio — it stays true`, '--ink'], ['replay buffer: facts about the ENVIRONMENT keep · rollout buffer: facts about a POLICY expire when it updates', '--muted']], { top: .38, gap: .35, size: 11 });
+    } else if (S <= 6) {
+      const T = Pl.panel(0, 0, 1, .8, [0, 1, 0, 1], false); T.frame('four act() bodies');
+      NN.lines(T, [['int tabular_action(Q, s, eps):  if (u < eps) return random(4);  return argmax(Q[s]);', S === 5 ? '--c' : '--ink'], ['int dqn_action(net, s, eps):     if (u < eps) return random(A);  return argmax(net.forward(s));', S === 5 ? '--c' : '--ink'], ['Vec ddpg_action(agent, s, noise): return agent.act(s, noise);   // μ(s) + clipped noise', '--e'], ['tuple ppo_action(policy, value, s):', '--d'], ['    auto [mu, sigma] = policy(s);  a = N(mu, sigma);', '--d'], ['    log_prob = −½((a−mu)/sigma)² − log sigma − ½ log 2π;', '--d'], ['    return {a, log_prob, value(s)};   // keep the probability for PPO\'s ratio', '--d'], ['', ''], [S === 5 ? '1 the first two are one function: DQN changed how the row is made, not the rule' : 'exploration: ε-greedy ignores π · noise perturbs a noise-free μ · PPO\'s π is the randomness', '--ink'], [S === 5 ? '2 DDPG: no argmax, no comparison — one bounded forward pass' : 'PPO returns THREE things: the structural break that makes it on-policy', '--bad']], { top: .1, gap: .085 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['act() is where the algorithm\'s commitments show: what to compare, where randomness lives, what must be remembered', '--ink']], { top: .5, gap: .3 });
+    } else if (S === 7) {
+      const D = Pl.panel(0, 0, .6, .8, [0, 10, 0, 10], false); D.frame('training_loop(agent, env, total_steps)');
+      const lines = ['s = env.reset();', 'for t in 0..total_steps:', '  a = agent.act(s);', '  (s2, r, done, info) = env.step(a);', '  agent.store(s, a, r, s2, done);', '  agent.train_step();', '  s = done ? env.reset() : s2;'], k = Math.floor(SL.anim * 5) + 2;
+      lines.forEach((l, i) => D.label(D.x + 20, D.y + 50 + i * 40, l, i === Math.min(6, k) ? '--a' : '--ink', { mono: true }));
+      const R2 = Pl.panel(.61, 0, .39, .8, [0, 1, 0, 1], false); R2.frame('what each fills in');
+      NN.lines(R2, [['Tabular Q', '--ink'], ['  store: no-op', '--muted'], ['  train: 1 arithmetic update', '--muted'], ['DQN / DDPG', '--ink'], ['  store: buffer push', '--muted'], ['  train: one minibatch', '--muted'], ['PPO', '--ink'], ['  store: rollout append', '--muted'], ['  train: nothing ×2047,', '--muted'], ['   then 10 epochs + clear', '--muted']], { top: .1, gap: .085 });
+    } else if (S === 8) {
+      const Vtrue = (1 - Math.pow(s.g, 1e6)) / (1 - s.g), ks = [...Array(51)].map((_, i) => i * s.T / 50);
+      const P = Pl.panel(0, 0, .62, .8, [0, s.T, 0, Vtrue * 1.15], false);
+      P.series([{ pts: ks.map(k => [k, Vtrue]), cl: '--c', w: 2.5, label: 'truth: walking never ends, V = 1/(1 − γ)' }, { pts: ks.map(k => [k, (1 - Math.pow(s.g, s.T - k)) / (1 - s.g)]), cl: '--bad', w: 2.5, label: 'if truncation is treated as termination' }], { title: 'reward 1 per step; value of a state t steps into an episode capped at T' });
+      const R2 = Pl.panel(.63, 0, .37, .8, [0, 1, 0, 1], false); R2.frame();
+      NN.lines(R2, [['at the time limit:', '--ink'], ['  terminated: y = r = 1', '--bad'], ['  truncated:  y = r + γV(s′)', '--c'], ['            = ' + f(1 + s.g * Vtrue, 1), '--c'], ['', ''], ['d = TERMINATED only', '--a'], ['(terminated, truncated)', '--muted'], [' returned separately', '--muted'], ['bug: silent, agent becomes', '--bad'], [' mysteriously short-sighted', '--bad']], { top: .1, gap: .085 });
+    } else {
+      const T = Pl.panel(0, 0, 1, .8, [0, 1, 0, 1], false); T.frame(`${ALG[A1]} versus ${ALG[A2]}`);
+      const rows = []; Object.entries(DIFF).forEach(([k, v]) => { rows.push([k.padEnd(9) + ALG[A1].padEnd(10) + v[A1], '--a']); rows.push([' '.repeat(9) + ALG[A2].padEnd(10) + v[A2], '--e']); });
+      NN.lines(T, [...rows, ['identical in both: transition core (s,a,r,s′,done), StepResult, Env, the seven-line loop', '--c']], { top: .08, gap: .075 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['off-policy: store facts about the world, sample forever · on-policy: store facts about the policy, discard on update', '--ink']], { top: .5, gap: .3 });
+    }
+  },
+  math(S) {
+    const s = st(), Vt = 1 / (1 - s.g);
+    const rows = [
+`${E(`Transition  (s, a, r, s′, done)
+StepResult  (s′, r, done, info)
+Env         reset() → s,  step(a) → StepResult
+Store       push(), sample()
+act(s)      → a`)}`,
+`${E(`DDPG: (s, a, r, s′, done)
+PPO : (s, a, r, s′, done, log π_old(a|s), V(s))`)}`,
+`${E(`items[index] = t;   index = (index + 1) % ${s.cap}`)}`,
+`<p>If you reused a replay buffer for PPO you would get silently wrong advantages: the values stored with each transition came from a policy that no longer exists.</p>`,
+`${E(`PPO ratio  ρ = π_new(a|s) / π_old(a|s)
+clipped objective: min(ρÂ, clip(ρ, 1−ε, 1+ε)Â),  ε ≈ 0.2`)}`,
+`${ul(['tabular_action ≡ dqn_action (same decision rule).', 'ddpg_action: no comparison of any kind.', 'ppo_action: (a, log π, V).'])}`,
+`${E(`log N(a; μ, σ) = −½((a − μ)/σ)² − log σ − ½ log 2π`)}`,
+`<p>Seven lines, the same seven for every model-free method in the tutor.</p>`,
+`${E(`y = r + γ(1 − terminated) Q′(s′, a′)
+γ = ${f(s.g, 3)}: true V = 1/(1 − γ) = ${f(Vt, 1)}
+cut at the limit: y = 1  (wrong by ${f(s.g * Vt, 1)})`)}`,
+`<p>Carry forward: build the transition, step result and environment interface once. The experience store and act() are where the algorithm lives; every other difference follows from on- vs off-policy.</p>`];
+    return rows[S];
+  },
+  stats() { return SL.st === 2 ? `<span><b>pushed</b>${W}</span><span><b>stored</b>${RING.length}</span>` : ''; },
+});
+</script>
+</body></html>

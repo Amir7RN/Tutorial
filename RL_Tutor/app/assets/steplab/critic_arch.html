@@ -1,0 +1,106 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inside the critic</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { N: v.N, ds: v.ds, da: v.da, amax: v.amax }; };
+const arch = s => { const hid = 2 - s.N; return { layers: 3 - s.N, share: s.N === 0 ? s.da / (s.ds + s.da) : s.da / (64 + s.da), paths: Math.pow(64, hid), att: Math.pow(.6, hid) }; };
+/* a small random critic slice Q(a) with ReLU vs tanh hidden units, for rule 3 */
+const R0 = NN.rng(12), U = [...Array(10)].map(() => [3 * (2 * R0() - 1), 2 * R0() - 1, 2 * R0() - 1]);
+const Qr = (a, act) => U.reduce((s, [w, b, c]) => s + c * NN.act[act].f(w * a + b), 0);
+const dQr = (a, act) => U.reduce((s, [w, b, c]) => s + c * w * NN.act[act].d(w * a + b), 0);
+SL.app({
+  title: 'Inside the critic: two inputs, one number',
+  sub: 'A state and an action are not the same kind of thing. Where they are allowed to meet is a real design decision — and it is a decision about ∂Q/∂a, the actor\'s whole training signal.',
+  view: '2d',
+  legend: [['--a', 'state path'], ['--e', 'action path'], ['--d', 'merged'], ['--b', '∂Q/∂a'], ['--bad', 'attenuated / unsafe']],
+  controls: [
+    { id: 'N', label: 'action enters after N hidden layers', min: 0, max: 2, value: 0 },
+    { id: 'ds', label: 'state dimension d_s', min: 1, max: 200, value: 5 },
+    { id: 'da', label: 'action dimension d_a', min: 1, max: 8, value: 2 },
+    { id: 'amax', label: 'a_max (rule 1)', min: 1, max: 100, value: 40, fmt: x => x + ' N·m' },
+  ],
+  buttons: [{ label: 'case study (5, 2)', onclick: () => { SL.setControl('ds', 5); SL.setControl('da', 2); SL.redraw(); } }, { label: 'big state (100, 2)', onclick: () => { SL.setControl('ds', 100); SL.setControl('da', 2); SL.redraw(); } }],
+  steps: [
+    ['Two inputs of different kinds', 'The state may be 5 numbers or 500; the action 1 to 8. The state is given; the action is chosen. Only the action needs a gradient taken with respect to it. The critic is the only DDPG network with this asymmetry.'],
+    ['A · Early fusion: concatenate at the input', 'Glue s and a into one vector and use a plain MLP — what this tutor does (concatenate(s, a)). For: the action interacts with the state from layer 1; one network, one slice. Against: with 60 state numbers and 2 actions, the action is 3% of the input and its weights must grow large on the very path the actor\'s gradient uses.'],
+    ['B · Late fusion: the action joins at hidden layer 2', 'The original DDPG critic. For: the action meets compact state features (essential when the state is an image — you would not convolve over a torque), and its path to Q is shorter, so fewer weight × slope factors in ∂Q/∂a. Against: layer 1 cannot form joint state-action features; custom network.'],
+    ['Choose on the numbers', 'd_s ≈ d_a (5 and 2): early fusion, plain MLP. d_s ≫ d_a: late fusion. Image or sequence state: late, always. Crispest ∂Q/∂a: late, even at the last hidden layer — the limit is Q = f(φ(s), a) with f small and nearly linear in a. Debugging: early.'],
+    ['Count the factors between a and Q', 'Every layer on the action path adds one weight matrix and one slope, and sums over its width. More layers: richer dependence on a, but a more attenuated, more saturable gradient. Slide the merge point.'],
+    ['Rule 1 · keep the action\'s units sane', 'The actor outputs tanh ∈ [−1, 1] × a_max. Feed the critic physical torque and its action weights must be ~1/a_max; feed it the normalised output and they need not be. The chain rule owes a_max on the way back — the * c.a_max on the actor\'s backward call.'],
+    ['Rule 2 · no dropout or batch norm on the action path', 'Both make Q(s, a) depend on something other than (s, a) — a random mask, or 63 other samples — so ∂Q/∂a stops being a statement about this state\'s action.'],
+    ['Rule 3 · smooth activations near the action', 'ReLU\'s derivative is a step, so ∂Q/∂a is piecewise constant in a: a slope that does not change as the actor moves, until suddenly it does. tanh gives a continuously varying slope — gentler to hill-climb on.'],
+    ['What the code builds', 'actor {d_s, h, h, d_a} tanh; critic {d_s + d_a, h, h, 1} linear (early fusion, value unbounded); two targets built identically then copied with τ = 1, so training starts from agreement rather than two random opinions.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, A = arch(s);
+    if (S <= 4) {
+      const N = S === 1 ? 0 : S === 2 ? 1 : s.N, D = Pl.panel(0, 0, .62, .76, [0, 10, 0, 10], false); D.frame(N === 0 ? 'early fusion: [s, a] → h₁ → h₂ → Q' : N === 1 ? 'late fusion: s → h₁, then [h₁, a] → h₂ → Q' : 'action at the last hidden layer: [h₂, a] → Q');
+      const X = [1, 4, 7, 9.2], ys = n => [...Array(n)].map((_, i) => 8.6 - 7.2 * i / Math.max(1, n - 1));
+      const sN = Math.min(6, s.ds), aN = Math.min(4, s.da), hN = 6;
+      const sY = ys(sN + aN).slice(0, sN), aY = ys(sN + aN).slice(sN);
+      const L = [{ x: X[0], ys: sY, c: '--a' }], H1 = { x: X[1], ys: ys(hN), c: N === 0 ? '--d' : '--a' }, H2 = { x: X[2], ys: ys(hN), c: N <= 1 ? '--d' : '--a' }, Qn = { x: X[3], ys: [5], c: '--d' };
+      const aX = N === 0 ? X[0] : N === 1 ? 2.6 : 5.6, aL = { x: aX, ys: N === 0 ? aY : ys(aN).map(y => y * .4 + .8), c: '--e' };
+      const tgt = [H1, H2, Qn][N], lay = [[L[0], H1], [H1, H2], [H2, Qn]];
+      lay.forEach(([p, q], k) => p.ys.forEach(y1 => q.ys.forEach(y2 => D.line([p.x, y1], [q.x, y2], k >= N ? '--d' : '--a', .7))));
+      aL.ys.forEach(y1 => tgt.ys.forEach(y2 => D.line([aL.x, y1], [tgt.x, y2], '--e', 1.4)));
+      [L[0], H1, H2, Qn].forEach(g => g.ys.forEach(y => D.dot([g.x, y], 7, g.c, true))); aL.ys.forEach(y => D.dot([aL.x, y], 7, '--e', true));
+      D.text([X[0], (sY[0] + sY[sY.length - 1]) / 2], 's (' + s.ds + ')', '--a', -14, 4, { size: 12, align: 'right' }); D.text([aL.x, (N === 0 ? aY[aY.length - 1] : .6) - .5], 'a (' + s.da + ')', '--e', 0, 0, { size: 12, align: 'center' }); D.text([X[3], 6], 'Q', '--d', 0, 0, { size: 13, align: 'center' });
+      const R = Pl.panel(.63, 0, .37, .76, [0, 1, 0, 1], false); R.frame(S === 3 ? 'pick by situation' : 'action path, live');
+      const An = arch({ ...s, N });
+      NN.lines(R, S === 3 ? [['d_s ≈ d_a (5, 2)', '--ink'], ['  early: plain MLP', '--c'], ['d_s ≫ d_a (100, 2)', '--ink'], ['  late: no drowning', '--c'], ['image / sequence', '--ink'], ['  late, always', '--c'], ['crispest ∂Q/∂a', '--ink'], ['  late, or last layer', '--c'], ['debugging', '--ink'], ['  early: one slice', '--c']]
+        : [['layers on a-path: ' + An.layers, '--e'], ['a share at merge: ' + f(100 * An.share, 1) + '%', An.share < .05 ? '--bad' : '--e'], ['paths a → Q: ' + An.paths.toLocaleString('en-US'), '--ink'], ['typical survival: ×' + f(An.att, 2), An.att < .4 ? '--bad' : '--c'], ['', ''], [N === 0 ? 'joint features from layer 1' : 'state features first', '--muted'], [N === 0 ? 'action may drown if d_s ≫ d_a' : 'shorter path, crisper ∂Q/∂a', '--muted']], { top: .1, gap: .085 });
+      const B = Pl.panel(0, .78, 1, .22, [0, 1, 0, 1], false); B.frame();
+      NN.lines(B, [[S === 4 ? `${An.layers} weight matrices between a and Q, ~${An.paths.toLocaleString('en-US')} paths, ≈ ×${f(An.att, 2)} surviving the slopes` : S === 1 ? 'for: interaction from the first layer · against: action columns must grow to compete when d_s ≫ d_a' : S === 2 ? 'for: compact features, shorter action path · against: layer 1 is blind to the action; custom code' : 'Q = f(φ(s), a) with f small, almost linear in a — the limit of late fusion', '--ink'], ['the merge point sets how many weight-and-slope factors the actor\'s signal must cross', '--muted']], { top: .35, gap: .32 });
+    } else if (S === 5) {
+      const P = Pl.panel(0, 0, .55, .78, [0, 10, 0, 10], false); P.frame('units through the chain rule');
+      NN.lines(P, [['actor output  u = tanh(z) ∈ [−1, 1]', '--e'], ['torque       a = a_max · u = ' + s.amax + ' · u', '--e'], ['critic sees  a (N·m) or u (normalised)', '--a'], ['', ''], ['∂Q/∂u = ∂Q/∂a · ∂a/∂u = a_max · ∂Q/∂a', '--b'], [' → actor.backward(scaled(dq_da, −a_max))', '--b'], ['', ''], ['critic fed a: action weights ~1/' + s.amax + ' = ' + f(1 / s.amax, 3), '--muted'], ['critic fed u: weights ~1, factor cancels', '--muted']], { top: .12, gap: .095 });
+      const B = Pl.panel(.56, 0, .44, .78, [0, 2, 0, 1.2 * s.amax], false); B.frame('input magnitudes the first layer sees');
+      NN.bars(B, [.5, s.amax], { labels: ['joint angle ±0.5 rad', 'torque ±a_max'], cols: ['--a', '--e'], d: 1 });
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['either works; a_max is a units conversion owed on the way back, nothing deeper', '--ink']], { top: .5, gap: .3 });
+    } else if (S === 6) {
+      const as = [...Array(121)].map((_, i) => -1 + i / 60), r = NN.rng(4);
+      const P = Pl.panel(0, 0, .64, .78, [-1, 1, -3, 3], false);
+      P.series([{ pts: as.map(a => [a, Qr(a, 'tanh')]), cl: '--a', w: 3, label: 'Q(s, a) as (s, a) alone defines it' }, ...[0, 1, 2].map(k => { const m = U.map(() => r() < .3 ? 0 : 1 / .7); return { pts: as.map(a => [a, U.reduce((s2, [w, b, c], i) => s2 + m[i] * c * Math.tanh(w * a + b), 0)]), cl: '--bad', w: 1, dash: [4, 3] }; })], { title: 'dropout (or batch statistics) on the action path' });
+      const R = Pl.panel(.65, 0, .35, .78, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['dropout: random mask', '--bad'], [' → Q depends on the mask', '--bad'], ['batch norm: batch stats', '--bad'], [' → Q depends on the other', '--bad'], ['   63 actions in the batch', '--bad'], ['', ''], ['either way ∂Q/∂a is no', '--ink'], ['longer about THIS (s, a)', '--ink']], { top: .12, gap: .1 });
+    } else if (S === 7) {
+      const as = [...Array(241)].map((_, i) => -1 + i / 120);
+      const A = Pl.panel(0, 0, .5, .78, [-1, 1, -4, 4], false); A.series([{ pts: as.map(a => [a, Qr(a, 'relu')]), cl: '--c', w: 2.5, label: 'Q, ReLU units' }, { pts: as.map(a => [a, Qr(a, 'tanh')]), cl: '--a', w: 2.5, label: 'Q, tanh units' }], { title: 'Q(s, a) along a' });
+      const B = Pl.panel(.51, 0, .49, .78, [-1, 1, -8, 8], false); B.series([{ pts: as.map(a => [a, dQr(a, 'relu')]), cl: '--c', w: 2.5, label: '∂Q/∂a, ReLU: steps' }, { pts: as.map(a => [a, dQr(a, 'tanh')]), cl: '--a', w: 2.5, label: '∂Q/∂a, tanh: smooth' }], { title: 'the slope the actor is handed' });
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['ReLU: piecewise-constant slope that jumps at kinks → the actor gets no warning before the direction changes', '--c'], ['one honest reason the tutor\'s small networks are tanh throughout, beyond their size', '--muted']], { top: .38, gap: .35 });
+    } else {
+      const P = Pl.panel(0, 0, 1, .8, [0, 1, 0, 1], false); P.frame('four_networks(dim_s, dim_a, h)');
+      NN.lines(P, [['MLP actor   ({dim_s, h, h, dim_a}, "tanh")     an action is bounded', '--e'], ['MLP critic  ({dim_s + dim_a, h, h, 1}, "linear")  wider by d_a (early fusion); value unbounded', '--a'], ['MLP actor_t ({dim_s, h, h, dim_a}, "tanh")', '--grey'], ['MLP critic_t({dim_s + dim_a, h, h, 1}, "linear")', '--grey'], ['actor_t.copy_from(actor, 1.0);   critic_t.copy_from(critic, 1.0);   // start identical', '--b'], ['', ''], [`here: actor ${s.ds}→64→64→${s.da} = ${NN.nParams([s.ds, 64, 64, s.da])} params, critic ${s.ds + s.da}→64→64→1 = ${NN.nParams([s.ds + s.da, 64, 64, 1])}`, '--ink']], { top: .14, gap: .11 });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['the critic\'s architecture is, in the end, a decision about how clearly the actor can hear', '--ink']], { top: .5, gap: .3 });
+    }
+  },
+  math(S) {
+    const s = st(), A = arch(s);
+    const rows = [
+`${ul(['state: given, often large (5 … 500)', 'action: chosen, small (1 … 8)', 'gradient needed w.r.t. the action only'])}`,
+`${E(`x = [s, a] ∈ ℝ^(d_s + d_a),  Q = MLP(x)
+action share of layer-1 input = d_a/(d_s + d_a) = ${f(100 * s.da / (s.ds + s.da), 1)}%`)}`,
+`${E(`h₁ = σ(s W₁ + b₁)
+h₂ = σ([h₁, a] W₂ + b₂)
+Q  = h₂ W₃ + b₃`)}`,
+`<p>Early fusion when the action is a reasonable fraction of the input; late fusion when the state dwarfs it or needs its own processing.</p>`,
+`${E(`layers on the action path = 3 − N = ${A.layers}
+paths a → Q ≈ 64^(2 − N) = ${A.paths.toLocaleString('en-US')}
+typical slope survival ≈ 0.6^(2 − N) = ${f(A.att, 2)}
+action share at the merge = ${f(100 * A.share, 1)}%`)}`,
+`${E(`a = a_max · tanh(z),   ∂Q/∂z = a_max · ∂Q/∂a · tanh′(z)
+a_max = ${s.amax} N·m`)}`,
+`<p>Page 86 gives four reasons batch norm and DDPG fight; this is the sharpest one.</p>`,
+`${E(`ReLU: ∂Q/∂a = Σ cᵢwᵢ·1[wᵢa + bᵢ > 0]   (piecewise constant)
+tanh: ∂Q/∂a = Σ cᵢwᵢ·(1 − tanh²(wᵢa + bᵢ))  (smooth)`)}`,
+`<p>Carry forward: the merge point sets how many weight-and-slope factors sit between the action and the value, and that product is the actor's entire training signal.</p>`];
+    return rows[S];
+  },
+  stats() { const A = arch(st()); return `<span><b>a-path layers</b>${A.layers}</span><span><b>share</b>${f(100 * A.share, 1)}%</span><span><b>survival</b>×${f(A.att, 2)}</span>`; },
+});
+</script>
+</body></html>

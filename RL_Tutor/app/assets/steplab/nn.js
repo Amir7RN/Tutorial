@@ -26,24 +26,77 @@ NN.clone = net => net.map(l => ({ act: l.act, W: l.W.map(r => r.slice()), b: l.b
 /* one sample: returns {a:[x, a1, ..., y], z:[z1, ..., zL]} */
 NN.forward = (net, x) => {
   const a = [x.slice()], z = [];
-  net.forEach(l => {
-    const prev = a[a.length - 1], zz = l.b.map((b, j) => b + prev.reduce((s, xi, i) => s + xi * l.W[i][j], 0));
-    z.push(zz); a.push(zz.map(NN.act[l.act].f));
-  });
+  for (const l of net) {
+    const prev = a[a.length - 1], n = l.b.length, zz = l.b.slice(), F = NN.act[l.act].f;
+    for (let i = 0; i < prev.length; i++) { const xi = prev[i], Wi = l.W[i]; for (let j = 0; j < n; j++) zz[j] += xi * Wi[j]; }
+    z.push(zz); const aa = new Array(n); for (let j = 0; j < n; j++) aa[j] = F(zz[j]); a.push(aa);
+  }
   return { a, z };
 };
 /* one sample backward from dL/dy: deltas δk, gW = aᵀδ, gb = δ, dx = δWᵀ */
 NN.backward = (net, c, dy) => {
   let d = dy.slice(); const gW = [], gb = [], delta = [], dA = [];
   for (let k = net.length - 1; k >= 0; k--) {
-    const l = net[k]; dA[k] = d.slice();
-    const dz = d.map((g, j) => g * NN.act[l.act].d(c.z[k][j])); delta[k] = dz;
-    gW[k] = c.a[k].map(xi => dz.map(g => xi * g)); gb[k] = dz.slice();
-    d = l.W.map(row => row.reduce((s, w, j) => s + w * dz[j], 0));
+    const l = net[k], D = NN.act[l.act].d, n = d.length, zk = c.z[k], xk = c.a[k]; dA[k] = d;
+    const dz = new Array(n), ak = c.a[k + 1];
+    if (l.act === 'tanh') for (let j = 0; j < n; j++) dz[j] = d[j] * (1 - ak[j] * ak[j]); else for (let j = 0; j < n; j++) dz[j] = d[j] * D(zk[j]);
+    delta[k] = dz;
+    gW[k] = xk.map(xi => { const r = new Array(n); for (let j = 0; j < n; j++) r[j] = xi * dz[j]; return r; }); gb[k] = dz.slice();
+    d = l.W.map(row => { let s = 0; for (let j = 0; j < n; j++) s += row[j] * dz[j]; return s; });
   }
   return { gW, gb, delta, dA, dx: d };
 };
 NN.step = (net, g, eta) => net.forEach((l, k) => { l.W.forEach((r, i) => r.forEach((_, j) => r[j] -= eta * g.gW[k][i][j])); l.b.forEach((_, j) => l.b[j] -= eta * g.gb[k][j]); });
+/* gradient accumulator: add(g, weight) sums one sample's gradients; .g is the result */
+NN.acc = net => { const A = { gW: net.map(l => l.W.map(r => r.map(() => 0))), gb: net.map(l => l.b.map(() => 0)) };
+  A.add = (g, w) => { for (let k = 0; k < g.gW.length; k++) { const M = g.gW[k], T = A.gW[k]; for (let i = 0; i < M.length; i++) for (let j = 0; j < M[i].length; j++) T[i][j] += w * M[i][j];
+    for (let j = 0; j < g.gb[k].length; j++) A.gb[k][j] += w * g.gb[k][j]; } }; return A; };
+/* gradients averaged over a batch: items [{x, dy}] -> mean gradients and per-item dx */
+NN.batchGrad = (net, items) => {
+  const A = NN.acc(net), dxs = [];
+  items.forEach(({ x, dy }) => { const c = NN.forward(net, x), g = NN.backward(net, c, dy); dxs.push(g.dx); A.add(g, 1 / items.length); });
+  return { gW: A.gW, gb: A.gb, dxs };
+};
+/* Adam, as on page 80 / rlcore: state is created on first use */
+NN.adam = (net, g, lr, S) => {
+  if (!S.t) { S.t = 0; S.m = net.map(l => ({ W: l.W.map(r => r.map(() => 0)), b: l.b.map(() => 0) })); S.v = net.map(l => ({ W: l.W.map(r => r.map(() => 0)), b: l.b.map(() => 0) })); }
+  S.t++; const b1 = .9, b2 = .999, c1 = 1 - Math.pow(b1, S.t), c2 = 1 - Math.pow(b2, S.t);
+  const upd = (P, G, M, V, i, j) => { M[i][j] = b1 * M[i][j] + (1 - b1) * G; V[i][j] = b2 * V[i][j] + (1 - b2) * G * G; P[i][j] -= lr * (M[i][j] / c1) / (Math.sqrt(V[i][j] / c2) + 1e-8); };
+  net.forEach((l, k) => { l.W.forEach((r, i) => r.forEach((_, j) => upd(l.W, g.gW[k][i][j], S.m[k].W, S.v[k].W, i, j)));
+    const bw = [l.b], bm = [S.m[k].b], bv = [S.v[k].b]; l.b.forEach((_, j) => upd(bw, g.gb[k][j], bm, bv, 0, j)); });
+};
+/* The one-step toy of pages 89-90: r = −(a − g(s))², so Q*(s,a) = −(a − g(s))².
+   A real DDPG (actor 1→16→16→1 tanh, critic 2→20→20→1, Adam, replay, batch 16). */
+NN.toy = {
+  g: s => .8 * Math.sin(Math.PI * s / 2),
+  Qstar: (s, a) => -((a - NN.toy.g(s)) ** 2),
+  fresh() {
+    const A = { actor: NN.net([1, 16, 16, 1], ['tanh', 'tanh', 'tanh'], 5, 3e-3), critic: NN.net([2, 20, 20, 1], ['tanh', 'tanh', 'linear'], 9, 3e-3), sa: {}, sc: {}, buf: [] };
+    A.mu = s => NN.forward(A.actor, [s]).a[3][0]; A.Q = (s, a) => NN.forward(A.critic, [s, a]).a[3][0];
+    A.dQda = (s, a) => NN.backward(A.critic, NN.forward(A.critic, [s, a]), [1]).dx[1];
+    return A;
+  },
+  train(eps, sig) {
+    const AG = NN.toy.fresh(), r = NN.rng(77), last = []; let closs = 0;
+    for (let e = 0; e < eps; e++) {
+      const s = 2 * r() - 1, a = Math.max(-1, Math.min(1, AG.mu(s) + sig * NN.gauss(r)));
+      AG.buf.push([s, a, NN.toy.Qstar(s, a)]); if (AG.buf.length > 5000) AG.buf.shift(); last.push(NN.toy.Qstar(s, AG.mu(s))); if (last.length > 100) last.shift();
+      if (AG.buf.length < 16) continue;
+      const B = [...Array(16)].map(() => AG.buf[Math.floor(r() * AG.buf.length)]);
+      /* y = r (one-step episodes: d = 1); critic MSE */
+      const gc = NN.acc(AG.critic), ga = NN.acc(AG.actor); let L = 0;
+      B.forEach(([s, a, y]) => { const c = NN.forward(AG.critic, [s, a]), q = c.a[3][0]; L += (q - y) ** 2 / 16; gc.add(NN.backward(AG.critic, c, [2 * (q - y)]), 1 / 16); });
+      NN.adam(AG.critic, gc, 2e-3, AG.sc); closs = L;
+      /* dQ/da through the critic to its action input; −dQ/da seeds the actor */
+      B.forEach(([s]) => { const ca = NN.forward(AG.actor, [s]), cc = NN.forward(AG.critic, [s, ca.a[3][0]]), dq = NN.backward(AG.critic, cc, [1]).dx[1];
+        ga.add(NN.backward(AG.actor, ca, [-dq]), 1 / 16); });
+      NN.adam(AG.actor, ga, 1e-3, AG.sa);
+    }
+    const ss = [...Array(41)].map((_, i) => -1 + i / 20);
+    AG.log = { eps, sig, closs, meanR: last.reduce((x, y) => x + y, 0) / last.length, err: ss.reduce((x, s) => x + Math.abs(AG.mu(s) - NN.toy.g(s)), 0) / ss.length };
+    return AG;
+  },
+};
 NN.softmax = (z, T = 1) => { const m = Math.max(...z), e = z.map(v => Math.exp((v - m) / T)), s = e.reduce((a, b) => a + b, 0); return e.map(v => v / s); };
 NN.nParams = sizes => sizes.slice(1).reduce((s, n, k) => s + sizes[k] * n + n, 0);
 NN.e = (x, d = 2) => Math.abs(x) < 1e-300 ? '0' : x.toExponential(d);

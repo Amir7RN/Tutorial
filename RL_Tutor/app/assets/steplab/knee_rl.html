@@ -1,0 +1,107 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tuning a knee prosthesis</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="knee_toy.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+let AG = null;
+const st = () => { const v = SL.v; return { w1: v.w1 / 100, w2: v.w2 / 100, n: v.n, noise: v.noise / 100, sig: v.sig / 100, e: [v.e1, v.e2, v.e3, v.e4, v.e5].map(x => x / 100), lam: v.lam / 100 }; };
+const phi = [...Array(101)].map((_, i) => i / 100);
+const Kbar = p => 2.2 + 1.6 * Math.exp(-(((p - .12) / .08) ** 2)) + .9 * Math.exp(-(((p - .45) / .1) ** 2)) - 1.2 * Math.exp(-(((p - .75) / .1) ** 2));
+const PC1 = p => Math.exp(-(((p - .15) / .1) ** 2)) - .3, PC2 = p => Math.sin(2 * Math.PI * p);
+const Kphi = (p, s) => Kbar(p) + .8 * s.w1 * PC1(p) + .5 * s.w2 * PC2(p);
+const FSM = p => [[.15, 3.6], [.45, 2.9], [.62, 2.3], [.85, 1.1], [1.01, 1.8]].find(([e]) => p < e)[1];
+const LAND = ['heel strike', 'peak stance flex.', 'peak stance ext.', 'peak swing flex.', 'phase lag'];
+SL.app({
+  title: 'Case study: tuning a knee prosthesis with DDPG',
+  sub: 'One gait cycle is one timestep. The action is not a torque and not an angle — it is a change to the impedance itself. The numbers are a small stand-in with a known optimum, not subject data; the structure is what transfers.',
+  view: '2d',
+  legend: [['--a', 'continuous K(φ)'], ['--grey', 'FSM / reference'], ['--e', 'policy / weights path'], ['--c', 'reward / end'], ['--bad', 'start / unsafe']],
+  controls: [
+    { id: 'w1', label: 'PC weight w₁ (step 1)', min: -200, max: 200, value: 60, fmt: x => f(x / 100) },
+    { id: 'w2', label: 'PC weight w₂ (step 1)', min: -200, max: 200, value: -40, fmt: x => f(x / 100) },
+    { id: 'e1', label: 'heel-strike error (step 3)', min: -200, max: 200, value: 20, fmt: x => f(x / 100) },
+    { id: 'e2', label: 'stance flexion error', min: -200, max: 200, value: -30, fmt: x => f(x / 100) },
+    { id: 'e3', label: 'stance extension error', min: -200, max: 200, value: 10, fmt: x => f(x / 100) },
+    { id: 'e4', label: 'swing flexion error', min: -250, max: 250, value: 90, fmt: x => f(x / 100) },
+    { id: 'e5', label: 'phase lag', min: -200, max: 200, value: -40, fmt: x => f(x / 100) },
+    { id: 'lam', label: '‖a‖₁ of the step (step 3)', min: 0, max: 200, value: 50, fmt: x => f(x / 100) },
+    { id: 'n', label: 'training sessions (30 strides)', min: 5, max: 80, value: 50 },
+    { id: 'noise', label: 'stride noise', min: 0, max: 40, value: 4, fmt: x => f(x / 100) },
+    { id: 'sig', label: 'exploration σ', min: 5, max: 80, value: 35, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'Train', primary: true, onclick: () => { const s = st(); AG = KNEE.train(s.n, s.noise, s.sig); SL.redraw(); } }, { label: '15 sessions', onclick: () => { SL.setControl('n', 15); SL.redraw(); } }, { label: 'noisy strides', onclick: () => { SL.setControl('noise', 25); SL.redraw(); } }],
+  steps: [
+    ['The two halves meet', 'The control half built impedance: a stiffness, a damping and an equilibrium angle that decide what a joint feels like. The RL half built learning. Here the impedance parameters are the action and the reward is how well the resulting gait matches a reference.'],
+    ['Continuous impedance, not a state machine', 'An FSM gives each of 4–5 phases constant (K, B, θ_eq): jumps at boundaries and 12–15 numbers per person. Instead make each a smooth function of phase: K(φ) = K̄(φ) + w₁PC₁(φ) + w₂PC₂(φ) from normal-walking data. A whole stiffness trajectory becomes two learnable numbers.'],
+    ['The 5-tuple, filled in', 't = one gait cycle (~1 s; the 1 kHz loop runs underneath). s ∈ ℝ⁵: four knee landmark errors + phase lag. a ∈ ℝ²: increments Δw. P: the person plus the device — never written down (model-free). R: weighted errors, effort, safety. γ ≈ 0.95: about 20 strides.'],
+    ['The reward, term by term', 'Tracking −Σαᵢ|sᵢ| with α = (0.1, 0.1, 0.1, 0.4, 0.3): swing flexion dominates how the gait looks and feels; phase lag because a well-shaped but mistimed knee is wrong. Effort −λ‖a‖₁ stops thrashing. Safety: a cliff beyond ~70° flexion or −10° hyperextension.'],
+    ['The honest caveat: partially observable', 'The landmark errors are a noisy summary of the true state (the current weights) plus stride-to-stride variability. Treated as an MDP because the observation is nearly invertible and the noise is small — a defensible approximation, not an oversight.'],
+    ['Why DDPG for this problem', 'Not DQN: two real numbers; bins reintroduce the table and block fine corrections. Not PPO: the sample budget is a person walking — replay is the feasibility condition. Deterministic: same correction for the same gait. The critic learns how a weight change propagates, and ∂Q/∂a is exactly "which way should I move the weights". Upgrade: TD3.'],
+    ['Run it', 'Press Train (a few seconds). Left: mean reward per gait cycle per session. Middle: one greedy episode from a deliberately bad (1, −1), drawn on the true landscape the agent never sees. Right: the five landmark errors at its start and end.'],
+    ['What the toy does and does not show', 'Try 15 sessions: partial credit is the normal outcome of a short session. Raise stride noise: the final errors floor out — no policy corrects variability the weights do not cause. It does NOT show anything about a person: real subjects adapt while you tune (non-stationary), the hardest part no toy reproduces.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S <= 1) {
+      const P = Pl.panel(0, 0, .64, .8, [0, 1, 0, 5], false);
+      P.series([{ pts: phi.map(p => [p, FSM(p)]), cl: '--grey', w: 2, label: 'FSM: constant per phase, jumps' }, { pts: phi.map(p => [p, Kphi(p, s)]), cl: '--a', w: 3, label: 'K(φ) = K̄ + w₁PC₁ + w₂PC₂' }, ...(S === 1 ? [{ pts: phi.map(p => [p, Kbar(p)]), cl: '--a', w: 1, dash: [4, 3], label: 'K̄(φ)' }] : [])], { title: 'knee stiffness over one gait cycle (phase φ)' });
+      [.15, .45, .62, .85].forEach(x => P.line([x, 0], [x, 5], '--line', 1, [3, 3]));
+      const R = Pl.panel(.65, 0, .35, .8, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 0 ? [['impedance half:', '--ink'], ['  K, B, θ_eq shape the feel', '--muted'], ['RL half:', '--ink'], ['  learn from experience', '--muted'], ['', ''], ['action  = Δ impedance', '--e'], ['reward  = gait vs reference', '--c'], ['', ''], ['commands a STIFFNESS profile,', '--a'], [' never the knee angle', '--a']]
+        : [['FSM: 4–5 phases ×', '--grey'], ['  (K, B, θ_eq) = 12–15 numbers', '--grey'], ['  discontinuous at phase edges', '--bad'], ['continuous: per person only', '--a'], ['  w₁ = ' + f(s.w1) + ', w₂ = ' + f(s.w2), '--a'], ['  (same for B and θ_eq)', '--muted'], ['K̄, PCs: fixed once from', '--muted'], ['  normal-walking data', '--muted'], ['2-D action: few hundred', '--c'], ['  strides to explore', '--c']], { top: .1, gap: .085 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame();
+      NN.lines(B, [['torque = whatever that stiffness produces against the actual displacement → the device stays compliant (yields when pushed)', '--ink'], ['the reference angle appears only in the reward — getting both from a position controller is what the impedance pages said you cannot do', '--muted']], { top: .38, gap: .35, size: 11 });
+    } else if (S <= 5) {
+      const T = Pl.panel(0, 0, .64, .8, [0, 1, 0, 1], false);
+      if (S === 2) { T.frame('(S, A, P, R, γ)'); NN.lines(T, [['t   one gait cycle ≈ 1 s', '--ink'], ['    state only exists once the cycle ends', '--muted'], ['s   ∈ ℝ⁵: heel strike, peak stance flexion,', '--a'], ['    peak stance extension, peak swing flexion,', '--a'], ['    phase lag (cross-correlation)', '--a'], ['a   ∈ ℝ²: Δw₁, Δw₂ on the stiffness PCs', '--e'], ['    increments → a correction rule, bounded', '--muted'], ['P   person + device: never estimated', '--grey'], ['R   −Σαᵢ|sᵢ| − λ‖a‖₁ − β·1[unsafe]', '--c'], ['γ   ≈ 0.95 → horizon ≈ 1/(1−γ) = 20 strides', '--ink']], { top: .09, gap: .088 }); }
+      else if (S === 3) { T.frame('reward for one stride'); const al = KNEE.alpha, terms = s.e.map((e, i) => -al[i] * Math.abs(e)); NN.bars(Pl.panel(0, .05, .64, .75, [0, 7, -2.2, .1], false), [...terms, -KNEE.lam * s.lam, Math.abs(s.e[3]) > 1.8 ? -2 : 0], { labels: ['heel', 'st.flex', 'st.ext', 'swing', 'lag', 'effort', 'safety'], cols: ['--a', '--a', '--a', '--b', '--d', '--e', '--bad'], d: 3 }); }
+      else if (S === 4) { T.frame('what the agent sees vs what matters'); const r = NN.rng(Math.floor(SL.anim * 4) + 3), w = [.6, -.4];
+        const P = Pl.panel(0, .05, .64, .75, [-.5, 4.5, -1.5, 1.5], false); KNEE.C.forEach((c, i) => { const tru = c[0] * w[0] + c[1] * w[1]; P.line([i - .3, tru], [i + .3, tru], '--c', 3); for (let k = 0; k < 6; k++) P.dot([i + (k - 2.5) * .08, tru + .15 * NN.gauss(r)], 3, '--d'); P.text([i, -1.5], ['heel', 'st.flex', 'st.ext', 'swing', 'lag'][i], '--muted', 0, -4, { size: 11, align: 'center' }); }); }
+      else { T.frame('why DDPG here'); NN.lines(T, [['not DQN', '--bad'], ['  two real numbers; bins = the table again,', '--muted'], ['  and coarse bins forbid fine corrections', '--muted'], ['not PPO', '--bad'], ['  budget = a person walking: hundreds of', '--muted'], ['  cycles, not hundreds of thousands', '--muted'], ['deterministic μ', '--c'], ['  same correction for the same gait', '--muted'], ['the critic is the point', '--c'], ['  ∂Q/∂a = "which way to move the weights"', '--muted'], ['upgrade: TD3 (one critic, few thousand', '--e'], ['  transitions → optimism bias is real)', '--muted']], { top: .08, gap: .075 }); }
+      const R = Pl.panel(.65, 0, .35, .8, [0, 1, 0, 1], false); R.frame();
+      const rew = KNEE.reward(s.e, [s.lam / 2, s.lam / 2]);
+      NN.lines(R, S === 3 ? [['α = (0.1, 0.1, 0.1, 0.4, 0.3)', '--ink'], ['tracking ' + f(-s.e.reduce((a, e, i) => a + KNEE.alpha[i] * Math.abs(e), 0), 3), '--a'], ['effort   ' + f(-KNEE.lam * s.lam, 3) + ' (λ = ' + KNEE.lam + ')', '--e'], ['safety   ' + (Math.abs(s.e[3]) > 1.8 ? '−2 (cliff)' : '0'), Math.abs(s.e[3]) > 1.8 ? '--bad' : '--c'], ['r = ' + f(rew, 3), '--c'], ['', ''], ['limits are cliffs,', '--muted'], ['preferences are slopes', '--muted']]
+        : S === 4 ? [['green: error the weights', '--c'], [' actually cause', '--c'], ['violet: what is observed', '--d'], [' stride to stride', '--d'], ['', ''], ['POMDP strictly; treated', '--ink'], [' as an MDP because the', '--ink'], [' summary is ~invertible', '--ink'], [' and noise is small', '--ink']]
+        : S === 2 ? [['the 1 kHz impedance loop', '--ink'], [' runs underneath, untouched', '--muted'], ['one RL step per stride', '--e'], ['', ''], ['five numbers summarise', '--a'], [' a whole trajectory:', '--a'], [' low-dim, clinically', '--muted'], [' interpretable, comparable', '--muted']]
+        : [['5 states, 2 actions', '--ink'], ['actor 5→24→24→2 tanh', '--e'], ['critic 7→32→32→1', '--a'], ['replay, targets τ = 0.01', '--muted'], ['', ''], ['human tuner\'s question:', '--ink'], [' "which way do I turn', '--muted'], ['  the weights?"', '--muted'], [' = ∂Q/∂a', '--b']], { top: .1, gap: .09 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame();
+      NN.lines(B, [[S === 2 ? 'increments, not absolute values: the policy learns a correction rule near the convex-optimisation baseline' : S === 3 ? 'r = −Σ αᵢ|sᵢ| − λ‖a‖₁ − β·1[unsafe] — the same regularisation as any optimal-control cost' : S === 4 ? 'knowing whether an approximation is defensible is the difference between using the framework and reciting it' : 'the coupling from weights to landmarks strides later is nonlinear and subject-specific: Q learns it from data', '--ink']], { top: .5, gap: .3, size: 11 });
+    } else {
+      if (!AG) { const T = Pl.panel(0, 0, 1, 1, [0, 1, 0, 1], false); T.frame('press Train (takes a few seconds)'); NN.lines(T, [['environment: e = C·w + noise, C a fixed non-diagonal 5×2 coupling, optimum w = (0, 0)', '--ink'], ['each session: 30 strides from a random start; action Δw = 0.15·a; weights clamped to ±2 (impedance limits)', '--muted'], ['DDPG: replay 20 000, batch 32, critic lr 1e−3, actor lr 2e−4, τ = 0.01, γ = 0.9 in this toy', '--muted'], ['non-diagonal: turning one weight moves several landmarks — what makes hand tuning hard', '--muted']], { top: .2, gap: .1 }); return; }
+      const C = AG.curve, L = Pl.panel(0, 0, .33, .8, [0, C.length - 1, Math.min(-1, ...C) * 1.05, 0], false);
+      L.series([{ pts: C.map((v, i) => [i, v]), cl: '--c', w: 2.5, label: 'mean reward / cycle' }], { title: 'learning curve (per session)' });
+      const M = Pl.panel(.34, 0, .33, .8, [-2, 2, -2, 2]); M.frame('greedy episode on the hidden landscape');
+      for (let i = 0; i < 24; i++) for (let j = 0; j < 24; j++) { const w = [-2 + (i + .5) / 6, -2 + (j + .5) / 6], rr = KNEE.reward(KNEE.C.map(c => c[0] * w[0] + c[1] * w[1]), [0, 0]); M.c.fillStyle = `rgba(63,185,80,${Math.max(0, 1 + rr / 2.2) * .6})`; const p0 = M.S([w[0] - 1 / 12, w[1] + 1 / 12]); M.c.fillRect(p0[0], p0[1], M.sx / 6 + 1, M.sy / 6 + 1); }
+      M.poly(AG.path, '--e', 2.5); M.dot(AG.path[0], 6, '--bad'); M.dot(AG.path[AG.path.length - 1], 6, '--c'); M.dot([0, 0], 4, '--ink', true);
+      const R = Pl.panel(.68, 0, .32, .8, [0, 5, -2.5, 2.5], false); R.frame('landmark errors: start → end');
+      AG.e0.forEach((e, i) => { R.line([i + .25, 0], [i + .25, Math.max(-2.5, Math.min(2.5, e))], '--bad', 8); R.line([i + .65, 0], [i + .65, AG.e1[i]], '--c', 8); R.text([i + .45, -2.5], ['heel', 'st.fl', 'st.ex', 'swing', 'lag'][i], '--muted', 0, -4, { size: 10, align: 'center' }); }); R.line([0, 0], [5, 0], '--grey', 1);
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame();
+      const me = AG.e1.reduce((a, b) => a + Math.abs(b), 0) / 5;
+      NN.lines(B, S === 6 ? [[`reward first ${f(C[0], 3)} → last ${f(C[C.length - 1], 3)} · final weights (${AG.path[AG.path.length - 1].map(x => f(x)).join(', ')}) · mean |error| ${f(me, 3)} · ${AG.strides} real strides`, '--ink'], ['the agent never saw C, the optimum, or this landscape — only five errors and a reward per stride', '--muted']]
+        : [[`noise ${f(s.noise)} → floor ≈ mean|N(0, σ)| = ${f(s.noise * Math.sqrt(2 / Math.PI), 3)} per landmark; now ${f(me, 3)}`, '--ink'], ['mistaking that floor for a tuning failure is a classic way to waste a study · real people adapt while you tune', '--bad']], { top: .38, gap: .35, size: 11 });
+    }
+  },
+  math(S) {
+    const s = st();
+    const rows = [
+`<p>Impedance parameters as the action; gait similarity as the reward. The 1 kHz impedance loop runs untouched underneath.</p>`,
+`${E(`K(φ) = K̄(φ) + w₁ᴷ PC₁ᴷ(φ) + w₂ᴷ PC₂ᴷ(φ)
+w₁ = ${f(s.w1)}, w₂ = ${f(s.w2)};  K(0.12) = ${f(Kphi(.12, s), 2)}`)}<p>Same for B(φ) and θ_eq(φ). Convex optimisation over the dataset fixes K̄ and the PCs once; the weights are what remains per person.</p>`,
+`${E(`(S, A, P, R, γ) = (ℝ⁵, ℝ², person + device, R, ≈ 0.95)`)}`,
+`${E(`r = −Σᵢ αᵢ|sᵢ| − λ‖a‖₁ − β·1[unsafe]
+  = ${f(KNEE.reward(s.e, [s.lam / 2, s.lam / 2]), 4)}`)}`,
+`<p>A defensible engineering approximation, not an oversight.</p>`,
+`${ul(['DQN: discretising two reals reintroduces the table.', 'PPO: discards each batch; the subject cannot walk that long.', 'Deterministic output: what a clinician can sign off.', 'TD3: cheap insurance against critic optimism.'])}`,
+AG ? `${E(`sessions ${AG.curve.length} × 30 strides = ${AG.strides}
+reward ${f(AG.curve[0], 3)} → ${f(AG.curve[AG.curve.length - 1], 3)}
+final w = (${AG.path[AG.path.length - 1].map(x => f(x, 3)).join(', ')})`)}` : '<p>Press Train.</p>',
+`<p>Demonstrates: a deterministic actor-critic can find a 2-D impedance parameterisation from landmark rewards in a few thousand strides with no model of the coupling. Does not demonstrate: anything about a person.</p>`];
+    return rows[S];
+  },
+  stats() { return AG ? `<span><b>last reward</b>${f(AG.curve[AG.curve.length - 1], 3)}</span><span><b>strides</b>${AG.strides}</span>` : '<span><b>status</b>untrained</span>'; },
+});
+</script>
+</body></html>

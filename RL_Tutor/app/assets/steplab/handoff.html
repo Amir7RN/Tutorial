@@ -1,0 +1,121 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The gradient handoff</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+let AG = NN.toy.fresh(), TRAINED = false;
+const st = () => { const v = SL.v; return { s: v.s / 100, a: v.a / 100, k1: v.k1 / 100, k2: v.k2 / 100, mag: Math.pow(10, v.mag / 10) }; };
+/* a 2-D action (stiffness weight, damping weight) on an illustrative critic, for the shape step */
+const Q2 = (k1, k2, s0 = 0) => -(1.4 * (k1 - .3 - .2 * s0) ** 2 + .9 * (k2 + .2) ** 2 + .8 * (k1 - .3) * (k2 + .2));
+const gQ2 = (k1, k2, s0 = 0) => { const h = 1e-4; return [(Q2(k1 + h, k2, s0) - Q2(k1 - h, k2, s0)) / 2 / h, (Q2(k1, k2 + h, s0) - Q2(k1, k2 - h, s0)) / 2 / h]; };
+/* SGD vs Adam on two gradient streams of very different size */
+const opt = mag => { const r = NN.rng(3); let m = 0, v = 0, sgd = [], adam = []; for (let t = 1; t <= 60; t++) { const gg = mag * (1 + .3 * NN.gauss(r)); m = .9 * m + .1 * gg; v = .999 * v + .001 * gg * gg;
+  sgd.push([t, 1e-3 * gg]); adam.push([t, 1e-3 * (m / (1 - .9 ** t)) / (Math.sqrt(v / (1 - .999 ** t)) + 1e-8)]); } return { sgd, adam }; };
+SL.app({
+  title: 'The gradient handoff: ∂Q/∂a is a seed, not a target',
+  sub: 'The critic hands the actor a number that says "if your output were a hair larger, value would change by this much, this way" — and the actor runs its ordinary backward pass with that number where a prediction error would sit.',
+  view: '2d',
+  legend: [['--a', 'critic Q'], ['--e', 'actor output μ(s)'], ['--b', '∂Q/∂a'], ['--c', 'truth / SGD'], ['--d', 'Adam'], ['--bad', 'no data: extrapolation']],
+  controls: [
+    { id: 's', label: 'context s', min: -100, max: 100, value: 40, fmt: x => f(x / 100) },
+    { id: 'a', label: 'action a (where the actor stands)', min: -100, max: 100, value: -50, fmt: x => f(x / 100) },
+    { id: 'k1', label: 'stiffness weight (step 1)', min: -100, max: 100, value: -40, fmt: x => f(x / 100) },
+    { id: 'k2', label: 'damping weight (step 1)', min: -100, max: 100, value: 50, fmt: x => f(x / 100) },
+    { id: 'mag', label: 'gradient size |g| (step 5)', min: -10, max: 20, value: 0, fmt: x => NN.e(Math.pow(10, x / 10), 0) },
+  ],
+  buttons: [{ label: 'Train critic + actor (step 7)', primary: true, onclick: () => { AG = NN.toy.train(1200, .3); TRAINED = true; SL.redraw(); } }],
+  steps: [
+    ['The whole update in one sentence', 'The critic reports the slope of its value surface at the actor\'s current action; the actor uses that slope as the seed of its own backward pass. Everything else on this page unpacks that.'],
+    ['What kind of object it is', '∇ₐQ|ₐ₌μ(s) ∈ ℝ^(N × d_a): one number per action dimension (a knee with two impedance weights gets two), one row per sample (each state asks separately), evaluated at a = μ(s) only. Each entry is a sum over 64 × 64 = 4 096 critic paths.'],
+    ['It is not a target', 'Supervised: a target t arrives; the seed 2(y − t)/N is computed from it; success = y equals t. Actor: a slope arrives and IS the seed; success = standing where the slope is zero, a place nobody named. Different units — a torque vs value-per-torque.'],
+    ['Five lines, with shapes', 'actor.forward (N × d_a, caches the actor) → critic.forward (N × 1) → critic.backward with 1/N to its INPUT (N × (d_s + d_a); critic weight grads computed and ignored) → keep the action columns (N × d_a; ∂Q/∂s is real and useless) → actor.backward(−a_max · dq_da) → adam.'],
+    ['Sign is direction, magnitude is steepness', '∂Q/∂a > 0: a larger action scores better here, so nudge weights so μ(s) comes out larger. Magnitude is local sensitivity, not confidence: +100 = violently changing, +0.1 = nearly flat. One plain SGD step scales with it.'],
+    ['Adam divides the magnitude out', 'Adam divides each gradient by a running estimate of its own size: a stream of ±100 and one of ±0.1 give steps of about the learning rate. What survives is the sign, the relative pattern across weights, and sudden changes. The critic\'s scale drifts constantly — an optimiser that cared would be permanently re-tuning.'],
+    ['Where a big slope is dangerous', 'An enormous local slope usually means the critic is wrong there — a region nothing visited, where it extrapolates freely. The actor follows it into fiction (extrapolation error). Cheap mitigations: keep exploring, weight-decay the critic, clip the gradient.'],
+    ['Measure it on a trained critic', 'Train, then pick a context and an action. Backprop through the critic and a ± nudge of the critic always agree to rounding. The truth −2(a − g(s)) agrees only where the critic has learned.'],
+    ['A hillside in the dark', 'The critic is the ground; ∂Q/∂a is the slope felt through the boots. The walker learns only the next step, never the destination — and the ground is rebuilt while it walks, so the speeds must match: critic learning rate ≈ 2× the actor\'s, and TD3 updates the actor only every other step.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, as = [...Array(121)].map((_, i) => -1 + i / 60);
+    if (S === 0 || S === 2 || S === 3) {
+      const D = Pl.panel(0, 0, 1, .78, [0, 10, 0, 6], false); D.frame(S === 3 ? 'actor_gradient_step, line by line' : S === 2 ? 'supervised regression vs the actor\'s update' : 'critic → slope → actor backward');
+      if (S === 2) NN.lines(D, [['                       supervised regression          the actor\'s update', '--muted'], ['arrives from outside   a target t (a value)           a slope ∂Q/∂a (a direction)', '--ink'], ['seed of backward       2(y − t)/N, computed FROM t    −∂Q/∂a, already the seed', '--ink'], ['success means          y = t                          slope ≈ 0, somewhere unnamed', '--ink'], ['truth came from        a human wrote it               nowhere: no correct action exists', '--b'], ['outside signal wrong   measurably wrong fit           walks the wrong way, uncontradicted', '--bad'], ['', ''], ['other setups (demonstrations, a teacher, a planner) can supply action targets — a different update', '--muted']], { top: .14, gap: .11 });
+      else { const steps = [['1  a_pi = scaled(actor.forward(s), a_max)', 'N × d_a', '--e'], ['2  q = critic.forward(concat(s, a_pi))', 'N × 1', '--a'], ['3  dx = critic.backward(1/N)', 'N × (d_s+d_a)', '--a'], ['4  dq_da = action_columns(dx, dim_s)', 'N × d_a', '--b'], ['5  actor.backward(scaled(dq_da, −a_max))', '→ every θ', '--e'], ['6  actor.adam(lr_actor)', 'weights move', '--e']];
+        const k = S === 3 ? Math.min(5, Math.floor(SL.anim * 6)) : 5;
+        steps.forEach(([c, sh, cl], i) => { const on = S === 0 || i <= k; D.text([.4, 5.3 - i * .85], c, on ? cl : '--line', 0, 0, { size: 13 }); D.text([7.4, 5.3 - i * .85], sh, on ? '--muted' : '--line', 0, 0, { size: 12 }); });
+        D.text([.4, .35], S === 0 ? 'the slope sits in the slot where a prediction error would normally sit' : 'minus: Adam descends, we ascend Q · ×a_max: units owed by the chain rule · critic grads sit in memory, ignored', '--muted', 0, 0, { size: 12 }); }
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['backward() computes, adam() moves', '--ink'], ['∂Q/∂s is a perfectly real number — the actor cannot change the state it was given, so it is thrown away', '--muted']], { top: .38, gap: .35 });
+    } else if (S === 1) {
+      const P = Pl.panel(0, 0, .6, .8, [-1, 1, -1, 1]); P.frame('Q(s, k₁, k₂) for one state: contours, slope arrow');
+      for (let lv = 0; lv < 8; lv++) { const target = -.05 - lv * .18, pts = []; for (let i = 0; i <= 120; i++) { const th = i / 120 * 2 * Math.PI; let lo = 0, hi = 2; for (let k = 0; k < 40; k++) { const m = (lo + hi) / 2; Q2(.3 + m * Math.cos(th), -.2 + m * Math.sin(th)) > target ? lo = m : hi = m; } pts.push([.3 + lo * Math.cos(th), -.2 + lo * Math.sin(th)]); } P.poly(pts, '--a', 1, null, null, true); }
+      const gv = gQ2(s.k1, s.k2); P.dot([s.k1, s.k2], 6, '--e'); P.arrow([s.k1, s.k2], [gv[0] * .25, gv[1] * .25], '--b', 3, '∇ₐQ');
+      const B = Pl.panel(.61, 0, .39, .8, [0, 1, 0, 1], false); B.frame('one row per sample');
+      const rows = [-.6, -.2, .2, .6].map((s0, i) => { const g2 = gQ2(s.k1, s.k2, s0 * 2); return ['s' + (i + 1) + ': [ ' + f(g2[0], 2) + ', ' + f(g2[1], 2) + ' ]', '--b']; });
+      NN.lines(B, [['∂Q/∂a at this action:', '--ink'], ['  ∂Q/∂k₁ = ' + f(gv[0], 3), '--b'], ['  ∂Q/∂k₂ = ' + f(gv[1], 3), '--b'], ['', ''], ['batch (N × d_a):', '--ink'], ...rows, ['', ''], ['partials hold the other', '--muted'], ['component fixed; they', '--muted'], ['can still be coupled', '--muted']], { top: .1, gap: .075 });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['evaluated at a = μ(s): move the actor and the number changes → one small step, then re-measure, forever', '--ink']], { top: .5, gap: .3 });
+    } else if (S <= 5) {
+      const o1 = opt(s.mag), o2 = opt(s.mag * 1000), ym = Math.max(...o2.sgd.map(p => Math.abs(p[1])), 2e-3) * 1.1;
+      const A = Pl.panel(0, 0, .5, .78, [0, 60, 0, S === 4 ? ym : 2.2e-3], false);
+      A.series(S === 4 ? [{ pts: o1.sgd, cl: '--c', w: 2.5, label: `SGD, |g| ≈ ${NN.e(s.mag, 0)}` }, { pts: o2.sgd, cl: '--bad', w: 2.5, label: `SGD, |g| ≈ ${NN.e(s.mag * 1000, 0)}` }] : [{ pts: o1.adam, cl: '--d', w: 2.5, label: `Adam, |g| ≈ ${NN.e(s.mag, 0)}` }, { pts: o2.adam, cl: '--e', w: 2.5, dash: [5, 4], label: `Adam, |g| ≈ ${NN.e(s.mag * 1000, 0)}` }], { title: 'weight step per update (lr = 1e−3)' });
+      const P = Pl.panel(.51, 0, .49, .78, [-1, 1, -3.2, .4], false), s0 = .4, sl = -2 * (s.a - NN.toy.g(s0));
+      P.series([{ pts: as.map(a => [a, NN.toy.Qstar(s0, a)]), cl: '--a', w: 2.5, label: 'Q(s, ·)' }], { title: 'sign = which way · size = how steep' });
+      P.dot([s.a, NN.toy.Qstar(s0, s.a)], 6, '--e'); P.line([s.a - .25, NN.toy.Qstar(s0, s.a) - .25 * sl], [s.a + .25, NN.toy.Qstar(s0, s.a) + .25 * sl], '--b', 3);
+      P.arrow([s.a, NN.toy.Qstar(s0, s.a) - .35], [.2 * Math.sign(sl), 0], '--e', 3, sl > 0 ? 'larger μ(s)' : 'smaller μ(s)');
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 4 ? [[`∂Q/∂a = ${f(sl, 3)} at a = ${f(s.a)} → ${sl > 0 ? 'raise' : 'lower'} the output; plain SGD step ∝ |∂Q/∂a|: the two red/green curves differ ×1000`, '--ink'], ['hill climbing never needed more than the sign', '--muted']]
+        : [['Adam: both streams give steps ≈ lr regardless of |g| (×1000 apart in size, same step)', '--d'], ['true for consistent gradients; a sudden change in magnitude still shows until the running average catches up', '--muted']], { top: .38, gap: .35, size: 11 });
+    } else if (S === 6) {
+      const P = Pl.panel(0, 0, .64, .78, [-1, 1, -3, 3], false), fake = a => a < .2 ? NN.toy.Qstar(.4, a) : NN.toy.Qstar(.4, .2) + 9 * (a - .2) ** 1.5;
+      P.series([{ pts: as.map(a => [a, NN.toy.Qstar(.4, a)]), cl: '--grey', w: 1.5, dash: [5, 4], label: 'true Q' }, { pts: as.map(a => [a, Math.min(3, fake(a))]), cl: '--a', w: 2.5, label: 'critic: fits data, extrapolates freely' }], { title: 'a steep slope where nothing was ever tried' });
+      P.poly([[.2, -3], [1, -3], [1, 3], [.2, 3]], null, 0, null, '--bad', true); P.text([.6, 2.5], 'no data', '--bad', 0, 0, { size: 13, align: 'center' });
+      const r = NN.rng(2); for (let i = 0; i < 40; i++) { const a = -1 + 1.2 * r(); P.dot([a, NN.toy.Qstar(.4, a) + .05 * NN.gauss(r)], 3, '--ink'); }
+      P.arrow([.25, fake(.25)], [.6, 0], '--e', 3, 'actor follows the fiction');
+      const R = Pl.panel(.65, 0, .35, .78, [0, 1, 0, 1], false); R.frame('mitigations');
+      NN.lines(R, [['extrapolation error', '--bad'], ['(offline-RL name)', '--muted'], ['', ''], ['keep exploring:', '--ink'], [' visited region stays wide', '--c'], ['weight-decay the critic:', '--ink'], [' slopes stay moderate', '--c'], ['clip the gradient', '--ink']], { top: .12, gap: .1 });
+    } else if (S === 7) {
+      const P = Pl.panel(0, 0, .6, .8, [-1, 1, -3.2, .4], false);
+      P.series([{ pts: as.map(a => [a, NN.toy.Qstar(s.s, a)]), cl: '--grey', w: 1.5, dash: [5, 4], label: 'true Q*' }, { pts: as.map(a => [a, Math.max(-3.2, Math.min(.4, AG.Q(s.s, a)))]), cl: '--a', w: 2.5, label: TRAINED ? 'trained critic' : 'untrained critic (press Train)' }], { title: `slice at s = ${f(s.s)}` });
+      const q = AG.Q(s.s, s.a), bp = AG.dQda(s.s, s.a), nd = (AG.Q(s.s, s.a + 1e-4) - AG.Q(s.s, s.a - 1e-4)) / 2e-4, tr = -2 * (s.a - NN.toy.g(s.s));
+      P.dot([s.a, q], 6, '--e'); P.line([s.a - .25, q - .25 * bp], [s.a + .25, q + .25 * bp], '--b', 3); P.line([s.a - .25, NN.toy.Qstar(s.s, s.a) - .25 * tr], [s.a + .25, NN.toy.Qstar(s.s, s.a) + .25 * tr], '--c', 2, [4, 3]);
+      const R = Pl.panel(.61, 0, .39, .8, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['∂Q/∂a, backprop  ' + f(bp, 4), '--b'], ['∂Q/∂a, nudging   ' + f(nd, 4), '--b'], ['gap ' + NN.e(Math.abs(bp - nd), 0), '--muted'], ['∂Q*/∂a, truth    ' + f(tr, 4), '--c'], ['', ''], ['actor is told to', '--ink'], ['  ' + (bp > 0 ? 'RAISE' : 'LOWER') + ' μ(s)', '--e'], [Math.sign(bp) === Math.sign(tr) ? '  (the right way)' : '  (the WRONG way)', Math.sign(bp) === Math.sign(tr) ? '--c' : '--bad']], { top: .1, gap: .1 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['backprop vs nudge: always agree (same function). vs truth: agree only where the critic has learned', '--ink']], { top: .5, gap: .3 });
+    } else {
+      const P = Pl.panel(0, 0, 1, .8, [-1, 1, -2.5, 1], false), t = SL.anim, hill = (x, k) => -1.5 * (x - .5 + .3 * k) ** 2 + .2 * Math.sin(5 * x + k);
+      P.series([{ pts: as.map(x => [x, hill(x, 0)]), cl: '--line', w: 1.5, label: 'the ground at step 100' }, { pts: as.map(x => [x, hill(x, .6)]), cl: '--a', w: 2.5, label: 'the ground at step 10 000 (critic refitted)' }], { title: 'a walker that can only feel the slope under its feet' });
+      let x = -.8; const path = [x]; for (let k = 0; k < 14; k++) { const sl = (hill(x + 1e-3, .6) - hill(x - 1e-3, .6)) / 2e-3; x += .05 * Math.sign(sl) * Math.min(1, Math.abs(sl)); path.push(x); }
+      path.slice(0, 1 + Math.floor(t * 14)).forEach((p, i) => P.dot([p, hill(p, .6) + .08], i === Math.floor(t * 14) ? 7 : 3, '--e'));
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['learns the next step, never the destination → a million small updates, not one solve', '--ink'], ['ground rebuilt while walking → critic lr ≈ 2 × actor lr; TD3 delays actor updates to every other step', '--muted']], { top: .38, gap: .35 });
+    }
+  },
+  math(S) {
+    const s = st();
+    const rows = [
+`${E(`seed_actor = −∂Q/∂a |ₐ₌μ(s)   (where 2(y − t)/N would sit)`)}`,
+`${E(`∇ₐQ(s, a)|ₐ₌μ(s) ∈ ℝ^(N × d_a)
+here: (${gQ2(s.k1, s.k2).map(v => f(v, 3)).join(', ')}) at (k₁, k₂) = (${f(s.k1)}, ${f(s.k2)})`)}
+<p>Each entry is the path sum of page 84 through both critic hidden layers; backprop computes it without listing paths.</p>`,
+`<p>This DDPG update does not use a target action: the critic gives a local action sensitivity, not a known correct torque.</p>`,
+`${E(`a_pi   : N × d_a
+q      : N × 1
+dx     : N × (d_s + d_a)
+dq_da  : N × d_a   (action columns of dx)
+seed   : −a_max · dq_da`)}`,
+`${E(`SGD:  Δθ = −η·(−∂Q/∂a)·∂μ/∂θ  ∝ |∂Q/∂a|`)}`,
+`${E(`Adam: Δθ = −η m̂/(√v̂ + ε)
+consistent |g| = ${NN.e(s.mag, 0)} → step ≈ ${NN.e(opt(s.mag).adam[59][1], 2)}
+consistent |g| = ${NN.e(s.mag * 1000, 0)} → step ≈ ${NN.e(opt(s.mag * 1000).adam[59][1], 2)}`)}`,
+`${ul(['Large slope + no data nearby = probably fiction.', 'Exploration, critic weight decay (≤ 1e−4), gradient clipping.'])}`,
+`${E(`Q*(s, a) = −(a − g(s))²  ⇒  ∂Q*/∂a = −2(a − g(s))
+s = ${f(s.s)}, a = ${f(s.a)}: truth ${f(-2 * (s.a - NN.toy.g(s.s)), 4)}, critic ${f(AG.dQda(s.s, s.a), 4)}`)}`,
+`<p>Carry forward: ∂Q/∂a is one number per action dimension per sample, measured at the actor's current output, sliced from the critic's input gradient, negated, and used as the seed — not the target — of the actor's backward pass.</p>`];
+    return rows[S];
+  },
+  stats() { return `<span><b>critic</b>${TRAINED ? 'trained' : 'untrained'}</span>`; },
+});
+</script>
+</body></html>

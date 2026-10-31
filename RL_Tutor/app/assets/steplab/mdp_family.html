@@ -1,0 +1,113 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Still an MDP, and what makes it DDPG</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+let SIT = 0;
+const SITS = [
+  ['continuous action, real hardware, few samples', 'DDPG or TD3', 'Continuous actions rule out DQN; "few samples" rules out on-policy methods — PPO discards its batch after each update and needs orders of magnitude more real interactions. Off-policy replay is the only way the experiment fits in a session with a human subject. Prefer TD3 if you can afford the second critic.'],
+  ['continuous action, fast simulator, unlimited samples', 'PPO', 'With a cheap simulator sample efficiency stops mattering and robustness starts to. PPO\'s clipped update is far less hyperparameter-sensitive than DDPG\'s, parallelises trivially, and its stochastic policy explores without a noise schedule. Almost every sim-trained locomotion result used it.'],
+  ['discrete action, many samples', 'DQN and descendants', 'If the actions can be enumerated, maxₐQ is a scan and you need no actor: an actor approximates an argmax you could compute exactly — strictly more machinery for strictly less.'],
+  ['continuous action, several equally good solutions', 'SAC', 'A deterministic actor commits to one action per state and arbitrarily drops the other peaks. SAC\'s entropy bonus rewards keeping mass on the good options (a single-Gaussian SAC actor still does not guarantee a multi-modal distribution).'],
+  ['continuous action, single critic overestimates', 'TD3', 'The actor climbs toward wherever Q is highest, so it seeks out the critic\'s positive errors and the bias compounds. min(Q₁, Q₂) of two independently initialised critics is a cheap, deliberately pessimistic estimate that removes most of it.'],
+];
+const st = () => { const v = SL.v; return { slip: v.slip / 100, sig: v.sig / 100, nA: v.nA }; };
+/* overestimation: E[max of noisy estimates] and E[min of two critics, at the argmax of one] */
+const overest = s => { const r = NN.rng(5), Q = [...Array(s.nA)].map((_, i) => -Math.abs(i - (s.nA - 1) / 2) * .1), tmax = Math.max(...Q); let m1 = 0, m2 = 0; const T = 2000;
+  for (let t = 0; t < T; t++) { const q1 = Q.map(q => q + s.sig * NN.gauss(r)), q2 = Q.map(q => q + s.sig * NN.gauss(r)), i = q1.indexOf(Math.max(...q1)); m1 += q1[i] / T; m2 += Math.min(q1[i], q2[i]) / T; } return { b1: m1 - tmax, b2: m2 - tmax }; };
+SL.app({
+  title: 'Still an MDP? And what makes it DDPG',
+  sub: 'The MDP is the stage; an algorithm is one actor on it. The Markov property does not mention the policy at all — and among the actor-critic family, four switches decide which algorithm you have built.',
+  view: '2d',
+  legend: [['--a', 'environment / Markov'], ['--e', 'policy choice'], ['--bad', 'bias / non-Markov'], ['--c', 'chosen'], ['--d', 'two critics']],
+  controls: [
+    { id: 'slip', label: 'ice slip probability (step 1–2)', min: 0, max: 66, value: 33, fmt: x => x + '%' },
+    { id: 'sig', label: 'critic noise σ (step 8)', min: 0, max: 100, value: 40, fmt: x => f(x / 100) },
+    { id: 'nA', label: 'actions compared (step 8)', min: 2, max: 30, value: 10 },
+  ],
+  buttons: SITS.map((s, i) => ({ label: s[1].split(' ')[0] + ' ?', onclick: () => { SIT = i; SL.go(9, false); } })),
+  steps: [
+    ['The stage and the actor', 'An MDP defines what exists — states, actions, transitions, rewards, discount. An algorithm is a strategy for choosing actions within those rules. "Is DDPG still an MDP?" is like asking whether a chess player is still chess. The real question is whether YOUR state vector is Markov.'],
+    ['Markov: one line, no policy in it', 'P(s_{t+1} | s_t, a_t) = P(s_{t+1} | s_t, a_t, s_{t−1}, a_{t−1}, …, s₀): given where you are and what you do, history adds nothing. There is no π in the formula — dice roll, ε-greedy, Gaussian or a deterministic network, the transition kernel is the same.'],
+    ['Deterministic choice, stochastic consequence', 'You may deterministically choose Right; slippery ice still throws you sideways. μ(s) removes randomness from the choice, not from the outcome. DDPG on a real robot is exactly this case — still an MDP.'],
+    ['DDPG leans on Markov harder than MC', 'y = r + γQ′(s′, μ′(s′)) is a Bellman backup: it needs the value of s′ to summarise the whole future — a Markov assumption in the strict sense. MC only needs episodes to end. Drop velocity from a pendulum\'s state and the same s has different futures.'],
+    ['What DDPG\'s target actually evaluates', 'The next action is μ′(s′), so the target is Q′(s′, μ′(s′)) — no exact max in the backup. The actor seeks higher predicted Q. A deterministic policy may pick one of several equally good actions; DDPG does not assume a unique optimum.'],
+    ['Known model, learned model, no model', '1) Model known: DP, optimal control, MPC, A* — pure computation, nothing to learn (DP counts as RL; MPC and A* do not). 2) Learn a model P̂ then plan/imagine: PILCO, MBPO, Dreamer, MuZero — sample-efficient, only as good as P̂. 3) Skip it: Q-learning, DQN, DDPG, TD3, SAC, PPO — hungry, but no model to be wrong.'],
+    ['Two refinements, and MPC', 'A known model makes RL unnecessary, not useless (huge stochastic branching can still favour sampling). Model-based vs model-free is about an explicit dynamics/reward model, not about networks: DDPG has two networks, neither predicts s′. MPC has a model, a horizon and re-planning but learns nothing; bolt on a learned model and it becomes model-based RL.'],
+    ['Four switches, not "has an actor and a critic"', 'TD3, SAC, PPO, A2C all have an actor and a critic. What differs: deterministic or stochastic actor; one or two critics; Q or V; off- or on-policy. DDPG is one specific setting of all four.'],
+    ['DDPG iff …, and why TD3 exists', 'Deterministic actor with injected noise; exactly one Q-critic, actor trained through ∂Q/∂a; off-policy replay; soft Polyak targets. A single critic overestimates — the max picks up its positive errors. TD3: min(Q₁, Q₂), delayed actor, target-action smoothing.'],
+    ['Pick a problem, get the algorithm', 'The choice is nearly always forced by the problem. Use the buttons. And the honest ordering: TD3 is a strict upgrade over DDPG for one extra network — DDPG is learnt first because TD3 and SAC are described as patches to it.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S === 0) {
+      const D = Pl.panel(0, 0, 1, .8, [0, 10, 0, 6], false); D.frame('the MDP is the stage');
+      D.poly([[.5, .6], [9.5, .6], [9.5, 2.6], [.5, 2.6]], '--a', 2.5, null, '--a', true); D.text([5, 1.7], 'MDP:  S, A, P(s′|s,a), R, γ   — what exists', '--ink', 0, 5, { size: 14, align: 'center' });
+      ['DP', 'MC', 'Q-learning', 'DDPG', 'PPO'].forEach((n, i) => { const x = 1.1 + i * 1.8; D.poly([[x, 3.2], [x + 1.4, 3.2], [x + 1.4, 4.6], [x, 4.6]], '--e', 2, null, '--e', true); D.text([x + .7, 3.9], n, '--ink', 0, 5, { size: 13, align: 'center' }); });
+      D.text([5, 5.3], 'algorithms: strategies for choosing actions within those rules', '--e', 0, 0, { size: 13, align: 'center' });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['"is DDPG still an MDP?" — a category error, like "is a chess player still chess?"', '--ink'], ['useful question: does MY state vector satisfy the Markov property?', '--a']], { top: .38, gap: .35 });
+    } else if (S <= 2) {
+      const G = Pl.panel(0, 0, .55, .8, [0, 3, 0, 3]); G.frame('choose RIGHT from the centre (deterministically)');
+      for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) G.poly([[i + .04, j + .04], [i + .96, j + .04], [i + .96, j + .96], [i + .04, j + .96]], '--line', 1, null, '--a', true);
+      G.dot([1.5, 1.5], 12, '--e'); G.arrow([1.5, 1.5], [.7, 0], '--e', 4, 'μ(s) = Right');
+      const pr = [[2.5, 1.5, 1 - s.slip], [1.5, 2.5, s.slip / 2], [1.5, .5, s.slip / 2]];
+      pr.forEach(([x, y, p]) => { G.text([x, y], f(p, 2), p > .4 ? '--c' : '--bad', 0, 4, { size: 14, align: 'center' }); });
+      const R = Pl.panel(.56, 0, .44, .8, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['P(s′|s, Right):', '--a'], ['  right  ' + f(1 - s.slip, 2), '--c'], ['  up     ' + f(s.slip / 2, 2), '--bad'], ['  down   ' + f(s.slip / 2, 2), '--bad'], ['', ''], ['same kernel whether Right', '--ink'], ['came from a dice roll,', '--ink'], ['ε-greedy, π(a|s) or μ(s)', '--ink'], ['', ''], [S === 2 ? 'μ removes randomness from' : 'no π anywhere in Markov', '--e'], [S === 2 ? 'the CHOICE, not the outcome' : '', '--e']], { top: .1, gap: .08 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['P(s_{t+1} | s_t, a_t) = P(s_{t+1} | s_t, a_t, s_{t−1}, a_{t−1}, …, s₀)', '--ink'], ['a property of the environment (and of your state vector), never of the optimiser', '--muted']], { top: .38, gap: .35 });
+    } else if (S <= 4) {
+      const ts = [...Array(121)].map((_, i) => i / 40), th = (t, w0) => .6 * Math.cos(2 * t + w0);
+      const P = Pl.panel(0, 0, .62, .8, [0, 3, -1, 1], false);
+      P.series([{ pts: ts.map(t => [t, th(t, -.9)]), cl: '--a', w: 2.5, label: 'history A: swinging down' }, { pts: ts.map(t => [t, th(t, .9)]), cl: '--b', w: 2.5, label: 'history B: swinging up' }], { title: S === 3 ? 'state = angle only: the same s, two different futures' : 'target: Q′ at μ′(s′), not a max' });
+      const t0 = .45 / 2 + .2; P.line([t0 + .002, -1], [t0 + .002, 1], '--grey', 1, [3, 3]);
+      const R = Pl.panel(.63, 0, .37, .8, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 3 ? [['y = r + γ Q′(s′, μ′(s′))', '--ink'], ['needs V(s′) to summarise', '--ink'], ['  the entire future', '--ink'], ['', ''], ['angle only → not Markov', '--bad'], ['angle + velocity → Markov', '--c'], ['', ''], ['MC: needs episodes to end', '--muted'], ['TD/DDPG: needs Markov s′', '--muted']]
+        : [['Q-learning:', '--ink'], ['  y = r + γ maxₐ′ Q(s′, a′)', '--muted'], ['DDPG:', '--ink'], ['  y = r + γ Q′(s′, μ′(s′))', '--e'], ['', ''], ['no exact max in the backup', '--e'], ['actor seeks higher predicted Q', '--ink'], ['several equally good actions', '--muted'], ['  are fine: it picks one', '--muted']], { top: .1, gap: .09 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [[S === 3 ? 'far from escaping the MDP framework, a bootstrapping method depends on it more directly than Monte Carlo does' : 'DDPG does not assume every state has a unique optimum', '--ink']], { top: .5, gap: .3 });
+    } else if (S <= 6) {
+      const T = Pl.panel(0, 0, 1, .8, [0, 1, 0, 1], false); T.frame(S === 5 ? 'three cases' : 'refinements');
+      NN.lines(T, S === 5 ? [['1  model known exactly    P, r closed form   DP · optimal control · MPC · A*  — computation only', '--a'], ['                                              DP is RL; MPC and A* are not. Nothing learns.', '--muted'], ['2  model unknown → learn  data → P̂          PILCO · MBPO · Dreamer · MuZero (AlphaZero: known rules)', '--d'], ['                                              very sample-efficient, only as good as P̂', '--muted'], ['3  model unknown → skip   experience only    Q-learning · DQN · DDPG · TD3 · SAC · PPO', '--e'], ['                                              sample-hungry; no model to be wrong about', '--muted']]
+        : [['"if we know the dynamics RL is useless" → too strong: say UNNECESSARY', '--ink'], ['   a known stochastic model with a huge branching factor can still be easier to sample than search', '--muted'], ['model-based / model-free = is an explicit dynamics/reward model used? — not "is there a network?"', '--ink'], ['   DDPG: two networks, neither predicts s′ → model-free', '--e'], ['MPC: model + horizon + re-plan every step, but learns nothing → not RL', '--a'], ['   + a learned dynamics model → model-based RL: classical methods combined with learning', '--d']], { top: .12, gap: .13 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['the boundaries fall where an explicit model is used for planning or learning — known or learned', '--ink']], { top: .5, gap: .3 });
+    } else if (S <= 8) {
+      if (S === 7) { const T = Pl.panel(0, 0, 1, .8, [0, 1, 0, 1], false); T.frame('four switches');
+        NN.lines(T, [['alg.     actor              critics  estimates  data        defining feature', '--muted'], ['DDPG     deterministic μ(s)  1        Q(s,a)     off-policy  push action through ∂Q/∂a; noise to explore', '--b'], ['TD3      deterministic μ(s)  2        Q(s,a)     off-policy  DDPG + min(Q₁,Q₂), delayed actor, target smoothing', '--b'], ['SAC      stochastic π(a|s)   2        Q(s,a)     off-policy  reward + entropy: exploration in the objective', '--d'], ['PPO      stochastic π(a|s)   1        V(s)       on-policy   clipped policy step; data discarded each batch', '--d'], ['A2C/A3C  stochastic π(a|s)   1        V(s)       on-policy   advantage r + γV(s′) − V(s); no trust region, no replay', '--d'], ['DQN      implicit argmax     1        Q(s,a)     off-policy  no actor: needs enumerable actions', '--grey']], { top: .14, gap: .12 }); }
+      else { const o = overest(s);
+        const B = Pl.panel(0, 0, .5, .8, [0, 2, Math.min(-.3, o.b2 * 1.3), Math.max(.3, o.b1 * 1.2)], false); B.frame(`bias of the value used in the target (${s.nA} actions, σ = ${f(s.sig)})`);
+        NN.bars(B, [o.b1, o.b2], { labels: ['max of one critic', 'min(Q₁, Q₂)'], cols: ['--bad', '--d'], d: 3 });
+        const R = Pl.panel(.51, 0, .49, .8, [0, 1, 0, 1], false); R.frame('DDPG iff all four');
+        NN.lines(R, [['1 deterministic actor,', '--b'], ['  noise injected to explore', '--muted'], ['2 exactly one Q-critic,', '--b'], ['  actor trained via ∂Q/∂a', '--muted'], ['3 off-policy replay buffer', '--b'], ['4 soft Polyak target nets', '--b'], ['', ''], ['actor seeks the critic\'s', '--bad'], ['  positive errors → bias', '--bad'], ['TD3: min(Q₁,Q₂) + delayed', '--d'], ['  actor + target smoothing', '--d']], { top: .09, gap: .08 }); }
+      const B2 = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B2.frame(); NN.lines(B2, [[S === 7 ? '"it has an actor and a critic" narrows nothing' : 'stochastic actor + two critics + entropy → SAC;  stochastic + V + discard data + clip → PPO', '--ink']], { top: .5, gap: .3 });
+    } else {
+      const [sit, alg, why] = SITS[SIT], T = Pl.panel(0, 0, 1, .8, [0, 1, 0, 1], false); T.frame('situation → algorithm');
+      SITS.forEach(([n, a], i) => T.label(T.x + 14, T.y + 34 + i * 26, (i === SIT ? '▶ ' : '   ') + n + '  →  ' + a, i === SIT ? '--c' : '--muted', { mono: true }));
+      const words = why.split(' '), lines = []; let cur = ''; words.forEach(w => { if ((cur + ' ' + w).length > 110) { lines.push(cur); cur = w; } else cur = cur ? cur + ' ' + w : w; }); lines.push(cur);
+      T.label(T.x + 14, T.y + 34 + 5 * 26 + 20, alg + '.', '--c', { size: 16 }); lines.forEach((l, i) => T.label(T.x + 14, T.y + 34 + 5 * 26 + 48 + i * 22, l, '--ink', { size: 14, bold: false }));
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [['TD3 is a strict upgrade over DDPG for one extra network; DDPG is learnt first because TD3 and SAC are patches to it', '--ink'], ['its four components map one-to-one onto the four questions every continuous-control method answers', '--muted']], { top: .38, gap: .35 });
+    }
+  },
+  math(S) {
+    const s = st();
+    const rows = [
+`<p>MDP = (S, A, P, R, γ). Algorithm = a way of choosing actions in it.</p>`,
+`${E(`P(s_{t+1} | s_t, a_t) = P(s_{t+1} | s_t, a_t, s_{t−1}, a_{t−1}, …, s₀)`)}<p>No π appears: the property belongs to the environment.</p>`,
+`${E(`a = μ(s) = Right (always)
+P(s′ = right | s, Right) = ${f(1 - s.slip, 2)}`)}`,
+`${E(`y = r + γ(1 − d) Q′(s′, μ′(s′))   ← Bellman backup`)}<p>The state must carry whatever the future depends on: angle AND velocity, phase AND its rate.</p>`,
+`${E(`DDPG target: Q′(s′, μ′(s′))
+Q-learning:  maxₐ′ Q(s′, a′)`)}`,
+`${ul(['Known: plan.', 'Learned: plan against P̂.', 'None: learn Q or π directly.'])}`,
+`<p>Model-based RL + MPC is one of the most practical things in robotics right now.</p>`,
+`${ul(['actor: deterministic / stochastic', 'critics: one / two', 'estimates: Q / V', 'data: off- / on-policy'])}`,
+(() => { const o = overest(s); return `${E(`E[maxₐ (Q + ε)] − max Q = ${f(o.b1, 3)}   (σ = ${f(s.sig)}, ${s.nA} actions)
+E[min(Q₁, Q₂) at argmax Q₁] − max Q = ${f(o.b2, 3)}`)}<p>Positive bias compounds through bootstrapping; the pessimistic min removes most of it.</p>`; })(),
+`<p><b>${SITS[SIT][0]}</b> → ${SITS[SIT][1]}.</p>`];
+    return rows[S];
+  },
+  stats() { return SL.st === 8 ? (o => `<span><b>max bias</b>${f(o.b1, 3)}</span><span><b>min bias</b>${f(o.b2, 3)}</span>`)(overest(st())) : ''; },
+});
+</script>
+</body></html>

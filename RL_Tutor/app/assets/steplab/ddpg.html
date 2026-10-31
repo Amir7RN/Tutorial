@@ -1,0 +1,134 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DDPG one piece at a time</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const g = NN.toy.g, Qstar = NN.toy.Qstar;
+const st = () => { const v = SL.v; return { r: v.r / 100, gam: v.gam / 1000, qn: v.qn / 100, d: DONE, tau: v.tau / 1000, sig: v.sig / 100, eps: v.eps, s: v.s / 100 }; };
+let DONE = 0, AG = NN.toy.fresh(), LOG = null;
+const mu = s => AG.mu(s), Qc = (s, a) => AG.Q(s, a);
+const train = (eps, sig) => { AG = NN.toy.train(eps, sig); LOG = AG.log; };
+SL.app({
+  title: 'DDPG, one piece at a time',
+  sub: 'Q-learning with the argmax replaced by a network, plus DQN\'s two stabilisers. Four networks, three equations — and since there is no ground truth anywhere, one of them manufactures it. Steps 6–9 train a real DDPG in this page on a task whose true Q is known.',
+  view: '2d',
+  legend: [['--e', 'actor μ'], ['--a', 'critic Q'], ['--grey', 'true Q* / argmax g(s)'], ['--b', 'target / ∂Q/∂a'], ['--c', 'real reward']],
+  controls: [
+    { id: 'r', label: 'reward r (steps 1–2)', min: -200, max: 200, value: -40, fmt: x => f(x / 100) },
+    { id: 'gam', label: 'γ', min: 800, max: 999, value: 990, fmt: x => f(x / 1000, 3) },
+    { id: 'qn', label: "Q′(s′, μ′(s′))", min: -500, max: 500, value: -150, fmt: x => f(x / 100) },
+    { id: 'tau', label: 'τ (step 4)', min: 1, max: 1000, value: 10, fmt: x => f(x / 1000, 3) },
+    { id: 'sig', label: 'exploration σ (step 6+)', min: 0, max: 80, value: 30, fmt: x => f(x / 100) },
+    { id: 'eps', label: 'training episodes', min: 200, max: 3000, step: 100, value: 1200 },
+    { id: 's', label: 'inspect context s', min: -100, max: 100, value: 40, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'Train', primary: true, onclick: () => { train(SL.v.eps, SL.v.sig / 100); SL.redraw(); } }, { label: 'σ = 0.02, train', onclick: () => { SL.setControl('sig', 2); train(SL.v.eps, .02); SL.redraw(); } }, { label: 'untrained', onclick: () => { AG = NN.toy.fresh(); LOG = null; SL.redraw(); } },
+    { label: 'terminal d = 1', toggle: true, onclick: e => { DONE = 1 - DONE; e.setAttribute('aria-pressed', DONE ? 'true' : 'false'); SL.redraw(); } }],
+  steps: [
+    ['Four networks, each for one reason', 'actor μ: s → a, because a continuous argmax cannot be computed at runtime. critic Q: (s,a) → value, a surface the actor can differentiate. target actor μ′ and target critic Q′: slow copies, so the critic is not regressed onto a target that moves with it.'],
+    ['1 · Manufacture a target', 'y = r + γ(1 − d)Q′(s′, μ′(s′)). Nobody knows what Q(s,a) should be, so build a stand-in from one real number (r — the only fact) and one guess (the target networks\' opinion of everything after). Each update the guess is one real reward less wrong.'],
+    ['2 · Fit the critic', 'Treat y as handed down and do least squares: L(w) = (1/N)Σ(Q(sᵢ,aᵢ;w) − yᵢ)². The Bellman equation from page 62, enforced by gradient descent instead of assignment.'],
+    ['3 · Push the actor uphill', '∇θJ = E[∇ₐQ(s,a)|ₐ₌μ(s) · ∇θμ(s)]: the critic answers "which way in action space raises value?", the actor "how do my weights move my output that way?". Negated for a descent optimiser. No action is ever enumerated or maximised over.'],
+    ['4 · Targets crawl after the live nets', 'θ′ ← τθ + (1 − τ)θ′. τ = 0.01 ≈ a 100-step moving average. Small τ: stable, slow. Large τ: fast, and risks the divergence targets exist to prevent. τ = 1 removes them.'],
+    ['The replay buffer: off-policy is load-bearing', '(s, a, r, s′) is a fact about the environment and does not expire when the policy changes. Uniform samples break the correlation of consecutive steps, and each real stride is reused hundreds of times. Replay is valid because the Q-target update is off-policy — not because the actor is deterministic.'],
+    ['A task whose true Q is known', 'One step per episode: r = −(a − g(s))², g(s) = 0.8 sin(πs/2), so Q*(s,a) = −(a − g(s))² and γ drops out. Press Train, then sweep the context: the critic\'s parabola should slide with s and the actor sit on its peak — the argmax learned as a function of state.'],
+    ['Starve it of exploration', 'Press "σ = 0.02, train". Nothing samples away from where the actor started, so the critic is accurate in a narrow band and confidently wrong outside it. The deterministic actor\'s failure mode, made visible.'],
+    ['∂Q/∂a is a seed, not a target', 'Nothing makes the actor output equal ∂Q/∂a — different units, and no correct action exists. It lands in the slot a prediction error occupies: blame for the last layer, then the ordinary backward pass. Shape N × d_a; each entry sums 64 × 64 = 4 096 paths in the real critic.'],
+    ['Neither network solves the task', 'The critic never saw −(a − g(s))², only scattered (s, a, r) triples and targets built from its own predictions. The actor never saw the reward at all — it followed ∂Q/∂a uphill on whatever the critic believed. Two solvable problems, neither of them the task.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, y = s.r + s.gam * (1 - s.d) * s.qn;
+    if (S === 0) {
+      const D = Pl.panel(0, 0, 1, .8, [0, 10, 0, 6], false); D.frame('four networks');
+      const box = (x, yy, t1, t2, c) => { D.poly([[x, yy], [x + 3.6, yy], [x + 3.6, yy + 1.7], [x, yy + 1.7]], c, 2.5, null, c, true); D.text([x + 1.8, yy + 1.1], t1, '--ink', 0, 0, { size: 14, align: 'center' }); D.text([x + 1.8, yy + .45], t2, '--muted', 0, 0, { size: 11, align: 'center' }); };
+      box(.7, 3.6, 'actor μ: s → a', 'amortised argmax', '--e'); box(5.7, 3.6, 'critic Q: (s,a) → value', 'surface to climb', '--a');
+      box(.7, .7, "target μ′: s′ → a′", 'what would we do next — held still', '--grey'); box(5.7, .7, "target Q′: (s′,a′) → value", 'slow copy: no runaway', '--grey');
+      D.arrow([2.5, 3.6], [0, -1.1], '--b', 2, 'τ crawl', [4, 3]); D.arrow([7.5, 3.6], [0, -1.1], '--b', 2, 'τ crawl', [4, 3]); D.arrow([4.3, 4.45], [1.4, 0], '--e', 2.5, 'a'); D.arrow([5.7, 4.0], [-1.4, 0], '--a', 2.5, '∂Q/∂a', null, -40, 18);
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame(); NN.lines(R, [['state all four reasons in one sentence each and you understand the algorithm', '--ink'], ['DDPG = Q-learning + argmax-network (actor) + replay + target networks', '--muted']], { top: .38, gap: .35 });
+    } else if (S <= 2) {
+      const D = Pl.panel(0, 0, .62, .78, [0, 10, 0, 6], false); D.frame(S === 1 ? 'y = r + γ(1 − d)·Q′(s′, μ′(s′))' : 'L = (Q(s, a) − y)²');
+      const H = 4.6, sc = 1.1, bar = (x, v, c, l) => { D.poly([[x, 3], [x + 1.3, 3], [x + 1.3, 3 + v * sc], [x, 3 + v * sc]], c, 2, null, c, true); D.text([x + .65, v >= 0 ? 3 + v * sc + .25 : 3 + v * sc - .45], f(v), '--ink', 0, 0, { size: 12, align: 'center' }); D.text([x + .65, .45], l, c, 0, 0, { size: 12, align: 'center' }); };
+      D.line([.3, 3], [9.7, 3], '--grey', 1);
+      bar(.6, s.r, '--c', 'r (fact)'); bar(2.8, s.gam * (1 - s.d) * s.qn, '--grey', "γ(1−d)Q′ (guess)"); bar(5.2, y, '--b', 'y (target)'); if (S === 2) bar(7.6, .8 * y + .5, '--a', 'Q(s,a) now');
+      const R = Pl.panel(.63, 0, .37, .78, [0, 1, 0, 1], false); R.frame();
+      const q = .8 * y + .5;
+      NN.lines(R, S === 1 ? [['r = ' + f(s.r), '--c'], ['γ = ' + f(s.gam, 3) + ',  d = ' + s.d, '--ink'], ["Q′ = " + f(s.qn), '--grey'], ['y = ' + f(y, 4), '--b'], ['', ''], [s.d ? 'terminal: y = r exactly' : 'one real reward + a guess', '--muted'], ['real rewards leak back', '--muted'], ['  through time', '--muted']]
+        : [['Q = ' + f(q, 3) + '   y = ' + f(y, 3), '--ink'], ['error Q − y = ' + f(q - y, 3), '--a'], ['L = ' + f((q - y) ** 2, 4), '--a'], ['∂L/∂Q = 2(Q − y) = ' + f(2 * (q - y), 3), '--b'], ['', ''], ['y held fixed: no gradient', '--muted'], ['  into the target nets', '--muted']], { top: .12, gap: .1 });
+      const B = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); B.frame(); NN.lines(B, [[S === 1 ? 'supervised learning: a human wrote the label.  RL: there is none — we manufacture one' : 'Bellman equation, enforced by gradient descent instead of by assignment', '--ink']], { top: .5, gap: .3 });
+    } else if (S === 3) {
+      const D = Pl.panel(0, 0, .55, 1, [0, 10, 0, 10], false); D.frame('the four lines of actor_gradient_step');
+      NN.lines(D, [['a_pi = scaled(actor.forward(s), a_max)', '--e'], ['q_pi = critic.forward(concat(s, a_pi))', '--a'], ['dx = critic.backward(1/N per sample)', '--a'], ['dq_da = action_columns(dx, dim_s)', '--b'], ['   ↑ keep only the ACTION slice: the trick', '--b'], ['actor.backward(scaled(dq_da, −a_max))', '--e'], ['   ↑ minus = ascent on Q', '--muted'], ['actor.adam(lr_actor)', '--e'], ['   ↑ only now do actor weights change;', '--muted'], ['     critic optimiser NOT called', '--muted']], { top: .1, gap: .085 });
+      const as = [...Array(121)].map((_, i) => -1 + i / 60), s0 = .4, a0 = -.3, slope = -2 * (a0 - g(s0));
+      const P = Pl.panel(.56, 0, .44, 1, [-1, 1, -3.2, .4], false); P.series([{ pts: as.map(a => [a, Qstar(s0, a)]), cl: '--a', w: 2.5, label: 'Q(s, ·) at one state' }], { title: '∂Q/∂a at a = μ(s)' });
+      P.dot([a0, Qstar(s0, a0)], 6, '--e'); P.line([a0 - .3, Qstar(s0, a0) - .3 * slope], [a0 + .3, Qstar(s0, a0) + .3 * slope], '--b', 2.5); P.arrow([a0, Qstar(s0, a0) - .4], [.25 * Math.sign(slope), 0], '--e', 3, 'move μ(s) this way');
+    } else if (S === 4) {
+      const r = NN.rng(8), live = [], tgt = []; let w = 0, wt = 0;
+      for (let k = 0; k < 400; k++) { w += .02 * NN.gauss(r) + (k > 150 && k < 220 ? .03 : 0); wt = s.tau * w + (1 - s.tau) * wt; live.push([k, w]); tgt.push([k, wt]); }
+      const P = Pl.panel(0, 0, .68, 1, [0, 400, Math.min(...live.map(p => p[1])) - .2, Math.max(...live.map(p => p[1])) + .2], false);
+      P.series([{ pts: live, cl: '--a', w: 1.5, label: 'live weight θ (noisy gradient steps)' }, { pts: tgt, cl: '--b', w: 3, label: `target θ′, τ = ${f(s.tau, 3)}` }], { title: 'θ′ ← τθ + (1 − τ)θ′ — a continuous crawl, not a copy every N steps' });
+      const R = Pl.panel(.69, 0, .31, 1, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['τ = ' + f(s.tau, 3), '--b'], ['memory ≈ 1/τ = ' + f(1 / s.tau, 0) + ' steps', '--b'], ['', ''], ['typical τ: 0.001 – 0.01', '--ink'], ['small: stable, slow', '--c'], ['large: fast, may diverge', '--bad'], ['τ = 1: no targets', '--bad']], { top: .12, gap: .1 });
+    } else if (S === 5) {
+      const r = NN.rng(6), traj = []; let x = 0, v = 0; for (let k = 0; k < 300; k++) { v = .95 * v + .05 * NN.gauss(r); x += v * .1; traj.push([Math.cos(k / 30) * .8 + x * .1, Math.sin(k / 45) * .8]); }
+      const A = Pl.panel(0, 0, .5, .78, [-1.1, 1.1, -1.1, 1.1], false); A.frame('last 32 consecutive steps: one direction'); traj.forEach(p => A.dot(p, 2, '--grey')); traj.slice(-32).forEach(p => A.dot(p, 4.5, '--bad'));
+      const B = Pl.panel(.5, 0, .5, .78, [-1.1, 1.1, -1.1, 1.1], false); B.frame('32 uniform samples from the buffer'); traj.forEach(p => B.dot(p, 2, '--grey')); [...Array(32)].forEach(() => B.dot(traj[Math.floor(r() * traj.length)], 4.5, '--a'));
+      const R = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['decorrelation: correlated samples act like one huge step in one direction · reuse: each real stride used hundreds of times', '--ink'], ['PPO (on-policy): several epochs on a rollout, then discard — the algorithm of simulators. SAC also replays, with a stochastic actor.', '--muted']], { top: .35, gap: .33, size: 11 });
+    } else {
+      const ss = [...Array(41)].map((_, i) => -1 + i / 20), as = [...Array(81)].map((_, i) => -1 + i / 40);
+      const H = Pl.panel(0, 0, .36, .78, [-1, 1, -1, 1]); H.frame('Q*(s, a): s across, a up');
+      for (let i = 0; i < 20; i++) for (let j = 0; j < 20; j++) { const sx = -1 + (i + .5) / 10, ay = -1 + (j + .5) / 10, q = Qstar(sx, ay), c = Math.max(0, 1 + q / 2);
+        H.c.fillStyle = `rgba(80,140,255,${c * .75})`; const p0 = H.S([sx - .05, ay + .05]); H.c.fillRect(p0[0], p0[1], .1 * H.sx, .1 * H.sy); }
+      if (AG.buf.length && S === 7) AG.buf.slice(-400).forEach(([x, a]) => H.dot([x, a], 1.6, '--b'));
+      H.poly(ss.map(x => [x, g(x)]), '--grey', 3, [6, 4]); H.poly(ss.map(x => [x, mu(x)]), '--e', 3); H.line([s.s, -1], [s.s, 1], '--ink', 1, [3, 3]);
+      const P = Pl.panel(.37, 0, .38, .78, [-1, 1, -3.2, .5], false); const am = mu(s.s);
+      P.series([{ pts: as.map(a => [a, Qstar(s.s, a)]), cl: '--grey', w: 2, dash: [5, 4], label: 'true Q*(s, ·)' }, { pts: as.map(a => [a, Math.max(-3.2, Math.min(.5, Qc(s.s, a)))]), cl: '--a', w: 2.5, label: 'learned critic' }], { title: `slice at context s = ${f(s.s)}` });
+      P.line([g(s.s), -3.2], [g(s.s), .5], '--grey', 1, [2, 3]); P.dot([am, Qc(s.s, am)], 7, '--e'); P.text([am, Qc(s.s, am)], 'μ(s)', '--e', 8, -8, { size: 12 });
+      if (S === 8) { const sl = (Qc(s.s, am + 1e-3) - Qc(s.s, am - 1e-3)) / 2e-3; P.line([am - .35, Qc(s.s, am) - .35 * sl], [am + .35, Qc(s.s, am) + .35 * sl], '--b', 3); }
+      const R = Pl.panel(.76, 0, .24, .78, [0, 1, 0, 1], false); R.frame(LOG ? 'after training' : 'press Train');
+      const sl = (Qc(s.s, am + 1e-3) - Qc(s.s, am - 1e-3)) / 2e-3;
+      NN.lines(R, LOG ? [['episodes ' + LOG.eps, '--ink'], ['σ ' + f(LOG.sig), '--ink'], ['mean|μ−g|', '--muted'], ['  ' + f(LOG.err, 3), LOG.err < .1 ? '--c' : '--bad'], ['R last 100', '--muted'], ['  ' + f(LOG.meanR, 3), '--c'], ['critic loss', '--muted'], ['  ' + NN.e(LOG.closs, 1), '--a'], ['∂Q/∂a at μ', '--muted'], ['  ' + f(sl, 3), '--b']] : [['untrained:', '--ink'], ['μ(s) ≈ 0', '--e'], ['Q ≈ 0 flat', '--a'], ['(tiny last', '--muted'], [' layers)', '--muted']], { top: .1, gap: .085, size: 11 });
+      const B = Pl.panel(0, .8, 1, .2, [0, 1, 0, 1], false); B.frame();
+      NN.lines(B, S === 6 ? [['grey dashed: true argmax g(s) = 0.8 sin(πs/2);  orange: learned μ(s).  Sweep "inspect context" after training.', '--ink'], ['one-step episodes: d = 1, so y = r and the target networks play no part in this toy', '--muted']]
+        : S === 7 ? [['dots: actions that were actually tried. Outside them the critic is extrapolating — and the actor trusts it', '--bad'], ['deterministic actor: exploration exists only if you add it', '--muted']]
+        : S === 8 ? [['blue tangent: ∂Q/∂a at a = μ(s). Sign = which way to move the output; size = how steep the critic thinks it is here', '--b'], ['it seeds backprop through tanh and the actor weights; it is never compared with the output', '--muted']]
+        : [['critic: fitted to (s, a, r) triples only — the parabola is inferred, never told', '--a'], ['actor: never saw a reward — only ∂Q/∂a on the critic\'s current belief', '--e']], { top: .35, gap: .33, size: 11 });
+    }
+  },
+  math(S) {
+    const s = st(), y = s.r + s.gam * (1 - s.d) * s.qn;
+    const rows = [
+`${E(`actor          μ(s; θ)         s → a
+critic         Q(s, a; w)      (s, a) → value
+target actor   μ′(s; θ′)       s′ → a′
+target critic  Q′(s, a; w′)    (s′, a′) → value`)}`,
+`${E(`y = r + γ(1 − d) Q′(s′, μ′(s′))
+  = ${f(s.r)} + ${f(s.gam, 3)}·(1 − ${s.d})·${f(s.qn)} = ${f(y, 4)}`)}`,
+`${E(`L(w) = (1/N) Σᵢ (Q(sᵢ, aᵢ; w) − yᵢ)²
+∂L/∂Qᵢ = 2(Qᵢ − yᵢ)/N`)}`,
+`${E(`∇θJ = E[ ∇ₐQ(s, a)|ₐ₌μ(s) · ∇θμ(s) ]
+          (critic, to its INPUT)  (actor)`)}
+<p>A local ascent direction for the current critic. A finite step need not raise predicted Q, and raised predicted Q need not raise true return.</p>`,
+`${E(`θ′ ← τθ + (1 − τ)θ′,   τ = ${f(s.tau, 3)}
+effective averaging window ≈ 1/τ = ${f(1 / s.tau, 0)} updates`)}`,
+`${ul(['Transition = fact about the environment; it does not expire.', 'Decorrelation and sample reuse — on a robot, the difference between feasible and impossible.', 'Replay belongs to the off-policy update rule.'])}`,
+`${E(`r = −(a − g(s))²,  g(s) = 0.8 sin(πs/2)
+Q*(s, a) = −(a − g(s))²,  argmaxₐ = g(s)
+at s = ${f(s.s)}: g = ${f(g(s.s), 3)}, μ = ${f(mu(s.s), 3)}`)}
+<p>Actor 1→16→16→1 (tanh out), critic 2→20→20→1 (linear out), Adam, batch 16, buffer 5 000.</p>`,
+`${E(`exploration σ = ${f(s.sig)}
+critic error at a = ±0.9, s = ${f(s.s)}:
+  ${f(Qc(s.s, -.9) - Qstar(s.s, -.9), 3)},  ${f(Qc(s.s, .9) - Qstar(s.s, .9), 3)}`)}`,
+`${E(`seed for the actor's last layer = −∂Q/∂a   (shape N × d_a)
+here ∂Q/∂a at μ(s) = ${f((Qc(s.s, mu(s.s) + 1e-3) - Qc(s.s, mu(s.s) - 1e-3)) / 2e-3, 4)}`)}
+<p>Pages 84, 90 and 91 unpack this: the path sum, what Adam does to its magnitude, and where the action should enter the critic.</p>`,
+`<p>Two networks, each solving a problem it can solve; the task gets solved only through their interaction.</p>`];
+    return rows[S];
+  },
+  stats() { return LOG ? `<span><b>|μ − argmax|</b>${f(LOG.err, 3)}</span><span><b>loss</b>${NN.e(LOG.closs, 1)}</span>` : '<span><b>status</b>untrained</span>'; },
+});
+</script>
+</body></html>

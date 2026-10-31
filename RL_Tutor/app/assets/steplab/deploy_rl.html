@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Shipping it</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+let WI = 0, RI = 0, WRONG = false, T = 0;
+const st = () => { const v = SL.v; return { fs: v.fs, cost: v.cost / 100, N: v.N, spike: v.spike / 10, rate: v.rate / 10 }; };
+/* per-tick execution time with the trainer inside the control task */
+const ticks = s => { const r = NN.rng(7), out = []; for (let k = 0; k < 400; k++) { let t = .1 * (1 + .05 * NN.gauss(r)); if (k % s.N === s.N - 1) t += s.cost * (.85 + .35 * Math.abs(NN.gauss(r)) + (r() < .1 ? .6 : 0)); out.push(t); } return out; };
+SL.app({
+  title: 'Shipping it: fast loop, slow learner',
+  sub: 'A control task needs a verified execution-time bound; training has none. So the controller and the learner run as two tasks at two rates, and everything interesting is in how they talk.',
+  view: '2d',
+  legend: [['--a', 'RT_Control (1 kHz)'], ['--d', 'RL_Trainer (20 Hz)'], ['--c', 'within deadline'], ['--bad', 'overrun / unsafe'], ['--b', 'shared memory']],
+  controls: [
+    { id: 'fs', label: 'loop rate f_s (step 6)', min: 200, max: 4000, step: 100, value: 1000, fmt: x => x + ' Hz' },
+    { id: 'cost', label: 'train cost (step 6)', min: 10, max: 400, value: 120, fmt: x => f(x / 100) + ' ms' },
+    { id: 'N', label: 'train every N ticks (step 6)', min: 5, max: 200, value: 50 },
+    { id: 'spike', label: 'bad weight update (step 5)', min: 0, max: 60, value: 30, fmt: x => f(x / 10, 1) + '×' },
+    { id: 'rate', label: 'rate limit per stride (step 5)', min: 1, max: 30, value: 3, fmt: x => '±' + f(x / 10, 1) },
+  ],
+  buttons: [{ label: 'RT: one cycle ends (push)', onclick: () => { WI++; SL.redraw(); } }, { label: 'Trainer: consume', onclick: () => { RI = WI; SL.redraw(); } }, { label: 'flag before data (wrong)', toggle: true, onclick: e => { WRONG = !WRONG; e.setAttribute('aria-pressed', WRONG); SL.go(3); } }],
+  play: { tick(dt) { T += dt; } }, reset() { T = 0; },
+  steps: [
+    ['Two tasks, two clocks', 'RT_Control: 1 kHz, hard deadline, highest priority; reads the encoder, evaluates μ(s) when a cycle ends, computes the impedance torque, writes current. Never allocates, never blocks. RL_Trainer: 20 Hz, soft deadline, below every control task; samples, steps, publishes weights. May allocate and block on its own side.'],
+    ['One structure, disjoint writers', 'SharedMemory: a 300-entry transfer ring, writeIdx (written only by RT), readIdx (written only by the trainer), newWeightsAvailable, and a flat actor-weight array (written only by the trainer). If no two participants write the same field, no lock is needed, and the fast side can never be blocked by the slow one.'],
+    ['Upstream: experience, fast → slow', 'When a gait cycle completes, RT writes one transition at writeIdx and advances it. The trainer reads from readIdx up to writeIdx and advances readIdx. A single-producer single-consumer ring — the one concurrent structure safe without a lock, provided each index is written atomically.'],
+    ['Downstream: weights, slow → fast', 'Trainer writes the new weights, THEN sets the flag. RT checks the flag once per tick; if set, it copies the array into its local copy and clears the flag. Raise the flag first and the controller may copy a half-written network — toggle the wrong order and press Play.'],
+    ['Only the actor crosses the boundary', 'Critic, targets and replay buffer stay on the slow side. The controller\'s share of DDPG is one forward pass through a small MLP: fixed multiply-adds, no branches, no allocation — a bounded time you can measure and budget. Everything that made DDPG expensive is training machinery, and none of it ships.'],
+    ['Three safety rules for hardware', '1) Clamp the action in the controller, not the policy — tanh is a soft bound a bug can defeat. 2) Rate-limit weight changes between strides — a big stiffness step mid-gait is a kick. 3) Keep the last known-good weights — never wait for the learner, never stop because it stopped.'],
+    ['What if the trainer runs in the fast task?', 'The control work is short and nearly constant; a gradient step has a mean and a tail. Drop it into the 1 kHz task every N ticks: overruns appear periodically — perfect for hundreds of cycles, then a miss. Intermittent on hardware, invisible on the bench. Split it out and the control side is a flat fraction of budget.'],
+    ['Where the whole tutor ends up', 'Page 1: deadlines are the currency. The controller pages: a compliant joint is a design choice with a number attached. The RL pages: learn that number from experience. Here they are one program — a bounded, boring, deterministic controller in the fast task, and everything clever demoted to a lower priority where it may be slow.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S <= 4) {
+      const D = Pl.panel(0, 0, .66, .8, [0, 10, 0, 8], false); D.frame(['two tasks', 'SharedMemory', 'upstream ring', 'downstream weights', 'what crosses'][S]);
+      const box = (x, y, w, h, t, c, sub) => { D.poly([[x, y], [x + w, y], [x + w, y + h], [x, y + h]], c, 2.5, null, c, true); D.text([x + w / 2, y + h - .45], t, '--ink', 0, 0, { size: 13, align: 'center' }); if (sub) sub.forEach((l, i) => D.text([x + w / 2, y + h - 1 - i * .5], l, '--muted', 0, 0, { size: 11, align: 'center' })); };
+      box(.3, 1, 2.8, 6.2, 'RT_Control', '--a', ['1 kHz · hard', 'priority: highest', 'no malloc, no lock', 'encoder → μ(s) →', 'impedance → current']);
+      box(6.9, 1, 2.8, 6.2, 'RL_Trainer', '--d', ['20 Hz · soft', 'below control tasks', 'may allocate/block', 'sample → steps →', 'publish weights', S === 4 ? 'critic, targets,' : '', S === 4 ? 'replay: stay here' : '']);
+      box(3.5, 1, 3, 6.2, 'SharedMemory', '--b', []);
+      const rows = [['transferQueue[300]', 'ring of (s,a,r,s′)'], ['writeIdx', 'written by RT only'], ['readIdx', 'written by Trainer only'], ['newWeightsAvailable', 'Trainer sets, RT clears'], ['actorWeightsFlat[70000]', 'written by Trainer only']];
+      rows.forEach(([n, w], i) => { D.text([5, 6.1 - i * 1.05], n, '--ink', 0, 0, { size: 12, align: 'center' }); D.text([5, 5.7 - i * 1.05], w, '--muted', 0, 0, { size: 10, align: 'center' }); });
+      if (S === 2) { const cap = 8; for (let i = 0; i < cap; i++) { const x = 3.7 + i * .33; D.poly([[x, .2], [x + .3, .2], [x + .3, .7], [x, .7]], i < (WI - RI) % (cap + 1) ? '--b' : '--line', 1.5, null, i < WI - RI ? '--b' : null, true); }
+        D.arrow([3.1, 6.1], [.5, 0], '--a', 2.5, 'push'); D.arrow([6.5, 6.1], [.4, 0], '--d', 2.5, 'pop'); }
+      if (S === 3 || S === 4) { const t = (T * 1.5) % 1; D.arrow([6.9, 2], [-.4, 0], '--d', 2.5); D.arrow([3.5, 2], [-.4, 0], '--a', 2.5, S === 4 ? 'actor only' : 'copy'); if (S === 3) { const stage = Math.floor(((T * 1.5) % 3)); D.text([5, .45], WRONG ? (stage === 0 ? 'flag ← true … RT copies NOW' : stage === 1 ? 'weights still being written: TORN' : 'too late') : (stage === 0 ? 'write weights…' : stage === 1 ? 'then flag ← true' : 'RT copies, clears flag'), WRONG && stage < 2 ? '--bad' : '--c', 0, 0, { size: 12, align: 'center' }); } }
+      const R = Pl.panel(.67, 0, .33, .8, [0, 1, 0, 1], false); R.frame();
+      const torn = WRONG ? [...Array(10)].map((_, i) => i < 4 ? 'new' : 'old') : [...Array(10)].map(() => 'new');
+      NN.lines(R, S === 0 ? [['RT_Control', '--a'], ['  rate 1 kHz, hard', '--ink'], ['  allocate? never', '--ink'], ['  block? never', '--ink'], ['  owns a pointer', '--ink'], ['RL_Trainer', '--d'], ['  rate 20 Hz, soft', '--ink'], ['  a late batch: nothing', '--ink'], ['  may allocate/block', '--ink'], ['  owns the memory', '--ink']]
+        : S === 1 ? [['disjoint write sets', '--b'], [' → no lock', '--b'], [' → fast side never', '--b'], ['   waits on slow side', '--b'], ['', ''], ['indices: atomic writes', '--muted'], ['arrays: one writer', '--muted']]
+        : S === 2 ? [['writeIdx = ' + WI, '--a'], ['readIdx  = ' + RI, '--d'], ['pending  = ' + (WI - RI), '--b'], ['', ''], ['RT: write [writeIdx],', '--muted'], ['    then writeIdx++', '--muted'], ['Trainer: read up to', '--muted'], ['    writeIdx, readIdx++', '--muted']]
+        : S === 3 ? [['order:', '--ink'], [WRONG ? ' 1 flag  2 data  ✗' : ' 1 data  2 flag  ✓', WRONG ? '--bad' : '--c'], ['', ''], ['RT\'s copy of 10 layers:', '--ink'], [' ' + torn.map(t => t === 'new' ? '■' : '□').join(''), WRONG ? '--bad' : '--c'], [WRONG ? ' half new, half old' : ' all new', WRONG ? '--bad' : '--c']]
+        : [['ships: actor μ only', '--e'], ['  ' + (5 * 64 + 64 * 64 + 64 * 2) + ' MACs, no branch', '--e'], ['stays: critic, Q′, μ′,', '--muted'], ['  replay buffer, Adam', '--muted'], ['', ''], ['bounded time you can', '--c'], ['  measure and budget', '--c']], { top: .1, gap: .085 });
+      const B = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); B.frame();
+      NN.lines(B, [[S === 3 ? 'publish the data, THEN raise the flag — not negotiable' : S === 2 ? 'single-producer single-consumer: the one lock-free structure that is genuinely safe' : 'training: batch sampling, matmuls, optimiser, cache-dependent memory traffic → a long tail, no defensible worst case', '--ink']], { top: .5, gap: .3, size: 11 });
+    } else if (S === 5) {
+      const strides = [...Array(30)].map((_, i) => i), raw = strides.map(i => i < 12 ? 1 : i < 13 ? 1 + s.spike : 1 + s.spike * .9);
+      let lim = [1]; for (let i = 1; i < 30; i++) lim.push(lim[i - 1] + Math.max(-s.rate, Math.min(s.rate, raw[i] - lim[i - 1])));
+      const clamp = v => Math.min(3, v);
+      const P = Pl.panel(0, 0, .64, .8, [0, 29, 0, Math.max(4, 1 + s.spike * 1.1)], false);
+      P.series([{ pts: strides.map(i => [i, raw[i]]), cl: '--bad', w: 2, dash: [5, 4], label: 'policy output (bad update at stride 12)' }, { pts: strides.map(i => [i, clamp(lim[i])]), cl: '--c', w: 3, label: 'after rate limit + controller clamp' }], { title: 'stiffness scale applied, stride by stride' });
+      P.line([0, 3], [29, 3], '--b', 1, [3, 3]); P.text([0, 3], 'controller clamp (impedance limit)', '--b', 4, -4, { size: 11 });
+      const R = Pl.panel(.65, 0, .35, .8, [0, 1, 0, 1], false); R.frame('three rules');
+      NN.lines(R, [['1 clamp in the CONTROLLER', '--c'], ['  tanh is soft; a bug', '--muted'], ['  can defeat it', '--muted'], ['2 rate-limit between', '--c'], ['  strides: ±' + f(s.rate, 1) + '/stride', '--muted'], ['3 keep last known-good', '--c'], ['  trainer dies/hangs/fails', '--muted'], ['  a check → keep running', '--muted']], { top: .1, gap: .1 });
+    } else if (S === 6) {
+      const tk = ticks(s), bud = 1000 / s.fs, over = tk.filter(t => t > bud).length / tk.length, worst = Math.max(...tk);
+      const P = Pl.panel(0, 0, .68, .8, [0, 400, 0, Math.max(bud * 1.3, worst * 1.1)], false); P.frame('per-tick execution time (ms), trainer inside the control task');
+      tk.forEach((t, k) => P.line([k, 0], [k, t], t > bud ? '--bad' : '--c', 1.5)); P.line([0, bud], [400, bud], '--b', 2, [6, 4]); P.text([400, bud], 'deadline ' + f(bud, 2) + ' ms', '--b', -110, -6, { size: 12 });
+      const B = Pl.panel(.69, 0, .31, .8, [0, 2, 0, Math.max(.05, over * 1.4)], false); B.frame('ticks overrunning'); NN.bars(B, [over, 0], { labels: ['trainer inside', 'split in two'], cols: ['--bad', '--c'], d: 3 });
+      const R = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [[`${f(100 * over, 1)}% of ticks overrun; worst ${f(worst, 2)} ms vs ${f(bud, 2)} ms — control work is only 0.10 ms of it: the joint is starved by an optimiser`, over > 0 ? '--bad' : '--c'], [`overruns land every ${s.N} ticks: a missed tick holds a torque one cycle too long · split: control side flat at ${f(100 * .1 / bud, 0)}% of budget`, '--muted']], { top: .38, gap: .35, size: 11 });
+    } else {
+      const D = Pl.panel(0, 0, 1, .8, [0, 10, 0, 6], false); D.frame('one program');
+      [['page 1', 'deadlines are the currency', '--a'], ['controller pages', 'a compliant joint is a number', '--e'], ['RL pages', 'learn the number from experience', '--d']].forEach(([a, b, c], i) => { const x = .5 + i * 3.2; D.poly([[x, 3.2], [x + 2.8, 3.2], [x + 2.8, 5.2], [x, 5.2]], c, 2.5, null, c, true); D.text([x + 1.4, 4.5], a, '--ink', 0, 0, { size: 13, align: 'center' }); D.text([x + 1.4, 3.8], b, '--muted', 0, 0, { size: 11, align: 'center' }); D.arrow([x + 1.4, 3.2], [(5 - x - 1.4) * .5, -1], c, 2); });
+      D.poly([[2.5, .5], [7.5, .5], [7.5, 2], [2.5, 2]], '--c', 3, null, '--c', true); D.text([5, 1.45], 'fast task: bounded, boring, deterministic', '--ink', 0, 0, { size: 13, align: 'center' }); D.text([5, .85], 'slow task: everything clever, allowed to be late', '--muted', 0, 0, { size: 12, align: 'center' });
+    }
+  },
+  math(S) {
+    const s = st(), tk = ticks(s), bud = 1000 / s.fs;
+    const rows = [
+`${E(`RT_Control : 1 kHz, hard, highest priority
+RL_Trainer : 20 Hz, soft, lower priority`)}`,
+`${E(`struct SharedMemory {
+  TransferData transferQueue[300]; // (s,a,r,s′)
+  long   writeIdx;                 // RT_Control
+  long   readIdx;                  // RL_Trainer
+  bool   newWeightsAvailable;      // Trainer sets, RT clears
+  double actorWeightsFlat[70000];  // RL_Trainer
+};`)}`,
+`${E(`RT:      q[writeIdx % 300] = t;  writeIdx++   (atomic)
+Trainer: while (readIdx < writeIdx) use(q[readIdx++ % 300])`)}`,
+`${E(`Trainer: write actorWeightsFlat;  then newWeightsAvailable = true
+RT tick: if (newWeightsAvailable) { copy; newWeightsAvailable = false; }`)}`,
+`${E(`runtime cost = one actor forward pass
+5·64 + 64·64 + 64·2 = ${5 * 64 + 64 * 64 + 64 * 2} multiply-adds, 128 tanh`)}`,
+`${ul(['Clamp: impedance limits stand between a bad update and a person.', 'Rate limit: a large stiffness step mid-gait is felt as a kick.', 'Last known-good: never wait for, never stop because of, the learner.'])}`,
+`${E(`budget = 1/f_s = ${f(bud, 3)} ms
+control work ≈ 0.10 ms
+train ≈ ${f(s.cost, 2)} ms every ${s.N} ticks
+worst tick = ${f(Math.max(...tk), 3)} ms,  overruns ${f(100 * tk.filter(t => t > bud).length / tk.length, 1)}%`)}`,
+`<p>Your loop rate is not your bandwidth; deadlines are the currency; a compliant joint is a number you can learn — and the learning is demoted to where it is allowed to be slow.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

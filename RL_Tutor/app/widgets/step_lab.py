@@ -57,6 +57,16 @@ STEP_LABS = {
     "BackpropPage": ("backprop.html", "multiply along each path, sum across paths"),
     "LossPage": ("loss.html", "a loss is a slope generator: MSE, MAE, Huber, CE, RL"),
     "RegularisationPage": ("regularisation.html", "regularise, normalise, initialise, clip"),
+    # deep RL and continuous control
+    "FunctionApproxPage": ("tables_run_out.html", "tables run out: cells, generalisation, the argmax wall"),
+    "ActorCriticPage": ("actor_critic.html", "actor-critic: Q not V, μ(s) versus π(a|s)"),
+    "DDPGPage": ("ddpg.html", "DDPG piece by piece, then trained on a known Q"),
+    "GradientHandoffPage": ("handoff.html", "∂Q/∂a: the seed of the actor's backward pass"),
+    "CriticArchPage": ("critic_arch.html", "where the action enters the critic"),
+    "MDPandFamilyPage": ("mdp_family.html", "Markov is about the state; four switches make DDPG"),
+    "AgentSkeletonPage": ("agent_skeleton.html", "five shared objects, and where PPO breaks the mould"),
+    "KneeRLPage": ("knee_rl.html", "a knee's impedance tuned by DDPG, one stride per step"),
+    "DeployRLPage": ("deploy_rl.html", "a 1 kHz controller and a 20 Hz learner sharing memory"),
     # kinematics
     "PoEPage": ("poe.html", "forward kinematics, one exponential at a time"),
     "JacobianPage": ("jacobian.html", "the space Jacobian, column by column"),
