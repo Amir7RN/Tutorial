@@ -24,6 +24,8 @@ from PySide6.QtWidgets import QCheckBox, QComboBox
 
 from ctrlcore import robodyn as rd
 from ctrlcore import robokin as rk
+from . import robo_ctrl_ch9 as ch9
+from ..widgets.step_lab import StepLab
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from .base import Page
@@ -101,6 +103,14 @@ class TimeScalingPage(Page):
             "traces a curve; a straight line for the hand looks right but can "
             "pass through a singularity."))
         self.add(t)
+
+        self.add(ch9.path_video_card())
+        self.add(ch9.scaling_video_card())
+        self.add(StepLab("traj_p2p.html", "paths and time scalings, every coefficient solved", 1000,
+                         prefix="Videos 9.1–9.2 lab · "))
+        self.add(ch9.via_video_card())
+        self.add(StepLab("via_points.html", "via points: 24 cubic coefficients, then splines", 1000,
+                         prefix="Video 9.3 lab · "))
 
         lab = Card("compare the scalings for the same move")
         self.T = labelled_slider(lab, "duration T (cubic/quintic)", 5, 40, 20,
@@ -199,6 +209,12 @@ class TimeOptimalPage(Page):
             "<b>velocity limit curve</b> is the speed above which no torque "
             "can keep you on the path — like the maximum speed for a corner."))
         self.add(d)
+
+        self.add(ch9.topt_dyn_video_card())
+        self.add(ch9.topt_phase_video_card())
+        self.add(ch9.topt_algo_video_card())
+        self.add(StepLab("time_optimal.html", "m, c, g, L, U, the motion cone, the switch points — in numbers",
+                         1000, prefix="Videos 9.4 (parts 1–3) lab · "))
 
         lab = Card("a straight joint-space move of the 2R arm")
         self.t1 = labelled_slider(lab, "shoulder torque limit", 5, 80, 40,

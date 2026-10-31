@@ -1,0 +1,120 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Time-optimal time scaling, in numbers</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="topt.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { s: v.s / 1000, sd: v.sd / 100, P: { q0: [-1.4, 1.8], q1: [1, .2], b: v.b / 100, tau: [v.t1, v.t2] } }; };
+let SOL = null;
+const sol = P => { const k = JSON.stringify(P); if (!SOL || SOL.k !== k) SOL = { k, r: TOPT.solve(P), V: TOPT.vlcCurve(P, 160) }; return SOL; };
+const fmtv = v => '(' + v.map(x => SL.f(x, 3)).join(', ') + ')';
+SL.app({
+  title: 'Time-optimal time scaling, in numbers (videos 9.4, parts 1–3)',
+  sub: 'The 2R arm of page 141 (L = 1, 0.8 m; m = 2, 1.5 kg) on a fixed path θ(s). Every symbol of the three videos — m(s), c(s), g(s), L_i, U_i, the motion cone, the velocity limit curve, the switch points — computed live at the (s, ṡ) you pick.',
+  view: '2d',
+  legend: [['--bad', 'velocity limit curve'], ['--c', 'max acceleration U'], ['--b', 'max braking L'], ['--a', 'time-optimal ṡ(s)'], ['--e', 'probe state / cone'], ['--d', 'tangent-search guesses']],
+  controls: [
+    { id: 's', label: 'probe s', min: 0, max: 1000, value: 400, fmt: x => f(x / 1000, 3) },
+    { id: 'sd', label: 'probe ṡ', min: 0, max: 900, value: 200, fmt: x => f(x / 100, 2) + ' /s' },
+    { id: 't1', label: 'shoulder limit |τ₁| ≤', min: 10, max: 100, value: 40, fmt: x => x + ' N·m' },
+    { id: 't2', label: 'elbow limit |τ₂| ≤', min: 4, max: 40, value: 15, fmt: x => x + ' N·m' },
+    { id: 'b', label: 'path bulge b (0 = straight)', min: 0, max: 100, value: 0, fmt: x => f(x / 100, 2) + ' rad' },
+  ],
+  buttons: [{ label: 'preset: bang-bang (b = 0)', onclick: () => { SL.setControl('b', 0); SL.redraw(); } }, { label: 'preset: VLC blocks (b = 0.9)', onclick: () => { SL.setControl('b', 90); SL.redraw(); } }],
+  steps: [
+    ['The problem (part 1)', 'Given the path θ(s), s ∈ [0, 1] — here θ(s) = θ_start + s(θ_end − θ_start) + b sin(πs)(1, −1) — find the fastest time scaling s(t) from rest to rest that never asks a motor for more than its limit: minimise T subject to τ_min ≤ τ ≤ τ_max.'],
+    ['Chain rule: the path reduces θ̇ and θ̈ to s', 'θ̇ = θ′(s)ṡ and θ̈ = θ′(s)s̈ + θ″(s)ṡ². θ′ and θ″ are known in advance from the path; only s, ṡ, s̈ are unknown. The numbers at your probe state are on the right.'],
+    ['Dynamics restricted to the path', 'Substitute into τ = M(θ)θ̈ + θ̇ᵀΓ(θ)θ̇ + g(θ): τ = m(s)s̈ + c(s)ṡ² + g(s) with m = Mθ′, c = Mθ″ + θ′ᵀΓθ′, g = g(θ(s)). Three VECTORS of numbers per s. The math panel checks the result against full Newton–Euler for a test s̈. Note m can be negative.'],
+    ['Each motor becomes a bound on s̈', 'τ_i,min ≤ m_i s̈ + c_i ṡ² + g_i ≤ τ_i,max. Subtract c_iṡ² + g_i, divide by m_i — and if m_i < 0 the inequalities flip. That gives L_i ≤ s̈ ≤ U_i per joint; then L = max_i L_i and U = min_i U_i. The table shows every number.'],
+    ['Too fast and L > U: the velocity limit curve', 'Hold s fixed and raise ṡ: the c_iṡ² term eats the torque budget, L climbs and U falls (each is a parabola in ṡ). Where they cross no acceleration keeps the arm on the path — the actuators cannot. That ṡ, for every s, is the velocity limit curve.'],
+    ['The phase plane and motion cones (part 2)', 'Plot ṡ against s. At a state the tangent of a time scaling is (ṡ, s̈): horizontal part ṡ, vertical part any s̈ in [L, U]. Those vectors form the feasible motion cone. A time scaling is feasible iff its tangent lies inside every cone along it. Cones narrow as ṡ rises and close at the VLC.'],
+    ['Bang-bang: forward U, backward L, switch', 'Integrate the top of the cones (s̈ = U) forward from (0, 0) and the bottom (s̈ = L) backward from (1, 0). Where they cross is the switch point s*. Faster is impossible before s* (already at U), and higher speed after s* could not stop in time. T = ∫ds/ṡ.'],
+    ['Some motor is always at its limit', 'Torques along the optimal profile: in every instant at least one joint sits on ±τ_max — first accelerating, then braking. That is why it is called bang-bang. Change one limit: T changes, but not in proportion, because different joints bind on different stretches.'],
+    ['When the VLC blocks it (part 3)', 'Press "VLC blocks". Now the forward U curve runs into the velocity limit curve at (s_lim, ṡ_lim) before meeting the backward L curve: bang-bang is impossible. We must brake earlier — but where?'],
+    ['Find the tangent point', 'From s_lim, lower ṡ and integrate L forward. Too high and the curve hits the VLC again; too low and it falls to ṡ = 0. Binary search between them converges on the curve that just touches the VLC tangentially: (s_tan, ṡ_tan). The dashed lines are the first guesses.'],
+    ['Back-integrate, switch, repeat', 'Integrate L backward from the tangent point until it meets the U curve: switch s₁ (U → L). The tangent point is switch s₂ (L → U). Integrate U forward again; it meets the final L curve at s₃. Result: U, L, U, L — three switches, the speed as high as feasible everywhere.'],
+    ['Why it is rarely used directly', 'One or more actuators run at 100 % the whole time, and the dynamic model is never exact, so a real controller has no margin left. It is rarely run as-is; its value is that it tells you the maximum capability of the robot along a path.'],
+  ],
+  draw(Pl) {
+    const x = st(), S = SL.st, P = x.P, pa = TOPT.path(P), b = TOPT.bounds(P, x.s, x.sd), D = b.D;
+    const { r, V } = sol(P), vmax = Math.max(4, ...V.map(p => Math.min(p[1], 10))) * 1.1, ymax = Math.min(vmax, 10);
+    /* left: arm and path, small */
+    const A = Pl.panel(0, 0, .32, .42, [-1.9, 1.9, -1.9, 1.9]); A.frame('the path in the workspace');
+    const hand = [...Array(41)].map((_, i) => MR.points(TOPT.ARM.L, pa.q(i / 40))[2]); A.poly(hand, '--e', 2); A.arm(MR.points(TOPT.ARM.L, pa.q(x.s)));
+    A.arm(MR.points(TOPT.ARM.L, pa.q(0)), { ghost: true }); A.arm(MR.points(TOPT.ARM.L, pa.q(1)), { ghost: true });
+    /* right: main plot */
+    const M = Pl.panel(.33, 0, .67, .82, [0, 1, 0, ymax], false);
+    if (S <= 3) {
+      const ss = [...Array(101)].map((_, i) => i / 100), dd = ss.map(s => TOPT.dyn(P, s)), sc = Math.max(...dd.flatMap(d => [...d.m, ...d.c, ...d.g].map(Math.abs))) * 1.1;
+      const G = Pl.panel(.33, 0, .67, .82, [0, 1, -sc, sc], false);
+      const ser = S <= 1 ? [{ pts: ss.map(s => [s, pa.dq(s)[0] * sc / 4]), cl: '--a', w: 2, label: 'θ₁′ (scaled)' }, { pts: ss.map(s => [s, pa.dq(s)[1] * sc / 4]), cl: '--d', w: 2, label: 'θ₂′' }, { pts: ss.map(s => [s, pa.ddq(s)[0] * sc / 12]), cl: '--a', w: 1, dash: [4, 3], label: 'θ₁″' }, { pts: ss.map(s => [s, pa.ddq(s)[1] * sc / 12]), cl: '--d', w: 1, dash: [4, 3], label: 'θ₂″' }]
+        : [{ pts: ss.map((s, i) => [s, dd[i].m[0]]), cl: '--a', w: 2.5, label: 'm₁' }, { pts: ss.map((s, i) => [s, dd[i].m[1]]), cl: '--d', w: 2.5, label: 'm₂' }, { pts: ss.map((s, i) => [s, dd[i].c[0]]), cl: '--a', w: 1.2, dash: [5, 3], label: 'c₁' }, { pts: ss.map((s, i) => [s, dd[i].c[1]]), cl: '--d', w: 1.2, dash: [5, 3], label: 'c₂' }, { pts: ss.map((s, i) => [s, dd[i].g[0]]), cl: '--a', w: 1, dash: [1, 3], label: 'g₁' }, { pts: ss.map((s, i) => [s, dd[i].g[1]]), cl: '--d', w: 1, dash: [1, 3], label: 'g₂' }];
+      G.series(ser, { title: S <= 1 ? 'path derivatives along s' : 'the path dynamics vectors m(s), c(s), g(s)' }); G.line([x.s, -sc], [x.s, sc], '--e', 1.5, [3, 3]);
+    } else if (S === 4) {
+      const sds = [...Array(121)].map((_, i) => i * vmax / 120), BB = sds.map(sd => TOPT.bounds(P, x.s, sd)), yr = 60;
+      const G = Pl.panel(.33, 0, .67, .82, [0, vmax, -yr, yr], false);
+      G.series([{ pts: sds.map((sd, i) => [sd, Math.max(-yr, Math.min(yr, BB[i].per[0].U))]), cl: '--a', w: 1.5, label: 'U₁' }, { pts: sds.map((sd, i) => [sd, Math.max(-yr, Math.min(yr, BB[i].per[0].L))]), cl: '--a', w: 1.5, dash: [4, 3], label: 'L₁' }, { pts: sds.map((sd, i) => [sd, Math.max(-yr, Math.min(yr, BB[i].per[1].U))]), cl: '--d', w: 1.5, label: 'U₂' }, { pts: sds.map((sd, i) => [sd, Math.max(-yr, Math.min(yr, BB[i].per[1].L))]), cl: '--d', w: 1.5, dash: [4, 3], label: 'L₂' }, { pts: sds.map((sd, i) => [sd, Math.max(-yr, Math.min(yr, BB[i].U))]), cl: '--c', w: 3, label: 'U = min' }, { pts: sds.map((sd, i) => [sd, Math.max(-yr, Math.min(yr, BB[i].L))]), cl: '--b', w: 3, label: 'L = max' }], { title: `bounds on s̈ vs ṡ at s = ${f(x.s, 3)}` });
+      const v = TOPT.vlc(P, x.s); G.line([v, -yr], [v, yr], '--bad', 2); G.text([v, yr * .85], 'VLC ṡ = ' + f(v, 3), '--bad', 6, 0, { size: 12 }); G.line([x.sd, -yr], [x.sd, yr], '--e', 1, [3, 3]);
+    } else {
+      M.frame(); M.poly(V.map(p => [p[0], Math.min(ymax, p[1])]), '--bad', 2.5); M.text([.02, Math.min(ymax * .95, V[3][1] + .2)], 'velocity limit curve', '--bad', 0, 0, { size: 11 });
+      if (S === 5) { for (let i = 1; i < 10; i++) for (let j = 1; j < 7; j++) { const s = i / 10, sd = j * ymax / 7, bb = TOPT.bounds(P, s, sd); if (bb.L > bb.U) continue; const k = .045 / Math.max(sd, 1); M.poly([[s, sd], [s + sd * k, sd + bb.U * k], [s + sd * k, sd + bb.L * k]], '--e', 1, null, '--e', true); } }
+      if (S === 6 || S === 7 || S >= 8) { const A2 = TOPT.integ(P, 0, 0, 1, true); M.poly(A2.pts.map(p => [p[0], Math.min(ymax, p[1])]), '--c', 1.5, [5, 4]); M.poly(r.F.pts.map(p => [p[0], Math.min(ymax, p[1])]), '--b', 1.5, [5, 4]); }
+      if (S === 9 || S === 10) r.guesses.forEach(g => M.poly(g.pts.map(p => [p[0], Math.min(ymax, p[1])]), '--d', 1.2, [3, 3]));
+      if (S === 6 || S === 7 || S >= 10) M.poly(r.prof.map(p => [p[0], Math.min(ymax, p[1])]), '--a', 3);
+      if (S >= 8 && r.lim) { M.dot(r.lim, 6, '--bad', true); M.text(r.lim, 's_lim', '--bad', 8, -6, { size: 12 }); }
+      if (S >= 6) r.switches.forEach((w, i) => { M.dot([w.s, w.sd], 5, '--ink'); if (S >= 10 || r.switches.length === 1) M.text([w.s, w.sd], 's' + (r.switches.length > 1 ? (i + 1) : '*') + ' = ' + f(w.s, 3), '--ink', 6, 16, { size: 12 }); });
+      const bb = TOPT.bounds(P, x.s, x.sd); M.dot([x.s, x.sd], 5, '--e'); if (bb.L <= bb.U) { const k = .06 / Math.max(x.sd, .8); M.arrow([x.s, x.sd], [x.sd * k, bb.U * k], '--c', 2); M.arrow([x.s, x.sd], [x.sd * k, bb.L * k], '--b', 2); }
+      M.text([0, ymax], 'ṡ', '--muted', 4, 14, { size: 12 }); M.text([1, 0], 's', '--muted', -12, -6, { size: 12 });
+    }
+    /* lower-left: numbers table */
+    const T = Pl.panel(0, .44, .32, .38, [0, 1, 0, 1], false); T.frame(S === 7 ? 'torques along the optimum' : 'at the probe (s, ṡ)');
+    if (S === 7) { const tq = TOPT.torques(P, r.prof), G = Pl.panel(0, .44, .32, .38, [0, 1, -Math.max(...P.tau) * 1.15, Math.max(...P.tau) * 1.15], false);
+      G.series([{ pts: tq.slice(2, -2).map(t => [t[0], t[1]]), cl: '--a', w: 2, label: 'τ₁' }, { pts: tq.slice(2, -2).map(t => [t[0], t[2]]), cl: '--d', w: 2, label: 'τ₂' }], { title: 'joint torques vs s' });
+      P.tau.forEach((t, i) => [t, -t].forEach(v => G.line([0, v], [1, v], i ? '--d' : '--a', 1, [3, 3]))); }
+    else NN.lines(T, [['θ = ' + fmtv(D.q), '--ink'], ['m = ' + fmtv(D.m), '--a'], ['c = ' + fmtv(D.c), '--a'], ['g = ' + fmtv(D.g), '--a'], ['L₁,U₁ = ' + f(b.per[0].L, 2) + ', ' + f(b.per[0].U, 2), '--ink'], ['L₂,U₂ = ' + f(b.per[1].L, 2) + ', ' + f(b.per[1].U, 2), '--ink'], ['L = ' + f(b.L, 2) + '   U = ' + f(b.U, 2), b.L <= b.U ? '--c' : '--bad'], [b.L <= b.U ? 'feasible state' : 'L > U: leaves the path', b.L <= b.U ? '--c' : '--bad']], { top: .14, gap: .11 });
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[`T_min = ${f(r.T, 3)} s · switches: ${r.switches.map((w, i) => 's' + (i + 1) + ' = ' + f(w.s, 3) + ' → ' + w.to).join(', ')}${r.lim ? ' · forward U hit the VLC at s_lim = ' + f(r.lim[0], 3) : ' · bang-bang'}`, '--ink'], ['τ = m(s)s̈ + c(s)ṡ² + g(s),  L(s, ṡ) ≤ s̈ ≤ U(s, ṡ)', '--muted']], { top: .38, gap: .35 });
+  },
+  math(S) {
+    const x = st(), P = x.P, pa = TOPT.path(P), b = TOPT.bounds(P, x.s, x.sd), D = b.D, { r } = sol(P);
+    const rows = [
+`${E(`θ_start = (−1.40, 1.80),  θ_end = (1.00, 0.20),  b = ${f(P.b, 2)}
+θ(s) = θ_start + s(θ_end − θ_start) + b sin(πs)(1, −1)
+θ(${f(x.s, 3)}) = ${fmtv(D.q)} rad
+limits |τ₁| ≤ ${P.tau[0]}, |τ₂| ≤ ${P.tau[1]} N·m;  start (s, ṡ) = (0, 0), end (1, 0)`)}`,
+`${E(`θ′(s)  = ${fmtv(D.d1)}
+θ″(s)  = ${fmtv(D.d2)}
+θ̇ = θ′ṡ          = ${fmtv(MR.scl(D.d1, x.sd))}   (ṡ = ${f(x.sd, 2)})
+θ̈ = θ′s̈ + θ″ṡ²   = ${fmtv(D.d1)}·s̈ + ${fmtv(MR.scl(D.d2, x.sd * x.sd))}`)}`,
+(() => { const sdd = 1.5, tau = [0, 1].map(i => D.m[i] * sdd + D.c[i] * x.sd * x.sd + D.g[i]), tr = MR.rnea(TOPT.ARM, D.q, MR.scl(D.d1, x.sd), MR.add(MR.scl(D.d1, sdd), MR.scl(D.d2, x.sd * x.sd)));
+  return `${E(`${SL.mat(D.M, 3, 'M(θ)')}
+m = Mθ′              = ${fmtv(D.m)}
+c = Mθ″ + θ′ᵀΓθ′     = ${fmtv(D.c)}
+g = g(θ)             = ${fmtv(D.g)}
+check, s̈ = 1.5:  m s̈ + c ṡ² + g = ${fmtv(tau)}
+                 Newton–Euler  = ${fmtv(tr)}`)}`; })(),
+`${E([0, 1].map(i => { const p = b.per[i]; return `joint ${i + 1}: m = ${f(p.m, 3)} ${p.m >= 0 ? '> 0' : '< 0 → flip'}
+  τmin − cṡ² − g = ${f(p.lo, 3)},  τmax − cṡ² − g = ${f(p.hi, 3)}
+  L${i + 1} = ${f(p.L, 3)},  U${i + 1} = ${f(p.U, 3)}`; }).join('\n') + `
+L = max(L₁, L₂) = ${f(b.L, 3)}     U = min(U₁, U₂) = ${f(b.U, 3)}`)}`,
+`${E(`at s = ${f(x.s, 3)}:  L(ṡ) = U(ṡ) at ṡ = ${f(TOPT.vlc(P, x.s), 3)}
+probe ṡ = ${f(x.sd, 2)}: L = ${f(b.L, 2)}, U = ${f(b.U, 2)}  → ${b.L <= b.U ? 'feasible' : 'INFEASIBLE'}`)}`,
+`${E(`tangent at (s, ṡ) = (ṡ, s̈),  s̈ ∈ [L, U] = [${f(b.L, 2)}, ${f(b.U, 2)}]
+cone edges: (${f(x.sd, 2)}, ${f(b.L, 2)}) and (${f(x.sd, 2)}, ${f(b.U, 2)})`)}`,
+`${E(`forward:  d(ṡ²)/ds = 2U,  from (0, 0)
+backward: d(ṡ²)/ds = 2L,  from (1, 0)
+switch s* = ${r.switches.length ? f(r.switches[0].s, 4) : '—'}  (ṡ* = ${r.switches.length ? f(r.switches[0].sd, 3) : '—'})
+T = ∫₀¹ ds/ṡ(s) = ${f(r.T, 4)} s`)}`,
+`<p>Bang-bang: at every s at least one |τ_i| = τ_i,max. Gravity helps on some stretches, so halving a limit does not double T.</p>`,
+`${E(r.lim ? `forward U stops on the VLC at s_lim = ${f(r.lim[0], 4)}, ṡ_lim = ${f(r.lim[1], 3)}` : 'this path is bang-bang: press "VLC blocks"')}`,
+`${E(r.guesses.length ? r.guesses.map((g, i) => `guess ${i + 1}: ṡ = ${f(g.sd, 3)} at s_lim → L-curve ${g.why === 'vlc' ? 'hits the VLC (too fast)' : 'reaches ṡ = 0 (too slow)'}`).join('\n') + (r.switches[1] ? `\ntangent: (s_tan, ṡ_tan) = (${f(r.switches[1].s, 4)}, ${f(r.switches[1].sd, 3)})` : '') : 'no tangent search needed (bang-bang)')}`,
+`${E(r.switches.map((w, i) => `s${i + 1} = ${f(w.s, 4)}   ṡ = ${f(w.sd, 3)}   switch to ${w.to}`).join('\n') + `\nT_min = ${f(r.T, 4)} s`)}`,
+`<p>A deep statement of the robot's maximum capability along the path — not a trajectory to run without margin.</p>`];
+    return rows[S];
+  },
+  stats() { const { r } = sol(st().P); return `<span><b>T_min</b>${f(r.T, 3)} s</span><span><b>switches</b>${r.switches.length}</span>`; },
+});
+</script>
+</body></html>

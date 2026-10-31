@@ -1,0 +1,107 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Point-to-point trajectories, in numbers</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180, L = [1, .8];
+const st = () => { const v = SL.v; return { T: v.T / 10, t: v.t / 100, vm: v.vm / 10, am: v.am / 10, J: v.J, cart: CART, a: v.a * D2R, d: v.d / 100 }; };
+let CART = false;
+const th0 = [-90 * D2R, 15 * D2R], th1 = [90 * D2R, 165 * D2R];  /* 180° on joint 1, 150° on joint 2, as in the video */
+const fk = q => MR.points(L, q)[2];
+const ik = (p, elbow = 1) => { const r2 = p[0] ** 2 + p[1] ** 2, c2 = (r2 - L[0] ** 2 - L[1] ** 2) / (2 * L[0] * L[1]); if (Math.abs(c2) > 1) return null; const q2 = elbow * Math.acos(c2); return [Math.atan2(p[1], p[0]) - Math.atan2(L[1] * Math.sin(q2), L[0] + L[1] * Math.cos(q2)), q2]; };
+/* solve a small linear system for polynomial coefficients */
+const cubicSys = T => ({ A: [[1, 0, 0, 0], [1, T, T * T, T ** 3], [0, 1, 0, 0], [0, 1, 2 * T, 3 * T * T]], b: [0, 1, 0, 0] });
+const quinticSys = T => ({ A: [[1, 0, 0, 0, 0, 0], [1, T, T ** 2, T ** 3, T ** 4, T ** 5], [0, 1, 0, 0, 0, 0], [0, 1, 2 * T, 3 * T ** 2, 4 * T ** 3, 5 * T ** 4], [0, 0, 2, 0, 0, 0], [0, 0, 2, 6 * T, 12 * T ** 2, 20 * T ** 3]], b: [0, 1, 0, 0, 0, 0] });
+const poly = (a, t) => [a.reduce((s, c, k) => s + c * t ** k, 0), a.reduce((s, c, k) => s + (k ? k * c * t ** (k - 1) : 0), 0), a.reduce((s, c, k) => s + (k > 1 ? k * (k - 1) * c * t ** (k - 2) : 0), 0)];
+const trap = (t, v, a) => { const T = (a + v * v) / (v * a), ta = v / a; if (t <= 0) return [0, 0, 0, T]; if (t < ta) return [.5 * a * t * t, a * t, a, T]; if (t < T - ta) return [v * t - v * v / (2 * a), v, 0, T]; if (t < T) { const r = T - t; return [1 - .5 * a * r * r, a * r, -a, T]; } return [1, 0, 0, T]; };
+/* S-curve: 7 segments, jerk J, accel limit a, speed v; integrate numerically and normalise to s = 1 */
+const scurve = (v, a, J) => { const tj = a / J, out = []; let s = 0, sd = 0, sdd = 0, t = 0; const dt = 1e-3, phase = [[tj, J], [Math.max(0, v / a - tj), 0], [tj, -J]]; const seq = [...phase, [0, 0], ...phase.map(([d, j]) => [d, -j])];
+  const dist = () => { let x = 0, y = 0, z = 0; [...phase].forEach(([d, j]) => { for (let k = 0; k < d / dt; k++) { z += j * dt; y += z * dt; x += y * dt; } }); return x; }, d1 = dist(), cruise = Math.max(0, (1 - 2 * d1) / v); seq[3] = [cruise, 0];
+  seq.forEach(([d, j]) => { for (let k = 0; k < d / dt; k++) { sdd += j * dt; sd += sdd * dt; s += sd * dt; t += dt; if (k % 5 === 0) out.push([t, s, sd, sdd]); } }); const fs = out[out.length - 1][1]; return { pts: out.map(p => [p[0], p[1] / fs, p[2] / fs, p[3] / fs]), T: t, bounds: seq.map(q => q[0]) }; };
+SL.app({
+  title: 'Point-to-point trajectories, in numbers (videos 9.1 and 9.2)',
+  sub: 'A path θ(s), a time scaling s(t), and the trajectory θ(s(t)). The 2R arm of the video (L = 1, 0.8; 180° on joint 1, 150° on joint 2). Every coefficient is solved from its constraints in front of you.',
+  view: '2d',
+  legend: [['--a', 'joint-space line / cubic'], ['--e', 'Cartesian line (via IK)'], ['--c', 'quintic'], ['--b', 'trapezoid'], ['--d', 'S-curve'], ['--bad', 'outside workspace / jump']],
+  controls: [
+    { id: 't', label: 'time t (or s, steps 1–3)', min: 0, max: 100, value: 40, fmt: x => f(x / 100, 2) },
+    { id: 'T', label: 'duration T', min: 5, max: 40, value: 20, fmt: x => f(x / 10, 1) + ' s' },
+    { id: 'vm', label: 'trapezoid / S-curve speed v', min: 6, max: 30, value: 8, fmt: x => f(x / 10, 1) + ' /s' },
+    { id: 'am', label: 'acceleration a', min: 5, max: 50, value: 12, fmt: x => f(x / 10, 1) + ' /s²' },
+    { id: 'J', label: 'S-curve jerk J', min: 2, max: 60, value: 10, fmt: x => x + ' /s³' },
+    { id: 'a', label: 'SE(3) end yaw (step 4)', min: -180, max: 180, value: 120, fmt: x => x + '°' }, { id: 'd', label: 'SE(3) end offset (step 4)', min: 20, max: 200, value: 120, fmt: x => f(x / 100, 2) + ' m' },
+  ],
+  buttons: [{ label: 'Cartesian straight line', toggle: true, onclick: e => { CART = !CART; e.setAttribute('aria-pressed', CART); SL.redraw(); } }],
+  steps: [
+    ['A trajectory θ(t), t ∈ [0, T]', 'A controller reads a steady stream of desired configurations, thousands per second. θ(t) for a 2-DOF arm: two time plots, or one curve in C-space. The dot marks θ at the chosen t (quintic timing).'],
+    ['Separate the path from its speed', 'Path: θ(s), s ∈ [0, 1], pure geometry. Time scaling: s(t), [0, T] → [0, 1]. Trajectory θ(s(t)). Chain rule: θ̇ = (dθ/ds)ṡ, θ̈ = (dθ/ds)s̈ + (d²θ/ds²)ṡ² — both θ(s) and s(t) must be twice differentiable for the dynamics to make sense.'],
+    ['Straight line in joint space vs in task space', 'θ(s) = θ_start + s(θ_end − θ_start): a straight line in C-space, but the hand curves. Toggle "Cartesian straight line": X(s) = X_start + s(X_end − X_start), solved by IK at every s — the hand is straight, but here the line leaves the workspace (red) and cannot be executed.'],
+    ['Why joint space is the safe default', 'Joint limits are usually independent, so the feasible joint set is a box — convex — and a straight line between two feasible points stays feasible. The workspace is not convex (the hole at the base), so a Cartesian line between two reachable points may not be reachable.'],
+    ['Paths between two frames in SE(3)', 'X_start, X_end ∈ SE(3) cannot be subtracted. Screw path: X(s) = X_start exp(log(X_start⁻¹X_end) s) — a constant twist expressed in {start}, so the exponential multiplies on the RIGHT. Decoupled path: p(s) on a straight line, R(s) = R_start exp(log(R_startᵀR_end) s). Same ends, different middles.'],
+    ['Cubic time scaling: four constraints, four numbers', 's(t) = a₀ + a₁t + a₂t² + a₃t³ with s(0) = 0, s(T) = 1, ṡ(0) = ṡ(T) = 0. Write them as a 4 × 4 linear system and solve: a = (0, 0, 3/T², −2/T³). s̈ jumps to 6/T² at t = 0: infinite jerk.'],
+    ['Quintic: two more constraints', 'Add s̈(0) = s̈(T) = 0: a 6 × 6 system, solution a = (0, 0, 0, 10/T³, −15/T⁴, 6/T⁵). s̈ is now a cubic that starts and ends at zero — no jump — at the price of a higher peak speed (15/(8T) vs 3/(2T)).'],
+    ['Trapezoidal: accelerate, coast, decelerate', 'Constant s̈ = a for v/a seconds, coast at ṡ = v, constant −a to rest. Distance 1 fixes T = (a + v²)/(va). Needs v²/a ≤ 1, otherwise it never reaches v (a triangle). Acceleration still jumps.'],
+    ['S-curve: seven segments, bounded jerk', 'Constant jerk J, constant acceleration, negative jerk, coast, and the mirror image. Acceleration is continuous and zero at both ends. Numbers per segment on the right.'],
+    ['The actual joint speeds', 'The time scaling shape is not the whole story: real joint velocity = (θ_end − θ_start)·ṡ, so it depends on the distance and on T. Peak joint rates for each scaling at this T are listed.'],
+  ],
+  draw(Pl) {
+    const x = st(), S = SL.st, dth = MR.sub(th1, th0), qn = MR.quintic(x.t * x.T, x.T);
+    if (S <= 3) {
+      const sP = S === 0 ? qn[0] : x.t, jl = s => MR.add(th0, MR.scl(dth, s)), X0 = fk(th0), X1 = fk(th1), cl = s => ik(MR.add(X0, MR.scl(MR.sub(X1, X0), s)), 1);
+      const W = Pl.panel(0, 0, .5, .82, [-2, 2, -2, 2]); W.frame('workspace'); W.circle([0, 0], 1.8, '--grey', 1, [4, 4]); W.circle([0, 0], .2, '--grey', 1, [4, 4]);
+      W.poly([...Array(61)].map((_, i) => fk(jl(i / 60))), '--a', 2.5);
+      if (x.cart || S === 3) { W.line(X0, X1, '--e', 2, [6, 4]); [...Array(61)].forEach((_, i) => { const p = MR.add(X0, MR.scl(MR.sub(X1, X0), i / 60)); if (!cl(i / 60)) W.dot(p, 3, '--bad'); }); }
+      const q = x.cart && cl(sP) ? cl(sP) : jl(sP); W.arm(MR.points(L, q));
+      const C = Pl.panel(.5, 0, .5, .82, [-180, 180, -180, 180]); C.frame('C-space (degrees)'); C.grid(90, '--line');
+      C.poly([...Array(61)].map((_, i) => jl(i / 60).map(v => v / D2R)), '--a', 2.5); if (x.cart || S === 3) C.poly([...Array(61)].map((_, i) => cl(i / 60)).filter(Boolean).map(q => q.map(v => Math.atan2(Math.sin(v), Math.cos(v)) / D2R)), '--e', 1.5, [4, 3]);
+      C.dot(q.map(v => Math.atan2(Math.sin(v), Math.cos(v)) / D2R), 6, '--e');
+    } else if (S === 4) {
+      const Xs = MR.makeT(MR.eye(3), [0, 0, 0]), Re = MR.expRot([0, 0, 1], x.a), Xe = MR.makeT(Re, [x.d, .4, 0]), lg = MR.logT(MR.mul(MR.invT(Xs), Xe)), n = MR.norm(lg.slice(0, 3)) || MR.norm(lg.slice(3));
+      const scr = s => MR.mul(Xs, MR.expTwist(MR.scl(lg, 1 / n), n * s)), dec = s => MR.makeT(MR.expRot([0, 0, 1], x.a * s), [x.d * s, .4 * s, 0]);
+      const P = Pl.panel(0, 0, .62, .82, [-.8, 2.4, -1, 1.6]); P.frame('frame origins along s (top view)'); P.grid(.5, '--line');
+      [[scr, '--a', 'screw'], [dec, '--e', 'decoupled']].forEach(([F, c]) => { P.poly([...Array(41)].map((_, i) => MR.pof(F(i / 40)).slice(0, 2)), c, 2.5); [0, .25, .5, .75, 1].forEach(s => { const T = F(s), o = MR.pof(T).slice(0, 2), R = MR.Rof(T); P.arrow(o, [R[0][0] * .2, R[1][0] * .2], c, 2); }); });
+      const T1 = scr(x.t), T2 = dec(x.t); P.dot(MR.pof(T1).slice(0, 2), 6, '--a'); P.dot(MR.pof(T2).slice(0, 2), 6, '--e');
+      NN.lines(Pl.panel(.63, 0, .37, .82, [0, 1, 0, 1], false), [['log(X_s⁻¹X_e) = [V]θ:', '--a'], ['  ω = ' + SL.vs(lg.slice(0, 3), 3), '--a'], ['  v = ' + SL.vs(lg.slice(3), 3), '--a'], ['at s = ' + f(x.t, 2) + ':', '--ink'], [' screw p = ' + SL.vs(MR.pof(T1), 2), '--a'], [' decoupled p = ' + SL.vs(MR.pof(T2), 2), '--e'], ['same rotation at every s', '--muted'], [' (both turn about z)', '--muted']], { top: .1, gap: .1 });
+    } else {
+      const T = x.T, ts = [...Array(301)].map((_, i) => i / 300 * Math.max(T, 3) * 1.05), cub = MR.solve(cubicSys(T).A, cubicSys(T).b), qui = MR.solve(quinticSys(T).A, quinticSys(T).b), clip = t => Math.min(t, T);
+      const cS = t => t >= T ? [1, 0, 0] : poly(cub, t), qS = t => t >= T ? [1, 0, 0] : poly(qui, t), tr = trap(0, x.vm, x.am)[3], sc = scurve(x.vm, x.am, x.J);
+      const sets = (k, Y) => { const out = [{ pts: ts.map(t => [t, cS(t)[k]]), cl: '--a', w: S === 5 ? 3 : 1.5, label: 'cubic' }]; if (S >= 6) out.push({ pts: ts.map(t => [t, qS(t)[k]]), cl: '--c', w: S === 6 ? 3 : 1.5, label: 'quintic' }); if (S >= 7) out.push({ pts: ts.map(t => [t, trap(t, x.vm, x.am)[k]]), cl: '--b', w: S === 7 ? 3 : 1.5, label: 'trapezoid' }); if (S >= 8) out.push({ pts: sc.pts.map(p => [p[0], p[1 + k]]), cl: '--d', w: S === 8 ? 3 : 1.5, label: 'S-curve' }); return out; };
+      const tmax = Math.max(ts[ts.length - 1], tr, sc.T) * 1.02, rs = [[0, 1.1], [0, Math.max(2, 2 / T, x.vm) * 1.1], [-Math.max(6 / T / T, x.am) * 1.2, Math.max(6 / T / T, x.am) * 1.2]];
+      ['s', 'ṡ', 's̈'].forEach((n, k) => { const P = Pl.panel(0, k * .275, .6, .27, [0, tmax, rs[k][0], rs[k][1]], false); P.series(sets(k), { title: n + '(t)' }); P.line([x.t * T, rs[k][0]], [x.t * T, rs[k][1]], '--ink', 1, [3, 3]); });
+      const R = Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false); R.frame();
+      const rows = S === 5 ? [['A a = b:', '--ink'], ...SL.mat(cubicSys(T).A, 2).split('\n').map(l => [l, '--muted']), ['b = (0, 1, 0, 0)', '--muted'], ['a = ' + SL.vs(cub, 4), '--a'], ['3/T² = ' + f(3 / T / T, 4) + ', −2/T³ = ' + f(-2 / T ** 3, 4), '--a'], ['s̈(0⁺) = 6/T² = ' + f(6 / T / T, 3), '--bad']]
+        : S === 6 ? [['6 × 6 system solved:', '--ink'], ['a₀..a₂ = ' + SL.vs(qui.slice(0, 3), 4), '--c'], ['a₃ = ' + f(qui[3], 4) + ' (10/T³)', '--c'], ['a₄ = ' + f(qui[4], 4) + ' (−15/T⁴)', '--c'], ['a₅ = ' + f(qui[5], 4) + ' (6/T⁵)', '--c'], ['peak ṡ: cubic ' + f(1.5 / T, 3) + ', quintic ' + f(15 / 8 / T, 3), '--ink'], ['peak s̈: cubic ' + f(6 / T / T, 3) + ', quintic ' + f(10 / Math.sqrt(3) / T / T, 3), '--ink']]
+        : S === 7 ? [['v = ' + f(x.vm, 2) + ', a = ' + f(x.am, 2), '--b'], ['v²/a = ' + f(x.vm * x.vm / x.am, 3) + (x.vm * x.vm / x.am > 1 ? ' > 1: never cruises' : ' ≤ 1 ✓'), x.vm * x.vm / x.am > 1 ? '--bad' : '--c'], ['accel time v/a = ' + f(x.vm / x.am, 3) + ' s', '--b'], ['T = (a + v²)/(va) = ' + f(tr, 3) + ' s', '--b'], ['coast = T − 2v/a = ' + f(tr - 2 * x.vm / x.am, 3) + ' s', '--b']]
+        : S === 8 ? [['J = ' + x.J + ', a = ' + f(x.am, 2) + ', v = ' + f(x.vm, 2), '--d'], ['segment durations (s):', '--ink'], ...sc.bounds.map((d, i) => ['  ' + (i + 1) + ' ' + ['+jerk', 'const a', '−jerk', 'coast', '−jerk', 'const −a', '+jerk'][i] + '  ' + f(d, 3), '--d']), ['total T = ' + f(sc.T, 3) + ' s', '--d']]
+        : [['Δθ = ' + SL.vs(dth.map(v => v / D2R), 0) + '°', '--ink'], ['peak θ̇ = Δθ · ṡ_max (deg/s):', '--ink'], ['cubic     ' + SL.vs(dth.map(v => v / D2R * 1.5 / T), 1), '--a'], ['quintic   ' + SL.vs(dth.map(v => v / D2R * 15 / 8 / T), 1), '--c'], ['trapezoid ' + SL.vs(dth.map(v => v / D2R * Math.min(x.vm, Math.sqrt(x.am))), 1), '--b'], ['S-curve   ' + SL.vs(dth.map(v => v / D2R * Math.max(...sc.pts.map(p => p[2]))), 1), '--d']];
+      NN.lines(R, rows, { top: .08, gap: .08 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S <= 1 ? `t = ${f(x.t * x.T, 2)} s → s = ${f(qn[0], 3)}, ṡ = ${f(qn[1], 3)}, s̈ = ${f(qn[2], 3)} (quintic, T = ${f(x.T, 1)})` : S <= 3 ? 'joint-space lines stay inside a convex box; Cartesian lines can leave a non-convex workspace' : S === 4 ? 'X(s) = X_start exp(log(X_start⁻¹ X_end) s) — exponential on the right: the twist is in {start}' : 'the shape of s(t) is fixed; the real speeds scale with distance and T', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const x = st(), dth = MR.sub(th1, th0), q = MR.quintic(x.t * x.T, x.T);
+    const rows = [`${E(`θ(t) at t = ${f(x.t * x.T, 2)} s: ${SL.vs(MR.add(th0, MR.scl(dth, q[0])).map(v => v / D2R), 1)}°`)}`,
+`${E(`θ(s) = θ_start + s(θ_end − θ_start),  θ′ = Δθ = ${SL.vs(dth, 3)} rad, θ″ = 0
+at t: s = ${f(q[0], 3)}, ṡ = ${f(q[1], 3)}, s̈ = ${f(q[2], 3)}
+θ̇ = θ′ṡ = ${SL.vs(MR.scl(dth, q[1]), 3)} rad/s
+θ̈ = θ′s̈ + θ″ṡ² = ${SL.vs(MR.scl(dth, q[2]), 3)} rad/s²`)}<p>For a Cartesian line θ″ ≠ 0, and the ṡ² term appears even at constant ṡ.</p>`,
+`${E(`joint line:     θ(s) = θ_s + s(θ_e − θ_s)
+Cartesian line: X(s) = X_s + s(X_e − X_s),  θ(s) = IK(X(s))`)}`,
+`<p>Joint limits θ_i,min ≤ θ_i ≤ θ_i,max form a box: convex. The workspace has a hole: not convex.</p>`,
+`${E(`screw:     X(s) = X_start exp(log(X_start⁻¹ X_end) s)
+decoupled: p(s) = p_s + s(p_e − p_s),  R(s) = R_s exp(log(R_sᵀR_e) s)`)}`,
+`${E(`s = a₀ + a₁t + a₂t² + a₃t³
+a = (0, 0, 3/T², −2/T³),  ṡ_max = 3/(2T),  s̈_max = 6/T²`)}`,
+`${E(`s = 10(t/T)³ − 15(t/T)⁴ + 6(t/T)⁵
+ṡ_max = 15/(8T),  s̈_max = 10/(√3 T²)`)}`,
+`${E(`T = (a + v²)/(va),  valid if v²/a ≤ 1`)}`,
+`<p>Jerk is the time derivative of acceleration; bounding it keeps acceleration continuous.</p>`,
+`${E(`θ̇(t) = (θ_end − θ_start) ṡ(t)`)}`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

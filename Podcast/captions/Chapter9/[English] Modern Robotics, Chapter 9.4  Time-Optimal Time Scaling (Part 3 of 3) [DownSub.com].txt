@@ -1,0 +1,114 @@
+In the previous video we learned a graphical
+interpretation of the time-optimal time scaling
+problem.
+Basically, we try to keep the speed s-dot
+as high as possible while remaining within
+the motion cone dictated by the robot's actuators.
+In some cases, the time-optimal solution is
+given by a bang-bang trajectory, where the
+robot maximally accelerates then maximally
+decelerates.
+In other cases, though, the velocity limit
+curve prevents a simple solution like this.
+In this final video of Chapter 9, we develop
+an algorithm to handle this case.
+The first step of the algorithm is initialization,
+which you can find in the book.
+In step 2, we integrate the minimum acceleration
+L backward from the end state until either
+we reach s equal to zero or the motion cone
+disappears at the velocity limit curve.
+In the figure shown here, we reach the velocity
+limit curve.
+In step 3, we integrate the maximum acceleration
+forward from the initial state until we intersect
+either the final segment or the velocity limit
+curve.
+If we intersect the final segment, then we're
+finished: we've found the optimal time scaling.
+In the figure, we intersect the velocity limit
+curve at (s_lim, s_lim-dot).
+We know we have to slow down at some point
+before this intersection, to keep from running
+into the velocity limit curve.
+Since time-optimal trajectories consist of
+only maximum acceleration U and minimum acceleration
+L, we need to find a point where we switch
+from U to L.
+One way to find the switch point is to decrease
+the velocity s-dot from the point where we
+hit the velocity limit curve, and to integrate
+forward the minimum acceleration L. Depending
+on how much we decrease s-dot, the forward
+integration will either hit the s-axis, as
+it does with our first two guesses; or it
+will intersect the velocity limit curve again,
+as with our third guess; or it will just touch
+the velocity limit curve tangentially.
+It is this tangential point we are looking
+for, and we'll call this point (s_tan, s_tan-dot).
+In step 5, we integrate the minimum acceleration
+L backward from the tangent point until it
+intersects the previous U segment.
+This is the switch point s_1, from maximum
+acceleration to minimum acceleration.
+States in the region shaded red would eventually
+collide with the velocity limit curve, so
+they have to be avoided.
+In step 6, we mark the tangent point as the
+switch point s_2, where we switch again from
+minimum acceleration L to maximum acceleration
+U.
+We then go back to step 3, where we integrate
+U forward again.
+This segment will either intersect the velocity
+limit curve again, in which case we repeat
+the process just described, or it will intersect
+the final L segment, and the algorithm is
+complete.
+In the figure shown, the algorithm completes
+with three switching points, and the time-optimal
+time scaling consists of maximum acceleration
+until s_1, followed by minimum acceleration
+until s_2, followed by maximum acceleration
+until s_3, followed by minimum acceleration
+to bring the robot to rest.
+This time scaling keeps the velocity as high
+as possible at all points on the path while
+assuring the trajectory is feasible for the
+actuators.
+A key step in this algorithm is step 4, finding
+the next tangent point on the velocity limit
+curve.
+Instead of using a binary search guess-and-check
+approach, a more computationally efficient
+approach is to numerically construct the velocity
+limit curve and search for the next point
+where the motion ray is tangent to the curve.
+Clearly, at the point of intersection the
+motion ray is into the region of inadmissible
+states.
+As we search along the velocity limit curve,
+we eventually find a point on the curve where
+the motion ray is tangent to the limit curve.
+We can now proceed with the algorithm as before.
+There are some other technical details, special
+cases, and improvements to the algorithm,
+some described in the book, but the description
+I've given covers the most important points.
+Because the time-optimal time scaling requires
+one or more actuators to operate at maximum
+capacity at all times, and because the dynamic
+model is never exactly known, this algorithm
+is rarely directly used in trajectory generation.
+Nonetheless, it provides a deep theoretical
+understanding of the maximum capability of
+a robot.
+So this concludes Chapter 9.
+You now understand the basics of how to generate
+trajectories for robots, and how the dynamic
+equations of Chapter 8 can be used to find
+time-optimal trajectories along specified
+paths.
+In Chapter 10 we will study the problem of
+planning motions among obstacles.

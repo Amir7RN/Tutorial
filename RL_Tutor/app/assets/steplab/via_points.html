@@ -1,0 +1,83 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Polynomial via-point trajectories, in numbers</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="mr.js"></script><script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const TV = [0, 1, 2.2, 3];                           // via times
+const POS = [[0, 0], [1.2, 1.6], [2.6, .8], [3, 2]]; // via configurations (θ1, θ2) in rad
+const st = () => { const v = SL.v; return { v1: [v.v1x / 10, v.v1y / 10], v2: [v.v2x / 10, v.v2y / 10], seg: v.seg, j: v.j, t: v.t / 100 * 3, lim: v.lim / 100 }; };
+/* cubic Hermite on [T_j, T_j+1]: four constraints → four coefficients */
+const herm = (b0, b1, d0, d1, dT) => [b0, d0, (3 * b1 - 3 * b0 - 2 * d0 * dT - d1 * dT) / dT ** 2, (2 * b0 + (d0 + d1) * dT - 2 * b1) / dT ** 3];
+const vels = s => [[0, 0], s.v1, s.v2, [0, 0]];
+/* times-only: velocities so that acceleration is continuous (clamped spline, rest at both ends) */
+const splineVel = j => { const n = 4, h = TV.slice(1).map((t, i) => t - TV[i]), y = POS.map(p => p[j]), A = [[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 1]], b = [0, 0, 0, 0];
+  for (let i = 1; i < n - 1; i++) { A[i][i - 1] = 1 / h[i - 1]; A[i][i] = 2 / h[i - 1] + 2 / h[i]; A[i][i + 1] = 1 / h[i]; b[i] = 3 * ((y[i] - y[i - 1]) / h[i - 1] ** 2 + (y[i + 1] - y[i]) / h[i] ** 2); }
+  return { A, b, v: MR.solve(A, b) }; };
+const evalTraj = (V, t) => { let k = 0; while (k < 2 && t > TV[k + 1]) k++; const dT = TV[k + 1] - TV[k], u = Math.min(dT, Math.max(0, t - TV[k]));
+  return [0, 1].map(j => { const a = herm(POS[k][j], POS[k + 1][j], V[k][j], V[k + 1][j], dT); return [a[0] + a[1] * u + a[2] * u * u + a[3] * u ** 3, a[1] + 2 * a[2] * u + 3 * a[3] * u * u, 2 * a[2] + 6 * a[3] * u]; }); };
+const bspline = (C, u) => { const n = C.length - 1, seg = Math.min(n - 3, Math.floor(u * (n - 2))), t = u * (n - 2) - seg, B = [(1 - t) ** 3 / 6, (3 * t ** 3 - 6 * t * t + 4) / 6, (-3 * t ** 3 + 3 * t * t + 3 * t + 1) / 6, t ** 3 / 6]; return [0, 1].map(j => B.reduce((s, w, i) => s + w * C[seg + i][j], 0)); };
+SL.app({
+  title: 'Polynomial via-point trajectories, in numbers (video 9.3)',
+  sub: 'Four via points for a two-joint robot, each with a time — and, in the first method, a velocity. Every cubic coefficient of every segment and joint is solved from its four constraints and shown.',
+  view: '2d',
+  legend: [['--a', 'specified via velocities'], ['--c', 'times only (continuous s̈)'], ['--e', 'via velocity arrows'], ['--bad', 'acceleration jump / limit'], ['--d', 'B-spline and its hull']],
+  controls: [
+    { id: 'v1x', label: 'via 2 velocity θ̇₁', min: -30, max: 30, value: 12, fmt: x => f(x / 10, 1) }, { id: 'v1y', label: 'via 2 velocity θ̇₂', min: -30, max: 30, value: 6, fmt: x => f(x / 10, 1) },
+    { id: 'v2x', label: 'via 3 velocity θ̇₁', min: -30, max: 30, value: 10, fmt: x => f(x / 10, 1) }, { id: 'v2y', label: 'via 3 velocity θ̇₂', min: -30, max: 30, value: -4, fmt: x => f(x / 10, 1) },
+    { id: 'seg', label: 'segment j (steps 1–2)', min: 0, max: 2, value: 1 }, { id: 'j', label: 'joint i (step 1)', min: 1, max: 2, value: 1 },
+    { id: 't', label: 'time t', min: 0, max: 100, value: 50, fmt: x => f(x / 100 * 3, 2) + ' s' }, { id: 'lim', label: 'joint-2 limit (step 6)', min: 150, max: 250, value: 200, fmt: x => f(x / 100, 2) + ' rad' },
+  ],
+  steps: [
+    ['Via points shape path and timing together', 'Pick configurations the robot must pass through and the times it must be there: (0 s, start), (1 s), (2.2 s), (3 s, end). No path-then-time-scaling here — solve for the trajectory directly.'],
+    ['One segment, one joint: four constraints', 'Between vias j and j+1, joint i is a cubic β(t) = a₀ + a₁Δt + a₂Δt² + a₃Δt³. Constraints: β(T_j) = β_j, β(T_j+1) = β_j+1, β̇(T_j) = β̇_j, β̇(T_j+1) = β̇_j+1. Four equations, four unknowns — the formulas on the right with this segment\'s numbers.'],
+    ['Every segment, every joint', '3 segments × 2 joints = 6 cubics, 24 coefficients, all from local data. Change a via velocity: only the two segments touching that via change.'],
+    ['Velocities steer the shape', 'The path\'s tangent at a via must point along the via velocity (arrows). Rotating or stretching a via velocity bends the C-space curve through the same points.'],
+    ['Position and velocity continuous, acceleration not', 'Neighbouring segments agree on β and β̇ at each via, but nothing ties β̈: the acceleration jumps there (red). The jumps, in rad/s², are on the right.'],
+    ['Times only: let the velocities be solved', 'Leave via velocities free; require velocity AND acceleration to match before and after each interior via. That is a small linear system for the via velocities (shown, solved). Result: acceleration continuous — the green curves — and no velocities to hand-pick.'],
+    ['B-splines: near, not through, but inside the hull', 'With control points instead of via points, a B-spline does not pass through them but stays inside their convex hull. Interpolating cubics can overshoot between vias — past a joint limit; the B-spline cannot, if its control points respect the limit.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, V = S >= 5 ? [0, 1, 2, 3].map(k => [splineVel(0).v[k], splineVel(1).v[k]]) : vels(s), ts = [...Array(301)].map((_, i) => i / 100);
+    const tr = ts.map(t => evalTraj(V, t)), trA = ts.map(t => evalTraj(vels(s), t));
+    const C = Pl.panel(0, 0, .45, .82, [-.4, 3.4, -.6, 2.8]); C.frame('C-space path (θ₁, θ₂)'); C.grid(1, '--line');
+    if (S === 6) { const CP = [[0, 0], [0, 0], [1.2, 2.3], [2.6, .2], [3, 2], [3, 2]]; C.poly([[0, 0], [1.2, 2.3], [3, 2], [2.6, .2]], '--d', 1, [3, 3], '--d', true); C.poly([...Array(101)].map((_, i) => bspline(CP, i / 100)), '--d', 3); CP.forEach(p => C.dot(p, 4, '--d')); C.line([-.4, s.lim], [3.4, s.lim], '--bad', 2, [5, 4]); C.text([-.3, s.lim], 'θ₂ limit', '--bad', 0, -6, { size: 11 }); }
+    if (S >= 5) C.poly(trA.map(p => [p[0][0], p[1][0]]), '--a', 1.2, [4, 3]);
+    C.poly(tr.map(p => [p[0][0], p[1][0]]), S >= 5 ? '--c' : '--a', 3);
+    POS.forEach((p, k) => { C.dot(p, 6, '--ink'); C.text(p, 'T=' + TV[k], '--muted', 8, -6, { size: 11 }); if (S === 3 || S === 0) C.arrow(p, MR.scl(V[k], .25), '--e', 2); });
+    const now = evalTraj(V, s.t); C.dot([now[0][0], now[1][0]], 6, '--e');
+    const R = Pl.panel(.46, 0, .54, .82, [0, 1, 0, 1], false);
+    if (S === 1 || S === 2) { R.frame(S === 1 ? `segment ${s.seg + 1}, joint ${s.j}` : 'all 24 coefficients');
+      if (S === 1) { const k = s.seg, j = s.j - 1, dT = TV[k + 1] - TV[k], a = herm(POS[k][j], POS[k + 1][j], V[k][j], V[k + 1][j], dT);
+        NN.lines(R, [['T_j = ' + TV[k] + ', T_j+1 = ' + TV[k + 1] + ', ΔT = ' + f(dT, 2), '--ink'], ['β_j = ' + f(POS[k][j], 2) + ', β_j+1 = ' + f(POS[k + 1][j], 2), '--ink'], ['β̇_j = ' + f(V[k][j], 2) + ', β̇_j+1 = ' + f(V[k + 1][j], 2), '--e'], ['', ''], ['a₀ = β_j = ' + f(a[0], 4), '--a'], ['a₁ = β̇_j = ' + f(a[1], 4), '--a'], ['a₂ = (3β_j+1 − 3β_j − 2β̇_jΔT − β̇_j+1ΔT)/ΔT²', '--muted'], ['   = ' + f(a[2], 4), '--a'], ['a₃ = (2β_j + (β̇_j + β̇_j+1)ΔT − 2β_j+1)/ΔT³', '--muted'], ['   = ' + f(a[3], 4), '--a'], ['check β(T_j+1) = ' + f(a[0] + a[1] * dT + a[2] * dT * dT + a[3] * dT ** 3, 4), '--c']], { top: .07, gap: .08 }); }
+      else NN.lines(R, [['seg joint   a₀      a₁      a₂      a₃', '--muted'], ...[0, 1, 2].flatMap(k => [0, 1].map(j => { const a = herm(POS[k][j], POS[k + 1][j], V[k][j], V[k + 1][j], TV[k + 1] - TV[k]); return [' ' + (k + 1) + '    ' + (j + 1) + '  ' + a.map(x => f(x, 3).padStart(7)).join(' '), k === s.seg ? '--a' : '--ink']; }))], { top: .1, gap: .1 }); }
+    else { const k = S >= 5 ? 1 : 2, rng = k === 2 ? 12 : 4;
+      [0, 1].forEach(j => { const P = Pl.panel(.46, j * .41, .54, .4, [0, 3, -rng, rng], false);
+        P.series([{ pts: ts.map((t, i) => [t, trA[i][j][2]]), cl: S >= 5 ? '--a' : '--bad', w: S >= 5 ? 1.2 : 2.5, dash: S >= 5 ? [4, 3] : null, label: 'θ̈' + (j + 1) + ' specified velocities' }, ...(S >= 5 ? [{ pts: ts.map((t, i) => [t, tr[i][j][2]]), cl: '--c', w: 2.5, label: 'times only' }] : []), { pts: ts.map((t, i) => [t, tr[i][j][1]]), cl: '--e', w: 1.5, label: 'θ̇' + (j + 1) }], { title: 'joint ' + (j + 1) + ': velocity and acceleration vs t' });
+        TV.slice(1, 3).forEach(t => P.line([t, -rng], [t, rng], '--grey', 1, [3, 3])); P.line([s.t, -rng], [s.t, rng], '--ink', 1, [2, 3]); }); }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    const jumps = [1, 2].map(k => [0, 1].map(j => { const dl = TV[k] - TV[k - 1], al = herm(POS[k - 1][j], POS[k][j], vels(s)[k - 1][j], vels(s)[k][j], dl), ar = herm(POS[k][j], POS[k + 1][j], vels(s)[k][j], vels(s)[k + 1][j], TV[k + 1] - TV[k]); return (2 * ar[2]) - (2 * al[2] + 6 * al[3] * dl); }));
+    NN.lines(Bt, [[S === 4 ? `acceleration jumps (specified velocities): via 2 ${SL.vs(jumps[0])}, via 3 ${SL.vs(jumps[1])} rad/s²` : S === 5 ? `solved via velocities: θ̇₁ = ${SL.vs(splineVel(0).v)}, θ̇₂ = ${SL.vs(splineVel(1).v)}` : S === 6 ? 'B-spline: inside the hull of its control points, so it respects limits the control points respect' : 'third-order polynomial interpolation with specified via times and velocities', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st(), sv = [splineVel(0), splineVel(1)];
+    const rows = [`${E(`vias (T, θ₁, θ₂): ${POS.map((p, k) => `(${TV[k]}, ${p[0]}, ${p[1]})`).join(' ')}`)}`,
+`${E(`β(T_j + Δt) = a₀ + a₁Δt + a₂Δt² + a₃Δt³
+a₀ = β_j,  a₁ = β̇_j
+a₂ = (3β_{j+1} − 3β_j − 2β̇_jΔT − β̇_{j+1}ΔT)/ΔT²
+a₃ = (2β_j + (β̇_j + β̇_{j+1})ΔT − 2β_{j+1})/ΔT³`)}`,
+`<p>Each cubic depends only on its own two vias: local control.</p>`,
+`${E(`via 2 velocity ${SL.vs(s.v1)}, via 3 velocity ${SL.vs(s.v2)}`)}`,
+`<p>β and β̇ continuous at vias; β̈ generally discontinuous.</p>`,
+`${E(`unknowns: interior via velocities; ends at rest
+row i: v_{i−1}/h_{i−1} + 2(1/h_{i−1} + 1/h_i)v_i + v_{i+1}/h_i = 3((y_i − y_{i−1})/h_{i−1}² + (y_{i+1} − y_i)/h_i²)
+joint 1: ${SL.mat(sv[0].A, 2, 'A')}
+b = ${SL.vs(sv[0].b, 3)}  →  v = ${SL.vs(sv[0].v, 3)}`)}`,
+`<p>Convex-hull property: Σ basis weights = 1, all ≥ 0 ⇒ every curve point is a convex combination of nearby control points.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

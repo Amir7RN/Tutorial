@@ -1,0 +1,161 @@
+In the last video we learned to express the
+robot's joint force and torque limits as constraints
+on the feasible accelerations s-double-dot
+along the path theta-of-s, as a function of
+the state (s, s-dot).
+In this video, we'll express those constraints
+graphically and gain some insight into the
+time-optimal time-scaling problem.
+Let's draw the plane (s, s-dot).
+At the beginning of the motion, s and s-dot
+are both equal to zero.
+At the end of the motion, s is equal to one
+and s-dot is equal to zero.
+The start and end states are shown as dots.
+Since we require the motion along the path
+to be monotonic, that is, the robot always
+moves forward along the path, s-dot must always
+be positive.
+So we only need to draw the top-right quadrant
+of the (s, s-dot) plane.
+If the robot moves very slowly along the path,
+then the motion of the robot is essentially
+along the s-axis from the start to the end.
+A more typical time scaling might look something
+like this.
+s-dot starts out at zero, increases to a maximum
+value, then drops back to zero at the end
+of the motion.
+Until now we have been expressing a time scaling
+as s as a function of time, but here we're
+plotting it as s-dot as a function of s.
+The same time scaling can be represented either
+way, but in this time-optimal problem it's
+more convenient to express a time scaling
+as s-dot-of-s.
+Now let's look at a particular state of the
+robot on its trajectory, indicated by this
+point (s, s-dot).
+We can draw the tangent vector to the time
+scaling, as shown here.
+Now let's get rid of the time scaling so we
+can focus on this tangent vector.
+The tangent vector consists of a horizontal
+component and a vertical component.
+The horizontal component expresses the rate
+of change of s, so it is just s-dot, which
+can be drawn as proportional to the height
+of the point along the s-dot axis.
+The vertical component expresses the rate
+of change of s-dot, in other words, the acceleration
+s-double-dot.
+If we assumed that s-double-dot is always
+zero, then the tangent vectors at states (s,
+s-dot) would look like this.
+The horizontal component of a vector is determined
+by the s-dot value of the point.
+Now let's focus on one particular tangent
+vector at the state (s, s-dot).
+The horizontal component is s-dot.
+But now let's assume that the vertical component,
+the acceleration s-double-dot, can be any
+value in the range from L of (s, s-dot) to
+U of (s, s-dot), the range of feasible accelerations
+according to the dynamics.
+Summing these vertical vectors with the horizonal
+vector, we get the vectors shown here.
+These vectors form a cone called the feasible
+motion cone.
+At this state (s, s-dot), the tangent vector
+to the time scaling must be inside this cone
+to satisfy the actuator limits.
+Therefore, a time scaling like this would
+be OK at this state, as the tangent vector
+lies inside the feasible motion cone.
+If, instead, our feasible motion cone looked
+like this, the tangent vector is outside the
+cone, and this time scaling is not possible
+according to the robot's actuator limits.
+You could imagine drawing the motion cone
+at every point in the plane, and the problem
+is to get from the start state to the goal
+state as quickly as possible while keeping
+the tangent to the time scaling inside all
+motion cones along the curve.
+Since we want to go as fast as possible, the
+time scaling should always be as high as possible,
+and to find such a time scaling we could forward
+integrate the upper edge of the motion cones,
+starting from the initial state.
+Here you see a curve that is found by numerically
+integrating the maximum possible accelerations.
+Because this curve travels along the edge
+of the motion cones, at least one actuator
+is always operating at a limit.
+This time scaling causes the robot to follow
+the path as fast as possible, but it does
+not bring the robot to a stop at the end of
+the path, as required.
+So now imagine backward integrating from the
+end state along the lower edge of the feasible
+motion cones.
+This integral curve intersects the other integral
+curve at a switch point s-star.
+The time scaling you see here, represented
+by the two segments obtained by numerical
+integration, is the time-optimal time scaling.
+During the first segment, the robot maximally
+accelerates along the path, and during the
+second segment the robot maximally decelerates
+along the path.
+It is clear why this is time optimal: in the
+first segment, the robot cannot go any faster,
+and in the second segment, if the speed s-dot
+were any higher at any given s, the robot
+would not be able to come to a stop.
+This time scaling keeps the speed s-dot as
+high as possible at all times, and therefore
+the duration of the motion is as short as
+possible.
+This kind of trajectory is called a "bang-bang"
+trajectory, because one or more of the actuators
+"bangs" against a limit during the first segment,
+then one or more of the actuators "bangs"
+against a limit during the second segment.
+Compare this to a non-optimal trajectory,
+where the tangent to the time scaling is in
+the interior of the motion cones, not on the
+edges.
+The speed of the robot at any given position
+s is lower than what it is for the time-optimal
+time scaling.
+So this is the basic idea behind the time-scaling
+algorithm, except for one hitch, which I'll
+describe now.
+Let's plot the motion cone at a particular
+state (s, s-dot).
+If you keep s constant but increase s-dot,
+you get a different motion cone.
+If you increase s-dot further, then the motion
+cone may reduce to a single vector, where
+the lower acceleration limit is the same as
+the upper acceleration limit.
+If you increase s-dot further, then no motions
+are feasible, and this means the robot is
+traveling too fast for the actuators to keep
+the robot on the path.
+In general, we could plot a velocity limit
+curve: at states on this curve, only a single
+acceleration is possible, and at states above
+this curve, the robot leaves the path immediately.
+At states below the curve, there is a cone
+of possible tangent vectors.
+Now, considering the existence of a speed
+limit, we might end up with a situation as
+illustrated here: the maximum acceleration
+curve and the maximum deceleration curve do
+not intersect, but instead run into the velocity
+limit curve.
+Therefore, bang-bang control is not possible.
+What to do in this case is the subject of
+the next, and final, video of Chapter 9.

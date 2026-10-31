@@ -1,0 +1,138 @@
+A robot controller typically accepts a steady
+stream of desired robot configurations, reads
+joint sensors to determine the robot's actual
+configuration, and updates the actuator commands
+to follow the desired configuration.
+This process can happen thousands of times
+a second.
+A robot configuration as a function of time
+is called a trajectory.
+We can write a trajectory as theta of t, where
+the time t goes from zero to capital T.
+This figure shows a trajectory for a robot
+with two degrees of freedom.
+We could also plot this trajectory directly
+in the configuration space, also known as
+the C-space.
+As the time t increases from zero to capital
+T, the configuration follows the path shown
+here.
+In some cases it is desirable to separate
+the C-space path from the speed at which it
+is followed.
+For example, we might plan a geometric path
+for a mobile robot to avoid obstacles on the
+floor, without worrying about how fast the
+path is followed.
+We define a path to be a curve in configuration
+space as a function of a path parameter, s,
+that goes from zero to one.
+As s increases from zero, the robot moves
+from the start configuration at theta-of-zero
+to the end configuration at theta-of-one.
+A path can be turned into a trajectory by
+defining a function s of t, which maps the
+time range zero to capital T to the path parameter
+range zero to one.
+This function is called a time scaling.
+The time scaling controls how fast the path
+is followed.
+Now, with a trajectory theta of s of t, the
+time derivative theta-dot is determined by
+the chain rule to be d-theta d-s times s-dot.
+The acceleration theta-double-dot is determined
+by the product rule and the chain rule to
+be d-theta d-s times s-double-dot plus d-squared-theta
+d-s-squared times s-dot-squared.
+Since the dynamics depend on theta-double-dot,
+for the dynamics to be well defined, the second
+derivatives of both theta-of-s and s-of-t
+must exist.
+In this chapter we consider the problem of
+planning paths and trajectories without considering
+obstacles.
+In Chapter 10, on motion planning, we address
+the case of obstacles in the environment.
+Let's start by planning a path for a robot
+arm in its C-space.
+The simplest type of path is a straight-line
+path from an initial configuration theta-start
+to a final configuration theta-end, as described
+by this equation.
+As s goes from 0 to 1, the configuration goes
+from theta-start to theta-end.
+A straight-line path in joint space is shown
+here, for a 2R robot with 180 degrees of motion
+about its first joint and 150 degrees of motion
+about its second joint.
+The path can also be visualized in the workspace,
+as shown here.
+Note that the endpoint of the robot does not
+follow a straight line.
+If we prefer a straight-line motion of the
+end-effector in Cartesian space, we can define
+X to be the coordinates of the end-effector
+and define a straight-line path as shown here.
+Then we have to use inverse kinematics to
+solve for the robot configuration at each
+point along the path.
+As you can see here, some straight-lines in
+Cartesian space cannot be executed, as they
+pass outside the workspace.
+One advantage of planning straight-line motions
+in joint space is that the joint limits are
+usually independent of each other, so the
+set of feasible joint configurations is convex,
+unlike the workspace.
+A straight line between two points in a convex
+space always remains inside the space.
+We can also plan a path between two rigid-body
+frames represented in SE(3).
+We could try directly extending our straight-line
+definition in joint space, but of course this
+does not make sense; we there is no meaning
+to subtracting two elements of SE(3).
+Let's find the screw path where the frame
+follows a constant twist from X_start to X_end.
+First, let's express the frame X_end relative
+to X_start.
+Each of X_start and X_end is implicitly defined
+in a space frame {s}, so by our subscript
+cancellation rule we find that X_start-inverse
+times X_end is the configuration of the {end}
+frame in the {start} frame.
+The log of this is the little-se(3) representation
+of the twist, expressed in the {start} frame,
+that takes the {start} frame to the {end}
+frame in unit time.
+So our formula for the path is X-of-s equals
+X_start times the matrix exponential of s
+times the log of X_start-inverse times X_end
+as s goes from zero to one.
+The matrix exponential is multiplied on the
+right since the twist is expressed in the
+{start} frame, not the space frame.
+The path parameter s determines how far we
+follow the twist that takes the {start} frame
+to the {end} frame.
+The final screw path can be visualized as
+shown here.
+This is a "straight-line path" in the sense
+that the twist is constant throughout the
+motion.
+Another type of path between X_start and X_end
+is one that decouples the rotation and translation.
+The origin of the frame follows a straight
+line, and the rotation is about an axis fixed
+in the frame.
+For this type of path, the position coordinates
+p follow a straight-line path for coordinates,
+as discussed earlier, while the orientation
+satisfies a formula similar to that for a
+constant twist, except now just for the orientation
+components.
+These two types of paths are the most natural
+"simple" paths between two frames.
+Now that we can plan paths between two configurations,
+in the next video we study common time scalings
+that turn a path into a trajectory.

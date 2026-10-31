@@ -1,0 +1,71 @@
+In the previous video, we learned that a trajectory
+can be represented as theta-of-s-of-t.
+We also found expressions for simple paths
+theta-of-s.
+In this video, we study time scalings s-of-t
+that turn a path into a trajectory.
+One simple time scaling is a third-order polynomial
+time scaling, where s is a cubic function
+of time.
+The time scaling is defined by the four coefficients
+of time, a_zero through a_three.
+The time derivative of the time scaling is
+shown here.
+To solve for the coefficients, we apply the
+four terminal constraints, which say that
+s is zero at time zero and one at time capital
+T, and that s-dot is zero at times zero and
+capital T for motions that begin and end at
+rest.
+Solving for the four coefficients using these
+four constraints, we get these values.
+Now we can plot s as a function of t, as well
+as s-dot and s-double-dot.
+Notice that s is a cubic, s-dot is a parabola,
+and s-double-dot is a line.
+s-dot begins and ends at zero, but s-double-dot
+jumps discontinuously to six over capital-T-squared
+at time zero.
+If we would prefer a smoother motion, where
+the acceleration at the beginning and end
+of the motion are zero, we can use a fifth-order
+polynomial time scaling.
+A fifth-order polynomial gives us two more
+coefficients to choose, and we use them to
+satisfy two more terminal constraints, that
+the acceleration is zero at times zero and
+capital T.
+Now s-double-dot is a cubic, allowing s-double-dot
+to be zero at the beginning and end of the
+motion.
+Another popular time scaling in motion control
+is the trapezoidal time scaling, named for
+its s-dot plot, shown here.
+First the robot follows a constant acceleration
+s-double-dot, then it coasts at a constant
+s-dot, then it follows a constant deceleration
+to rest.
+Like the third-order polynomial time scaling,
+this time scaling has discontinuous jumps
+in the acceleration.
+If this is undesirable, we can use an S-curve
+time scaling, shown here as an s-dot plot.
+An S-curve has seven segments.
+In the first segment, the robot follows a
+constant jerk.
+Jerk is the time derivative of acceleration.
+Then it follows a constant acceleration, followed
+by a constant negative jerk, followed by a
+coasting period at constant velocity.
+Then the robot slows down, symmetrically to
+the first three segments.
+The acceleration is zero at the beginning
+and end of the motion.
+Of course, the actual speed and acceleration
+of the robot at any time depends on the distance
+of the path and the total duration of the
+motion capital T, not just the form of the
+time scaling.
+In the next video we will see how to control
+the shape of a robot's path by having it pass
+through a set of timed via points.

@@ -1,0 +1,127 @@
+In the next few videos, we consider the following
+problem:
+Given a desired path theta-of-s, find the
+time-optimal time scaling along this path,
+considering the dynamics of the robot and
+torque limits at the robot joints.
+Minimum-time motions can be used to maximize
+the productivity of a robot.
+You could imagine trying to optimize other
+criteria, like the amount of energy consumed
+by the actuators, but in these next few videos
+we will focus on time-optimal trajectories.
+Recall that the dynamics of a robot can be
+written as M times theta-double-dot plus a
+velocity-product term plus a gravity term
+equals the joint force and torque vector tau.
+Here I've written the velocity-product term
+using the Christoffel symbol matrix Gamma
+to emphasize that it is quadratic in the joint
+velocity vector.
+Keeping in mind that we are only interested
+in the dynamics of the robot when it is on
+the path theta-of-s, we can rewrite theta-dot
+and theta-double-dot as a function of the
+derivatives of the path with respect to s
+and the derivatives of s with respect to time.
+Plugging these expressions into the dynamics,
+we get the expression shown here.
+Since the path is given in advance, the derivatives
+of theta with respect to s are also known
+in advance, and only s, s-dot, and s-double-dot
+are variables.
+We can therefore write this equation as the
+vector equation m-of-s times s-double-dot
+plus c-of-s times s-dot-squared plus g-of-s
+equals tau.
+Each of m-of-s, c-of-s, and g-of-s is a vector
+function of s, where c-of-s times s-dot-squared
+is a velocity-product term, g-of-s is the
+gravity term, and m-of-s plays the role of
+a mass.
+Some elements of the m-vector may be negative,
+however.
+This equation is the dynamics of the robot
+when it is restricted to move along the path
+theta-of-s.
+This equation says nothing about the dynamics
+when the robot is off the path.
+Now that we've expressed the dynamics in terms
+of the single path parameter s, as opposed
+to the joint vector theta, we have to consider
+the limits on the forces or torques that the
+robot's actuators can produce.
+The limits at the i'th joint can be written
+as tau_i is greater than tau_i-min and less
+than tau_i-max.
+For example, tau_i-min could be minus-five
+newton-meters and tau_i-max could be plus-five
+newton-meters.
+But in general the limits are a function of
+theta and theta-dot.
+In particular, the maximum torque that can
+be produced by an electric motor typically
+decreases as the velocity increases, until
+eventually it becomes zero.
+Remembering that we can express theta and
+theta-dot in terms of s and s-dot when the
+robot is restricted to the path, we can rewrite
+the actuator limits as a function of s and
+s-dot.
+If we substitute the i'th component of the
+path-restricted dynamics in for tau_i, we
+get these constraints.
+The i'th actuator therefore places limits
+on the possible accelerations s-double-dot
+along the path when the robot is at the state
+(s, s-dot).
+To determine the i'th actuator's limits on
+s-double-dot, we subtract c_i times s-dot-squared
+and g_i from all three expressions, then divide
+by m_i.
+Since m_i could be positive or negative, there
+are two possible cases: if m_i is positive,
+then L_i, the lower limit on s-double-dot,
+and U_i, the upper limit on s-double-dot,
+are given by these equations.
+If m_i is negative, then L_i and U_i are given
+by these equations.
+These equations tell us the maximum and minimum
+accelerations s-double-dot along the path
+that joint i will allow at the state (s, s-dot).
+If we calculate L_i and U_i for all the joints,
+then L of (s, s-dot), the minimum feasible
+acceleration s-double-dot at the state (s,
+s-dot), is just the maximum of the lower limits
+over all the joints.
+Similarly, U of (s, s-dot), the maximum feasible
+acceleration s-double-dot, is just the minimum
+of the upper limits over all the joints.
+We can now express the constraints on the
+robot's acceleration along the path compactly
+as s-double-dot is greater than L of (s, s-dot)
+and less than U of (s, s-dot).
+At some states, L may actually be greater
+than U, and in this case there is no feasible
+acceleration that keeps the robot on the path.
+In other words, if the robot found itself
+at such a state, it would immediately have
+to leave the path; the actuators are not strong
+enough to keep the robot on the path.
+This typically happens when the robot is moving
+at high speed.
+Now that we have reduced the actuator constraints
+to s-double-dot is greater than L and less
+than U, we can mathematically express the
+time-optimal scaling problem as follows:
+Given a path theta-of-s, the initial state
+where both s and s-dot are zero, and the final
+state where s is one and s-dot is zero, we
+want to find a monotonically increasing twice-differentiable
+time scaling that (a) satisfies the terminal
+conditions and (b) minimizes the total travel
+time capital T while satisfying the actuator
+constraints.
+This problem lends itself to a nice graphical
+interpretation, as we will see in the next
+video.
