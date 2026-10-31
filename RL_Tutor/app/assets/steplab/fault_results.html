@@ -1,0 +1,55 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What eight participants showed</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, R = FAULT.RES;
+let MODE = 'stair ascent', C = null;
+const runs = () => { if (!C || C.m !== MODE) C = { m: MODE, n: FAULT.trial({ alpha: 0, ftm: false }), w: FAULT.trial({ mode: MODE }), o: FAULT.trial({ mode: MODE, ftm: false }) }; return C; };
+SL.app({
+  title: 'Capstone: what eight participants showed',
+  sub: 'Handrail touches, perceived severity, phase portraits and margin of stability — four metrics, one direction, and a carefully bounded claim. Bars are quoted; the phase portrait is the teaching model.',
+  view: '2d',
+  legend: [['--grey', 'normal'], ['--c', 'with FTM'], ['--bad', 'without FTM'], ['--a', 'detection'], ['--d', 'user level']],
+  buttons: FAULT.MODES.map(m => ({ label: m, toggle: true, pressed: m === MODE, onclick: () => { MODE = m; document.querySelectorAll('#btns button').forEach(b => b.setAttribute('aria-pressed', b.textContent === m)); SL.redraw(); } })),
+  steps: [
+    ['The experiment', 'Eight participants: five non-disabled on a bypass adapter, three with unilateral transfemoral amputation (K3–K4). Five familiarisation sessions with a prosthetist, five minutes of normal walking to train the models, then eight 2–3 min trials at 0.6 m/s, ten perturbations each — five with FTM, five without, timing and FTM state randomised, participant blind. A no-fault control trial: no handrail use, no reported disturbance.'],
+    ['Detection and mechanics', 'Detection: 100 % sensitivity, FAR 10.8 ± 10.0 %, 54.4 ± 28.7 ms. Knee momentum deviation −47 % (p = 0.0078). Phase-variable N-RMSE 0.14 / 0.38 / 1.61 (normal / with / without). Margin-of-stability deviation −46 %: with-FTM indistinguishable from normal (p = 0.062, d = 0.74); without-FTM differed strongly (d = 1.72 vs normal).'],
+    ['User level', 'Handrail touches down by 15 on average (Wilcoxon Z = 2.41, p = 0.016, d = 1.12); handrail assistance needed in 50 % of fault events without the FTM vs 10 % with. Perceived "Critical" perturbations 87 ± 9 % → 15 ± 11 %, about 30 fewer per participant. Other conditions (0.4, 0.8 m/s, 4.6° ramp): momentum ≈ −28 %, handrail use down everywhere.'],
+    ['Four channels, one mechanism', 'A 47 % cut in the regulated variable shows up as a 46 % cut in a balance metric, a 2.7-fold rather than 11-fold joint-dynamics deviation, and 87 % → 15 % in how often the wearer felt something serious. Right: the teaching model\'s phase portrait — the spread N-RMSE measures.'],
+    ['What it is, and what is not established', 'A compensation layer, not fault elimination: it belongs in a multi-layer safety architecture (classifier safeguards, sensor redundancy, user transparency, robust design). Not established: n = 8, treadmill only, one baseline (FSM impedance), one fault family, fixed error direction and state within a trial, no comparable prior method to benchmark.'],
+    ['What the next version must do', 'Detect sooner (the thresholding produced every late detection). Cover the detector\'s inputs (load-cell redundancy). Generalise the baseline (continuous-phase, EMG). Harder faults: heterogeneous within-trial errors so adaptation cannot help, and families beyond impedance mismatch.'],
+    ['What both project sections share', 'One well-chosen physical quantity — frontal-plane whole-body momentum; knee momentum — regulated by a small, bounded, partial torque on top of a structure that keeps working when the new layer does nothing. A reference signal the disturbance cannot corrupt, a trigger signal it moves immediately. And success decided by a latency, not a gain.'],
+  ],
+  draw(Pl) {
+    const S = SL.st;
+    if (S === 0) NN.lines(Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false), [['participants  5 non-disabled (bypass) + 3 transfemoral K3–K4', '--ink'], ['training      5 min undisturbed walking → the three GPs', '--a'], ['protocol      8 trials × 2–3 min @ 0.6 m/s, 10 perturbations each (5 with, 5 without)', '--ink'], ['blinding      timing and FTM state randomised; participant blind to both', '--c'], ['safety        ceiling harness, handrails', '--muted'], ['control       no-fault trial → no handrail use, no reported disturbance', '--c']], { top: .15, gap: .13 });
+    else if (S === 1) { const A = Pl.panel(0, 0, .33, .82, [0, 3, 0, 1.8], false); A.frame('phase N-RMSE'); NN.bars(A, [R.nrmse.normal, R.nrmse.with, R.nrmse.without], { labels: ['normal', 'with', 'without'], cols: ['--grey', '--c', '--bad'] });
+      const B = Pl.panel(.34, 0, .33, .82, [0, 2, 0, 55], false); B.frame('reduction (%)'); NN.bars(B, [R.mom, R.mos], { labels: ['knee momentum', 'MoS deviation'], cols: ['--c', '--c'], d: 0 });
+      NN.lines(Pl.panel(.68, 0, .32, .82, [0, 1, 0, 1], false), [['sensitivity 100 %', '--a'], ['FAR 10.8 ± 10.0 %', '--a'], ['t_det 54.4 ± 28.7 ms', '--a'], ['momentum p = 0.0078', '--muted'], ['MoS with vs normal', '--muted'], [' p = 0.062, d = 0.74', '--c'], ['without vs normal', '--muted'], [' d = 1.72', '--bad']], { top: .1, gap: .1 }); }
+    else if (S === 2) { const A = Pl.panel(0, 0, .5, .82, [0, 2, 0, 100], false); A.frame('"Critical" perturbations (%)'); NN.bars(A, [R.critWithout[0], R.critWith[0]], { labels: ['without FTM', 'with FTM'], cols: ['--bad', '--c'], d: 0 });
+      const B = Pl.panel(.51, 0, .49, .82, [0, 2, 0, 60], false); B.frame('fault events needing handrail (%)'); NN.bars(B, [R.railPctWithout, R.railPctWith], { labels: ['without', 'with'], cols: ['--bad', '--c'], d: 0 }); }
+    else if (S === 3) { const c = runs(), P = Pl.panel(0, 0, .55, .82, [-.05, .5, -3, 4], false); P.frame('phase portrait (θ, θ̇), ' + MODE);
+      [[c.o, '--bad'], [c.w, '--c'], [c.n, '--grey']].forEach(([r, cl]) => P.poly(r.th.map((t, i) => [t, r.w[i]]).filter((_, i) => i % 4 === 0), cl, cl === '--grey' ? 2.5 : 1.8));
+      const B = Pl.panel(.56, 0, .44, .82, [0, 4, 0, 100], false); B.frame('four channels (% better with FTM)'); NN.bars(B, [R.mom, R.mos, 100 * (1 - R.nrmse.with / R.nrmse.without), 100 * (1 - R.critWith[0] / R.critWithout[0])], { labels: ['momentum', 'MoS', 'N-RMSE', 'Critical'], cols: ['--c', '--c', '--c', '--d'], d: 0 }); }
+    else NN.lines(Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false), S === 4 ? [['IS: a compensation layer inside a multi-layer safety architecture', '--c'], ['IS NOT: fault prevention — it reacts', '--bad'], ['not established: n = 8 · treadmill · one baseline (FSM) · one fault family', '--muted'], ['                 fixed error direction and state per trial · no benchmark method', '--muted']]
+      : S === 5 ? [['1 detect sooner — thresholding produced every late detection', '--a'], ['2 cover the detector\'s inputs — load-cell redundancy', '--b'], ['3 generalise the baseline — continuous-phase, EMG-driven', '--c'], ['4 harder faults — heterogeneous within-trial, beyond impedance mismatch', '--d']]
+      : [['beam (96–104)                     knee (105–113)', '--muted'], ['whole-body momentum                knee momentum', '--ink'], ['15–20 % unidirectional torque      bounded additive τ_FTM', '--ink'], ['admittance keeps working           FSM keeps working', '--ink'], ['IMU angles (reference)             axial load (reference)', '--a'], ['momentum error (trigger)           knee velocity (trigger)', '--e'], ['5 Hz / 200 ms window               43 vs 103 ms detection', '--bad'], ['→ success decided by a latency, not a gain', '--c']], { top: .12, gap: .11 });
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [['quoted: Active Fault-Tolerant Control of Robotic Knee Prostheses for Safe Locomotion', '--muted']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const rows = [`<p>No-fault control trial: no handrail use, no reported disturbance — the check that makes the rest interpretable.</p>`,
+`${E(`momentum −47 % (p = 0.0078); MoS −46 %
+N-RMSE 0.14 / 0.38 / 1.61`)}`,
+`${E(`handrail −15 touches (Z = 2.41, p = 0.016, d = 1.12)
+Critical 87 ± 9 % → 15 ± 11 %`)}`,
+`<p>Engineering and human metrics agree — that agreement is the finding.</p>`,
+`<p>Bounded claim: compensation, not elimination.</p>`, `<p>Detect sooner first.</p>`, `<p>One quantity, a small bounded torque, a robust reference and a sensitive trigger.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

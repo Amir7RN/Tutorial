@@ -77,6 +77,16 @@ STEP_LABS = {
     "BeamEstimationPage": ("beam_estimation.html", "three IMUs, a model, and where the error enters"),
     "BeamAdmittancePage": ("beam_admittance.html", "N = 100 chooses admittance"),
     "BeamResultsPage": ("beam_results.html", "what the beam said, read like a control engineer"),
+    # fault tolerance (knee prosthesis)
+    "FaultRealTimePage": ("fault_realtime.html", "the millisecond budget inside a 200 ms fault"),
+    "FaultPlantPage": ("fault_plant.html", "robust load in, sensitive velocity out"),
+    "FaultFSMPage": ("fault_fsm.html", "a misclassified impedance set, and the torque gap"),
+    "FaultDetectionPage": ("fault_detection.html", "residual, moving threshold, persistence, and the k trade"),
+    "FaultStabilityPage": ("fault_stability.html", "an additive layer whose model bias cancels"),
+    "FaultCompensationPage": ("fault_compensation.html", "momentum deviation in, proportional torque out"),
+    "FaultEstimationPage": ("fault_estimation.html", "a GP's variance is the threshold"),
+    "FaultLatencyPage": ("fault_latency.html", "43 ms or 103 ms: build the latency budget"),
+    "FaultResultsPage": ("fault_results.html", "four channels, one mechanism, a bounded claim"),
     # kinematics
     "PoEPage": ("poe.html", "forward kinematics, one exponential at a time"),
     "JacobianPage": ("jacobian.html", "the space Jacobian, column by column"),

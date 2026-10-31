@@ -1,0 +1,68 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bolting on a second controller</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, R = FAULT.RES;
+const st = () => ({ a: SL.v.a / 100, bias: SL.v.bias / 10, gerr: SL.v.gerr / 100, dev: SL.v.dev / 100 });
+let C = null;
+const runs = s => { if (!C || C.a !== s.a) C = { a: s.a, t: FAULT.trial({ alpha: s.a, mode: 'stair ascent' }), fa: FAULT.trial({ alpha: 0, falseAlarm: true }), n: FAULT.trial({ alpha: 0, ftm: false }) }; return C; };
+SL.app({
+  title: 'Bolting a second controller onto a working loop',
+  sub: 'An additive torque interface, a bias that cancels, and a filter whose group delay was checked: why the FTM does not fight the controller it supervises.',
+  view: '2d',
+  legend: [['--a', 'τ_base (FSM)'], ['--c', 'τ_FTM'], ['--b', 'model bias'], ['--bad', 'true fault'], ['--d', 'false alarm'], ['--grey', 'normal']],
+  controls: [
+    { id: 'a', label: 'fault severity α (step 3)', min: 20, max: 100, value: 100, fmt: x => f(x / 100) },
+    { id: 'bias', label: 'constant bias in G_fsm (step 1)', min: -100, max: 100, value: 40, fmt: x => f(x / 10, 1) + ' N·m' },
+    { id: 'gerr', label: 'gain error in G_fsm (step 1)', min: -30, max: 30, value: 10, fmt: x => (x >= 0 ? '+' : '') + x + '%' },
+    { id: 'dev', label: 'state deviation x − x̂ (step 1)', min: -100, max: 100, value: 0, fmt: x => f(x / 100) },
+  ],
+  steps: [
+    ['One line: τ_final = τ_base + τ_FTM', 'The baseline stays engaged at all times, keeping its compliance and passive stability; the FTM only adds. A torque sum fed by prosthesis-side signals does not care whether the baseline is an FSM, a continuous-phase or an EMG-driven controller. Switching controllers on a trigger-happy detector would change the plant mid-stance; a bounded additive term does not.'],
+    ['The bias cancellation', 'τ_FTM = τ̂_FSM(x̂) − τ_FSM(x): the same learned map evaluated twice — at the estimated nominal state and at the measured state. A constant bias appears in both and subtracts out; a gain error only scales a difference that is zero when nothing is wrong. Set the deviation to zero: the command is zero whatever the bias.'],
+    ['Three exposures, named', 'Filter phase: 15 Hz Butterworth, < 5 ms in 0–10 Hz, checked. False alarms: a small torque with no fault to cancel — a disturbance the layer injects. Sensor failure: the detector\'s input is a load cell; a disconnection does not produce a fault report, it produces a broken detector — sensor redundancy is the named cover.'],
+    ['True fault, false alarm, normal — same axes', 'Three runs of the teaching model. The point is the size of the middle one. Measured: corrective impulse 0.099 N·m·s/kg for true faults vs 0.021 for false alarms (p = 0.0034), ≈ 5×; and the false-alarm condition was indistinguishable from normal walking on margin of stability (p = 0.95).'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S === 0) {
+      const D = Pl.panel(0, 0, 1, .82, [0, 10, 0, 6], false); D.frame('additive, not switching');
+      const box = (x, y, w, t, c) => { D.poly([[x, y], [x + w, y], [x + w, y + 1.1], [x, y + 1.1]], c, 2.5, null, c, true); D.text([x + w / 2, y + .55], t, '--ink', 0, 4, { size: 13, align: 'center' }); };
+      box(.5, 3.8, 3, 'baseline (FSM / any)', '--a'); box(.5, 1.6, 3, 'FTM layer', '--c'); D.dot([5.2, 3.3], 16, '--ink', true); D.text([5.2, 3.3], '+', '--ink', 0, 5, { size: 16, align: 'center' }); box(6.6, 2.75, 2.8, 'knee', '--grey');
+      D.arrow([3.5, 4.35], [1.5, -.85], '--a', 2.5, 'τ_base'); D.arrow([3.5, 2.15], [1.5, .95], '--c', 2.5, 'τ_FTM'); D.arrow([5.6, 3.3], [1, 0], '--ink', 2.5);
+      D.text([5, .7], 'baseline always engaged · FTM only adds · inputs: prosthesis-side kinematics and kinetics', '--muted', 0, 0, { size: 12, align: 'center' });
+    } else if (S === 1) {
+      const xs = [...Array(81)].map((_, i) => -1 + i / 40), G = (x, b, g) => (1 + g) * 60 * x + b, cmd = (G(s.dev + .3, s.bias, s.gerr) - G(.3, s.bias, s.gerr)), truth = G(s.dev + .3, 0, 0) - G(.3, 0, 0);
+      const P = Pl.panel(0, 0, .6, .82, [-1, 1, -80, 80], false);
+      P.series([{ pts: xs.map(x => [x, G(x, 0, 0)]), cl: '--grey', w: 1.5, dash: [4, 3], label: 'true map' }, { pts: xs.map(x => [x, G(x, s.bias, s.gerr)]), cl: '--b', w: 2.5, label: 'learned map with bias + gain error' }], { title: 'G_fsm: state → FSM torque' });
+      P.dot([.3, G(.3, s.bias, s.gerr)], 6, '--c'); P.dot([.3 + s.dev, G(.3 + s.dev, s.bias, s.gerr)], 6, '--bad'); P.text([.3, G(.3, s.bias, s.gerr)], 'x̂', '--c', -16, -6, { size: 12 }); P.text([.3 + s.dev, G(.3 + s.dev, s.bias, s.gerr)], 'x', '--bad', 8, -6, { size: 12 });
+      NN.lines(Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false), [['τ_FTM = G(x̂) − G(x)', '--ink'], ['bias ' + f(s.bias, 1) + ' N·m: appears twice,', '--b'], [' cancels exactly', '--c'], ['gain error ' + f(100 * s.gerr, 0) + ' %: scales', '--b'], [' the difference only', '--muted'], ['', ''], ['commanded ' + f(-cmd, 2) + ' N·m', '--c'], ['ideal     ' + f(-truth, 2) + ' N·m', '--grey'], [s.dev === 0 ? 'x = x̂ → zero, any bias' : '', '--c']], { top: .1, gap: .09 });
+    } else if (S === 2) {
+      const T = Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false); T.frame('remaining exposures');
+      NN.lines(T, [['filter phase   15 Hz 2nd-order on τ_FTM → < 5 ms group delay in 0–10 Hz', '--e'], ['               checked against detection time and stance sub-phase duration', '--muted'], ['false alarms   a torque with no fault to cancel = a disturbance the layer injects', '--d'], ['               measured impulse 0.021 vs 0.099 N·m·s/kg; MoS vs normal p = 0.95', '--muted'], ['sensor failure the detector\'s input is a load cell: disconnection → a broken detector,', '--bad'], ['               not a fault report → sensor redundancy on critical FTM inputs', '--muted']], { top: .15, gap: .12 });
+    } else {
+      const c = runs(s), sk = a => a.filter((_, i) => i % 4 === 0), P = Pl.panel(0, 0, .62, .82, [0, 1.25, -6, 6], false);
+      P.series([{ pts: sk(c.t.t.map((t, i) => [t, c.t.tf[i]])), cl: '--bad', w: 2.5, label: 'τ_FTM, true fault' }, { pts: sk(c.fa.t.map((t, i) => [t, c.fa.tf[i]])), cl: '--d', w: 2.5, label: 'τ_FTM, false alarm' }, { pts: sk(c.n.t.map((t, i) => [t, c.n.tf[i]])), cl: '--grey', w: 1.5, label: 'normal (0)' }], { title: 'compensatory torque (N·m), teaching model' });
+      const B = Pl.panel(.63, 0, .37, .5, [0, 2, 0, .12], false); B.frame('quoted impulse (N·m·s/kg)'); NN.bars(B, [R.impTrue, R.impFalse], { labels: ['true fault', 'false alarm'], cols: ['--bad', '--d'], d: 3 });
+      NN.lines(Pl.panel(.63, .52, .37, .3, [0, 1, 0, 1], false), [['model: ' + f(c.t.impulse, 4) + ' vs ' + f(c.fa.impulse, 4), '--ink'], ['quoted ratio ≈ ' + f(R.impTrue / R.impFalse, 1) + '×', '--c']], { top: .3, gap: .3 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 1 ? 'make the added term vanish identically in the nominal case and its errors cannot accumulate (the feedforward/feedback argument)' : S === 3 ? 'the size of the false-alarm impulse is what justifies a sensitive detector — a measurement, not an argument' : 'τ_Final(t) = τ_base(t) + τ_FTM(t)', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st();
+    const rows = [`${E(`τ_Final = τ_base + τ_FTM`)}`,
+`${E(`τ_FTM = Ĝ(x̂) − Ĝ(x),  Ĝ(x) = (1 + ε)G(x) + b
+      = (1 + ε)(G(x̂) − G(x))      ← b gone
+ε = ${f(s.gerr, 2)}, b = ${f(s.bias, 1)}`)}`,
+`${ul(['filter: < 5 ms, checked', 'false alarm: 0.021 N·m·s/kg, MoS p = 0.95 vs normal', 'sensor failure: needs redundancy below the FTM'])}`,
+`${E(`impulse = ∫|τ_FTM| dt / m
+quoted: ${R.impTrue} (true) vs ${R.impFalse} (false), p = ${R.impP}`)}`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

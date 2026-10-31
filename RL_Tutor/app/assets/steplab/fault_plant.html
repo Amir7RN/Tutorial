@@ -1,0 +1,69 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Which signal to trust</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { lv: v.lv / 100, alpha: v.alpha / 100 }; };
+let TR = null;
+const trial = s => { const k = s.alpha; if (!TR || TR.k !== k) TR = { k, r: FAULT.trial({ alpha: s.alpha, mode: 'stair ascent', ftm: false, noise: .02 }) }; return TR.r; };
+const ts = [...Array(1250)].map((_, i) => i * 1e-3);
+const loadN = t => FAULT.load(t) / 735;
+const cand = lv => { const out = []; for (let i = 1; i < 774; i++) { const a = loadN(ts[i - 1]) - lv, b = loadN(ts[i]) - lv; if (a * b <= 0 && a !== b) out.push(i); } return out; };
+SL.app({
+  title: 'The plant, and which signal to trust',
+  sub: 'A knee fault moves the proximal segments first. Knee velocity is the sensitive signal; axial load is the robust one. The whole architecture rests on that asymmetry.',
+  view: '2d',
+  legend: [['--a', 'axial load (robust)'], ['--e', 'knee velocity (sensitive)'], ['--grey', 'nominal'], ['--bad', 'fault window'], ['--c', 'loading'], ['--d', 'unloading']],
+  controls: [
+    { id: 'lv', label: 'load level (step 2)', min: 10, max: 95, value: 60, fmt: x => x + ' % of peak' },
+    { id: 'alpha', label: 'fault severity α (step 1)', min: 0, max: 100, value: 100, fmt: x => f(x / 100) },
+  ],
+  steps: [
+    ['What is measured on this device', 'Potentiometer at the knee (angle). Six-axis ATI Mini58 load cell between foot and pylon (axial load). Two IMUs, socket/thigh and shank. Nothing external — no motion capture, no instrumented floor: self-contained, which is what makes it a candidate for daily use.'],
+    ['The asymmetry the design rests on', 'Prior work: knee angular velocity is highly sensitive to control errors; axial load is relatively robust. So load is the INPUT (the fault has not corrupted it) and velocity is the OUTPUT (the fault visibly moves it). Inject a fault and compare the two traces.'],
+    ['Why the derivative of load is in the input', 'u = [F_p, Ḟ_p] → predicted knee velocity. A given load occurs twice per stance — loading and unloading — with different knee velocities. Load alone is ambiguous; load plus its sign of change is not. Slide the load level.'],
+    ['Why momentum is the compensation variable', 'H_knee = Σ_{thigh, shank} (I_s ω_s + r × m_s v_s). A wrong knee torque acts on the adjacent segments first, so their momentum about the joint is the earliest informative measure — and it correlated with perceived instability in prior work. Compensation is scaled by a momentum deviation, not a fixed action.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, r = trial(s), sk = (a, k = 5) => a.filter((_, i) => i % k === 0);
+    if (S === 0) {
+      const D = Pl.panel(0, 0, .5, .82, [-1, 1, -.2, 2]); D.frame('sensors (self-contained)');
+      D.line([0, 1.9], [0, 1.05], '--a', 10); D.dot([0, 1.05], 9, '--ink', true); D.line([0, 1.05], [.05, .25], '--e', 8); D.poly([[-.05, .1], [.3, .1], [.3, 0], [-.05, 0]], '--grey', 2, null, '--grey', true);
+      [['potentiometer: knee angle', [0, 1.05], '--ink'], ['IMU: socket / thigh', [0, 1.5], '--a'], ['IMU: shank', [.03, .6], '--e'], ['ATI Mini58: axial load', [.05, .2], '--b']].forEach(([t, p, c]) => { D.dot(p, 6, c); D.text(p, t, c, 12, 4, { size: 12 }); });
+      NN.lines(Pl.panel(.51, 0, .49, .82, [0, 1, 0, 1], false), [['no motion capture', '--bad'], ['no instrumented floor', '--bad'], ['everything on the device', '--c'], ['→ daily-use candidate', '--c']], { top: .2, gap: .14 });
+    } else if (S <= 2) {
+      const A = Pl.panel(0, 0, .5, .4, [0, 1.25, -.05, 1.25], false);
+      A.series([{ pts: sk(ts.map(t => [t, loadN(t)])), cl: '--a', w: 2.5, label: 'axial load F_p / body weight' }], { title: 'robust input' });
+      const B = Pl.panel(0, .41, .5, .41, [0, 1.25, -2.5, 3], false);
+      B.series([{ pts: sk(r.t.map((t, i) => [t, r.mu[i]])), cl: '--grey', w: 1.5, dash: [4, 3], label: 'nominal' }, { pts: sk(r.t.map((t, i) => [t, r.w[i]])), cl: '--e', w: 2.5, label: 'measured, α = ' + f(s.alpha) }], { title: 'sensitive output: knee velocity (rad/s)' });
+      [A, B].forEach(P => P.poly([[r.win[0], P.b[2]], [r.win[1], P.b[2]], [r.win[1], P.b[3]], [r.win[0], P.b[3]]], null, 0, null, '--bad', true));
+      if (S === 2) { A.line([0, s.lv], [1.25, s.lv], '--ink', 1, [3, 3]); cand(s.lv).forEach((i, j) => { A.dot([ts[i], s.lv], 6, j === 0 ? '--c' : '--d'); B.dot([ts[i], FAULT.nominal(ts[i])[0]], 6, j === 0 ? '--c' : '--d'); }); }
+      const R = Pl.panel(.51, 0, .49, .82, [0, 1, 0, 1], false); R.frame();
+      const c = cand(s.lv), vs = c.map(i => FAULT.nominal(ts[i])[0]);
+      NN.lines(R, S === 1 ? [['fault changes the KNEE TORQUE law', '--bad'], ['load: barely moves', '--a'], ['  → use it as the INPUT', '--a'], ['velocity: deviates at once', '--e'], ['  → use it as the OUTPUT', '--e'], ['', ''], ['page 2: two signals from one', '--muted'], [' device — one blind to the fault', '--muted'], [' (reference), one that sees it', '--muted'], [' immediately (detector)', '--muted']]
+        : [['load = ' + f(100 * s.lv, 0) + ' % of peak occurs', '--ink'], ['  ' + c.length + ' times in stance', '--ink'], ...c.map((i, j) => ['  ' + (j === 0 ? 'loading   Ḟ>0' : 'unloading Ḟ<0') + ' : θ̇ = ' + f(vs[j], 2), j === 0 ? '--c' : '--d']), ['differ by ' + (vs.length > 1 ? f(Math.abs(vs[0] - vs[1]), 2) : '—') + ' rad/s', '--ink'], ['', ''], ['sign of Ḟ resolves it', '--c']], { top: .1, gap: .085 });
+    } else {
+      const H = Pl.panel(0, 0, .6, .82, [0, 1.25, -1.2, 1.2], false), hn = sk(r.t.map((t, i) => [t, r.Hn[i]])), hh = sk(r.t.map((t, i) => [t, r.H[i]]));
+      H.series([{ pts: hn, cl: '--grey', w: 1.5, dash: [4, 3], label: 'nominal H_knee' }, { pts: hh, cl: '--e', w: 2.5, label: 'with fault' }], { title: 'thigh + shank momentum about the knee (kg·m²/s)' });
+      H.poly([[r.win[0], -1.2], [r.win[1], -1.2], [r.win[1], 1.2], [r.win[0], 1.2]], null, 0, null, '--bad', true);
+      NN.lines(Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false), [['H = I_th ω_th + I_sh ω_sh', '--ink'], ['  (+ r × m v terms)', '--muted'], ['earliest informative', '--e'], [' measure of the fault', '--e'], ['correlated with perceived', '--c'], [' instability (prior work)', '--c'], ['→ compensation scaled by', '--ink'], [' a momentum deviation', '--ink']], { top: .1, gap: .1 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 2 ? 'u(t) = [F_p, Ḟ_p] → predicted knee velocity (a GP, page 111)' : S === 3 ? 'H_knee = Σ_{s∈{th,sh}} (I_s ω_s + r_{knee→s} × m_s v_s)' : 'load → input (uncorrupted) · velocity → output (moves at once)', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st(), c = cand(s.lv);
+    const rows = [`<p>Potentiometer (ALPS RDC503013A), ATI Mini58, 2 × MicroStrain 3DM-CV7-AHRS.</p>`,
+`${E(`input  u = F_p (robust)
+output y = θ̇_knee (sensitive)`)}`,
+`${E(`u(t) = [F_p(t), Ḟ_p(t)]ᵀ  →  θ̇̂_knee(t)
+at ${f(100 * s.lv, 0)} %: ${c.map(i => f(FAULT.nominal(ts[i])[0], 3)).join(' and ')} rad/s`)}`,
+`${E(`H_knee = Σ_{s ∈ {th, sh}} (I_s ω_s + r_{knee→s} × m_s v_s)`)}`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

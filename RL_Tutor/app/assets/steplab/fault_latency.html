@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>43 ms or 103 ms</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, R = FAULT.RES;
+const st = () => ({ pers: SL.v.pers, grow: SL.v.grow, filt: SL.v.filt });
+const lat = s => s.pers + s.grow + s.filt;
+SL.app({
+  title: '43 ms or 103 ms: the whole result',
+  sub: 'Every remaining failure in the study was a late detection. That single sentence is the design specification for the next version.',
+  view: '2d',
+  legend: [['--c', 'effective (43 ms)'], ['--bad', 'still unstable (103 ms)'], ['--b', 'persistence'], ['--d', 'residual growth'], ['--e', 'filter'], ['--a', 'your design']],
+  controls: [
+    { id: 'pers', label: 'persistence N_c', min: 1, max: 30, value: 10, fmt: x => x + ' ms' },
+    { id: 'grow', label: 'residual growth', min: 5, max: 150, value: 35, fmt: x => x + ' ms' },
+    { id: 'filt', label: 'filter group delay', min: 0, max: 20, value: 5, fmt: x => x + ' ms' },
+  ],
+  steps: [
+    ['The finding, stated as it deserves', 'Compensation worked when detection landed at 43.1 ± 11.5 ms. The perturbations still rated Medium or Large had an average detection delay of 103.5 ms. Same controller, same compensator, same participants — different latency, different outcome.'],
+    ['So false alarms are not the number to optimise', 'A modest rise in false alarms is an acceptable system-level trade if it buys earlier detection: false alarms cost a fifth of the corrective impulse and no measurable instability; a late detection costs balance.'],
+    ['Disturbance rejection with a dead time', 'Page 1: delay is pure phase loss. Page 8: a first-order plant under P control is unconditionally stable until delay sells the missing quarter cycle. Here the delay is in DECIDING, and the consequence has the same shape: the correction arrives after the state it was computed for has moved on.'],
+    ['It is integration, not statistics', 'The uncorrected torque error integrates into momentum. Let it through for 100 ms instead of 40 ms and roughly 2.5× the momentum change reaches thigh and shank — and that is what the margin of stability inherits.'],
+    ['Build the latency budget', 'Persistence and filter are fixed choices; residual growth time is what a better detector attacks. Assemble a detection time and watch the outcome metrics move.'],
+    ['Spend milliseconds, not precision', 'Anything that makes the residual cross threshold sooner — a better nominal model, a second sensitive signal, a shorter persistence window with smarter voting — buys outcome directly. Anything that makes the detector more conservative spends outcome to buy a metric nobody feels.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, L = lat(s);
+    if (S <= 1) {
+      const A = Pl.panel(0, 0, .5, .82, [0, 2, 0, 130], false); A.frame('detection delay (ms), quoted'); NN.bars(A, [R.detOk, R.detLate], { labels: ['compensation worked', 'still Medium/Large'], cols: ['--c', '--bad'], d: 1 });
+      const B = Pl.panel(.51, 0, .49, .82, [0, 2, 0, .12], false); B.frame(S === 0 ? 'same controller, same people' : 'corrective impulse (N·m·s/kg)');
+      if (S === 1) NN.bars(B, [R.impTrue, R.impFalse], { labels: ['true fault', 'false alarm'], cols: ['--bad', '--d'], d: 3 });
+      else NN.lines(B, [['detection is the only', '--ink'], [' thing that differs', '--ink'], ['', ''], ['43.1 ± 11.5 ms → worked', '--c'], ['103.5 ms → still unstable', '--bad']], { top: .2, gap: .12 });
+    } else if (S <= 3) {
+      const ts = [...Array(301)].map((_, i) => i), mom = d => ts.map(t => [t, Math.min(t, d, 200) * 1 + Math.max(0, Math.min(t, 200) - d) * .15]);
+      const P = Pl.panel(0, 0, .64, .82, [0, 300, 0, 130], false);
+      P.series([{ pts: mom(43), cl: '--c', w: 2.5, label: 'detect at 43 ms' }, { pts: mom(103), cl: '--bad', w: 2.5, label: 'detect at 103 ms' }, { pts: mom(L), cl: '--a', w: 1.5, dash: [4, 3], label: 'your budget: ' + L + ' ms' }], { title: S === 2 ? 'correction arrives after the state moved on' : '∫ uncorrected torque error ≈ momentum delivered (a.u.)' });
+      const m43 = 43 + 157 * .15, m103 = 103 + 97 * .15;
+      NN.lines(Pl.panel(.65, 0, .35, .82, [0, 1, 0, 1], false), [['delivered momentum', '--muted'], [' 43 ms:  ' + f(m43, 0) + ' (a.u.)', '--c'], [' 103 ms: ' + f(m103, 0), '--bad'], [' ratio ' + f(m103 / m43, 2) + '×', '--bad'], ['uncorrected part only:', '--muted'], [' 103/43 = ' + f(103 / 43, 2) + '×', '--bad'], ['', ''], ['dead time in DECIDING', '--ink'], [' = phase lost (page 1)', '--muted']], { top: .1, gap: .09 });
+    } else {
+      const D = Pl.panel(0, 0, 1, .4, [0, 220, 0, 2], false); D.frame('your detection-to-compensation latency: ' + L + ' ms');
+      const seg = (a, b, c, t) => { D.poly([[a, .6], [b, .6], [b, 1.4], [a, 1.4]], c, 1.5, null, c, true); if (b - a > 12) D.text([(a + b) / 2, 1], t, '--ink', 0, 4, { size: 11, align: 'center' }); };
+      seg(0, s.grow, '--d', 'growth ' + s.grow); seg(s.grow, s.grow + s.pers, '--b', 'N_c ' + s.pers); seg(s.grow + s.pers, L, '--e', 'filter'); D.line([43, 0], [43, 2], '--c', 2, [4, 3]); D.line([103.5, 0], [103.5, 2], '--bad', 2, [4, 3]); D.line([200, 0], [200, 2], '--grey', 2);
+      const M = Pl.panel(0, .42, .64, .4, [0, 1, -.35, .15], false); M.series([{ pts: FAULT.mos(Math.min(200, L), true), cl: L <= 60 ? '--c' : L < 100 ? '--b' : '--bad', w: 2.5, label: 'MoS with this latency' }, { pts: FAULT.mos(0, false), cl: '--grey', w: 1, dash: [4, 3], label: 'uncompensated' }], { title: 'margin of stability (m)' });
+      const cls = L <= 60 ? 'effective' : L < 100 ? 'marginal' : 'late';
+      NN.lines(Pl.panel(.65, .42, .35, .4, [0, 1, 0, 1], false), [['total ' + L + ' ms', '--a'], ['let through ' + f(100 * Math.min(1, L / 200), 0) + ' %', '--bad'], ['class: ' + cls, cls === 'effective' ? '--c' : cls === 'late' ? '--bad' : '--b']], { top: .2, gap: .25 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 5 ? 'spend milliseconds, not precision' : 'latency, not gain, decides success', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st();
+    const rows = [`${E(`effective ${R.detOk} ± ${R.detOkSd} ms   vs   still unstable ${R.detLate} ms`)}`,
+`${E(`impulse: false ${R.impFalse} vs true ${R.impTrue} N·m·s/kg  (≈ 1/5)`)}`,
+`${E(`delay T: ∠e^(−jωT) = −ωT, unbounded`)}`,
+`${E(`ΔH ≈ ∫₀^(t_det) Δτ dt   →  ∝ t_det for a steady error`)}`,
+`${E(`t_det = growth + N_c + filter = ${s.grow} + ${s.pers} + ${s.filt} = ${lat(s)} ms`)}`,
+`<p>Better nominal model, a second sensitive signal, smarter voting: each buys milliseconds.</p>`];
+    return rows[S];
+  },
+  stats() { return `<span><b>latency</b>${lat(st())} ms</span>`; },
+});
+</script>
+</body></html>

@@ -1,0 +1,71 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real time on a prosthetic knee</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, R = FAULT.RES;
+const st = () => { const v = SL.v; return { det: v.det, fault: v.fault, pers: v.pers, grow: v.grow }; };
+SL.app({
+  title: 'Real time on a prosthetic knee',
+  sub: 'A 200 ms fault, a 10 ms persistence test, a 54 ms detection and a 200–250 ms human: every number in this project is a millisecond budget. Source: Active Fault-Tolerant Control of Robotic Knee Prostheses for Safe Locomotion (IEEE T-RO submission). Simulations are teaching models.',
+  view: '2d',
+  legend: [['--bad', 'fault window / let through'], ['--b', 'persistence'], ['--d', 'residual growth'], ['--e', 'torque filter'], ['--c', 'compensated'], ['--grey', 'volitional response']],
+  controls: [
+    { id: 'det', label: 'detection time', min: 10, max: 180, value: 54, fmt: x => x + ' ms' },
+    { id: 'fault', label: 'fault duration', min: 100, max: 300, step: 10, value: 200, fmt: x => x + ' ms' },
+    { id: 'pers', label: 'persistence N_c (step 5)', min: 1, max: 30, value: 10, fmt: x => x + ' ms' },
+    { id: 'grow', label: 'residual growth (step 5)', min: 5, max: 120, value: 35, fmt: x => x + ' ms' },
+  ],
+  buttons: [{ label: 'effective case (43 ms)', onclick: () => { SL.setControl('det', 43); SL.redraw(); } }, { label: 'late case (103 ms)', onclick: () => { SL.setControl('det', 103); SL.redraw(); } }],
+  steps: [
+    ['One millisecond, four jobs', 'A 1 kHz control task on TwinCAT: one sample, one FSM state evaluation, one detection decision, one compensatory torque — every millisecond.'],
+    ['The 200 ms fault, and why that length', 'Shorter than the 200–250 ms volitional reactive balance response, so the measurement captures the mechanical consequence of the fault, not the user\'s voluntary recovery. Elegant experiment design — and a hard constraint: whatever the FTM does must happen inside that window.'],
+    ['10 ms of persistence', 'All 10 consecutive samples must exceed the threshold before a fault is declared: 10 ms of the 200 ms budget spent buying immunity to single-sample noise.'],
+    ['Filters, with their delay checked', 'Load and IMU rates low-passed at 30 Hz (4th-order Butterworth), keeping the 0–8 Hz band that is biomechanically real. The compensatory torque is filtered at 15 Hz (2nd order): under 5 ms group delay in 0–10 Hz — checked against the detection time it could spoil.'],
+    ['Quoted performance', '100 % sensitivity across all walking conditions; false alarms 10.8 ± 10.0 %; detection 54.4 ± 28.7 ms. Cases still perceived unstable had an average detection delay of 103.5 ms; cases where compensation worked, 43.1 ± 11.5 ms.'],
+    ['Where the milliseconds go', '200 ms = 10 (persistence) + ~30–90 (residual grows past threshold) + ~5 (torque filter) + the rest (compensated). Persistence and filter are fixed costs you chose; residual growth depends on severity and gait phase, and it is the only term a designer can attack.'],
+    ['Slide the detection time', 'The fault enters as a disturbance over its window; compensation removes most of what remains once detection fires. Nothing else changes — only WHEN. Watch the margin of stability.'],
+    ['The defining constraint', 'A prosthesis fault does its damage before the wearer can react, so a supervisory layer is useful only if it fits inside a window chosen to exclude human reaction. That is why the detector is tuned for speed, not precision.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, D = Pl.panel(0, 0, 1, .38, [-20, 320, 0, 4], false); D.frame('timeline (ms from fault onset)');
+    const seg = (a, b, y, c, t) => { if (b <= a) return; D.poly([[a, y], [b, y], [b, y + .7], [a, y + .7]], c, 1.5, null, c, true); if (t) D.text([(a + b) / 2, y + .35], t, '--ink', 0, 4, { size: 11, align: 'center' }); };
+    seg(0, s.fault, 2.8, '--bad', s.fault + ' ms injected fault (impedance misclassification)');
+    seg(200, 250, 1.9, '--grey', 'volitional 200–250');
+    const pers = S === 5 ? s.pers : 10, grow = S === 5 ? s.grow : Math.max(0, (S === 6 || S === 7 ? s.det : 54) - 10);
+    seg(0, grow, 1, '--d', S >= 5 ? 'residual grows' : ''); seg(grow, grow + pers, 1, '--b', 'N_c'); seg(grow + pers, grow + pers + 5, 1, '--e', '');
+    seg(grow + pers + 5, s.fault, 1, '--c', 'compensated');
+    D.text([grow + pers, .5], 'detect @ ' + (grow + pers) + ' ms', '--b', 0, 0, { size: 11, align: 'center' });
+    if (S <= 3) { const C = Pl.panel(0, .4, 1, .42, [0, 10, 0, 4], false); C.frame(S === 0 ? 'one 1 ms tick' : S === 3 ? 'filters' : S === 2 ? 'persistence: AND of 10 samples' : 'why 200 ms');
+      if (S === 0) ['sample load, angle, IMUs', 'FSM state', 'residual vs threshold', 'τ_base + τ_FTM'].forEach((t, i) => { C.poly([[.3 + i * 2.4, 1.4], [2.3 + i * 2.4, 1.4], [2.3 + i * 2.4, 2.6], [.3 + i * 2.4, 2.6]], ['--a', '--d', '--b', '--c'][i], 2, null, ['--a', '--d', '--b', '--c'][i], true); C.text([1.3 + i * 2.4, 2], t, '--ink', 0, 4, { size: 12, align: 'center' }); });
+      if (S === 2) { const r = NN.rng(4); for (let i = 0; i < 20; i++) { const ex = i >= 6 && i < 17 && !(i === 8 && false); C.poly([[.3 + i * .47, 1.2], [.7 + i * .47, 1.2], [.7 + i * .47, 2.8], [.3 + i * .47, 2.8]], ex ? '--b' : '--line', 1.5, null, ex ? '--b' : null, true); } C.text([5, .6], 'samples 7–16 all above threshold → declared on the 10th', '--b', 0, 0, { size: 12, align: 'center' }); }
+      if (S === 3) NN.lines(C, [['load, IMU rates   30 Hz, 4th-order Butterworth   keeps 0–8 Hz (biomechanically real)', '--a'], ['τ_FTM             15 Hz, 2nd-order Butterworth   < 5 ms group delay in 0–10 Hz', '--e'], ['checked against detection time and stance sub-phase duration, not assumed negligible', '--muted']], { top: .25, gap: .25 });
+      if (S === 1) NN.lines(C, [['fault (200 ms) < volitional response (200–250 ms)', '--bad'], ['→ measures the mechanical consequence, not the voluntary recovery', '--ink'], ['→ the FTM must act inside the window', '--c']], { top: .25, gap: .25 }); }
+    else if (S === 4) { const C = Pl.panel(0, .4, .5, .42, [0, 3, 0, 120], false); C.frame('detection time (ms), quoted'); NN.bars(C, [R.detOk, R.det, R.detLate], { labels: ['effective', 'all', 'still unstable'], cols: ['--c', '--b', '--bad'], d: 1 });
+      NN.lines(Pl.panel(.51, .4, .49, .42, [0, 1, 0, 1], false), [['sensitivity 100 %', '--c'], ['false alarms 10.8 ± 10.0 %', '--b'], ['detection 54.4 ± 28.7 ms', '--b'], ['effective 43.1 ± 11.5 ms', '--c'], ['still unstable: 103.5 ms', '--bad']], { top: .15, gap: .16 }); }
+    else { const M = Pl.panel(0, .4, .64, .42, [0, 1, -.35, .15], false), a = FAULT.mos(s.det, true, s.fault), n0 = FAULT.mos(0, false, s.fault).map(p => [p[0], p[1]]), nn = FAULT.mos(0, true, s.fault);
+      M.series([{ pts: n0, cl: '--bad', w: 1.5, dash: [4, 3], label: 'uncompensated' }, { pts: a, cl: '--a', w: 2.5, label: 'detect @ ' + s.det + ' ms' }, { pts: nn, cl: '--c', w: 1, dash: [2, 3], label: 'instant' }], { title: 'margin of stability (m)' });
+      const lt = Math.min(1, s.det / s.fault), worst = Math.min(...a.map(p => p[1])), w0 = Math.min(...nn.map(p => p[1]));
+      NN.lines(Pl.panel(.65, .4, .35, .42, [0, 1, 0, 1], false), [['fault let through', '--muted'], ['  ' + f(100 * lt, 0) + ' %', '--bad'], ['worst MoS dip vs instant', '--muted'], ['  ' + f(100 * (w0 - worst), 1) + ' cm', '--bad'], ['detection vs 200 ms', '--muted'], ['  ' + f(100 * s.det / 200, 0) + ' % of the window', '--ink']], { top: .12, gap: .14 }); }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 5 ? `${s.grow} + ${s.pers} + 5 = ${s.grow + s.pers + 5} ms to compensation; ${Math.max(0, s.fault - s.grow - s.pers - 5)} ms of the fault compensated` : S === 7 ? 'tuned for speed, not precision — the next pages justify it with numbers' : 'every number is a millisecond budget (page 1)', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st();
+    const rows = [`<p>1 kHz, TwinCAT, Simulink-authored control.</p>`,
+`${E(`fault 200 ms  <  volitional 200–250 ms`)}`,
+`${E(`Γ = 1 ⇔ |r(t − i)| > T  ∀ i = 0…9   (10 ms at 1 kHz)`)}`,
+`${E(`30 Hz 4th-order on load/IMU;  15 Hz 2nd-order on τ_FTM (< 5 ms)`)}`,
+`${E(`sensitivity 100 %, FAR 10.8 ± 10.0 %, t_det 54.4 ± 28.7 ms
+effective 43.1 ± 11.5 ms  vs  still unstable 103.5 ms`)}`,
+`${E(`200 ms = 10 (N_c) + ~30–90 (growth) + ~5 (filter) + rest`)}`,
+`${E(`MoS = BoS − XCoM,  XCoM = x + v/√(g/h)
+let through = ${f(Math.min(100, 100 * s.det / s.fault), 0)} % of the pulse`)}`,
+`<p>A supervisory layer is only useful inside a window chosen to exclude human reaction.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

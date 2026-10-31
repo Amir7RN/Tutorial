@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gaussian processes as observers of normal</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => ({ k: SL.v.k / 10, noise: SL.v.noise / 100, a: SL.v.a / 100, n: SL.v.n, ell: SL.v.ell / 100 });
+let BROKEN = false;
+/* a small exact GP on gait phase with a periodic kernel: what "five minutes of normal walking" teaches */
+const kern = (a, b, l) => Math.exp(-2 * Math.sin(Math.PI * (a - b)) ** 2 / (l * l));
+let GP = null;
+const fit = s => { const key = [s.n, s.ell].join(); if (GP && GP.key === key) return GP; const r = NN.rng(9), X = [], Y = [];
+  for (let i = 0; i < s.n; i++) { const ph = r(), [mu, sg] = FAULT.nominal(ph * 1.25); X.push(ph); Y.push(mu + sg * NN.gauss(r)); }
+  const n = X.length, sn2 = .03, K = X.map(a => X.map(b => kern(a, b, s.ell))), L = K.map(r => r.slice()); for (let i = 0; i < n; i++) L[i][i] += sn2;
+  for (let j = 0; j < n; j++) { for (let k = 0; k < j; k++) L[j][j] -= L[j][k] ** 2; L[j][j] = Math.sqrt(Math.max(1e-12, L[j][j])); for (let i = j + 1; i < n; i++) { for (let k = 0; k < j; k++) L[i][j] -= L[i][k] * L[j][k]; L[i][j] /= L[j][j]; } for (let i = 0; i < j; i++) L[i][j] = 0; }
+  const solve = b => { const z = b.slice(); for (let i = 0; i < n; i++) { for (let k = 0; k < i; k++) z[i] -= L[i][k] * z[k]; z[i] /= L[i][i]; } for (let i = n - 1; i >= 0; i--) { for (let k = i + 1; k < n; k++) z[i] -= L[k][i] * z[k]; z[i] /= L[i][i]; } return z; };
+  const al = solve(Y);
+  /* noise variance learned from residuals stands in for the walking variability */
+  GP = { key, X, Y, pred: p => { const ks = X.map(x => kern(p, x, s.ell)), m = ks.reduce((a, k, i) => a + k * al[i], 0), v = solve(ks), var_ = 1 + sn2 - ks.reduce((a, k, i) => a + k * v[i], 0); return [m, Math.sqrt(Math.max(1e-6, var_)) * .18 + .12]; } }; return GP; };
+let TR = null;
+const trial = s => { const key = [s.k, s.noise, s.a].join(); if (!TR || TR.key !== key) TR = { key, r: FAULT.trial({ k: s.k, noise: s.noise, alpha: s.a, ftm: false, mode: 'ramp descent' }), q: FAULT.trial({ k: s.k, noise: s.noise, alpha: 0, ftm: false, seed: 40 }) }; return TR; };
+SL.app({
+  title: 'Gaussian processes as observers of normal',
+  sub: 'Five minutes of undisturbed walking, three learned maps, and a prediction that carries its own uncertainty — which is what the threshold is made of. The GP here is a small exact one on gait phase; the paper uses sparse FITC GPs on load inputs.',
+  view: '2d',
+  legend: [['--a', 'GP mean μ'], ['--b', '±kσ band'], ['--ink', 'training strides'], ['--e', 'measured velocity'], ['--bad', 'fault / exceedance']],
+  controls: [
+    { id: 'k', label: 'threshold multiplier k', min: 3, max: 30, value: 10, fmt: x => f(x / 10, 1) },
+    { id: 'noise', label: 'sensor noise', min: 0, max: 40, value: 10, fmt: x => f(x / 100) + ' rad/s' },
+    { id: 'a', label: 'fault severity α', min: 0, max: 100, value: 100, fmt: x => f(x / 100) },
+    { id: 'n', label: 'training samples (step 2)', min: 8, max: 120, value: 60 },
+    { id: 'ell', label: 'kernel length-scale (step 2)', min: 10, max: 100, value: 30, fmt: x => f(x / 100) },
+  ],
+  buttons: [{ label: 'disconnect load cell (step 4)', toggle: true, onclick: e => { BROKEN = !BROKEN; e.setAttribute('aria-pressed', BROKEN); SL.redraw(); } }],
+  steps: [
+    ['Three models, one job each', 'GP Velocity: robust input → nominal knee velocity (feeds the detector). GP Momentum: robust input → nominal knee momentum and its rate (the compensator\'s reference). GP FSM: kinetic state → the FSM torque that state implies (evaluated twice). All trained per participant on five minutes of normal walking — no population model — as sparse FITC GPs cheap enough for a 1 ms task.'],
+    ['Why a GP and not a physics model', 'Page 20\'s observer needs a model, and a human–prosthesis model is genuinely hard: socket interface, residual-limb dynamics and the user\'s own control vary by person and by day. A GP learns the map from a signal the fault does not corrupt to one it does — and returns a variance as well as a mean.'],
+    ['The variance IS the threshold', 'Watch the GP learn from training strides: a mean, and an uncertainty that is small where data is dense. T_vel = |μ| + kσ: the threshold is not a tuned constant, it is the model\'s own statement of how much this signal normally varies here in the cycle.'],
+    ['A fault against the nominal band', 'Widen k and the same fault takes longer to poke out; add sensor noise and the residual touches the band on its own. The detector\'s two failure directions, visible at once.'],
+    ['Where the estimate is vulnerable', 'The whole mechanism is driven by sensor-derived inputs, so a hard sensor failure — a disconnected load cell — impairs the FTM itself. Toggle it: the prediction collapses and the band no longer describes normal. Fault tolerance at one level needs redundancy at the level below.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S <= 2) {
+      const T = Pl.panel(0, 0, S === 2 ? .64 : 1, S === 2 ? .82 : .4, [0, 10, 0, 3], false); T.frame(S === 2 ? 'GP on gait phase' : 'three GPs');
+      if (S <= 1) { [['GP Velocity', 'F_p, Ḟ_p → θ̇̂ (detector)', '--a'], ['GP Momentum', 'F_p, Ḟ_p → Ĥ, Ḣ̂ (reference)', '--d'], ['GP FSM', 'state → τ_FSM (twice)', '--e']].forEach(([a, b, c], i) => { T.poly([[.3 + i * 3.3, .6], [3.3 + i * 3.3, .6], [3.3 + i * 3.3, 2.4], [.3 + i * 3.3, 2.4]], c, 2.5, null, c, true); T.text([1.8 + i * 3.3, 1.75], a, '--ink', 0, 0, { size: 13, align: 'center' }); T.text([1.8 + i * 3.3, 1.1], b, '--muted', 0, 0, { size: 11, align: 'center' }); });
+        NN.lines(Pl.panel(0, .42, 1, .4, [0, 1, 0, 1], false), S === 0 ? [['trained per participant on 5 min of undisturbed walking', '--ink'], ['body-mass distribution and individual gait already inside them', '--muted'], ['sparse GP, FITC approximation → affordable in a 1 ms task', '--c']] : [['physics model: socket, residual limb, user control — vary per person and per day', '--bad'], ['prior model-based prosthesis control: validated in simulation, not human-in-the-loop', '--muted'], ['GP: learn uncorrupted input → corrupted output, with a VARIANCE', '--c']], { top: .2, gap: .25 }); }
+      else { const g = fit(s), ph = [...Array(201)].map((_, i) => i / 200), P = Pl.panel(0, 0, .64, .82, [0, 1, -2.5, 3], false), pr = ph.map(p => g.pred(p));
+        P.series([{ pts: ph.map((p, i) => [p, pr[i][0] + s.k * pr[i][1]]), cl: '--b', w: 1.5, dash: [4, 3], label: '+kσ' }, { pts: ph.map((p, i) => [p, pr[i][0] - s.k * pr[i][1]]), cl: '--b', w: 1.5, dash: [4, 3], label: '−kσ' }, { pts: ph.map((p, i) => [p, pr[i][0]]), cl: '--a', w: 2.5, label: 'μ' }], { title: 'nominal knee velocity vs gait phase' });
+        g.X.forEach((x, i) => P.dot([x, g.Y[i]], 3, '--ink'));
+        NN.lines(Pl.panel(.65, 0, .35, .82, [0, 1, 0, 1], false), [['k(φ, φ′) periodic, ℓ = ' + f(s.ell), '--ink'], [s.n + ' training samples', '--ink'], ['μ(φ) = k*ᵀ(K + σₙ²I)⁻¹y', '--a'], ['σ²(φ) = k** − k*ᵀ(K+σₙ²I)⁻¹k*', '--b'], ['', ''], ['T_vel = |μ| + kσ', '--b'], ['= the model\'s own', '--muted'], [' statement of normal', '--muted'], [' variability here', '--muted']], { top: .1, gap: .09 }); }
+    } else {
+      const c = trial(s), r = c.r, q = c.q, sk = a => a.filter((_, i) => i % 3 === 0);
+      const w = BROKEN ? r.w.map((v, i) => v) : r.w, mu = BROKEN ? r.mu.map(() => 0) : r.mu, sg = BROKEN ? r.sg.map(() => .05) : r.sg;
+      const P = Pl.panel(0, 0, .64, .82, [0, 1.25, -3, 3.5], false);
+      P.series([{ pts: sk(r.t.map((t, i) => [t, mu[i] + s.k * sg[i]])), cl: '--b', w: 1.5, dash: [4, 3], label: '±kσ' }, { pts: sk(r.t.map((t, i) => [t, mu[i] - s.k * sg[i]])), cl: '--b', w: 1.5, dash: [4, 3] }, { pts: sk(r.t.map((t, i) => [t, mu[i]])), cl: '--a', w: 2, label: BROKEN ? 'μ (load cell disconnected!)' : 'μ' }, { pts: sk(r.t.map((t, i) => [t, w[i]])), cl: '--e', w: 1.6, label: 'measured θ̇' }], { title: 'measured velocity against the nominal band' });
+      P.poly([[r.win[0], -3], [r.win[1], -3], [r.win[1], 3.5], [r.win[0], 3.5]], null, 0, null, '--bad', true);
+      let ex = 0; q.res.forEach((v, i) => { if (Math.abs(v) > q.thr[i]) ex++; });
+      const peak = Math.max(...r.res.slice(r.k0, r.k1).map((v, i) => Math.abs(v) / r.thr[r.k0 + i]));
+      NN.lines(Pl.panel(.65, 0, .35, .82, [0, 1, 0, 1], false), BROKEN ? [['load cell gone:', '--bad'], [' input = 0 → μ = garbage', '--bad'], [' band no longer = normal', '--bad'], ['detector broken, not', '--ink'], [' a fault report', '--ink'], ['', ''], ['→ redundancy on critical', '--c'], ['  FTM inputs', '--c']]
+        : [['detection: ' + (r.detMs === null ? 'missed' : r.detMs + ' ms'), r.detMs === null ? '--bad' : '--c'], ['peak residual/threshold', '--muted'], ['  ' + f(peak, 2) + '×', '--e'], ['noise-only exceedances', '--muted'], ['  ' + f(100 * ex / q.res.length, 1) + ' % of samples', ex ? '--bad' : '--c'], ['', ''], ['wider k → later', '--muted'], ['more noise → false hits', '--muted']], { top: .1, gap: .09 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 4 ? 'the honest boundary of a supervisory layer: it cannot supervise its own blindness' : 'the threshold is the model\'s variance, not a tuned constant', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st();
+    const rows = [`${ul(['GP Velocity → detector', 'GP Momentum → compensator reference', 'GP FSM → evaluated at x̂ and x'])}`,
+`<p>Learn the map from a fault-blind signal to a fault-sensitive one, with uncertainty.</p>`,
+`${E(`μ(x*) = k*ᵀ(K + σₙ²I)⁻¹y
+σ²(x*) = k(x*, x*) − k*ᵀ(K + σₙ²I)⁻¹k*
+T_vel = |μ| + kσ,  k = ${f(s.k, 1)}`)}`,
+`${E(`r = θ̇ − μ;  detect when |r| > |μ| + kσ for N_c samples`)}`,
+`<p>Sensor redundancy on the load cell is the named next layer.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

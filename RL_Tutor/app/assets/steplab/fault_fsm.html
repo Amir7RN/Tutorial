@@ -1,0 +1,67 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FSM impedance and a wrong parameter set</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180, JE = .38;
+let MODE = 'ramp ascent', ST = 'SF';
+const st = () => ({ a: SL.v.a / 100, th: SL.v.th * D2R });
+const calc = s => { const n = FAULT.PARAMS.nominal[ST], e = FAULT.blend(MODE, s.a)[ST], tq = (P, th) => -P[0] * (th - P[2]); return { n, e, dK: e[0] - n[0], dEq: (e[2] - n[2]) / D2R, err: tq(e, s.th) - tq(n, s.th), dwn: Math.sqrt(e[0] / JE) - Math.sqrt(n[0] / JE), tq }; };
+const sel = (grp, val) => document.querySelectorAll('#btns button').forEach(b => { if (b.dataset.g === grp) b.setAttribute('aria-pressed', b.dataset.v === val); });
+SL.app({
+  title: 'FSM impedance, and what a wrong parameter set does',
+  sub: 'Four states, three numbers each. A locomotion-mode misclassification swaps the numbers, and the joint obeys them. Parameter sets are the teaching model\'s (ctrlcore/faulttol.py), not participant data.',
+  view: '2d',
+  legend: [['--c', 'nominal (level ground)'], ['--bad', 'faulty set'], ['--b', 'torque error'], ['--grey', 'equilibrium angles']],
+  controls: [
+    { id: 'a', label: 'severity α', min: 0, max: 100, value: 100, fmt: x => f(x / 100) },
+    { id: 'th', label: 'knee angle (evaluate at)', min: 0, max: 40, value: 20, fmt: x => x + '°' },
+  ],
+  buttons: [...FAULT.MODES.map(m => ({ label: m, toggle: true, pressed: m === MODE, onclick: e => { MODE = m; SL.redraw(); document.querySelectorAll('#btns button').forEach(b => FAULT.MODES.includes(b.textContent) && b.setAttribute('aria-pressed', b.textContent === m)); } })),
+    ...['SF', 'SE'].map(x => ({ label: 'during ' + x, toggle: true, pressed: x === ST, onclick: () => { ST = x; SL.redraw(); document.querySelectorAll('#btns button').forEach(b => b.textContent.startsWith('during') && b.setAttribute('aria-pressed', b.textContent === 'during ' + x)); } }))],
+  steps: [
+    ['The baseline controller', 'τ_FSM = −K_q(θ − θ_eq,q) − B_q θ̇ for q ∈ {SF, SE, SwF, SwE}: stance flexion, stance extension, swing flexion, swing extension. Constant K, B, θ_eq per state, tuned per participant. Inside one state it is page 11\'s second-order system with page 4\'s virtual spring and damper: ω_n and ζ come from the three numbers.'],
+    ['The parameter table', 'Each locomotion mode has its own standardised set. The primary deviations from level ground are in equilibrium angle and stiffness during SF and SE — where the faults were injected.'],
+    ['How the fault is made', 'P_e(α) = P_n + α(P_o − P_n): P_n the tuned level-ground set, P_o a standardised set for ramp or stair ascent/descent. Intermediate α is a soft estimation or blending error; α = 1 is an abrupt misclassification. Substituted into the live controller for 200 ms during stance.'],
+    ['Severity normalised by perception', 'α was raised per participant until they reported a "Large" disturbance on a four-level scale (None/Small/Medium/Large). A perception-normalised severity, not a fixed torque — that is what makes participants comparable without a shared α.'],
+    ['Pick a misclassification', 'Both impedance laws over the knee\'s working range. The gap between the lines is the fault: the torque error the joint receives. Everything the FTM does downstream is an attempt to put that gap back.'],
+    ['A different mechanism, not a spike', 'A stiffer spring with a further equilibrium keeps pushing for as long as it is installed, and its effect grows with how far the joint has moved. So a fixed on-off correction is the wrong answer and a severity-scaled one is the right one.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, c = calc(s);
+    if (S <= 1) {
+      const T = Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false); T.frame(S === 0 ? 'one state at a time: a virtual spring and damper' : 'K (N·m/rad), B (N·m·s/rad), θ_eq (rad) — SF and SE');
+      if (S === 0) { const P = Pl.panel(.02, .08, .5, .72, [0, 1.25, -.2, 1.2], false), ph = [...Array(126)].map((_, i) => i / 100);
+        P.series([{ pts: ph.map(t => [t, Math.max(0, Math.sin(Math.PI * Math.min(1, t / .62))) * .3 + (t > .62 ? Math.sin(Math.PI * (t - .62) / .38) * 1.05 : 0)]), cl: '--a', w: 2.5, label: 'knee angle over a stride (illustrative)' }], { title: 'SF → SE → SwF → SwE' });
+        [[0, .3, 'SF'], [.3, .62, 'SE'], [.62, .85, 'SwF'], [.85, 1.25, 'SwE']].forEach(([a, b, n], i) => { P.line([b, -.2], [b, 1.2], '--line', 1, [3, 3]); P.text([(a + b) / 2, 1.1], n, ['--c', '--e', '--d', '--f'][i], 0, 0, { size: 12, align: 'center' }); });
+        const n = FAULT.PARAMS.nominal; NN.lines(Pl.panel(.53, .08, .45, .72, [0, 1, 0, 1], false), [['SF: K ' + n.SF[0] + ', B ' + n.SF[1] + ', θ_eq ' + n.SF[2], '--c'], ['SE: K ' + n.SE[0] + ', B ' + n.SE[1] + ', θ_eq ' + n.SE[2], '--e'], ['', ''], ['ω_n = √(K/J), ζ = B/(2√(KJ))', '--ink'], ['SF: ω_n ≈ ' + f(Math.sqrt(n.SF[0] / JE), 1) + ' rad/s', '--c'], ['SE: ω_n ≈ ' + f(Math.sqrt(n.SE[0] / JE), 1) + ' rad/s', '--e'], ['(J ≈ ' + JE + ' kg·m², illustrative)', '--muted']], { top: .1, gap: .12 }); }
+      else NN.lines(T, [['mode              SF: K    B    θ_eq     SE: K    B    θ_eq', '--muted'], ...['nominal', ...FAULT.MODES].map(m => { const P = FAULT.PARAMS[m]; return [(m === 'nominal' ? 'level (nominal)' : m).padEnd(18) + String(P.SF[0]).padStart(5) + String(P.SF[1]).padStart(5) + String(P.SF[2]).padStart(7) + '     ' + String(P.SE[0]).padStart(5) + String(P.SE[1]).padStart(5) + String(P.SE[2]).padStart(7), m === 'nominal' ? '--c' : '--ink']; })], { top: .15, gap: .11 });
+    } else {
+      const ths = [...Array(81)].map((_, i) => i * .5 * D2R), P = Pl.panel(0, 0, .6, .82, [0, 40, -120, 40], false);
+      P.series([{ pts: ths.map(t => [t / D2R, c.tq(c.n, t)]), cl: '--c', w: 2.5, label: 'nominal ' + ST }, { pts: ths.map(t => [t / D2R, c.tq(c.e, t)]), cl: '--bad', w: 2.5, label: MODE + ' @ α = ' + f(s.a) }], { title: 'spring torque −K(θ − θ_eq) vs knee angle (deg)' });
+      [c.n[2], c.e[2]].forEach((q, i) => P.line([q / D2R, -120], [q / D2R, 40], i ? '--bad' : '--c', 1, [3, 3]));
+      P.line([s.th / D2R, c.tq(c.n, s.th)], [s.th / D2R, c.tq(c.e, s.th)], '--b', 4);
+      const R = Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 3 ? [['severity scale:', '--ink'], ['  None / Small / Medium / Large', '--muted'], ['α raised until "Large"', '--bad'], ['→ perception-normalised', '--c'], [' not a fixed torque', '--c'], ['', ''], ['α here: ' + f(s.a), '--ink']]
+        : [['P_e = P_n + α(P_o − P_n)', '--ink'], ['ΔK    = ' + SL.sf(c.dK, 0) + ' N·m/rad', '--bad'], ['Δθ_eq = ' + SL.sf(c.dEq, 1) + '°', '--bad'], ['torque error at ' + f(s.th / D2R, 0) + '°', '--muted'], ['  = ' + SL.sf(c.err, 1) + ' N·m', '--b'], ['ω_n shift = ' + SL.sf(c.dwn, 1) + ' rad/s', '--ink'], ['', ''], [S === 5 ? 'error grows with θ:' : 'held for 200 ms in ' + ST, '--muted'], [S === 5 ? ' scale the correction' : '', '--muted']], { top: .1, gap: .09 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 5 ? 'an impedance fault is a different virtual mechanism installed for 200 ms, not a torque spike' : 'τ_FSM = −K_q(θ − θ_eq,q) − B_q θ̇,  q ∈ {SF, SE, SwF, SwE}', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st(), c = calc(s);
+    const rows = [`${E(`τ_FSM = −K_q(θ − θ_eq,q) − B_q θ̇`)}`, `<p>Primary deviations: θ_eq and K in SF and SE.</p>`,
+`${E(`P_e(α) = P_n + α(P_o − P_n),  α ∈ [0, 1]
+${ST}: K ${f(c.n[0], 0)} → ${f(c.e[0], 0)},  θ_eq ${f(c.n[2], 3)} → ${f(c.e[2], 3)} rad`)}`,
+`<p>Severity calibrated per participant to a reported "Large" disturbance.</p>`,
+`${E(`Δτ(θ) = −K_e(θ − θ_eq,e) + K_n(θ − θ_eq,n)
+at θ = ${f(s.th / D2R, 0)}°: ${f(c.err, 2)} N·m`)}`,
+`<p>The torque error grows with displacement while the wrong set is installed.</p>`];
+    return rows[S];
+  },
+  stats() { const c = calc(st()); return `<span><b>ΔK</b>${SL.sf(c.dK, 0)}</span><span><b>Δθ_eq</b>${SL.sf(c.dEq, 1)}°</span><span><b>Δτ</b>${SL.sf(c.err, 1)} N·m</span>`; },
+});
+</script>
+</body></html>

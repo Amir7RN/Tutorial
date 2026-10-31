@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Compensation scaled by severity</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, R = FAULT.RES;
+let MODE = 'stair ascent', C = null, SW = null;
+const st = () => ({ a: SL.v.a / 100 });
+const pair = s => { const k = MODE + s.a; if (!C || C.k !== k) C = { k, on: FAULT.trial({ mode: MODE, alpha: s.a }), off: FAULT.trial({ mode: MODE, alpha: s.a, ftm: false }) }; return C; };
+const sweep = () => { if (!SW || SW.m !== MODE) SW = { m: MODE, d: [.2, .4, .6, .8, 1].map(a => { const on = FAULT.trial({ mode: MODE, alpha: a }), off = FAULT.trial({ mode: MODE, alpha: a, ftm: false }); return { a, imp: on.impulse, on: on.nrmse, off: off.nrmse }; }) }; return SW.d; };
+SL.app({
+  title: 'Compensation scaled by severity',
+  sub: 'Momentum deviation in, additive torque out, held until the end of the stance sub-state. Not an on-off reflex — a proportional one. Traces are the teaching model; percentages are quoted.',
+  view: '2d',
+  legend: [['--grey', 'nominal H_knee'], ['--bad', 'without FTM'], ['--c', 'with FTM'], ['--e', 'τ_FTM'], ['--b', 'held sub-state']],
+  controls: [{ id: 'a', label: 'severity α', min: 10, max: 100, value: 100, fmt: x => f(x / 100) }],
+  buttons: FAULT.MODES.map(m => ({ label: m, toggle: true, pressed: m === MODE, onclick: () => { MODE = m; document.querySelectorAll('#btns button').forEach(b => b.setAttribute('aria-pressed', b.textContent === m)); SL.redraw(); } })),
+  steps: [
+    ['The state and the two model evaluations', 'x = [H_knee, Ḣ_knee]; x̂ = G_moment(u) from the robust load input. Ḣ is read as inertial knee torque, so one learned map G_fsm turns either state into an expected FSM torque. Evaluate at x̂ and at x; command the difference.'],
+    ['Gait-aware application logic', 'A fault detected inside SF or SE keeps compensation on until the end of that sub-state. At the boundary it is released if the residual is back inside the threshold; otherwise it persists through stance. Coarse on purpose: the mechanical consequence of a bad setting outlives the setting, and releasing on phase boundaries never fights the FSM\'s own transitions.'],
+    ['Severity in, compensation out', 'Left: knee momentum against nominal, with and without the layer. Right: corrective impulse and remaining deviation as α grows. A proportional law gives more help to a bigger fault — the property an on-off action lacks.'],
+    ['What it bought, measured', 'Momentum deviation −47 % at 0.6 m/s (p = 0.0078); −30.6 ± 8.3 % at 0.4 m/s, −17.3 ± 2.1 % at 0.8 m/s, −35.9 ± 1.1 % on a 4.6° ramp (≈ −27.6 % overall). Phase-variable N-RMSE 0.14 normal / 0.38 with / 1.61 without: an 11-fold deviation becomes 2.7-fold. The rest is the transient before compensation lands — latency again.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, c = pair(s), sk = a => a.filter((_, i) => i % 4 === 0);
+    if (S <= 2) {
+      const P = Pl.panel(0, 0, S === 2 ? .55 : .64, .5, [0, 1.25, -1.2, 1.2], false);
+      P.series([{ pts: sk(c.on.t.map((t, i) => [t, c.on.Hn[i]])), cl: '--grey', w: 1.5, dash: [4, 3], label: 'nominal' }, { pts: sk(c.off.t.map((t, i) => [t, c.off.H[i]])), cl: '--bad', w: 2, label: 'without FTM' }, { pts: sk(c.on.t.map((t, i) => [t, c.on.H[i]])), cl: '--c', w: 2.5, label: 'with FTM' }], { title: 'H_knee (kg·m²/s), ' + MODE + ', α = ' + f(s.a) });
+      P.poly([[c.on.win[0], -1.2], [c.on.win[1], -1.2], [c.on.win[1], 1.2], [c.on.win[0], 1.2]], null, 0, null, '--bad', true);
+      const T = Pl.panel(0, .51, S === 2 ? .55 : .64, .31, [0, 1.25, -15, 15], false);
+      T.series([{ pts: sk(c.on.t.map((t, i) => [t, c.on.tf[i]])), cl: '--e', w: 2.5, label: 'τ_FTM (N·m)' }], { title: 'compensation' });
+      [.3, .62].forEach(x => { T.line([x, -15], [x, 15], '--b', 1, [3, 3]); P.line([x, -1.2], [x, 1.2], '--b', 1, [3, 3]); }); T.text([.15, 12], 'SF', '--b', 0, 0, { size: 11, align: 'center' }); T.text([.46, 12], 'SE', '--b', 0, 0, { size: 11, align: 'center' });
+      if (S === 2) { const d = sweep(), A = Pl.panel(.56, 0, .44, .41, [0, 1, 0, Math.max(...d.map(q => q.off)) * 1.15], false);
+        A.series([{ pts: d.map(q => [q.a, q.off]), cl: '--bad', w: 2.5, label: 'N-RMSE without' }, { pts: d.map(q => [q.a, q.on]), cl: '--c', w: 2.5, label: 'with' }], { title: 'remaining deviation vs α' });
+        const B = Pl.panel(.56, .42, .44, .4, [0, 1, 0, Math.max(...d.map(q => q.imp)) * 1.2], false); B.series([{ pts: d.map(q => [q.a, q.imp]), cl: '--e', w: 2.5, label: 'corrective impulse grows with α' }], { title: 'impulse (N·m·s/kg) vs α' }); }
+      else NN.lines(Pl.panel(.65, 0, .35, .82, [0, 1, 0, 1], false), S === 0 ? [['x = [H, Ḣ]', '--ink'], ['x̂ = G_moment(F_p, Ḟ_p)', '--a'], ['Ḣ ≈ inertial knee torque', '--muted'], ['τ_FTM =', '--e'], [' G_fsm(x̂) − G_fsm(x)', '--e'], ['', ''], ['N-RMSE with ' + f(c.on.nrmse, 3), '--c'], ['without     ' + f(c.off.nrmse, 3), '--bad']]
+        : [['detected in SF/SE →', '--ink'], [' hold to end of sub-state', '--b'], ['at boundary:', '--ink'], [' residual inside → release', '--c'], [' else → persist thru stance', '--bad'], ['', ''], ['never fights FSM', '--muted'], [' transitions', '--muted']], { top: .1, gap: .1 });
+    } else {
+      const A = Pl.panel(0, 0, .5, .82, [0, 4, 0, 50], false); A.frame('momentum-deviation reduction (%), quoted'); NN.bars(A, [R.mom, ...R.momConds.map(q => q[1])], { labels: ['0.6 m/s', ...R.momConds.map(q => q[0])], cols: ['--c', '--c', '--c', '--c'], d: 1 });
+      const B = Pl.panel(.51, 0, .49, .82, [0, 3, 0, 1.8], false); B.frame('phase-variable N-RMSE, quoted'); NN.bars(B, [R.nrmse.normal, R.nrmse.with, R.nrmse.without], { labels: ['normal', 'with FTM', 'without'], cols: ['--grey', '--c', '--bad'] });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 3 ? 'an 11-fold deviation from nominal becomes 2.7-fold; the remainder is the transient before compensation takes effect' : `model: N-RMSE ${f(c.off.nrmse, 3)} → ${f(c.on.nrmse, 3)} (${f(100 * (1 - c.on.nrmse / c.off.nrmse), 0)} % less), impulse ${f(c.on.impulse, 4)} N·m·s/kg`, '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const c = pair(st());
+    const rows = [`${E(`x = [H_knee, Ḣ_knee]ᵀ,  x̂ = G_moment(u)
+τ_FTM = Ĝ_fsm(x̂) − Ĝ_fsm(x)`)}`,
+`<p>Hold until the stance sub-state ends; release only if the residual is back inside T_vel.</p>`,
+`${E(`model, α = ${f(st().a)}: N-RMSE ${f(c.off.nrmse, 3)} → ${f(c.on.nrmse, 3)}`)}`,
+`${E(`−47 % (p = 0.0078) at 0.6 m/s; ≈ −27.6 % across other conditions
+N-RMSE 0.14 / 0.38 / 1.61  (normal / with / without)`)}`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

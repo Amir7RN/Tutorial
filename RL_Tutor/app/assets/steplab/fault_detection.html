@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Detection</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="fault.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, R = FAULT.RES;
+const st = () => ({ k: SL.v.k / 10, nc: SL.v.nc, a: SL.v.a / 100, seed: SL.v.seed });
+let C1 = null, C2 = null;
+const one = s => { const key = [s.k, s.nc, s.a, s.seed].join(); if (!C1 || C1.key !== key) C1 = { key, r: FAULT.trial({ k: s.k, nc: s.nc, alpha: s.a, ftm: false, seed: s.seed }) }; return C1.r; };
+const roc = s => { const key = [s.nc, s.a].join(); if (!C2 || C2.key !== key) C2 = { key, r: FAULT.roc([.3, .5, .75, 1, 1.25, 1.5, 2, 2.5, 3], 16, { nc: s.nc, alpha: s.a }) }; return C2.r; };
+SL.app({
+  title: 'Detection: one residual, one threshold, one persistence test',
+  sub: 'T_vel = |μ| + kσ with k = 1, and all ten of the last ten samples. A deliberately trigger-happy detector, and the argument for it. Curves are the teaching model, computed over repeated strides.',
+  view: '2d',
+  legend: [['--e', 'residual |r_v|'], ['--b', 'threshold |μ| + kσ'], ['--bad', 'fault window'], ['--c', 'sensitivity'], ['--d', 'false alarms'], ['--a', 'detection time']],
+  controls: [
+    { id: 'k', label: 'threshold multiplier k', min: 3, max: 30, value: 10, fmt: x => f(x / 10, 1) },
+    { id: 'nc', label: 'persistence N_c', min: 1, max: 30, value: 10, fmt: x => x + ' samples (' + x + ' ms)' },
+    { id: 'a', label: 'fault severity α', min: 20, max: 100, value: 100, fmt: x => f(x / 100) },
+    { id: 'seed', label: 'stride (seed)', min: 0, max: 15, value: 3 },
+  ],
+  steps: [
+    ['The residual', 'r_v(t) = θ̇_knee(t) − θ̇̂_knee(t): measured knee velocity minus what the model of normal walking predicts from the robust load input.'],
+    ['A threshold that moves with the gait', 'T_vel(t) = |μ(t)| + kσ(t). It tracks the nominal mean and spread through the cycle, so 3 rad/s in swing is not a fault while the same number in mid-stance is. The absolute value keeps it non-negative where μ < 0.'],
+    ['Persistence is an AND, not a count', 'Γ(t) = 1 ⇔ |r_v(t − i)| > T_vel for all i = 0 … N_c − 1, N_c = 10: ten in a row, not ten out of twenty.'],
+    ['Why k = 1: a trade, not a preference', 'Small k: detect everything fast, more false alarms. Large k: fewer false alarms, later detections, then misses. The costs are asymmetric: a false alarm is a 0.021 N·m·s/kg impulse that does not disturb gait; a late detection reaches balance (103.5 vs 43.1 ms). Tune for sensitivity, make false alarms cheap — one decision.'],
+    ['Move k and N_c', 'Left: one stride\'s residual against its moving band. Right: sensitivity, false-alarm rate and mean detection time against k, over repeated strides of the teaching model.'],
+    ['Margins, in another costume', 'Gain and phase margin ask how wrong the world can be before the loop fails. k and N_c ask how wrong one sample can be before you act. Both are chosen against the cost of being wrong in each direction, not against a number that sounds safe.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, r = one(s), sk = a => a.filter((_, i) => i % 3 === 0);
+    const P = Pl.panel(0, 0, S >= 3 ? .55 : 1, .82, [0, 1.25, 0, 3.2], false);
+    P.series([{ pts: sk(r.t.map((t, i) => [t, Math.abs(r.res[i])])), cl: '--e', w: 1.6, label: '|residual|' }, ...(S >= 1 ? [{ pts: sk(r.t.map((t, i) => [t, r.thr[i]])), cl: '--b', w: 2.5, label: 'threshold |μ| + ' + f(s.k, 1) + 'σ' }] : [])], { title: 'one stride, α = ' + f(s.a) + (r.detMs !== null ? ' — detected after ' + r.detMs + ' ms' : ' — not detected') });
+    P.poly([[r.win[0], 0], [r.win[1], 0], [r.win[1], 3.2], [r.win[0], 3.2]], null, 0, null, '--bad', true);
+    if (r.det !== null && S >= 2) { P.line([r.t[r.det], 0], [r.t[r.det], 3.2], '--c', 2); P.text([r.t[r.det], 3], 'Γ = 1', '--c', 4, 0, { size: 12 }); P.poly([[r.t[r.det - s.nc + 1], 0], [r.t[r.det], 0], [r.t[r.det], .15], [r.t[r.det - s.nc + 1], .15]], '--b', 1, null, '--b', true); }
+    if (S >= 3) { const ro = roc(s), A = Pl.panel(.56, 0, .44, .41, [.3, 3, 0, 105], false);
+      A.series([{ pts: ro.map(q => [q.k, q.sens]), cl: '--c', w: 2.5, label: 'sensitivity %' }, { pts: ro.map(q => [q.k, q.far]), cl: '--d', w: 2.5, label: 'false alarms %' }], { title: 'vs k (teaching model)' }); A.line([s.k, 0], [s.k, 105], '--ink', 1, [3, 3]);
+      const Bq = Pl.panel(.56, .42, .44, .4, [.3, 3, 0, 200], false); Bq.series([{ pts: ro.filter(q => isFinite(q.det)).map(q => [q.k, q.det]), cl: '--a', w: 2.5, label: 'mean detection (ms)' }], { title: 'detection time vs k' }); Bq.line([s.k, 0], [s.k, 200], '--ink', 1, [3, 3]); Bq.line([.3, 103.5], [3, 103.5], '--bad', 1, [4, 3]); Bq.text([.3, 103.5], 'late cases: 103.5 ms', '--bad', 4, -4, { size: 11 }); }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 3 ? `false alarm costs ${R.impFalse} N·m·s/kg (no measurable instability); a true fault ${R.impTrue}; late detection costs balance` : S === 5 ? 'k and N_c answer: how wrong can one sample be before I act?' : 'r_v = θ̇ − θ̇̂ · T_vel = |μ| + kσ · Γ = AND over the last N_c samples', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st(), r = one(s);
+    const rows = [`${E(`r_v(t) = θ̇_knee(t) − θ̇̂_knee(t)`)}`,
+`${E(`T_vel(t) = |μ_θ̇(t)| + k σ_θ̇(t),  k = ${f(s.k, 1)}`)}`,
+`${E(`Γ(t) = 1 ⇔ |r_v(t − i)| > T_vel  ∀ i = 0 … ${s.nc - 1}`)}`,
+`${E(`quoted: false-alarm impulse ${R.impFalse} vs true ${R.impTrue} N·m·s/kg (p = ${R.impP})
+effective detection ${R.detOk} ms vs still-unstable ${R.detLate} ms`)}`,
+(() => { const q = roc(s).find(x => Math.abs(x.k - s.k) < .13); return `${E(`this stride: ${r.detMs === null ? 'missed' : 'detected after ' + r.detMs + ' ms'}
+${q ? `at k ≈ ${f(q.k, 2)}: sensitivity ${f(q.sens, 0)} %, false alarms ${f(q.far, 0)} %, t_det ${isFinite(q.det) ? f(q.det, 0) + ' ms' : '—'}` : ''}`)}`; })(),
+`<p>Page 13's honesty argument: choose against the cost of being wrong in each direction.</p>`];
+    return rows[S];
+  },
+  stats() { const r = one(st()); return `<span><b>this stride</b>${r.detMs === null ? 'missed' : r.detMs + ' ms'}</span>`; },
+});
+</script>
+</body></html>
