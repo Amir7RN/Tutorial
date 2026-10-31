@@ -479,3 +479,71 @@ def constrained_video_card() -> Card:
         "freedom for hybrid motion–force control: motion along free directions, force along "
         "constrained ones."))
     return c
+
+
+def qp_vs_newton_euler_card() -> Card:
+    c = Card("Newton–Euler vs a QP: computing a torque vs choosing one")
+    c.add(in_words(
+        "Newton–Euler answers a question that has exactly one answer: this motion, which "
+        "torques? A QP is for questions with many answers, or with answers that must stay "
+        "inside limits: a wall that only pushes, a foot that must not slip, a motor that "
+        "saturates. Then you pick the best allowed answer. The QP does not replace "
+        "Newton–Euler; it is built from it."))
+    c.add(body(_table(
+        ("", "Newton–Euler (RNEA)", "QP (whole-body / contact control)"),
+        [("kind of problem", "evaluate a function", "optimise: minimise a cost under constraints"),
+         ("input", "θ, θ̇, θ̈ (and F_tip if known)", "θ, θ̇, a goal (task acceleration, momentum)"),
+         ("unknowns", "τ (n)", "x = (θ̈, τ, λ): accelerations, torques, contact forces"),
+         ("count", "n equations, n unknowns", "fewer equations than unknowns"),
+         ("inequalities", "none", "λₙ ≥ 0, friction cone, τ limits, joint limits"),
+         ("answers", "exactly one", "a whole set; the cost picks one, or none if infeasible"),
+         ("cost per call", "O(n), two sweeps, no iterations", "iterative solver, ~0.1–1 ms per tick"),
+         ("dynamics enter as", "the algorithm itself", "an equality constraint, with M and h as data")])))
+    c.add(body(
+        "<b>When the answer stops being unique.</b> Fixed base, no contact, every joint "
+        "driven: θ̈ fixes τ, done. Add a contact and τ = Mθ̈ + h − Aᵀλ: any λ gives the same "
+        "motion (video 8.7). Make the base float (legs, humanoid) and the six base rows have "
+        "no motor: only λ can move the body, so θ̈ and λ must be chosen together. Add a wall "
+        "that cannot pull or a foot that cannot slip and you have inequalities, which no "
+        "recursion can handle. A typical whole-body controller solves, every 1–2 ms:"))
+    c.add(math_label(
+        r"\min_{\ddot q,\tau,\lambda}\ \|J\ddot q+\dot J\dot q-\ddot x_{des}\|_W^2+\epsilon\|\tau\|^2"
+        r"\quad\text{s.t.}\quad M\ddot q+h=S^T\tau+J_c^T\lambda,\ \ "
+        r"J_c\ddot q+\dot J_c\dot q=0,\ \ \lambda\in\mathcal{K}_\mu,\ \ \tau_{min}\le\tau\le\tau_{max}", 13))
+    c.add(plain(
+        "Quadratic cost, linear constraints (friction cone 𝒦_μ linearised to a pyramid): a "
+        "convex QP, one global minimum, solved fast. The first constraint is the equation of "
+        "motion; M and h come from Newton–Euler (n + 1 calls, page 137, or CRBA). So the "
+        "chain is: RNEA builds the model, the QP chooses the motion and forces, and the τ "
+        "it returns is what the motors get."))
+    c.add(body(
+        "<b>Worked example — the hand on the wall above.</b> 2R arm, hand at (1.1, 0.6) on "
+        "the wall, at rest, asked to slide up at 2 m/s². Two joint equations, three unknowns "
+        "(τ₁, τ₂, λ), so one degree of freedom is left to choose. The wall pushes with −λ."))
+    c.add(body(_table(
+        ("method / extra rule", "wall push −λ (N)", "τ (N·m)", "‖τ‖"),
+        [("RNEA, λ = 0 (hand grazes the wall)", "0", "(29.33, 0.97)", "29.35"),
+         ("QP: min ‖τ‖²", "18.63", "(18.15, −13.77)", "22.78"),
+         ("QP + push ≥ 20 N (firm contact)", "20.00 (active)", "(17.33, −14.85)", "22.82"),
+         ("QP + |τ₂| ≤ 10 N·m (weak motor 2)", "13.87", "(21.01, −10.00) (active)", "23.27"),
+         ("QP + both rules", "—", "infeasible", "—")])))
+    c.add(plain(
+        "Same θ̈ in every row: the hand moves identically. RNEA gives one torque and has no "
+        "idea the wall could help; the QP leans on the wall to cut torque by 22%, moves along "
+        "the line τ = Mθ̈ + h − Aᵀλ until a limit becomes active, and with both rules it "
+        "reports that no torque does the job. RNEA cannot say \"impossible\"; a QP can."))
+    c.add(body(
+        "<b>The link back to this page.</b> With no inequalities the QP collapses to "
+        "linear algebra: fixed base and cost ‖θ̈ − θ̈_des‖² give θ̈ = θ̈_des and τ = RNEA. "
+        "And constrained forward dynamics is itself a QP (Gauss's principle of least "
+        "constraint): the true θ̈ is the one closest to the free motion M⁻¹(τ − h), measured "
+        "with the mass matrix, that obeys the constraint:"))
+    c.add(math_label(
+        r"\ddot\theta=\arg\min\ \tfrac12(\ddot\theta-\ddot\theta_{free})^TM(\ddot\theta-\ddot\theta_{free})"
+        r"\quad\text{s.t.}\quad A\ddot\theta=-\dot A\dot\theta", 14))
+    c.add(plain(
+        "Its optimality (KKT) conditions are exactly the block system [M −Aᵀ; A 0] on this "
+        "page, and λ is the multiplier. Require λ to push only (λₙ ≥ 0, contact may open) "
+        "and it turns into an inequality QP / complementarity problem: that is what physics "
+        "engines (MuJoCo, Bullet, Drake) solve at every contact step."))
+    return c

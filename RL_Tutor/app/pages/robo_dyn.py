@@ -1049,6 +1049,8 @@ class ConstrainedDynamicsPage(Page):
         self.add(lab)
         self._sim()
 
+        self.add(ch8.qp_vs_newton_euler_card())
+
         self.add(interview(
             "<b>“How do you control a legged robot's contact forces?”</b> "
             "Write floating-base dynamics M q̈ + h = Sᵀτ + J<sub>c</sub>ᵀλ with "
