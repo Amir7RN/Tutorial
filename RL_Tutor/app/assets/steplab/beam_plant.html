@@ -1,0 +1,74 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The beam plant</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+const st = () => { const v = SL.v; return { h: v.h / 100, m: v.m, tT: v.tT * D2R, tL: v.tL * D2R, tR: v.tR * D2R, wT: v.wT / 100, wL: v.wL / 100 }; };
+const calc = s => { const S = BEAM.subject(s.h, s.m), wR = -s.wL, x = S.comX(s.tT, s.tL, s.tR), xv = S.comV(s.tT, s.tL, s.tR, s.wT, s.wL, wR), H = S.wbam(s.tT, s.tL, s.tR, s.wT, s.wL, wR), [thd, wd] = S.desired(s.tL, s.tR, s.wL, wR), dz = BEAM.dist(s.tT);
+  return { S, x, xv, H, thd, wd, dz, Ht: S.torsoH(s.tT, s.wT), Hd: S.torsoH(thd, wd) }; };
+SL.app({
+  title: 'The plant: three links in the frontal plane',
+  sub: 'Torso and two legs about the stance foot. Count the stores, name the state, and read lateral CoM and whole-body angular momentum off the same three angles. Segment properties scaled from height and mass (Winter-style fractions).',
+  view: '2d',
+  legend: [['--a', 'torso'], ['--e', 'stance leg'], ['--d', 'swing leg'], ['--c', 'CoM'], ['--b', 'beam / desired torso'], ['--bad', 'outside dead zone']],
+  controls: [
+    { id: 'h', label: 'height', min: 150, max: 200, value: 175, fmt: x => f(x / 100) + ' m' },
+    { id: 'm', label: 'body mass', min: 45, max: 110, value: 75, fmt: x => x + ' kg' },
+    { id: 'tT', label: 'torso sway θ_T', min: -15, max: 15, value: 9, fmt: x => x + '°' },
+    { id: 'tL', label: 'stance leg θ_L', min: -15, max: 15, value: 8, fmt: x => x + '°' },
+    { id: 'tR', label: 'swing leg θ_R', min: -15, max: 15, value: 3, fmt: x => x + '°' },
+    { id: 'wT', label: 'torso rate', min: -100, max: 100, value: 25, fmt: x => f(x / 100) + ' rad/s' },
+    { id: 'wL', label: 'leg rate', min: -100, max: 100, value: -10, fmt: x => f(x / 100) + ' rad/s' },
+  ],
+  steps: [
+    ['Three segments, six states', 'q = (θ_T, θ_L, θ_R), each measured from vertical, each with a rate. Every segment stores kinetic energy and no angle can jump: order six, and the hardware says so — page 2\'s count-the-stores test.'],
+    ['What you watch decides the order', 'The controller watches whole-body angular momentum about the stance-foot contact, H_wb = Σ(Iᵢωᵢ + r × mᵢvᵢ). Watch step width instead and you get a slow, stride-level plant; watch H and you get a continuous signal that reacts inside a step.'],
+    ['Why momentum, not step width or XCoM', 'On a 4 cm beam the centre of pressure has nowhere to go and foot placement is constrained. Two of three human balance strategies are gone; what remains is rotating segments to cancel momentum. The controller assists the strategy the task leaves intact — and excess momentum about the pivot is unambiguous, unlike "a wider step".'],
+    ['Lateral CoM from three angles', 'x_CoM = (m_T d_T sin θ_T + m_L d_L sin θ_L + m_R d_R sin θ_R)/M, and its rate likewise. Drag the links and watch the green dot.'],
+    ['The target: CoM and CoM-rate to zero, solved for the torso', 'Set x_CoM = 0, solve for θ_T,d; set ẋ_CoM = 0, solve for θ̇_T,d. The dashed torso is the pose that would exactly cancel what the legs are doing right now. Evaluate momentum there: desired H is zero by construction. Everything downstream tracks this reference.'],
+    ['The dead zone', 'Inside |θ_T| ≤ 0.08 rad (≈ 4.6°) the distribution matrix is zero and the device is transparent, whatever the momentum error says. Outside: 20 % to the stance hip, 5 % to the swing hip.'],
+    ['Six states, one output, one actuator pair', 'You cannot place six poles with two hips — but you can drive one well-chosen combination of them to zero. That is why this is a momentum regulator, not a trajectory tracker.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, c = calc(s), Sb = c.S;
+    const P = Pl.panel(0, 0, .5, .82, [-.9, .9, -.15, 2.05]); P.frame('frontal plane, stance foot on the beam');
+    const fig = BEAM.figure(P, Sb, s.tT, s.tL, s.tR);
+    if (S >= 4) { const hd = [fig.hip[0] + Sb.lT * Math.sin(c.thd), fig.hip[1] + Sb.lT * Math.cos(c.thd)]; P.line(fig.hip, hd, '--b', 3, [6, 4]); P.text(hd, 'θ_T,d', '--b', 8, 0, { size: 12 }); }
+    if (S >= 5) { [-1, 1].forEach(sg => P.line(fig.hip, [fig.hip[0] + Sb.lT * Math.sin(sg * .08), fig.hip[1] + Sb.lT * Math.cos(sg * .08)], '--grey', 1, [2, 3])); }
+    if (S >= 1 && S <= 2) P.arc([0, 0], 40, Math.PI / 2, Math.PI / 2 - Math.sign(c.H || 1) * 1.2, '--e', 2.5, true, 'H_wb');
+    const R = Pl.panel(.51, 0, .49, .82, [0, 1, 0, 1], false); R.frame('what the controller computes');
+    const rows = [
+      [['q = (θ_T, θ_L, θ_R) = (' + [s.tT, s.tL, s.tR].map(x => f(x / D2R, 0) + '°').join(', ') + ')', '--ink'], ['q̇ = (' + f(s.wT) + ', ' + f(s.wL) + ', ' + f(-s.wL) + ') rad/s', '--ink'], ['6 stores → order 6', '--a'], ['', ''], ['segments (scaled):', '--muted'], [`  torso m ${f(Sb.mT, 1)} kg, d ${f(Sb.dT, 2)} m`, '--a'], [`  leg   m ${f(Sb.mL, 1)} kg, d ${f(Sb.dL, 2)} m`, '--e'], [`  I_wb about foot ${f(Sb.Iwb(), 1)} kg·m²`, '--ink']],
+      [['H_wb = Σ (Iᵢωᵢ + r × mᵢvᵢ)', '--ink'], ['     = ' + f(c.H, 2) + ' kg·m²/s', '--e'], ['', ''], ['watch step width →', '--muted'], ['  stride-level, slow', '--muted'], ['watch H about the foot →', '--muted'], ['  continuous, inside a step', '--c']],
+      [['4 cm beam:', '--ink'], ['  CoP strategy: gone', '--bad'], ['  foot placement: constrained', '--bad'], ['  segment rotation: left', '--c'], ['', ''], ['a wider step is not', '--muted'], [' automatically safer;', '--muted'], ['excess momentum is', '--muted'], [' unambiguous', '--muted']],
+      [['x_CoM = ' + f(100 * c.x, 1) + ' cm', '--c'], ['ẋ_CoM = ' + f(100 * c.xv, 1) + ' cm/s', '--c'], ['', ''], ['m_T d_T sin θ_T = ' + f(Sb.mT * Sb.dT * Math.sin(s.tT), 2), '--a'], ['m_L d_L sin θ_L = ' + f(Sb.mL * Sb.dL * Math.sin(s.tL), 2), '--e'], ['m_R d_R sin θ_R = ' + f(Sb.mL * Sb.dL * Math.sin(s.tR), 2), '--d'], ['÷ M = ' + s.m + ' kg', '--muted']],
+      [['θ_T,d = ' + f(c.thd / D2R, 2) + '°', '--b'], ['θ̇_T,d = ' + f(c.wd, 3) + ' rad/s', '--b'], ['torso now ' + f(s.tT / D2R, 1) + '°', '--a'], ['', ''], ['H_T  = ' + f(c.Ht, 2), '--a'], ['H_T,d= ' + f(c.Hd, 2), '--b'], ['ΔH_T = ' + f(c.Ht - c.Hd, 2), '--e'], ['a reference generator', '--muted']],
+      [['|θ_T| = ' + f(Math.abs(s.tT), 3) + ' rad', '--ink'], ['dead zone ±0.08 rad', '--grey'], [c.dz[0] ? 'OUTSIDE → shares' : 'INSIDE → transparent', c.dz[0] ? '--bad' : '--c'], ['  stance ' + f(100 * c.dz[0], 0) + '%  swing ' + f(100 * c.dz[1], 0) + '%', c.dz[0] ? '--bad' : '--c'], ['', ''], ['natural sway is never', '--muted'], [' corrected', '--muted']],
+      [['states   6', '--ink'], ['output   1 (H about foot)', '--e'], ['actuators 2 hips', '--a'], ['', ''], ['regulate one combination', '--c'], [' of six states to zero', '--c']]][S];
+    NN.lines(R, rows, { top: .1, gap: .1 });
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S <= 1 ? 'the plant is the plant, but what you watch decides the order (page 2)' : S === 4 ? 'desired whole-body momentum is zero by construction' : S === 6 ? 'a momentum regulator, not a trajectory tracker' : 'x_CoM and H are computed, never measured: three angles and rates in, model out', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st(), c = calc(s);
+    const rows = [
+`${E(`q(t) = [θ_T, θ_L, θ_R]ᵀ,  state = (q, q̇) ∈ ℝ⁶`)}`,
+`${E(`H_wb = Σ_{i∈T,L,R} (Iᵢωᵢ + r_{S→i} × mᵢvᵢ) = ${f(c.H, 3)}`)}`,
+`<p>Assisting balance, not modulating a proxy for it.</p>`,
+`${E(`x_CoM = (m_T d_T sin θ_T + m_L d_L sin θ_L + m_R d_R sin θ_R)/M
+      = ${f(100 * c.x, 2)} cm`)}`,
+`${E(`θ_T,d = sin⁻¹(−(m_L d_L sin θ_L + m_R d_R sin θ_R)/(m_T d_T)) = ${f(c.thd / D2R, 3)}°
+θ̇_T,d = −(m_L d_L θ̇_L cos θ_L + m_R d_R θ̇_R cos θ_R)/(m_T d_T cos θ_T,d) = ${f(c.wd, 4)}`)}`,
+`${E(`D(θ_T) = (0.20 stance, 0.05 swing)  if |θ_T| > 0.08
+         0                           otherwise
+now: (${f(c.dz[0], 2)}, ${f(c.dz[1], 2)})`)}`,
+`<p>Six states, one scalar output, one actuator pair.</p>`];
+    return rows[S];
+  },
+  stats() { const c = calc(st()); return `<span><b>x_CoM</b>${f(100 * c.x, 1)} cm</span><span><b>H_wb</b>${f(c.H, 1)}</span><span><b>θ_T,d</b>${f(c.thd / D2R, 1)}°</span><span><b>dead zone</b>${c.dz[0] ? 'out' : 'in'}</span>`; },
+});
+</script>
+</body></html>

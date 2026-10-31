@@ -1,0 +1,71 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The sine sweep</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { fq: v.fq / 10, bw: v.bw / 10, d: v.d / 10, N: v.N }; };
+let T = 0;
+SL.app({
+  title: 'The sine sweep, and what actually gets rendered',
+  sub: '1–100 Hz on the bench; 5 Hz at the hip; and above that, what the wearer feels is 6 kg of hardware. Bode curves are the published blocks (first-order velocity loop, delay, 2 Hz Butterworth).',
+  view: '2d',
+  legend: [['--a', 'assistance path'], ['--c', 'velocity loop'], ['--d', 'delay'], ['--e', 'torque filter'], ['--bad', 'hardware region'], ['--b', 'beam-walking band 1–3 Hz']],
+  controls: [
+    { id: 'fq', label: 'push frequency', min: 5, max: 300, value: 20, fmt: x => f(x / 10, 1) + ' Hz' },
+    { id: 'bw', label: 'velocity bandwidth', min: 10, max: 200, value: 50, fmt: x => f(x / 10, 1) + ' Hz' },
+    { id: 'd', label: 'transport delay', min: 0, max: 300, value: 20, fmt: x => f(x / 10, 1) + ' ms' },
+    { id: 'N', label: 'gear ratio N (step 3)', min: 10, max: 160, value: 100, fmt: x => x + ':1' },
+  ],
+  play: { tick(dt) { T += dt; } }, reset() { T = 0; },
+  steps: [
+    ['The experiment, and why loaded', 'Sine sweep 1–100 Hz at 50 % of motor current, device worn by an 85 kg user in quiet standing, output velocity measured. Faithful tracking, no meaningful lag to ≈ 5 Hz — and 1–5 Hz indistinguishable loaded vs unloaded. That last clause is the load-bearing one.'],
+    ['Compute, then measure', 'Page 8 gives a corner from J and b; the bench gives the corner the ASSEMBLED machine has — harmonic-drive friction, load-cell dynamics, bus and filters included. Press Play: a sweep through the assistance path, output amplitude and lag growing with frequency.'],
+    ['Failure mode 1 · bandwidth', 'Below the corner the wearer feels the admittance the software specified. Above it the software\'s contribution drops out and what is left is reflected inertia: N² × rotor, plus linkage, plus 6 kg of worn hardware. Tap it quickly and it is metal.'],
+    ['Failure mode 2 · torque limit', '72 N·m at 90 kg — and only 15–20 % of the computed correction is ever applied.'],
+    ['Failure mode 3 · delay, bought deliberately', 'The 2 Hz Butterworth costs phase exactly where trunk sway lives. It was bought on purpose: unfiltered momentum-derived torque on a walking human is noise.'],
+    ['Push it and see which block answers', 'Move the push frequency: left, the magnitude and the frequency above which the wearer feels hardware rather than control; right, how the phase is split between velocity loop, delay and torque filter.'],
+    ['Beam walking lives at 1–3 Hz', 'About one step per second on a 4 cm beam, corrective trunk motion just above it. A 5 Hz actuator with a 2 Hz command filter is a tight but deliberate fit — not comfortable headroom. That is why the measured bandwidth is the specification it is judged against.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, fs = [...Array(200)].map((_, i) => Math.pow(10, -1 + i * 3 / 199)), R = x => BEAM.resp(x, s.bw, s.d, true), Rv = x => BEAM.resp(x, s.bw, s.d, false);
+    if (S <= 1) {
+      const fsw = .5 + ((T * .6) % 1) * 9.5, ts = [...Array(400)].map((_, i) => i / 400 * 3 / fsw), r = Rv(fsw);
+      const A = Pl.panel(0, 0, .55, .8, [0, 3 / fsw, -1.3, 1.3], false);
+      A.series([{ pts: ts.map(t => [t, Math.sin(2 * Math.PI * fsw * t)]), cl: '--grey', w: 1.5, dash: [4, 3], label: 'commanded velocity' }, { pts: ts.map(t => [t, r.mag * Math.sin(2 * Math.PI * fsw * t - (r.lagV + r.lagD) * Math.PI / 180)]), cl: '--c', w: 2.5, label: 'measured velocity' }], { title: `sweep at ${f(fsw, 1)} Hz (velocity loop + delay)` });
+      const M = Pl.panel(.56, 0, .44, .8, [-1, 2, -40, 5], false); M.series([{ pts: fs.map(x => [Math.log10(x), Rv(x).db]), cl: '--c', w: 2.5, label: 'velocity loop + delay' }], { title: 'magnitude (dB), 0.1–100 Hz' });
+      M.line([Math.log10(fsw), -40], [Math.log10(fsw), 5], '--b', 1, [3, 3]); M.line([0, -40], [Math.log10(5), -40], '--b', 6); M.text([0, -37], '1–5 Hz: loaded = unloaded', '--b', 4, 0, { size: 11 });
+    } else {
+      const M = Pl.panel(0, 0, .6, .8, [-1, 2, -60, 5], false);
+      M.series([{ pts: fs.map(x => [Math.log10(x), R(x).db]), cl: '--a', w: 3, label: 'assistance path |G|' }], { title: 'magnitude (dB), 0.1–100 Hz' });
+      M.poly([[Math.log10(s.bw), -60], [2, -60], [2, 5], [Math.log10(s.bw), 5]], null, 0, null, '--bad', true); M.text([Math.log10(s.bw), 0], 'hardware: N²J_rotor + linkage + 6 kg', '--bad', 4, 0, { size: 11 });
+      M.poly([[0, -60], [Math.log10(3), -60], [Math.log10(3), 5], [0, 5]], null, 0, null, '--b', true);
+      M.line([Math.log10(s.fq), -60], [Math.log10(s.fq), 5], '--ink', 1.5, [3, 3]);
+      const r = R(s.fq), B = Pl.panel(.61, 0, .39, .8, [0, 3, 0, Math.max(120, r.total * 1.15)], false);
+      if (S === 3) { B.frame('torque budget'); NN.bars(Pl.panel(.61, .05, .39, .75, [0, 3, 0, 80], false), [72, 72 * .15, 72 * .2], { labels: ['peak', '15 %', '20 %'], cols: ['--grey', '--c', '--c'], d: 1 }); }
+      else { B.frame(`lag at ${f(s.fq, 1)} Hz = ${f(r.total, 0)}°`); NN.bars(B, [r.lagV, r.lagD, r.lagF], { labels: ['velocity', 'delay', 'filter'], cols: ['--c', '--d', '--e'], d: 0 }); }
+    }
+    const r = R(s.fq), Bt = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 2 ? `reflected rotor at N = ${s.N}: N² × J = ${s.N * s.N} × J_rotor — above ${f(s.bw, 1)} Hz this is what you feel` : `at ${f(s.fq, 1)} Hz: |G| = ${f(r.db, 1)} dB, lag ${f(r.total, 0)}° → you feel ${s.fq < s.bw ? 'the rendered law' : 'HARDWARE'}`, s.fq < s.bw ? '--ink' : '--bad'], [S === 6 ? '1–3 Hz band shaded: a 5 Hz actuator with a 2 Hz filter is a tight, deliberate fit' : 'quoted: sweep 1–100 Hz, 50 % current, 85 kg user, > 5 Hz', '--muted']], { top: .38, gap: .35 });
+  },
+  math(S) {
+    const s = st(), r = BEAM.resp(s.fq, s.bw, s.d, true);
+    const rows = [
+`<p>Quoted: no meaningful phase lag to ≈ 5 Hz; 1–5 Hz the same loaded and unloaded.</p>`,
+`${E(`G_v(jω) = e^(−jωT)/(1 + jω/ω_bw)`)}`,
+`${E(`J_hip = J_link + N² J_rotor   (N = ${s.N} → ×${s.N * s.N})`)}`,
+`${E(`72 N·m peak;  applied ≈ 0.15–0.20 × correction`)}`,
+`${E(`F(s) = ω_c²/(s² + 2ζω_c s + ω_c²),  ω_c = 2π·2, ζ = 0.707
+∠F at ${f(s.fq, 1)} Hz = −${f(r.lagF, 1)}°`)}`,
+`${E(`at ${f(s.fq, 1)} Hz:
+velocity ${f(r.lagV, 1)}° + delay ${f(r.lagD, 1)}° + filter ${f(r.lagF, 1)}° = ${f(r.total, 1)}°
+|G| = ${f(r.db, 2)} dB`)}`,
+`<p>The reported bandwidth is the specification the device is judged against.</p>`];
+    return rows[S];
+  },
+  stats() { const s = st(), r = BEAM.resp(s.fq, s.bw, s.d, true); return `<span><b>|G|</b>${f(r.db, 1)} dB</span><span><b>lag</b>${f(r.total, 0)}°</span><span><b>you feel</b>${s.fq < s.bw ? 'the law' : 'hardware'}</span>`; },
+});
+</script>
+</body></html>

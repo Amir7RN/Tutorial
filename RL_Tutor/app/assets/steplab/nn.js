@@ -126,7 +126,7 @@ NN.bars = (P, vals, o = {}) => {
   if (y0 < 0) P.line([x0, 0], [x1, 0], '--grey', 1);
   vals.forEach((v, i) => {
     const cx = x0 + w * (i + .5), cl = o.cols ? o.cols[i] : (v >= 0 ? '--a' : '--bad');
-    P.poly([[cx - w * .32, 0], [cx + w * .32, 0], [cx + w * .32, Math.max(y0, Math.min(y1, v))], [cx - w * .32, Math.max(y0, Math.min(y1, v))]], cl, 1.5, null, cl, true);
+    const b0 = y0 > 0 ? y0 : y1 < 0 ? y1 : 0; P.poly([[cx - w * .32, b0], [cx + w * .32, b0], [cx + w * .32, Math.max(y0, Math.min(y1, v))], [cx - w * .32, Math.max(y0, Math.min(y1, v))]], cl, 1.5, null, cl, true);
     if (o.labels) P.text([cx, y0], o.labels[i], '--muted', 0, -4, { size: 11, align: 'center' });
     if (o.show !== false) P.text([cx, Math.max(y0, Math.min(y1, v))], SL.f(v, o.d ?? 2), '--ink', 0, v >= 0 ? -5 : 14, { size: 11, align: 'center' });
   });

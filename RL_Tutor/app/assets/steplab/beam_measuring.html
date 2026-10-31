@@ -1,0 +1,75 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Where the device's numbers come from</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { h: v.h / 100, m: v.m, K: v.K, z: v.z / 100, sway: v.sway }; };
+/* normalised second-order step response y(ωn t) for damping ζ */
+const step2 = (z, x) => { if (z < 1) { const wd = Math.sqrt(1 - z * z); return 1 - Math.exp(-z * x) * (Math.cos(wd * x) + z / wd * Math.sin(wd * x)); } if (z === 1) return 1 - Math.exp(-x) * (1 + x); const r = Math.sqrt(z * z - 1), a = -z + r, b = -z - r; return 1 + (b * Math.exp(a * x) - a * Math.exp(b * x)) / (a - b); };
+SL.app({
+  title: 'Where this device\'s numbers come from',
+  sub: 'Segment inertias from anthropometry, actuator inertia from the gear ratio, and rendered stiffness from a bench test with an R² next to it. Quoted values from Nalam et al. and Naseri et al.',
+  view: '2d',
+  legend: [['--a', 'torso'], ['--e', 'legs'], ['--c', 'measured / within spec'], ['--b', 'commanded'], ['--bad', 'outside bench range']],
+  controls: [
+    { id: 'h', label: 'height', min: 150, max: 200, value: 175, fmt: x => f(x / 100) + ' m' },
+    { id: 'm', label: 'body mass', min: 45, max: 110, value: 75, fmt: x => x + ' kg' },
+    { id: 'K', label: 'rendered K', min: 5, max: 140, value: 48, fmt: x => x + ' N·m/rad' },
+    { id: 'z', label: 'rendered ζ', min: 40, max: 140, value: 80, fmt: x => f(x / 100) },
+    { id: 'sway', label: 'sway angle (step 4)', min: 1, max: 15, value: 5, fmt: x => x + '°' },
+  ],
+  steps: [
+    ['Scaled, not looked up', 'Segment mass, length, CoM offset and inertia from standard anthropometric tables, scaled per participant by height, weight and trochanter-to-floor leg length. It worked: no significant correlation between improvement and height (r = −0.243, p = 0.498) or weight (r = −0.139, p = 0.707).'],
+    ['The actuator, per hip', 'Maxon EC-60 + 100:1 harmonic drive (CSD-20-100-2A-GR-SP674); a cantilevered load cell in parallel for interaction torque; passive hinges so flexion/extension is free; climbing harness on a thoracolumbar orthosis. 0.8 N·m/kg → 72 N·m for a 90 kg user; ±30°; FEA safety factor 1.5; ≈ 6 kg worn.'],
+    ['Static bench test', 'Push the thigh strap while the device renders a fixed K (20, 40, 60, 80 N·m/rad); record steady deflection. Force–deflection linear with R² ≥ 99.4 %, fitted slope within 2.5 % of the command.'],
+    ['Dynamic bench test: ω_n and ζ as a spec', 'Measured step responses against the second-order system the admittance specifies, at K = 12, 48, 95.04 × ζ = 0.6, 0.8, 1.0, 1.2: R² 98.5–99.96 %. Underdamped through overdamped on purpose — a device that renders one ζ cannot claim to render an admittance.'],
+    ['What it costs to move this person', 'Whole-body inertia about the stance foot, and the gravitational tipping torque at a few degrees of sway: the load the assistance argues with. Compare with 72 N·m — and with the 15–20 % share actually applied.'],
+    ['Stay inside what was validated', 'Push K past 95 N·m/rad and you are outside the bench evidence. The design was never going to hold the user up — only nudge them.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, Sb = BEAM.subject(s.h, s.m), tip = s.m * 9.81 * .55 * s.h * Math.sin(s.sway * Math.PI / 180);
+    if (S === 0 || S === 4) {
+      const P = Pl.panel(0, 0, .42, .82, [-.7, .7, -.1, 2.05]); P.frame('three scaled segments'); BEAM.figure(P, Sb, S === 4 ? s.sway * Math.PI / 180 : 0, S === 4 ? s.sway * Math.PI / 180 : 0, 0, { com: S === 4 });
+      if (S === 4) P.arrow([.55 * s.h * Math.sin(s.sway * Math.PI / 180) * .6, .55 * s.h * .6], [.25, 0], '--bad', 3, 'gravity tips');
+      const T = Pl.panel(.43, 0, .57, .82, [0, 1, 0, 1], false); T.frame(S === 0 ? 'fractions × participant' : 'load vs actuator');
+      NN.lines(T, S === 0 ? [['torso (HAT) mass   0.578 M = ' + f(Sb.mT, 1) + ' kg', '--a'], ['one leg mass       0.161 M = ' + f(Sb.mL, 1) + ' kg', '--e'], ['leg length         0.530 H = ' + f(Sb.lL, 2) + ' m', '--e'], ['torso length       0.288 H = ' + f(Sb.lT, 2) + ' m', '--a'], ['torso CoM          0.626 of torso from hip', '--a'], ['leg CoM            0.447 of leg from floor', '--e'], ['I (slender rod)    m l²/12', '--muted'], ['I_wb about foot    ' + f(Sb.Iwb(), 1) + ' kg·m²', '--ink'], ['', ''], ['improvement vs height r = −0.243 (p = 0.498)', '--c'], ['improvement vs weight r = −0.139 (p = 0.707)', '--c']]
+        : [['I_wb about foot      ' + f(Sb.Iwb(), 1) + ' kg·m²', '--ink'], ['tipping torque at ' + s.sway + '°  ' + f(tip, 1) + ' N·m', '--bad'], ['  = ' + f(100 * tip / 72, 0) + ' % of 72 N·m peak', tip > 72 ? '--bad' : '--ink'], ['applied share 15–20 %:', '--c'], ['  ≈ ' + f(.15 * tip, 1) + ' – ' + f(.2 * tip, 1) + ' N·m', '--c'], ['', ''], ['a nudge, never a hold', '--muted']], { top: .08, gap: .085 });
+    } else if (S === 1) {
+      const T = Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false); T.frame('hardware, per hip (quoted)');
+      NN.lines(T, [['motor        Maxon EC-60 brushless', '--ink'], ['gear         100:1 harmonic drive (CSD-20-100-2A-GR-SP674)', '--ink'], ['sensing      cantilevered load cell IN PARALLEL with the actuator → interaction torque', '--c'], ['kinematics   passive hinges: hip flexion/extension not arrested; ROM ±30° ab/adduction', '--ink'], ['reaction     climbing harness on a thoracolumbar orthosis', '--ink'], ['torque spec  0.8 N·m/kg × 90 kg design user = 72 N·m', '--b'], ['structure    housings by FEA to safety factor 1.5', '--ink'], ['worn mass    ≈ 6 kg  (it costs ~10.8 pp of baseline performance: page 104)', '--bad']], { top: .12, gap: .1 });
+    } else if (S === 2) {
+      const P = Pl.panel(0, 0, .62, .82, [0, .3, 0, 26], false); P.frame('static: torque vs deflection (rad)');
+      const r = NN.rng(5); [20, 40, 60, 80].forEach((K, i) => { const cl = ['--a', '--c', '--e', '--d'][i]; P.line([0, 0], [.3, K * .3], cl, 1.5, [4, 3]); for (let k = 1; k <= 8; k++) { const x = k * .03; P.dot([x, K * x * (1 + .012 * NN.gauss(r))], 3.5, cl); } P.text([.3, K * .3], 'K=' + K, cl, -40, -6, { size: 12 }); });
+      const R = Pl.panel(.63, 0, .37, .82, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['commanded K: 20, 40, 60, 80', '--b'], ['linear fit R² ≥ 99.4 %', '--c'], ['slope within 2.5 % of', '--c'], [' the command', '--c'], ['', ''], ['dots: illustrative scatter', '--muted'], [' around the quoted fit', '--muted']], { top: .1, gap: .1 });
+    } else {
+      const xs = [...Array(241)].map((_, i) => i / 20), M = BEAM.CTRL.M, inside = s.K <= 95.04;
+      const P = Pl.panel(0, 0, .62, .82, [0, 12, 0, 1.6], false);
+      P.series([...[.6, .8, 1, 1.2].map((z, i) => ({ pts: xs.map(x => [x, step2(z, x)]), cl: '--line', w: 1, label: i === 0 ? 'tested ζ = 0.6 … 1.2' : '' })), { pts: xs.map(x => [x, step2(s.z, x)]), cl: inside ? '--c' : '--bad', w: 3, label: `ζ = ${f(s.z)}` }], { title: 'rendered step response vs ω_n·t (normalised)' });
+      const R = Pl.panel(.63, 0, .37, .82, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['ω_n = √(K/M),  ζ = B/(2√(KM))', '--ink'], ['K = ' + s.K + ' N·m/rad', '--b'], ['tested K: 12, 48, 95.04', '--muted'], ['tested ζ: 0.6, 0.8, 1.0, 1.2', '--muted'], ['R² 98.5 – 99.96 %', '--c'], ['', ''], [inside ? 'inside bench range ✓' : 'OUTSIDE bench range (> 95)', inside ? '--c' : '--bad'], ['', ''], ['you name ω_n and ζ;', '--muted'], [' identification says if', '--muted'], [' the hardware rendered them', '--muted']], { top: .08, gap: .085 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 4 || S === 5 ? `tipping torque at ${s.sway}°: ${f(tip, 0)} N·m = ${f(100 * tip / 72, 0)}% of 72 N·m — the device was never going to hold the user up, only nudge` : S === 3 ? 'page 11\'s two numbers, used as a specification' : 'page 3: nobody looks these numbers up — they are scaled or measured', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st(), Sb = BEAM.subject(s.h, s.m), tip = s.m * 9.81 * .55 * s.h * Math.sin(s.sway * Math.PI / 180);
+    const rows = [
+`${E(`m_T = 0.578 M, m_L = 0.161 M, l_L = 0.530 H, l_T = 0.288 H
+I_wb = I_T + m_T d_ST² + 2(I_L + m_L d_L²) = ${f(Sb.Iwb(), 2)} kg·m²`)}`,
+`${E(`τ_peak = 0.8 N·m/kg × 90 kg = 72 N·m`)}`,
+`${E(`τ = K·δ,   R² ≥ 99.4 %,  |K_fit − K_cmd|/K_cmd ≤ 2.5 %`)}`,
+`${E(`ω_n = √(K/M),  ζ = B/(2√(KM))
+K = ${s.K}, ζ = ${f(s.z)}`)}`,
+`${E(`τ_tip ≈ M g (0.55 H) sin θ = ${s.m}·9.81·${f(.55 * s.h, 3)}·sin ${s.sway}° = ${f(tip, 1)} N·m
+= ${f(100 * tip / 72, 0)} % of 72 N·m`)}`,
+`<p>Inside 95 N·m/rad: validated. Outside: an extrapolation the bench never checked.</p>`];
+    return rows[S];
+  },
+  stats() { const s = st(), Sb = BEAM.subject(s.h, s.m); return `<span><b>I_wb</b>${f(Sb.Iwb(), 1)} kg·m²</span><span><b>K in range</b>${s.K <= 95.04 ? 'yes' : 'no'}</span>`; },
+});
+</script>
+</body></html>

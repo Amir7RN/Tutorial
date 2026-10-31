@@ -1,0 +1,84 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Three IMUs and drift</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, D2R = Math.PI / 180;
+const st = () => { const v = SL.v; return { bias: v.bias / 1000, noise: v.noise / 1000, ce: v.ce / 100, tL: v.tL * D2R }; };
+let RUN = null;
+const run = s => { const k = [s.bias, s.noise, s.ce].join(); if (!RUN || RUN.k !== k) RUN = { k, r: BEAM.sim({ assist: true, kick: 6, seed: 2, extra: 6, bias: s.bias, noise: s.noise, comErr: s.ce, dur: 6 }) }; return RUN.r; };
+SL.app({
+  title: 'Three IMUs, a reference generator, and drift',
+  sub: 'The controller never measures momentum. It estimates it from three angles and three rates through a scaled model — page 20\'s observer problem with page 7\'s integrator liability attached.',
+  view: '2d',
+  legend: [['--c', 'measured (IMU)'], ['--d', 'inferred (model)'], ['--a', 'truth'], ['--bad', 'estimate / drift'], ['--grey', 'dead zone']],
+  controls: [
+    { id: 'bias', label: 'gyro bias', min: 0, max: 100, value: 15, fmt: x => f(x / 1000, 3) + ' rad/s' },
+    { id: 'noise', label: 'rate noise', min: 0, max: 100, value: 20, fmt: x => f(x / 1000, 3) + ' rad/s' },
+    { id: 'ce', label: 'torso CoM model error', min: -20, max: 20, value: 0, fmt: x => (x >= 0 ? '+' : '') + x + '%' },
+    { id: 'tL', label: 'stance leg angle (step 3)', min: -12, max: 12, value: 8, fmt: x => x + '°' },
+  ],
+  steps: [
+    ['Measured vs inferred', 'Measured: segment angle and rate from one IMU on the torso and one on each leg, zeroed in neutral standing, read over UART into an EtherCAT frame. Inferred: lateral CoM and its rate, H_wb about the stance foot, the desired torso state, and the momentum error. None of those four is a sensor reading.'],
+    ['An observer without the name', 'A model (segment masses, lengths, inertias scaled to the participant) turns measurable quantities into an unmeasurable state. Page 20\'s rule in full: an estimate is only as good as its model, and a model bias appears as a bias in the correction.'],
+    ['Gyro bias → drift, if you integrate', 'Any rate offset integrated grows without bound — page 7\'s pole at the origin, arriving unasked. The design never integrates rate into angle for control: momentum error uses rates directly; angles come from the IMU\'s own attitude solution with a standing zero. And slow drift must exceed 4.6° before it can command anything.'],
+    ['Model error → a biased reference', 'θ_T,d comes from mass × distance ratios: get the torso CoM wrong by 10 % and the desired torso angle is wrong by about the same fraction. But the correction is 15–20 % of a momentum error and unidirectional, so a biased reference perturbs magnitude, not sign.'],
+    ['Inject bias and noise', 'Truth: the teaching model\'s torso momentum. Estimate: what the controller computes from IMU rates carrying your bias and noise (and your CoM model error). Watch how much commanded torque the estimation error alone is responsible for.'],
+    ['Where this controller is most exposed', 'No force plate, no motion capture, no absolute reference on the beam — three IMUs and a scaled anthropometric model are the whole sensing story. That is what makes it wearable, and what any future version must improve first.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, Sb = BEAM.subject();
+    if (S <= 1) {
+      const D = Pl.panel(0, 0, 1, .82, [0, 12, 0, 6], false); D.frame('sensing → model → control');
+      const box = (x, y, w, t, c) => { D.poly([[x, y], [x + w, y], [x + w, y + .9], [x, y + .9]], c, 2, null, c, true); D.text([x + w / 2, y + .45], t, '--ink', 0, 4, { size: 12, align: 'center' }); };
+      ['IMU torso: θ_T, ω_T', 'IMU left leg: θ_L, ω_L', 'IMU right leg: θ_R, ω_R'].forEach((t, i) => box(.3, 4.4 - i * 1.5, 3, t, '--c'));
+      box(4.4, 2.9, 2.6, S === 1 ? 'MODEL (observer)' : 'scaled model', '--d');
+      ['x_CoM, ẋ_CoM', 'H_wb about foot', 'θ_T,d, θ̇_T,d', 'ΔH_T → torque'].forEach((t, i) => box(8.1, 5 - i * 1.4, 3.4, t, '--d'));
+      [4.85, 3.35, 1.85].forEach(y => D.arrow([3.3, y], [1.1, (3.35 - y) * .6], '--grey', 1.5)); [5.45, 4.05, 2.65, 1.25].forEach(y => D.arrow([7, 3.35], [1.1, y - 3.35], '--grey', 1.5));
+      D.text([5.7, 2.4], 'm, l, d, I scaled by height & mass', '--muted', 0, 0, { size: 11, align: 'center' });
+      if (S === 1) D.text([6, .4], 'a bias in the model is a bias in the correction (page 20)', '--bad', 0, 0, { size: 13, align: 'center' });
+    } else if (S === 2) {
+      const ts = [...Array(301)].map((_, i) => i * .2);
+      const P = Pl.panel(0, 0, .64, .82, [0, 60, -1, 12], false);
+      P.series([{ pts: ts.map(t => [t, s.bias * t / D2R]), cl: '--bad', w: 2.5, label: 'angle by integrating a biased gyro' }, { pts: ts.map(t => [t, .05 * Math.sin(t)]), cl: '--c', w: 2, label: 'IMU attitude solution (standing zero)' }], { title: 'degrees vs time (s)' });
+      P.poly([[0, -1], [60, -1], [60, 4.6], [0, 4.6]], null, 0, null, '--grey', true); P.text([1, 4.6], 'dead zone 4.6°', '--muted', 4, -4, { size: 11 });
+      const R = Pl.panel(.65, 0, .35, .82, [0, 1, 0, 1], false); R.frame();
+      const tcross = 4.6 * D2R / Math.max(1e-9, s.bias);
+      NN.lines(R, [['bias b = ' + f(s.bias, 3) + ' rad/s', '--bad'], ['∫ b dt = b·t (pole at 0)', '--bad'], ['crosses 4.6° after', '--muted'], ['  ' + (s.bias ? f(tcross, 1) + ' s' : 'never'), '--bad'], ['', ''], ['design: rates used', '--c'], [' directly; angles from', '--c'], [' attitude solution;', '--c'], [' never integrated here', '--c']], { top: .1, gap: .09 });
+    } else if (S === 3) {
+      const P = Pl.panel(0, 0, .5, .82, [-.7, .7, -.1, 2.05]); P.frame('true vs biased reference');
+      const [th0] = Sb.desired(s.tL, -s.tL * .3, 0, 0, 1), [th1] = Sb.desired(s.tL, -s.tL * .3, 0, 0, 1 + s.ce);
+      const fig = BEAM.figure(P, Sb, th0, s.tL, -s.tL * .3, { com: false }); P.line(fig.hip, [fig.hip[0] + Sb.lT * Math.sin(th1), fig.hip[1] + Sb.lT * Math.cos(th1)], '--bad', 3, [6, 4]);
+      const R = Pl.panel(.51, 0, .49, .82, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['θ_T,d true   = ' + f(th0 / D2R, 3) + '°', '--a'], ['θ_T,d model  = ' + f(th1 / D2R, 3) + '°', '--bad'], ['relative error ' + (th0 ? f(100 * (th1 - th0) / th0, 1) + ' %' : '—'), '--bad'], ['CoM model error ' + f(100 * s.ce, 0) + ' %', '--muted'], ['', ''], ['correction = 15–20 % of a', '--c'], [' momentum error, one-sided:', '--c'], [' bias changes MAGNITUDE,', '--c'], [' not SIGN', '--c']], { top: .1, gap: .09 });
+    } else {
+      const r = run(s), n = r.n, ks = [...Array(Math.ceil(n / 8))].map((_, i) => i * 8);
+      const P = Pl.panel(0, 0, .64, .82, [0, n * .001, -8, 8], false);
+      P.series([{ pts: ks.map(k => [k * .001, r.Hm[k]]), cl: '--a', w: 2.5, label: 'H_T truth' }, { pts: ks.map(k => [k * .001, r.He[k]]), cl: '--bad', w: 1.2, label: 'H_T estimate from IMU rates' }], { title: 'torso momentum (kg·m²/s), teaching model' });
+      let se = 0, tq = 0, tot = 0; for (let k = 1; k < n; k++) { se += Math.abs(r.He[k] - r.Hm[k]); tot += Math.abs(r.tA[k]); }
+      se /= n; const spur = .25 * BEAM.TEACH.exoK * se * .2;
+      const R = Pl.panel(.65, 0, .35, .82, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 4 ? [['mean |H est − H true|', '--muted'], ['  ' + f(se, 3) + ' kg·m²/s', '--bad'], ['spurious torque ≈', '--muted'], ['  ' + f(spur, 2) + ' N·m (when active)', '--bad'], ['mean |exo torque|', '--muted'], ['  ' + f(tot / n, 2) + ' N·m', '--c'], ['', ''], ['bias ' + f(s.bias, 3) + ', noise ' + f(s.noise, 3), '--muted'], ['CoM model ' + f(100 * s.ce, 0) + ' %', '--muted']]
+        : [['sensing story:', '--ink'], ['  3 IMUs', '--c'], ['  + scaled model', '--d'], ['no force plate', '--bad'], ['no motion capture', '--bad'], ['no absolute reference', '--bad'], ['', ''], ['wearable — and the', '--ink'], [' first thing to improve', '--ink']], { top: .1, gap: .09 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S <= 1 ? 'measured: 3 angles + 3 rates · inferred: x_CoM, H_wb, θ_T,d, ΔH_T' : S === 2 ? 'page 7: a pole at the origin turns any constant offset into a ramp' : S === 3 ? 'θ_T,d = sin⁻¹(−(m_L d_L sin θ_L + m_R d_R sin θ_R)/(m_T d_T)) — d_T wrong → reference wrong' : 'estimation is where this controller is most exposed', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st();
+    const rows = [
+`${ul(['Measured: θ and ω of torso, left leg, right leg.', 'Inferred: x_CoM, ẋ_CoM, H_wb, (θ_T,d, θ̇_T,d), ΔH_T.'])}`,
+`${E(`Ĥ = f(θ, ω; m̂, l̂, d̂, Î)   — a model-based estimate`)}`,
+`${E(`θ̂(t) = ∫(ω + b) dt = θ(t) + b·t   → unbounded
+b = ${f(s.bias, 3)} rad/s → 4.6° in ${s.bias ? f(4.6 * D2R / s.bias, 1) + ' s' : '∞'}`)}`,
+`${E(`d̂_T = (1 + ε) d_T,  ε = ${f(s.ce, 2)}
+θ̂_T,d ≈ θ_T,d / (1 + ε)  (small angles)`)}`,
+`${E(`Ĥ_T = (I_T + m_T d_ST d̂_T)(ω_T + b + n)`)}`,
+`<p>Three IMUs and an anthropometric model are the whole sensing story.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>

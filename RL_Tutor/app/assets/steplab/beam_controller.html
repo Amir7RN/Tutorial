@@ -1,0 +1,84 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The momentum controller</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { th: v.th / 1000, dH: v.dH / 10, dHd: v.dHd / 10, gain: v.gain / 100, kick: v.kick / 10, seed: v.seed }; };
+const law = s => { const [a, b] = BEAM.dist(s.th), sh = a + b, raw = -Math.sign(s.th || 1) * s.gain * sh * (Math.abs(s.dH) + .02 * Math.abs(s.dHd)); return { a, b, raw, stance: raw * (a / (sh || 1)), swing: raw * (b / (sh || 1)) }; };
+let RUN = null;
+const run = s => { const k = JSON.stringify([s.gain, s.kick, s.seed]); if (!RUN || RUN.k !== k) RUN = { k, on: BEAM.sim({ assist: true, gain: s.gain, kick: s.kick, seed: s.seed, extra: 6 }), off: BEAM.sim({ assist: false, kick: s.kick, seed: s.seed, extra: 6 }) }; return RUN; };
+SL.app({
+  title: 'The momentum controller, term by term',
+  sub: 'Momentum error, dead zone, asymmetric distribution, absolute derivative, Butterworth, admittance: six blocks, each a decision. The trial in the last step is a teaching model (parameters in beam.js), not experimental data.',
+  view: '2d',
+  legend: [['--e', 'momentum error'], ['--grey', 'dead zone'], ['--a', 'stance hip'], ['--d', 'swing hip'], ['--c', 'exo torque'], ['--b', 'human torque'], ['--bad', 'sway / step-off']],
+  controls: [
+    { id: 'th', label: 'torso sway θ_T', min: -200, max: 200, value: 110, fmt: x => f(x / 1000, 3) + ' rad' },
+    { id: 'dH', label: 'momentum error ΔH_T', min: -100, max: 100, value: 40, fmt: x => f(x / 10, 1) },
+    { id: 'dHd', label: 'momentum rate ΔḢ_T', min: -300, max: 300, value: -120, fmt: x => f(x / 10, 1) },
+    { id: 'gain', label: 'personalisation gain', min: 75, max: 100, step: 25, value: 100, fmt: x => f(x / 100) },
+    { id: 'kick', label: 'swing momentum / step (step 7)', min: 30, max: 100, value: 85, fmt: x => f(x / 10, 1) + ' kg·m²/s' },
+    { id: 'seed', label: 'trial (seed)', min: 0, max: 17, value: 3 },
+  ],
+  steps: [
+    ['The law, as published', 'x = [ΔH_T, ΔḢ_T] with ΔH_T = H_T − H_T,d. τ_raw = gain · D(θ_T) · [ΔH_T, |ΔḢ_T|]; τ_filt = F(s)τ_raw with a 2 Hz, ζ = 0.707 Butterworth; ω_cmd = τ_filt/(Ms² + Bs + K) with {M, B, K} = {10⁻³, 10⁻², 5×10⁻²}.'],
+    ['1 · The state is a momentum error', 'The controller regulates a quantity that already contains velocity — it is not a virtual spring towards a pose. On a beam there is no "correct" torso angle to hold, and this is how the code says so.'],
+    ['2 · The dead zone', '±0.08 rad ≈ 4.6° of transparency. Natural sway is never corrected; only sway past the stance leg is. Slide θ_T through it.'],
+    ['3 · Asymmetric distribution', '20 % of the correction to the stance hip, 5 % to the swing hip, the stance side chosen by the sign of torso sway. The stance hip is the one with a pivot to push against.'],
+    ['4 · The absolute value on the rate', 'Output is unidirectional — always adducting, always drawing torso and leg back to the midline. That removes the polarity switching a bidirectional law would do around small sway: page 12\'s oscillation mechanism, designed out in advance.'],
+    ['5 · Filter, admittance, and the gain', 'The 2 Hz Butterworth smooths a noisy momentum-derived command; the tiny M, B, K make the admittance a torque-to-velocity pass-through. gain ∈ {0.75, 1}: 15 % or 20 % of the correction, chosen per participant from verbal feedback, then fixed.'],
+    ['Why small is enough', 'Partial assistance (15–20 %) can improve stability without disrupting voluntary control. Helpfulness 1.57 ± 0.58 on −3…+3; detection 4.2 ± 0.8 of 5 — detectable AND welcome, the pair of claims a small-torque design must support.'],
+    ['A trial, law on and off', 'Same swing-leg kicks in both runs. The exo only acts once sway leaves the dead zone, always toward the midline, filtered and lagged. Model distances are mechanism, not results; in this teaching model the effect is small.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, L = law(s);
+    if (S <= 6) {
+      const D = Pl.panel(0, 0, 1, .36, [0, 12, 0, 3], false); D.frame('signal chain');
+      const blocks = [['ΔH, ΔḢ', '--e', 1], ['dead zone', '--grey', 2], ['D: 20/5 %', '--a', 3], ['|ΔḢ|', '--d', 4], ['gain', '--b', 5], ['F(s) 2 Hz', '--e', 5], ['1/(Ms²+Bs+K)', '--c', 5]];
+      blocks.forEach(([t, c, k], i) => { const x = .3 + i * 1.68, on = S === 0 || S === k || (S >= 5 && k === 5) || S === 6; D.poly([[x, .9], [x + 1.4, .9], [x + 1.4, 2.1], [x, 2.1]], on ? c : '--line', on ? 2.5 : 1, null, on ? c : null, true); D.text([x + .7, 1.45], t, on ? '--ink' : '--muted', 0, 4, { size: 12, align: 'center' }); if (i < 6) D.arrow([x + 1.4, 1.5], [.28, 0], '--grey', 1.5); });
+      const P = Pl.panel(0, .38, .55, .44, [-.2, .2, -3, 3], false), ths = [...Array(201)].map((_, i) => -.2 + i * .002);
+      P.series([{ pts: ths.map(t => [t, 10 * law({ ...s, th: t }).stance]).map(p => [p[0], Math.max(-3, Math.min(3, p[1] / 10))]), cl: '--a', w: 2.5, label: 'stance-hip command' }, { pts: ths.map(t => [t, Math.max(-3, Math.min(3, law({ ...s, th: t }).swing))]), cl: '--d', w: 2.5, label: 'swing-hip command' }], { title: 'command vs torso sway (fixed ΔH, ΔḢ)' });
+      P.poly([[-.08, -3], [.08, -3], [.08, 3], [-.08, 3]], null, 0, null, '--grey', true); P.line([s.th, -3], [s.th, 3], '--ink', 1, [3, 3]);
+      const R = Pl.panel(.56, .38, .44, .44, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, [['θ_T = ' + f(s.th, 3) + ' rad  ' + (L.a ? 'outside dead zone' : 'inside: transparent'), L.a ? '--bad' : '--c'], ['D = (' + f(L.a, 2) + ' stance, ' + f(L.b, 2) + ' swing)', '--a'], ['|ΔH| + 0.02|ΔḢ| = ' + f(Math.abs(s.dH) + .02 * Math.abs(s.dHd), 2), '--e'], ['sign: −sign(θ_T) → toward midline', '--d'], ['τ_raw = ' + f(L.raw, 2) + '  (gain ' + f(s.gain) + ')', '--b'], ['  stance ' + f(L.stance, 2) + ', swing ' + f(L.swing, 2), '--muted'], [S === 6 ? 'helpfulness 1.57 ± 0.58 · detect 4.2 ± 0.8 / 5' : 'flip ΔḢ\'s sign: command unchanged', '--muted']], { top: .12, gap: .12 });
+    } else {
+      const r = run(s), ts = n => [...Array(Math.ceil(n / 10))].map((_, i) => i * 10);
+      const A = Pl.panel(0, 0, .62, .4, [0, 12, -.25, .25], false);
+      A.series([{ pts: ts(r.off.n).map(k => [k * .001, r.off.th[k]]), cl: '--bad', w: 1.5, dash: [4, 3], label: 'sway, no assist' }, { pts: ts(r.on.n).map(k => [k * .001, r.on.th[k]]), cl: '--a', w: 2.5, label: 'sway, active assist' }], { title: 'torso sway θ_T (rad)' });
+      A.poly([[0, -.08], [12, -.08], [12, .08], [0, .08]], null, 0, null, '--grey', true);
+      const T2 = Pl.panel(0, .41, .62, .41, [0, 12, -75, 75], false);
+      T2.series([{ pts: ts(r.on.n).map(k => [k * .001, r.on.tH[k]]), cl: '--b', w: 1.5, label: 'human torque' }, { pts: ts(r.on.n).map(k => [k * .001, r.on.tA[k]]), cl: '--c', w: 2.5, label: 'exo torque' }], { title: 'torques (N·m), assisted run' });
+      const R = Pl.panel(.63, 0, .37, .82, [0, 1, 0, 1], false); R.frame('model output');
+      NN.lines(R, [['peak exo torque', '--muted'], ['  ' + f(r.on.pk, 1) + ' N·m', '--c'], ['time assisting', '--muted'], ['  ' + f(100 * r.on.duty, 0) + ' %', '--c'], ['distance, assist', '--muted'], ['  ' + f(r.on.dist, 2) + ' m', '--a'], ['distance, no assist', '--muted'], ['  ' + f(r.off.dist, 2) + ' m', '--bad'], ['difference ' + (r.on.dist - r.off.dist >= 0 ? '+' : '') + f(r.on.dist - r.off.dist, 2) + ' m', '--ink']], { top: .1, gap: .09 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 7 ? 'exo acts only outside the shaded dead zone, always toward the midline — teaching model, not experimental results' : 'five decisions hiding in four lines: momentum state, dead zone, 20/5 split, |rate|, small personalised gain', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const s = st(), L = law(s);
+    const rows = [
+`${E(`x = [ΔH_T, ΔḢ_T]ᵀ,  ΔH_T = H_T − H_T,d
+τ_raw = gain · D(θ_T) · [ΔH_T, |ΔḢ_T|]
+τ_filt = F(s) τ_raw,  F = ω_c²/(s² + 2ζω_c s + ω_c²), ω_c = 2π·2, ζ = 0.707
+ω_cmd = τ_filt/(Ms² + Bs + K),  {M, B, K} = {1e−3, 1e−2, 5e−2}`)}`,
+`<p>A momentum error already contains velocity: no virtual spring to a pose.</p>`,
+`${E(`D(θ_T) = 0  for |θ_T| ≤ 0.08 rad (≈ 4.6°)
+now |θ_T| = ${f(Math.abs(s.th), 3)} → ${L.a ? 'active' : 'transparent'}`)}`,
+`${E(`D = (0.20 stance, 0.05 swing) for |θ_T| > 0.08
+stance side = sign of θ_T`)}`,
+`${E(`τ_raw ∝ |ΔH_T| + c|ΔḢ_T|,  direction = −sign(θ_T)
+= ${f(L.raw, 3)}`)}`,
+`${E(`gain ∈ {0.75, 1}  →  15 % or 20 % of the correction
+ω_n = √(K/M) ≈ 7.1 rad/s,  ζ = B/(2√(KM)) ≈ 0.7`)}`,
+`<p>Quoted: helpfulness 1.57 ± 0.58 (−3…+3); detection 4.2 ± 0.8 of 5.</p>`,
+(() => { const r = run(s); return `${E(`assisted: ${f(r.on.dist, 2)} m, peak ${f(r.on.pk, 1)} N·m
+unassisted: ${f(r.off.dist, 2)} m`)}<p>Same seed, same kicks: the paired design of the real experiment.</p>`; })()];
+    return rows[S];
+  },
+  stats() { const L = law(st()); return `<span><b>D</b>${f(L.a, 2)}/${f(L.b, 2)}</span><span><b>τ_raw</b>${f(L.raw, 2)}</span>`; },
+});
+</script>
+</body></html>

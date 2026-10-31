@@ -1,0 +1,70 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beam stability</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="ctl.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+/* linearised loop: (I s² − mgl) + human (kh + dh s)e^(−sT) + exo a(ke + de s)·p/(s + p) = 0, delay by 1st-order Padé.
+   Teaching parameters: human PD alone too weak at 120 ms; 20 % exo share closes it; more delay reopens it. */
+const I = 73.8, MGL = 708, KH = 650, DH = 100, KE = 100, DE = 30;
+const st = () => { const v = SL.v; return { share: v.share / 100, T: v.T / 1000, bw: v.bw / 10 }; };
+const charpoly = s => { const p = 2 * Math.PI * s.bw, a = s.share / .2;
+  const A = CTL.pmul(CTL.pmul([I, 0, -MGL], [s.T / 2, 1]), [1, p]), H = CTL.pmul(CTL.pmul([DH, KH], [-s.T / 2, 1]), [1, p]), X = CTL.pscl(CTL.pmul([DE, KE], [s.T / 2, 1]), a * p);
+  return CTL.padd(CTL.padd(A, H), X); };
+const poles = s => CTL.roots(charpoly(s)), worst = r => Math.max(...r.map(z => z[0]));
+const pOpen = Math.sqrt(MGL / I);
+SL.app({
+  title: 'Stability: an unstable pole and a late human',
+  sub: 'The frontal-plane body on a beam has a pole in the right half-plane. The human closes the loop 120 ms late. The exo is a third torque source in the same loop. Pole positions use teaching parameters, not identified human data.',
+  view: '2d',
+  legend: [['--bad', 'right half-plane / unstable'], ['--d', 'closed-loop poles'], ['--b', 'locus as share rises'], ['--a', 'response'], ['--grey', 'open-loop ±√(mgl/I)']],
+  controls: [
+    { id: 'share', label: 'exo share applied', min: 0, max: 40, value: 20, fmt: x => x + '%' },
+    { id: 'T', label: 'human delay', min: 40, max: 250, value: 120, fmt: x => x + ' ms' },
+    { id: 'bw', label: 'actuator bandwidth', min: 10, max: 150, value: 50, fmt: x => f(x / 10, 1) + ' Hz' },
+  ],
+  buttons: [{ label: 'no exo', onclick: () => { SL.setControl('share', 0); SL.redraw(); } }, { label: '20 %', onclick: () => { SL.setControl('share', 20); SL.redraw(); } }, { label: 'delay 200 ms', onclick: () => { SL.setControl('T', 200); SL.redraw(); } }],
+  steps: [
+    ['Page 12\'s bad case', 'I_wb θ̈_T = mgl θ_T + τ_human + τ_exo. Gravity\'s sign is positive: lean further and the torque that caused the lean grows. Poles s = ±√(mgl/I) — one in the right half-plane, and its size is a rate you can feel: the time for a disturbance to double.'],
+    ['On a beam, only hip torque moves that pole', 'The base of support cannot widen, so no centre-of-pressure work helps. Only torque about the hips changes the loop.'],
+    ['The human is inside the loop — and is the slow part', 'Roughly PD on trunk sway, 100–150 ms late, saturating at hip strength. Delay is unbounded phase lag (page 8), so the loop has a critical gain: turning the human gain up is not available as a fix.'],
+    ['The exo adds a torque in parallel', 'Not a replacement loop: 15–20 % of the computed correction, through a 5 Hz actuator lag and a dead zone, which keeps the human\'s own response authoritative. Drag the share: watch the slowest pole cross into the left half-plane.'],
+    ['Delay takes back what the exo bought', 'Raise the human delay at a fixed share and the crossing you just bought disappears. Lower the actuator bandwidth and the exo\'s phase arrives too late as well.'],
+    ['The dead zone is a stability device', 'Inside ±0.08 rad the exo contributes nothing, so the loop it could destabilise is not closed at all. Outside, the torque is unidirectional — always pulling the trunk back — removing the sign switching a bidirectional law would perform at every zero crossing of sway.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, r = poles(s), wv = worst(r);
+    const P = Pl.panel(0, 0, .5, .8, [-14, 6, -10, 10]); P.frame('s-plane'); P.poly([[0, -10], [6, -10], [6, 10], [0, 10]], null, 0, null, '--bad', true); P.axes();
+    [pOpen, -pOpen].forEach(x => { P.line([x - .3, -.3], [x + .3, .3], '--grey', 2); P.line([x - .3, .3], [x + .3, -.3], '--grey', 2); }); P.text([pOpen, 0], '+√(mgl/I)', '--grey', -10, -12, { size: 11 });
+    if (S >= 3) for (let k = 0; k <= 40; k++) poles({ ...s, share: k / 100 }).forEach(z => P.clip(() => P.dot(z, 1.4, '--b')));
+    if (S >= 2) r.forEach(z => { const c = z[0] > 0 ? '--bad' : '--d'; P.clip(() => { P.line([z[0] - .35, z[1] - .35], [z[0] + .35, z[1] + .35], c, 3); P.line([z[0] - .35, z[1] + .35], [z[0] + .35, z[1] - .35], c, 3); }); });
+    const ts = [...Array(301)].map((_, i) => i * .006);
+    const resp = S < 2 ? ts.map(t => [t, Math.min(8, .01 * Math.cosh(pOpen * t))]) : (() => { const p = 2 * Math.PI * s.bw, a = s.share / .2, dt = .001, nd = Math.round(s.T / dt); let th = .01, w = 0, act = 0; const hist = [], out = [];
+      for (let k = 0; k < 1800; k++) { hist.push([th, w]); const [tj, wj] = hist[Math.max(0, k - nd)]; const tH = -(KH * tj + DH * wj), cmd = -a * (KE * th + DE * w); act += dt * p * (cmd - act);
+        w += dt * (MGL * th + tH + act) / I; th += dt * w; if (k % 6 === 0) out.push([k * dt, Math.max(-8, Math.min(8, th / .01))]); } return out; })();
+    const A = Pl.panel(.51, 0, .49, .8, [0, 1.8, -8, 8], false); A.series([{ pts: resp, cl: S < 2 ? '--bad' : wv > 0 ? '--bad' : '--a', w: 2.5, label: S < 2 ? 'no feedback: e^(+pt) growth' : 'sway after a 0.01 rad nudge (×100)' }], { title: S < 2 ? 'open loop' : wv > 0 ? 'closed loop: UNSTABLE' : 'closed loop: recovers' });
+    const Bt = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S < 2 ? `p = √(mgl/I) = √(${MGL}/${I}) = ${f(pOpen, 2)} /s → doubling time ln2/p = ${f(1000 * Math.LN2 / pOpen, 0)} ms` : `share ${f(100 * s.share, 0)}%, delay ${f(1000 * s.T, 0)} ms, actuator ${f(s.bw, 1)} Hz → slowest pole ${f(wv, 2)} /s: ${wv > 0 ? 'unstable, doubling ' + f(1000 * Math.LN2 / wv, 0) + ' ms' : 'stable'}`, wv > 0 || S < 2 ? '--bad' : '--c'], [S === 5 ? 'dead zone: the loop is not closed at all for small sway · unidirectional torque: no polarity switching' : 'teaching parameters: human K = 650, D = 100 N·m(·s)/rad; exo (K, D) = (100, 30) at 20 % share', '--muted']], { top: .38, gap: .35 });
+  },
+  math(S) {
+    const s = st(), r = poles(s);
+    const rows = [
+`${E(`I_wb θ̈_T = m g ℓ θ_T + τ_human + τ_exo
+open loop: s = ±√(mgℓ/I_wb) = ±${f(pOpen, 3)} /s
+doubling time = ln 2 / p = ${f(1000 * Math.LN2 / pOpen, 0)} ms`)}`,
+`<p>Centre-of-pressure work cannot move the pole on a 4 cm beam; hip torque can.</p>`,
+`${E(`τ_human ≈ −(K_h θ + D_h θ̇)·e^(−sT),  |τ_human| ≤ hip strength
+e^(−sT) ≈ (1 − sT/2)/(1 + sT/2)   (Padé, so the poles can be drawn)`)}`,
+`${E(`τ_exo ≈ −a (K_e θ + D_e θ̇) · p/(s + p),  p = 2π·${f(s.bw, 1)}
+a = share/0.20 = ${f(s.share / .2, 2)}
+poles: ${r.map(z => f(z[0], 2) + (Math.abs(z[1]) > 1e-6 ? (z[1] > 0 ? '+' : '−') + f(Math.abs(z[1]), 2) + 'j' : '')).join(', ')}`)}`,
+`${E(`slowest pole at delay ${f(1000 * s.T, 0)} ms: ${f(worst(r), 3)} /s`)}`,
+`<p>A bidirectional small-signal law would switch sign at every zero crossing of sway — the oscillation mechanism of page 12, avoided by design.</p>`];
+    return rows[S];
+  },
+  stats() { const r = poles(st()), w = worst(r); return `<span><b>slowest</b>${f(w, 2)}</span><span><b>verdict</b>${w > 0 ? 'unstable' : 'stable'}</span>`; },
+});
+</script>
+</body></html>

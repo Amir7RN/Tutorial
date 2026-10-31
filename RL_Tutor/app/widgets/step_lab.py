@@ -67,6 +67,16 @@ STEP_LABS = {
     "AgentSkeletonPage": ("agent_skeleton.html", "five shared objects, and where PPO breaks the mould"),
     "KneeRLPage": ("knee_rl.html", "a knee's impedance tuned by DDPG, one stride per step"),
     "DeployRLPage": ("deploy_rl.html", "a 1 kHz controller and a 20 Hz learner sharing memory"),
+    # beam balance (hip exo)
+    "BeamRealTimePage": ("beam_realtime.html", "clock stack, 5 Hz target and the phase budget"),
+    "BeamPlantPage": ("beam_plant.html", "three links, six states, one momentum output"),
+    "BeamMeasuringPage": ("beam_measuring.html", "scaled segments and the bench-identified admittance"),
+    "BeamStabilityPage": ("beam_stability.html", "an unstable pole, a late human, an exo in parallel"),
+    "BeamFrequencyPage": ("beam_frequency.html", "the loaded sine sweep and what gets rendered"),
+    "BeamControllerPage": ("beam_controller.html", "the momentum law, block by block, then a trial"),
+    "BeamEstimationPage": ("beam_estimation.html", "three IMUs, a model, and where the error enters"),
+    "BeamAdmittancePage": ("beam_admittance.html", "N = 100 chooses admittance"),
+    "BeamResultsPage": ("beam_results.html", "what the beam said, read like a control engineer"),
     # kinematics
     "PoEPage": ("poe.html", "forward kinematics, one exponential at a time"),
     "JacobianPage": ("jacobian.html", "the space Jacobian, column by column"),

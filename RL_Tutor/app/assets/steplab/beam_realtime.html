@@ -1,0 +1,80 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real time on the hip exo</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const st = () => { const v = SL.v; return { bw: v.bw / 10, d: v.d / 10, fq: v.fq / 10 }; };
+const LAYERS = [['current loop', 'Elmo drive · L/R ≈ 100s of µs', 20000, '--f'], ['velocity loop', 'Elmo Gold Solo Twitter PID · 4 kHz · 24 V, 40 A', 4000, '--c'], ['admittance loop', 'TwinCAT · 1 kHz · load-cell torque in, velocity out', 1000, '--a'], ['momentum loop', 'same 1 kHz task · 3 IMUs in, corrective torque out', 1000, '--e'], ['assistance bandwidth', 'measured, loaded: > 5 Hz', 5, '--b'], ['human volitional response', '≈ 200 ms window', 1 / .2 / (2 * Math.PI), '--grey']];
+SL.app({
+  title: 'Real time on the hip exo',
+  sub: '1 kHz admittance, a 4 kHz drive, a 5 Hz bandwidth target and a 200 ms human — page 1\'s timing argument with this device\'s numbers. Sources: Naseri, Nalam, Tacca & Huang; Nalam et al. Simulated curves are teaching models of the published law.',
+  view: '2d',
+  legend: [['--c', 'velocity loop'], ['--d', 'transport delay'], ['--e', '2 Hz Butterworth'], ['--b', 'assist step / bandwidth'], ['--grey', '200 ms human window']],
+  controls: [
+    { id: 'bw', label: 'velocity bandwidth', min: 10, max: 200, value: 50, fmt: x => f(x / 10, 1) + ' Hz' },
+    { id: 'd', label: 'transport delay', min: 0, max: 400, value: 20, fmt: x => f(x / 10, 1) + ' ms' },
+    { id: 'fq', label: 'frequency of interest', min: 5, max: 100, value: 20, fmt: x => f(x / 10, 1) + ' Hz' },
+  ],
+  steps: [
+    ['The clock stack, innermost first', 'Current loop inside the Elmo drive (Maxon EC-60, L/R in the hundreds of µs). Velocity loop: Elmo PID at 4 kHz. Admittance loop: TwinCAT at 1 kHz, load-cell torque in, velocity out, one per hip. Momentum loop: the same 1 kHz task, three IMUs in, corrective torque out.'],
+    ['Each layer watches what the inner one cannot', 'The cascade of page 1 built in hardware: every layer regulates a state the layer inside it is blind to, and each runs near the timescale of the pole it regulates. Rates on a log axis: fast clocks at the bottom, the human at the top.'],
+    ['Why 5 Hz', 'The active volitional balance response lasts about 200 ms; assistance arriving later arrives after the human has committed. Benchtop sweep 1–100 Hz at 50 % current, worn by an 85 kg user standing: velocity bandwidth > 5 Hz, and 1–5 Hz identical loaded and unloaded.'],
+    ['What "5 Hz is enough" claims', 'A 5 Hz corner is τ = 1/(2π·5) ≈ 32 ms, so an assistance step is essentially delivered by 4τ ≈ 130 ms — inside the 200 ms window with room to spare. That is the entire justification, and it is a first-order argument (page 6).'],
+    ['The phase budget at the frequency you care about', 'Between momentum error and felt torque: the velocity loop (first order at the identified bandwidth), transport delay (sample, compute, EtherCAT, drive), and the 2 Hz second-order Butterworth on the raw torque command. At 2 Hz ≈ −113° total — and only the first block is free.'],
+    ['Delay is pure phase', 'Drag the delay: the magnitude curve does not move, the phase curve does — exactly as pages 1 and 8 said. Delay costs phase in proportion to frequency, so it bites hardest where you most need margin.'],
+    ['The honest timing claim', '1 kHz is not the bandwidth; 4 kHz is not the bandwidth. The bandwidth is 5 Hz, measured with a sine sweep on the loaded device, because the harmonic drive, load cell, filters and bus each take a cut. The fast clocks make a 5 Hz loop honest, not fast.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S <= 1) {
+      const P = Pl.panel(0, 0, .62, .8, [-1.5, 4.6, 0, 6.5], false); P.frame('loop rates and bandwidths, log₁₀ Hz');
+      LAYERS.forEach(([n, d, hz, c], i) => { const y = .6 + i * .98, x = Math.log10(hz); P.poly([[-1.5, y - .3], [x, y - .3], [x, y + .3], [-1.5, y + .3]], c, 1.5, null, c, true); P.text([x, y], (hz >= 1000 ? f(hz / 1000, 0) + ' kHz' : f(hz, hz < 1 ? 2 : 0) + ' Hz'), '--ink', 6, 5, { size: 12 }); P.text([-1.45, y + .42], n, '--muted', 0, 0, { size: 11 }); });
+      const R = Pl.panel(.63, 0, .37, .8, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 0 ? LAYERS.slice(0, 4).flatMap(([n, d, , c]) => [[n, c], ['  ' + d.slice(0, 34), '--muted']]) : [['current   → torque', '--f'], ['velocity  → current', '--c'], ['admittance→ velocity cmd', '--a'], ['momentum  → torque cmd', '--e'], ['', ''], ['each outer loop watches', '--ink'], [' what the inner one is', '--ink'], [' blind to', '--ink'], ['each runs near the time-', '--muted'], [' scale of its own pole', '--muted']], { top: .1, gap: .085 });
+    } else if (S <= 3) {
+      const tau = 1 / (2 * Math.PI * s.bw), ts = [...Array(301)].map((_, i) => i * .3 / 300);
+      const P = Pl.panel(0, 0, .64, .8, [0, .3, 0, 1.15], false);
+      P.series([{ pts: ts.map(t => [t, 1 - Math.exp(-t / tau)]), cl: '--b', w: 3, label: `assist step, first order at ${f(s.bw, 1)} Hz` }], { title: 'a step of assistance against the 200 ms volitional window' });
+      P.poly([[0, 0], [.2, 0], [.2, 1.15], [0, 1.15]], null, 0, null, '--grey', true); P.line([.2, 0], [.2, 1.15], '--grey', 2, [5, 4]); P.text([.2, 1.08], '200 ms', '--muted', 4, 0, { size: 12 });
+      P.line([4 * tau, 0], [4 * tau, 1.15], '--b', 1.5, [3, 3]); P.text([4 * tau, .5], '4τ = ' + f(4000 * tau, 0) + ' ms', '--b', 4, 0, { size: 12 });
+      const R = Pl.panel(.65, 0, .35, .8, [0, 1, 0, 1], false); R.frame();
+      NN.lines(R, S === 2 ? [['target: 5 Hz', '--b'], ['because ~200 ms is the', '--ink'], [' volitional window', '--ink'], ['sweep 1–100 Hz, 50 %', '--muted'], [' current, 85 kg user', '--muted'], [' standing: > 5 Hz', '--c'], ['1–5 Hz: loaded =', '--c'], [' unloaded', '--c']]
+        : [['τ = 1/(2π·' + f(s.bw, 1) + ') = ' + f(1000 * tau, 1) + ' ms', '--b'], ['4τ = ' + f(4000 * tau, 0) + ' ms', '--b'], [4000 * tau < 200 ? 'inside 200 ms ✓' : 'LATE: after the human', 4000 * tau < 200 ? '--c' : '--bad'], ['', ''], ['a first-order argument,', '--muted'], [' page 6 exactly', '--muted']], { top: .12, gap: .1 });
+    } else {
+      const fs = [...Array(200)].map((_, i) => Math.pow(10, -1 + i * 2 / 199)), rs = fs.map(x => B(x, s));
+      const M = Pl.panel(0, 0, .62, .38, [-1, 1, -50, 5], false); M.series([{ pts: fs.map((x, i) => [Math.log10(x), rs[i].db]), cl: '--a', w: 2.5, label: 'assistance path magnitude (dB)' }], { title: 'Bode, 0.1–10 Hz (log axis)' });
+      const Ph = Pl.panel(0, .4, .62, .4, [-1, 1, -300, 5], false);
+      Ph.series([{ pts: fs.map((x, i) => [Math.log10(x), -rs[i].total]), cl: '--a', w: 2.5, label: 'total phase' }, { pts: fs.map((x, i) => [Math.log10(x), -rs[i].lagV]), cl: '--c', w: 1.5, dash: [4, 3], label: 'velocity loop' }, { pts: fs.map((x, i) => [Math.log10(x), -rs[i].lagD]), cl: '--d', w: 1.5, dash: [4, 3], label: 'delay' }, { pts: fs.map((x, i) => [Math.log10(x), -rs[i].lagF]), cl: '--e', w: 1.5, dash: [4, 3], label: 'filter' }], { title: 'phase (deg)' });
+      [M, Ph].forEach(P => P.line([Math.log10(s.fq), P.b[2]], [Math.log10(s.fq), P.b[3]], '--b', 1, [3, 3]));
+      const r = B(s.fq, s), Bp = Pl.panel(.63, 0, .37, .8, [0, 3, 0, Math.max(120, r.total * 1.15)], false); Bp.frame(`lag at ${f(s.fq, 1)} Hz: ${f(r.total, 0)}°`);
+      NN.bars(Bp, [r.lagV, r.lagD, r.lagF], { labels: ['velocity loop', 'delay', 'filter'], cols: ['--c', '--d', '--e'], d: 0 });
+    }
+    const Bt = Pl.panel(0, .82, 1, .18, [0, 1, 0, 1], false); Bt.frame();
+    const r = B(2, s);
+    NN.lines(Bt, [[S <= 1 ? 'the cascade of page 1, built in hardware' : S <= 3 ? 'bandwidth 5 Hz ⇒ τ ≈ 32 ms ⇒ 4τ ≈ 130 ms < 200 ms' : S === 6 ? 'the fast clocks are what make a 5 Hz loop honest, not what make it fast' : `at 2 Hz: velocity ${f(r.lagV, 0)}° + delay ${f(r.lagD, 1)}° + Butterworth ${f(r.lagF, 0)}° = ${f(r.total, 0)}°  (delay share ${f(100 * r.lagD / r.total, 0)}%)`, '--ink'], [S === 5 ? 'delay moves the phase curve only — magnitude unchanged' : 'quoted: Naseri, Nalam, Tacca & Huang; Nalam et al.', '--muted']], { top: .38, gap: .35 });
+  },
+  math(S) {
+    const s = st(), r = B(s.fq, s), tau = 1 / (2 * Math.PI * s.bw);
+    const rows = [
+`${E(`current loop   inside the drive   (L/R ~ 100s of µs)
+velocity loop  4 kHz PID          (Elmo, 24 V, 40 A)
+admittance     1 kHz TwinCAT      (per hip)
+momentum       1 kHz same task    (3 IMUs)`)}`,
+`<p>Each loop runs near the timescale of the pole it regulates.</p>`,
+`<p>Quoted: closed-loop velocity bandwidth &gt; 5 Hz with an 85 kg user in quiet standing; 1–5 Hz unchanged loaded vs unloaded.</p>`,
+`${E(`τ ≈ 1/(2π·f_bw) = ${f(1000 * tau, 1)} ms,   4τ ≈ ${f(4000 * tau, 0)} ms   (vs 200 ms)`)}`,
+`${E(`G(jω) = 1/(1 + jω/ω_bw) · e^(−jωT) · ω_c²/(−ω² + 2ζω_c jω + ω_c²)
+at ${f(s.fq, 1)} Hz: ${f(r.lagV, 1)}° + ${f(r.lagD, 1)}° + ${f(r.lagF, 1)}° = ${f(r.total, 1)}°
+|G| = ${f(r.db, 1)} dB`)}`,
+`${E(`delay: |e^(−jωT)| = 1,   ∠ = −ωT = −${f(r.lagD, 2)}° at ${f(s.fq, 1)} Hz`)}`,
+`<p>1 kHz and 4 kHz are sample rates. The bandwidth is what the loaded machine does, and it was measured.</p>`];
+    return rows[S];
+  },
+  stats() { const r = B(2, st()); return `<span><b>lag @ 2 Hz</b>${f(r.total, 0)}°</span><span><b>τ</b>${f(1000 / (2 * Math.PI * st().bw), 1)} ms</span>`; },
+});
+function B(fq, s) { return BEAM.resp(fq, s.bw, s.d, true); }
+</script>
+</body></html>

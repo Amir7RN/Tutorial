@@ -1,0 +1,83 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>What the beam said</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="beam.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul, R = BEAM.RES;
+const st = () => { const v = SL.v; return { kick: v.kick / 10, gain: v.gain / 100 }; };
+let SV = null;
+const surv = s => { const k = [s.kick, s.gain].join(); if (!SV || SV.k !== k) SV = { k, v: BEAM.survival({ kick: s.kick, gain: s.gain }) }; return SV.v; };
+SL.app({
+  title: 'Capstone: what the beam actually said',
+  sub: 'Ten participants, 18 trials per condition, a 4 cm beam — and a result that breaks even with a 6 kg penalty rather than beating it. Bars and statistics are quoted; curves are the teaching model.',
+  view: '2d',
+  legend: [['--grey', 'baseline (no device)'], ['--bad', 'no assist (worn, transparent)'], ['--c', 'active assist'], ['--d', 'effect size'], ['--a', 'model survival']],
+  controls: [
+    { id: 'kick', label: 'model: swing momentum / step', min: 60, max: 100, value: 85, fmt: x => f(x / 10, 1) + ' kg·m²/s' },
+    { id: 'gain', label: 'model: personalisation gain', min: 75, max: 100, step: 25, value: 100, fmt: x => f(x / 100) },
+  ],
+  steps: [
+    ['The experiment in one paragraph', 'Ten able-bodied participants, arms folded, a 5.6 m beam: 0.6 m at 8.4 cm, then 5 m at 4 cm. Three blinded, randomised conditions — baseline, exo transparent (no assist), exo with the momentum controller — 18 trials each, up to 90 m per condition. Failure: stepping off, touching the ground, or unfolding the arms.'],
+    ['Beam completion', 'Active 79.5 % vs no assist 70.1 % (paired t, p = 0.049, d = 0.89): +9.4 pp, 95 % CI 1.83–17.16, ≈ 8.5 m over 18 trials, ≈ 47 cm per trial. Baseline 80.9 %: no assist was worse than baseline (p = 0.048); active was indistinguishable from it (p = 0.965).'],
+    ['The engineering metrics', 'Speed up with assistance (p = 0.0386, d = 0.76). Normalised lateral CoM deviation down (p = 0.019, d = −0.90). Normalised frontal-plane H_wb deviation down (p = 0.0169, d = −1.395). Survival identical over the wide lead-in and diverging as the beam narrowed.'],
+    ['Read it like a control engineer', 'The largest effect is on momentum deviation — the quantity the controller regulates — and the outcome (distance) has a smaller one. That ordering is what a working mechanism looks like: the regulated variable improves most, and the task improves because of it.'],
+    ['The honest ceiling is the hardware', '6 kg worn costs ≈ 10.8 pp of baseline; the controller buys back 9.4. A break-even against unencumbered walking, stated plainly; one participant exceeded their own baseline.'],
+    ['What it does not show', 'Able-bodied young adults, short exposure, one task. The link to falls is external and longitudinal (≈ 8.3 % better beam performance ↔ ≈ 32 % lower 12-month odds of falling), not measured here.'],
+    ['Survival: quoted bars beside model curves', 'The teaching model runs the same swing-leg kicks in all conditions (the paired design) to show the mechanism. It reproduces direction only; its effect is far smaller than measured — never read model numbers as results.'],
+    ['Where this goes next', 'Hardware is the binding constraint: lighter actuation, an untethered EtherCAT replacement. Second strategy: assist foot placement too. Populations: prosthesis users and older adults, with beam width re-tuned so the measurement stays sensitive.'],
+    ['What the section was for', 'The unstable pole set the urgency; the 200 ms window set the bandwidth; the bandwidth measurement set what could be rendered; the gear ratio chose admittance; dead zone and unidirectional torque were stability decisions; estimation is where the risk lives. Control theory, spent on one real machine.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st;
+    if (S === 0) {
+      const P = Pl.panel(0, 0, 1, .82, [-.2, 5.8, -.6, 1.2], false); P.frame('the beam (top view, widths exaggerated ×5)');
+      P.poly([[0, -.21], [.6, -.21], [.6, .21], [0, .21]], '--b', 2, null, '--b', true); P.poly([[.6, -.1], [5.6, -.1], [5.6, .1], [.6, .1]], '--a', 2, null, '--a', true);
+      P.text([.3, .45], '0.6 m @ 8.4 cm', '--b', 0, 0, { size: 12, align: 'center' }); P.text([3.1, .45], '5 m @ 4 cm (test section)', '--a', 0, 0, { size: 12, align: 'center' });
+      NN.lines(Pl.panel(0, .45, 1, .37, [0, 1, 0, 1], false), [['n = 10 able-bodied · arms folded · 18 trials × 3 conditions · randomised within sessions · blinded', '--ink'], ['distance to step-off read off a marked parallel beam · max 18 × 5 = 90 m per condition', '--muted'], ['conditions: baseline (no device) · no assist (worn, transparent) · active assist (momentum controller)', '--ink']], { top: .2, gap: .25 });
+    } else if (S <= 2 || S === 4) {
+      const B = Pl.panel(0, 0, .45, .82, [0, 3, 60, 85], false); B.frame('beam completion (%), quoted');
+      NN.bars(B, [R.baseline, R.noAssist, R.active], { labels: ['baseline', 'no assist', 'active'], cols: ['--grey', '--bad', '--c'], d: 1 });
+      if (S === 4) { B.line([1.5, R.noAssist], [1.5, R.baseline], '--bad', 2, [3, 3]); B.text([1.5, 76], '−10.8 pp (6 kg)', '--bad', 6, 0, { size: 12 }); B.line([2.5, R.noAssist], [2.5, R.active], '--c', 2, [3, 3]); B.text([2.5, 72], '+9.4', '--c', 6, 0, { size: 12 }); }
+      const D = Pl.panel(.46, 0, .54, .82, [0, 4, -1.6, 1.2], false); D.frame("Cohen's d (quoted)");
+      NN.bars(D, [R.d_an, R.speed_d, R.com_d, R.wbam_d], { labels: ['completion', 'speed', 'CoM dev.', 'H_wb dev.'], cols: ['--c', '--c', '--d', '--d'] });
+    } else if (S === 3) {
+      const D = Pl.panel(0, 0, .6, .82, [0, 4, 0, 1.5], false); D.frame('|effect size|, ordered');
+      NN.bars(D, [Math.abs(R.wbam_d), Math.abs(R.com_d), R.d_an, R.speed_d], { labels: ['H_wb (regulated)', 'CoM dev.', 'completion', 'speed'], cols: ['--d', '--d', '--c', '--c'] });
+      NN.lines(Pl.panel(.61, 0, .39, .82, [0, 1, 0, 1], false), [['regulated variable', '--d'], [' improves most', '--d'], ['task outcome', '--c'], [' improves because of it', '--c'], ['', ''], ['what a working', '--ink'], [' mechanism looks like', '--ink']], { top: .12, gap: .1 });
+    } else if (S === 5 || S === 7 || S === 8) {
+      const T = Pl.panel(0, 0, 1, .82, [0, 1, 0, 1], false); T.frame(S === 5 ? 'limits' : S === 7 ? 'next' : 'every page, spent on one machine');
+      NN.lines(T, S === 5 ? [['population   able-bodied young adults', '--bad'], ['exposure     short-term', '--bad'], ['task         one (beam walking)', '--bad'], ['falls        via an external longitudinal finding:', '--muted'], ['             ≈ 8.3 % better beam ↔ ≈ 32 % lower 12-month fall odds', '--muted']]
+        : S === 7 ? [['hardware     lighter actuation; untethered EtherCAT replacement (6 kg, tethered now)', '--b'], ['strategy     assist foot placement as well as segment rotation', '--a'], ['populations  prosthesis users, older adults — re-tune beam width for sensitivity', '--c']]
+        : [['96  200 ms window → 5 Hz bandwidth target', '--ink'], ['97  six states, one output: a momentum regulator', '--ink'], ['98  scaled plant, bench-identified rendering', '--ink'], ['99  unstable pole; human 120 ms late; exo in parallel', '--ink'], ['100 the measured bandwidth is the spec', '--ink'], ['101 dead zone + unidirectional torque = stability decisions', '--ink'], ['102 estimation is where the risk lives', '--bad'], ['103 the gear ratio chose admittance', '--ink'], ['104 regulated variable moved most; break-even with 6 kg', '--c']], { top: .1, gap: S === 8 ? .095 : .15 });
+    } else {
+      const v = surv(s), A = Pl.panel(0, 0, .6, .82, [0, 5, 0, 1.05], false);
+      A.series([['no assist', '--bad'], ['active assist', '--c']].map(([k, c]) => ({ pts: v[k].curve, cl: c, w: 2.5, label: k + ' ' + f(v[k].pct, 0) + '%' })), { title: 'model: fraction of trials still on the beam vs distance (m)' });
+      const B = Pl.panel(.61, 0, .39, .82, [0, 3, 60, 85], false); B.frame('quoted (%)'); NN.bars(B, [R.baseline, R.noAssist, R.active], { labels: ['base', 'none', 'active'], cols: ['--grey', '--bad', '--c'], d: 1 });
+    }
+    const Bt = Pl.panel(0, .84, 1, .16, [0, 1, 0, 1], false); Bt.frame();
+    NN.lines(Bt, [[S === 6 ? 'model: worn conditions only (it has no 6 kg drag penalty, so no baseline curve); direction, not size, of the 9.4 pp gap' : S === 1 ? `+${R.gain} pp (CI ${R.ci[0]}–${R.ci[1]}), p = ${R.p_an}, d = ${R.d_an} · active vs baseline p = ${R.p_ab}` : 'quoted: Naseri, Nalam, Tacca & Huang', '--ink']], { top: .55, gap: .3 });
+  },
+  math(S) {
+    const rows = [
+`<p>Max distance 90 m per condition; distance read against a marked parallel reference beam.</p>`,
+`${E(`active   ${R.active} %
+no assist ${R.noAssist} %   (p = ${R.p_an}, d = ${R.d_an})
+baseline ${R.baseline} %   (no assist vs baseline p = ${R.p_nb}; active vs baseline p = ${R.p_ab})
+gap +${R.gain} pp, 95 % CI ${R.ci[0]}–${R.ci[1]}, ≈ ${R.extra} m over 18 trials`)}`,
+`${E(`speed       p = ${R.speed_p}, d = ${R.speed_d}
+CoM dev.    p = ${R.com_p},  d = ${R.com_d}
+H_wb dev.   p = ${R.wbam_p}, d = ${R.wbam_d}`)}`,
+`<p>|d|: H_wb 1.395 &gt; CoM 0.90 ≈ completion 0.89 &gt; speed 0.76.</p>`,
+`${E(`baseline − no assist = ${f(R.baseline - R.noAssist, 1)} pp  (the 6 kg cost)
+active − no assist   = ${f(R.active - R.noAssist, 1)} pp  (bought back)`)}`,
+`<p>Short-term, one task, able-bodied: the fall link is external.</p>`,
+(() => { const v = surv(st()); return `${E(`model (worn): no assist ${f(v['no assist'].pct, 1)} %, active ${f(v['active assist'].pct, 1)} %`)}<p>The teaching model adds the device's mass but not its drag, so it cannot reproduce the baseline penalty — the baseline is left to the quoted bars.</p>`; })(),
+`<p>Next: lighter, untethered hardware; foot-placement assistance; new populations.</p>`,
+`<p>That is what it looks like to spend control theory on one real machine.</p>`];
+    return rows[S];
+  },
+});
+</script>
+</body></html>
