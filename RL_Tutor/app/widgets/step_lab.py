@@ -51,6 +51,7 @@ STEP_LABS = {
     "NyquistPage": ("nyquist.html", "the Nyquist plot: one curve, one point, one count"),
     "ZerosPage": ("zeros.html", "what a zero does: the hole, the speed-up, the dip"),
     # neural networks
+    "AdamPage": ("adam.html", "Adam, one number at a time"),
     "NeuronPage": ("neuron.html", "one neuron: gain, offset, saturation, then layers"),
     "ActivationPage": ("activation.html", "activations judged by their slopes"),
     "ForwardPropPage": ("forward_prop.html", "one input vector crosses the network"),

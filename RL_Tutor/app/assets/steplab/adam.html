@@ -1,0 +1,245 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Adam, by hand</title>
+<link rel="stylesheet" href="steplab.css">
+<script src="nn.js"></script><script src="steplab.js"></script>
+</head><body>
+<script>
+const f = SL.f, E = SL.eq, ul = SL.ul;
+const pf = (x, d = 4) => x < 0 ? '(' + f(x, d) + ')' : f(x, d);   /* parenthesise negatives inside products */
+const N = 60, START = [-1, -1.6], EPS = 1e-8;
+const st = () => { const v = SL.v; return { t: v.t, a: v.a / 100, lr: v.lr / 1000, b1: v.b1 / 100, b2: v.b2 / 10000, gam: v.gam / 100, bet: v.bet / 100 }; };
+/* the ravine: steep across (x), nearly flat along (y) */
+const loss = p => 10 * p[0] * p[0] + .5 * p[1] * p[1];
+const grad = p => [20 * p[0], p[1]];
+/* every optimiser returns one record per iteration: rec[0] = start, rec[t] = after update t */
+const run = (kind, s, gradFn = grad, p0 = START, n = N) => {
+  let p = p0.slice(), m = p.map(() => 0), v = p.map(() => 0);
+  const rec = [{ p: p.slice(), g: p.map(() => 0), m: m.slice(), v: v.slice(), mh: m.slice(), vh: v.slice(), d: p.map(() => 0) }];
+  for (let t = 1; t <= n; t++) {
+    const g = gradFn(p), r = { g, mp: m.slice(), vp: v.slice(), pp: p.slice() };
+    if (kind === 'sgd') { r.d = g.map(gi => -s.lr * gi); }
+    else if (kind === 'mom') { m = m.map((mi, i) => s.b1 * mi + (1 - s.b1) * g[i]); r.d = m.map(mi => -s.lr * mi); }
+    else {
+      m = m.map((mi, i) => s.b1 * mi + (1 - s.b1) * g[i]); v = v.map((vi, i) => s.b2 * vi + (1 - s.b2) * g[i] * g[i]);
+      r.mh = m.map(mi => mi / (1 - s.b1 ** t)); r.vh = v.map(vi => vi / (1 - s.b2 ** t));
+      r.d = r.mh.map((mh, i) => -s.a * mh / (Math.sqrt(r.vh[i]) + EPS));
+    }
+    p = p.map((pi, i) => pi + r.d[i]); r.p = p.slice(); r.m = m.slice(); r.v = v.slice(); rec.push(r);
+  }
+  return rec;
+};
+const all = s => ({ sgd: run('sgd', s), mom: run('mom', s), adam: run('adam', s) });
+const COL = { sgd: '--bad', mom: '--d', adam: '--c' }, NAME = { sgd: 'plain SGD', mom: 'momentum', adam: 'Adam' };
+const clampP = p => [Math.max(-1.3, Math.min(1.3, p[0])), Math.max(-1.9, Math.min(1.9, p[1]))];
+const ravine = (P, title, paths, t) => {
+  P.frame(title);
+  P.clip(() => {
+    [.02, .08, .2, .45, .8, 1.3, 2, 3, 5, 8, 12].forEach(c => P.ellipse([0, 0], [[Math.sqrt(c / 10), 0], [0, Math.sqrt(2 * c)]], '--line', 1));
+    Object.entries(paths).forEach(([k, rec]) => { const pts = rec.slice(0, t + 1).map(r => clampP(r.p)); P.poly(pts, COL[k], 2); pts.forEach(q => P.dot(q, 2.2, COL[k])); P.dot(pts[pts.length - 1], 5, COL[k]); });
+  });
+  P.text([0, 0], '★', '--ink', -6, 6, { size: 15 });
+  P.text([-1.3, -1.9], 'x — steep (∂L/∂x = 20x)', '--muted', 6, -6, { size: 11 });
+};
+/* first neuron example for the forward/backward step */
+const NEU = { x: 1.5, w: .8, b: .1, tgt: 2 };
+/* batches for batch-norm */
+const B1 = [.4, 2.9, 1.1, 5.6], B2 = [3.0, .2, 4.4, 1.6];
+const mean = a => a.reduce((s, x) => s + x, 0) / a.length, vari = a => { const m = mean(a); return mean(a.map(x => (x - m) ** 2)); };
+/* the RL step: a one-number Q regressed onto its Bellman target */
+const RL = { r: 1, gd: .9, qn: 2, q0: .5 };
+const rlY = RL.r + RL.gd * RL.qn;
+let tacc = 0;
+SL.app({
+  title: 'Adam, one number at a time',
+  sub: 'Every Adam update is five lines of arithmetic per weight. Here they are with the actual numbers, on a ravine where plain gradient descent struggles — then where Adam sits in training (forward, backward, step), batch norm, and the link back to RL.',
+  view: '2d',
+  legend: [['--bad', 'plain SGD'], ['--d', 'momentum'], ['--c', 'Adam'], ['--a', 'x (steep) weight'], ['--b', 'y (flat) weight']],
+  controls: [
+    { id: 't', label: 'iteration t', min: 0, max: N, value: 1 },
+    { id: 'a', label: 'Adam α', min: 1, max: 30, value: 12, fmt: x => f(x / 100) },
+    { id: 'lr', label: 'SGD / momentum learning rate', min: 5, max: 105, value: 85, fmt: x => f(x / 1000, 3) },
+    { id: 'b1', label: 'β₁ (momentum memory)', min: 0, max: 99, value: 90, fmt: x => f(x / 100) },
+    { id: 'b2', label: 'β₂ (squared-gradient memory)', min: 9000, max: 9999, value: 9990, fmt: x => f(x / 10000, 4) },
+    { id: 'gam', label: 'batch-norm scale γ', min: 0, max: 300, value: 100, fmt: x => f(x / 100) },
+    { id: 'bet', label: 'batch-norm shift β', min: -200, max: 200, value: 0, fmt: x => f(x / 100) },
+  ],
+  play: { tick(dt) { tacc += dt * 5; if (tacc >= 1) { tacc = 0; SL.setControl('t', SL.v.t >= N ? 0 : SL.v.t + 1); } } },
+  reset() { tacc = 0; SL.setControl('t', 0); },
+  steps: [
+    ['The problem Adam solves', 'L(x, y) = 10x² + ½y², minimum at (0, 0), start (−1, −1.6). The gradient is (20x, y): 20× steeper across than along. That is a typical loss surface for a network: some weights matter a lot, others barely.'],
+    ['Plain gradient descent', 'θ ← θ − lr·g. One learning rate for both weights. Step through t: with lr above 0.05, x overshoots the floor and zig-zags across the walls while y creeps along. Raise lr past 0.1 and x explodes.'],
+    ['Why one learning rate can\'t fit both', 'Per step x is multiplied by (1 − 20·lr) and y by (1 − lr). x stays stable only if lr < 0.1, and with lr = 0.1, y still needs ≈ 45 steps to shrink 100×. The steepest weight caps the step size for all of them.'],
+    ['m — the momentum average', 'Feed the gradients SGD just saw into mₜ = β₁mₜ₋₁ + (1 − β₁)gₜ. The zig-zagging x gradients (+, −, +, −) cancel inside m. The y gradients all point the same way, so they add up. m keeps the direction that is consistent.'],
+    ['v — the size average', 'vₜ = β₂vₜ₋₁ + (1 − β₂)gₜ². Squaring drops the sign, so v remembers how big the gradient has been, not which way it pointed. √v is the typical gradient size of each weight: large for x, small for y.'],
+    ['Bias correction', 'm and v start at 0, so early on they are too small: m₁ = 0.1·g₁, v₁ = 0.001·g₁². Dividing by (1 − βᵗ) fixes it exactly: m̂₁ = g₁, v̂₁ = g₁². Without it Adam\'s first step would be 3.16 times too big.'],
+    ['The step: m̂ / √v̂', 'Δθ = −α·m̂/(√v̂ + ε). At t = 1 this is −α·g/|g| = −α·sign(g): every weight moves by exactly α, whether its gradient is 20 or 1.6. Adam divides out the gradient\'s scale and keeps its direction — multiply the whole loss by 100 and Adam\'s path does not change, while SGD\'s lr would have to drop 100×.'],
+    ['One full iteration, by hand', 'Drag t (or press Play). For each weight: gradient, new m, new v, both corrections, the step. Every number on the right is substituted from the line above it — this is the whole algorithm.'],
+    ['Each weight gets its own learning rate', 'α/(√v̂ + ε) is the effective learning rate. For x it is small (its gradients are big); for y it is large. SGD gives both the same. That per-weight scaling is the "adaptive" in Adam.'],
+    ['The race — and what it really shows', 'Same start, 60 iterations. At lr = 0.085, SGD is tuned just under its x-stability limit and does well on this simple bowl. Drop lr to 0.04 (the page\'s demo): SGD falls behind, Adam is unchanged. Adam\'s win is not raw speed on a bowl — it gets there with α = 0.12 without knowing the curvature.'],
+    ['Where Adam sits: forward, backward, step', 'Forward: z = wx + b, cache x. Backward: error × cached input = grad_w. Adam: turn grad_w into a step. One neuron with real numbers, start to finish.'],
+    ['Batch normalisation', 'Force each batch to mean 0 and variance 1, then let the network rescale: y = γx̂ + β. Two batches from the same layer: with only 4 samples, μ and σ jump from batch to batch.'],
+    ['Your version keeps only γ and β', 'y = γx + β, with no batch statistics. With batch size 4 the statistics are mostly noise, and real-time inference would need running averages kept as extra state. What remains is a learnable volume knob.'],
+    ['Back to RL: assign vs nudge', 'Tabular: Q ← y in one shot. A network can\'t assign, so the Bellman target becomes a loss, (Q − y)², and Adam nudges Q toward it, about α per step. Same equation, enforced a different way: this is the step from value iteration to DQN and DDPG.'],
+  ],
+  draw(Pl) {
+    const s = st(), S = SL.st, R = all(s), t = Math.min(s.t, N);
+    const side = (rows, o = {}) => { const P = Pl.panel(.63, 0, .37, 1, [0, 1, 0, 1], false); P.frame(o.title); NN.lines(P, rows, { top: .08, gap: o.gap || .06, size: 11 }); };
+    if (S === 0) {
+      const P = Pl.panel(0, 0, .62, 1, [-1.3, 1.3, -1.9, 1.9], false); ravine(P, 'loss L = 10x² + ½y²', {}, 0);
+      const g = grad(START); P.dot(START, 6, '--ink'); P.arrow(START, [-g[0] * .03, -g[1] * .03], '--bad', 2.5, '−g (scaled ×0.03)');
+      side([['start θ = (−1.00, −1.60)', '--ink'], ['L = 10·1 + ½·2.56 = ' + f(loss(START), 2), '--ink'], ['', ''], ['∂L/∂x = 20x = ' + f(g[0], 1), '--a'], ['∂L/∂y =   y = ' + f(g[1], 1), '--b'], ['', ''], ['x gradient is ' + f(Math.abs(g[0] / g[1]), 1) + '× the y gradient', '--muted'], ['but y is the one far from 0', '--muted'], ['', ''], ['curvature: 20 across, 1 along', '--muted']]);
+    } else if (S <= 2) {
+      const sg = R.sgd;
+      if (S === 1) {
+        const P = Pl.panel(0, 0, .62, 1, [-1.3, 1.3, -1.9, 1.9], false); ravine(P, 'plain SGD, lr = ' + f(s.lr, 3), { sgd: sg }, t);
+        const r = sg[Math.max(1, t)];
+        side([['iteration t = ' + Math.max(1, t), '--ink'], ['θ before = (' + f(r.pp[0], 3) + ', ' + f(r.pp[1], 3) + ')', '--ink'], ['g = (20·' + f(r.pp[0], 3) + ', ' + f(r.pp[1], 3) + ')', '--muted'], ['  = (' + f(r.g[0], 3) + ', ' + f(r.g[1], 3) + ')', '--ink'], ['Δθ = −lr·g', '--muted'], ['  = (' + f(r.d[0], 3) + ', ' + f(r.d[1], 3) + ')', '--bad'], ['θ after = (' + f(r.p[0], 3) + ', ' + f(r.p[1], 3) + ')', '--ink'], ['L = ' + f(loss(r.p), 4), '--ink'], ['', ''], [Math.sign(r.p[0]) !== Math.sign(r.pp[0]) && r.pp[0] !== 0 ? 'x crossed the floor: zig-zag' : 'x did not cross this step', '--a'], ['y moved only ' + f(Math.abs(r.d[1]), 3), '--b']]);
+      } else {
+        const fx = 1 - 20 * s.lr, fy = 1 - s.lr, A = Pl.panel(0, 0, .62, .5, [0, N, -1.3, 1.3], false), B = Pl.panel(0, .51, .62, .49, [0, N, -1.9, .3], false);
+        A.series([{ pts: sg.map((r, i) => [i, Math.max(-1.3, Math.min(1.3, r.p[0]))]), cl: '--a', w: 2.2, label: 'x_t (steep)' }], { title: 'SGD: x_t multiplied by (1 − 20·lr) = ' + f(fx, 3) + ' each step' });
+        B.series([{ pts: sg.map((r, i) => [i, r.p[1]]), cl: '--b', w: 2.2, label: 'y_t (flat)' }], { title: 'SGD: y_t multiplied by (1 − lr) = ' + f(fy, 3) + ' each step' });
+        const need = Math.log(.01) / Math.log(Math.abs(fy));
+        side([['per-step factors', '--ink'], ['x: 1 − 20·' + f(s.lr, 3) + ' = ' + f(fx, 3), Math.abs(fx) >= 1 ? '--bad' : '--a'], ['y: 1 − ' + f(s.lr, 3) + ' = ' + f(fy, 3), '--b'], ['', ''], [fx < 0 ? 'x factor < 0 → sign flips: zig-zag' : 'x factor > 0 → no zig-zag', '--a'], [Math.abs(fx) >= 1 ? '|x factor| ≥ 1 → DIVERGES' : 'stable while lr < 0.1', Math.abs(fx) >= 1 ? '--bad' : '--muted'], ['', ''], ['y needs ln(0.01)/ln(' + f(fy, 3) + ')', '--muted'], ['  = ' + f(need, 0) + ' steps to shrink 100×', '--b'], ['', ''], ['the steepest weight sets', '--muted'], ['the speed limit for all', '--muted']]);
+      }
+    } else if (S <= 4) {
+      const sg = R.sgd, ms = [[0, 0]], vs = [[0, 0]]; sg.slice(1).forEach((r, i) => { const pm = ms[i], pv = vs[i]; ms.push(r.g.map((g, k) => s.b1 * pm[k] + (1 - s.b1) * g)); vs.push(r.g.map((g, k) => s.b2 * pv[k] + (1 - s.b2) * g * g)); });
+      const k = Math.max(1, t), gx = sg[k].g, mx = ms[k], vx = vs[k];
+      if (S === 3) {
+        const A = Pl.panel(0, 0, .62, .5, [0, N, -22, 22], false), B = Pl.panel(0, .51, .62, .49, [0, N, -1.8, .3], false);
+        A.series([{ pts: sg.slice(1).map((r, i) => [i + 1, Math.max(-22, Math.min(22, r.g[0]))]), cl: '--grey', w: 1.5, label: 'g_x (SGD saw this)' }, { pts: ms.slice(1).map((m, i) => [i + 1, m[0]]), cl: '--a', w: 2.6, label: 'm_x' }], { title: 'x weight: zig-zag gradients cancel in m' });
+        B.series([{ pts: sg.slice(1).map((r, i) => [i + 1, r.g[1]]), cl: '--grey', w: 1.5, label: 'g_y' }, { pts: ms.slice(1).map((m, i) => [i + 1, m[1]]), cl: '--b', w: 2.6, label: 'm_y' }], { title: 'y weight: same-sign gradients add up in m' });
+        [A, B].forEach(P => P.line([k, P.b[2]], [k, P.b[3]], '--ink', 1, [3, 3]));
+        side([['t = ' + k + ',  β₁ = ' + f(s.b1), '--ink'], ['', ''], ['m_x = ' + f(s.b1) + '·(' + f(ms[k - 1][0], 3) + ')', '--a'], ['    + ' + f(1 - s.b1) + '·(' + f(gx[0], 3) + ')', '--a'], ['    = ' + f(mx[0], 3), '--a'], ['', ''], ['m_y = ' + f(s.b1) + '·(' + f(ms[k - 1][1], 3) + ')', '--b'], ['    + ' + f(1 - s.b1) + '·(' + f(gx[1], 3) + ')', '--b'], ['    = ' + f(mx[1], 3), '--b'], ['', ''], ['memory ≈ 1/(1 − β₁) = ' + f(1 / (1 - s.b1 + 1e-9), 0) + ' steps', '--muted']]);
+      } else {
+        const A = Pl.panel(0, 0, .62, .5, [0, N, 0, 21], false), B = Pl.panel(0, .51, .62, .49, [0, N, 0, 1.7], false);
+        A.series([{ pts: sg.slice(1).map((r, i) => [i + 1, Math.min(21, Math.abs(r.g[0]))]), cl: '--grey', w: 1.5, label: '|g_x|' }, { pts: vs.slice(1).map((v, i) => [i + 1, Math.min(21, Math.sqrt(v[0] / (1 - s.b2 ** (i + 1))))]), cl: '--a', w: 2.6, label: '√v̂_x' }], { title: 'x weight: √v̂ remembers the big gradients' });
+        B.series([{ pts: sg.slice(1).map((r, i) => [i + 1, Math.abs(r.g[1])]), cl: '--grey', w: 1.5, label: '|g_y|' }, { pts: vs.slice(1).map((v, i) => [i + 1, Math.sqrt(v[1] / (1 - s.b2 ** (i + 1)))]), cl: '--b', w: 2.6, label: '√v̂_y' }], { title: 'y weight: √v̂ stays small' });
+        [A, B].forEach(P => P.line([k, P.b[2]], [k, P.b[3]], '--ink', 1, [3, 3]));
+        side([['t = ' + k + ',  β₂ = ' + f(s.b2, 4), '--ink'], ['', ''], ['v_x = ' + f(s.b2, 4) + '·' + f(vs[k - 1][0], 4), '--a'], ['    + ' + f(1 - s.b2, 4) + '·' + f(gx[0], 3) + '²', '--a'], ['    = ' + f(vx[0], 4), '--a'], ['', ''], ['v_y = ' + f(s.b2, 4) + '·' + f(vs[k - 1][1], 5), '--b'], ['    + ' + f(1 - s.b2, 4) + '·' + f(gx[1], 3) + '²', '--b'], ['    = ' + f(vx[1], 5), '--b'], ['', ''], ['corrected √v̂: x ' + f(Math.sqrt(vx[0] / (1 - s.b2 ** k)), 2) + ',  y ' + f(Math.sqrt(vx[1] / (1 - s.b2 ** k)), 3), '--ink'], ['(the plot shows √v̂ — next step)', '--muted']]);
+      }
+    } else if (S === 5) {
+      const k = Math.max(1, t), A = Pl.panel(0, 0, .62, 1, [0, N, 0, 1.05], false);
+      A.series([{ pts: [...Array(N)].map((_, i) => [i + 1, 1 - s.b1 ** (i + 1)]), cl: '--a', w: 2.6, label: '1 − β₁ᵗ' }, { pts: [...Array(N)].map((_, i) => [i + 1, 1 - s.b2 ** (i + 1)]), cl: '--b', w: 2.6, label: '1 − β₂ᵗ' }], { title: 'how much of the true average m and v have reached (constant gradient)' });
+      A.line([k, 0], [k, 1.05], '--ink', 1, [3, 3]);
+      const c1 = 1 - s.b1 ** k, c2 = 1 - s.b2 ** k, raw = s.a * (1 - s.b1) / Math.sqrt(1 - s.b2);
+      side([['constant gradient g, at t = ' + k, '--ink'], ['m_t = (1 − β₁ᵗ)·g = ' + f(c1, 4) + '·g', '--a'], ['v_t = (1 − β₂ᵗ)·g² = ' + f(c2, 5) + '·g²', '--b'], ['', ''], ['m̂ = m/' + f(c1, 4) + ' = g  ✓', '--a'], ['v̂ = v/' + f(c2, 5) + ' = g²  ✓', '--b'], ['', ''], ['without correction, t = 1:', '--bad'], ['α·(1−β₁)g / (√(1−β₂)·|g|)', '--bad'], ['= α·' + f((1 - s.b1) / Math.sqrt(1 - s.b2), 2) + ' = ' + f(raw, 3), '--bad'], ['instead of α = ' + f(s.a, 2), '--c'], ['v reaches 90% after ' + f(Math.log(.1) / Math.log(s.b2), 0) + ' steps', '--muted']]);
+    } else if (S === 6) {
+      const P = Pl.panel(0, 0, .62, 1, [-1.3, 1.3, -1.9, 1.9], false); ravine(P, 'first step from the start', {}, 0);
+      const g = grad(START), dS = g.map(x => -s.lr * x), dA = R.adam[1].d;
+      P.dot(START, 6, '--ink'); P.arrow(START, [Math.min(2.2, dS[0]), dS[1]], '--bad', 3, 'SGD'); P.arrow(START, dA, '--c', 3, 'Adam', null, 8, 16);
+      side([['g = (' + f(g[0], 1) + ', ' + f(g[1], 1) + ')', '--ink'], ['', ''], ['SGD step = −lr·g', '--bad'], ['  = (' + f(dS[0], 3) + ', ' + f(dS[1], 3) + ')', '--bad'], ['', ''], ['Adam t = 1: m̂ = g, √v̂ = |g|', '--c'], ['step = −α·g/|g| = −α·sign(g)', '--c'], ['  = (' + f(dA[0], 3) + ', ' + f(dA[1], 3) + ')', '--c'], ['', ''], ['SGD step ratio x:y = ' + f(Math.abs(dS[0] / dS[1]), 1) + ' : 1', '--bad'], ['Adam step ratio x:y = ' + f(Math.abs(dA[0] / dA[1]), 1) + ' : 1', '--c']]);
+    } else if (S === 7) {
+      const P = Pl.panel(0, 0, .5, 1, [-1.3, 1.3, -1.9, 1.9], false), k = Math.max(1, t), r = R.adam[k]; ravine(P, 'Adam, iteration ' + k, { adam: R.adam }, k);
+      P.arrow(clampP(r.pp), r.d, '--ink', 2.5);
+      const Q = Pl.panel(.51, 0, .49, 1, [0, 1, 0, 1], false); Q.frame('iteration t = ' + k + '   θ = (' + f(r.pp[0], 3) + ', ' + f(r.pp[1], 3) + ')');
+      const rows = [];
+      [['x', '--a', 0], ['y', '--b', 1]].forEach(([n, cl, i]) => {
+        rows.push(['── ' + n + ' weight ──', cl]);
+        rows.push(['g  = ' + (i ? '' : '20·') + pf(r.pp[i]) + ' = ' + f(r.g[i], 4), cl]);
+        rows.push(['m  = ' + f(s.b1) + '·' + pf(r.mp[i]) + ' + ' + f(1 - s.b1) + '·' + pf(r.g[i]) + ' = ' + f(r.m[i], 4), cl]);
+        rows.push(['v  = ' + f(s.b2, 4) + '·' + f(r.vp[i], 4) + ' + ' + f(1 - s.b2, 4) + '·' + pf(r.g[i], 3) + '² = ' + f(r.v[i], 5), cl]);
+        rows.push(['m̂  = ' + f(r.m[i], 4) + ' / ' + f(1 - s.b1 ** k, 4) + ' = ' + f(r.mh[i], 4), cl]);
+        rows.push(['v̂  = ' + f(r.v[i], 5) + ' / ' + f(1 - s.b2 ** k, 5) + ' = ' + f(r.vh[i], 4), cl]);
+        rows.push(['Δ  = −' + f(s.a) + '·' + pf(r.mh[i]) + ' / ' + f(Math.sqrt(r.vh[i]), 4) + ' = ' + f(r.d[i], 4), cl]);
+        rows.push(['new ' + n + ' = ' + f(r.pp[i], 4) + ' + (' + f(r.d[i], 4) + ') = ' + f(r.p[i], 4), '--ink']);
+      });
+      rows.push(['L = ' + f(loss(r.pp), 5) + '  →  ' + f(loss(r.p), 5), '--c']);
+      NN.lines(Q, rows, { top: .08, gap: .052, size: 11 });
+    } else if (S === 8) {
+      const ad = R.adam, A = Pl.panel(0, 0, .62, 1, [0, N, -4, 1], false), lg = x => Math.log10(Math.max(x, 1e-4));
+      A.series([{ pts: ad.slice(1).map((r, i) => [i + 1, lg(s.a / (Math.sqrt(r.vh[0]) + EPS))]), cl: '--a', w: 2.6, label: 'Adam, x' }, { pts: ad.slice(1).map((r, i) => [i + 1, lg(s.a / (Math.sqrt(r.vh[1]) + EPS))]), cl: '--b', w: 2.6, label: 'Adam, y' }, { pts: [[0, lg(s.lr)], [N, lg(s.lr)]], cl: '--bad', w: 2, dash: [6, 4], label: 'SGD, both' }], { title: 'effective learning rate α/(√v̂ + ε), log₁₀', yl: '10⁻⁴ … 10¹' });
+      const k = Math.max(1, t), r = ad[k]; A.line([k, -4], [k, 1], '--ink', 1, [3, 3]);
+      const ex = s.a / (Math.sqrt(r.vh[0]) + EPS), ey = s.a / (Math.sqrt(r.vh[1]) + EPS);
+      side([['t = ' + k, '--ink'], ['x: ' + f(s.a) + ' / ' + f(Math.sqrt(r.vh[0]), 3) + ' = ' + f(ex, 4), '--a'], ['y: ' + f(s.a) + ' / ' + f(Math.sqrt(r.vh[1]), 3) + ' = ' + f(ey, 4), '--b'], ['y gets ' + f(ey / ex, 1) + '× the rate of x', '--ink'], ['', ''], ['SGD: ' + f(s.lr, 3) + ' for both', '--bad'], ['', ''], ['SGD must pick one lr that suits', '--muted'], ['the steepest weight; Adam', '--muted'], ['rescales each weight by its', '--muted'], ['own recent gradient size', '--muted']]);
+    } else if (S === 9) {
+      const P = Pl.panel(0, 0, .5, 1, [-1.3, 1.3, -1.9, 1.9], false); ravine(P, 'iteration ' + t + ' of ' + N, R, t);
+      const lg = x => Math.max(-8, Math.log10(Math.max(x, 1e-12))), B = Pl.panel(.51, 0, .49, .64, [0, N, -8, 1.5], false);
+      B.series(['sgd', 'mom', 'adam'].map(k => ({ pts: R[k].map((r, i) => [i, lg(loss(r.p))]), cl: COL[k], w: 2.4, label: NAME[k] })), { title: 'log₁₀ loss' });
+      B.line([t, -8], [t, 1.5], '--ink', 1, [3, 3]);
+      const T = Pl.panel(.51, .65, .49, .35, [0, 1, 0, 1], false); T.frame();
+      const first = rec => { const i = rec.findIndex(r => loss(r.p) < 1e-3); return i < 0 ? '> ' + N : i; };
+      NN.lines(T, ['sgd', 'mom', 'adam'].map(k => [NAME[k].padEnd(10) + ' L(' + t + ') = ' + f(loss(R[k][t].p), 5) + '   L<0.001 at t = ' + first(R[k]), COL[k]]).concat([['Adam hovers near the floor: its steps stay ≈ α while m̂/√v̂ ≈ ±1', '--muted']]), { top: .22, gap: .2, size: 11 });
+    } else if (S === 10) {
+      const n = NEU, z = n.w * n.x + n.b, y = Math.max(0, z), e = y - n.tgt, dL = 2 * e, dz = dL * (z > 0 ? 1 : 0), gw = dz * n.x, gb = dz;
+      const D = Pl.panel(0, 0, .62, 1, [0, 10, 0, 10], false); D.frame('one neuron: y = relu(w·x + b), loss (y − target)²');
+      const box = (x, y0, w, h, txt, cl) => { D.poly([[x, y0], [x + w, y0], [x + w, y0 + h], [x, y0 + h]], cl, 2, null, cl, true); D.text([x + w / 2, y0 + h / 2], txt, '--ink', 0, 5, { size: 12, align: 'center' }); };
+      box(.3, 7, 2.6, 1.4, 'x = ' + f(n.x, 1) + ' (cached)', '--a'); box(3.7, 7, 2.6, 1.4, 'z = ' + f(z, 2), '--ink'); box(7.1, 7, 2.6, 1.4, 'y = ' + f(y, 2), '--ink');
+      D.arrow([2.9, 7.7], [.8, 0], '--ink', 2); D.arrow([6.3, 7.7], [.8, 0], '--ink', 2); D.text([5, 9.2], 'A · forward →', '--ink', 0, 0, { size: 12, align: 'center' });
+      box(7.1, 4.2, 2.6, 1.4, 'dL/dy = ' + f(dL, 2), '--d'); box(3.7, 4.2, 2.6, 1.4, 'dL/dz = ' + f(dz, 2), '--d'); box(.3, 4.2, 2.6, 1.4, 'grad_w = ' + f(gw, 2), '--d');
+      D.arrow([7.1, 4.9], [-.8, 0], '--d', 2); D.arrow([3.7, 4.9], [-.8, 0], '--d', 2); D.text([5, 6.4], '← B · backward', '--d', 0, 0, { size: 12, align: 'center' });
+      const k = 1, m = (1 - s.b1) * gw, v = (1 - s.b2) * gw * gw, mh = m / (1 - s.b1 ** k), vh = v / (1 - s.b2 ** k), dw = -s.a * mh / (Math.sqrt(vh) + EPS);
+      box(.3, 1.2, 9.4, 1.6, 'C · Adam: w ' + f(n.w, 2) + ' → ' + f(n.w + dw, 3) + '   (Δw = ' + f(dw, 3) + ')', '--c');
+      side([['forward', '--ink'], ['z = ' + f(n.w, 1) + '·' + f(n.x, 1) + ' + ' + f(n.b, 1) + ' = ' + f(z, 2), '--ink'], ['y = relu(z) = ' + f(y, 2) + ',  target ' + f(n.tgt, 1), '--ink'], ['L = (' + f(y, 2) + ' − ' + f(n.tgt, 1) + ')² = ' + f(e * e, 4), '--ink'], ['backward', '--d'], ['dL/dy = 2(y − t) = ' + f(dL, 2), '--d'], ['relu′(z) = ' + (z > 0 ? 1 : 0) + ' → dL/dz = ' + f(dz, 2), '--d'], ['grad_w = dL/dz·x = ' + f(gw, 2), '--d'], ['grad_b = dL/dz = ' + f(gb, 2), '--d'], ['Adam (t = 1)', '--c'], ['m̂ = ' + f(mh, 2) + ', √v̂ = ' + f(Math.sqrt(vh), 2), '--c'], ['Δw = −α·m̂/√v̂ = ' + f(dw, 3), '--c'], ['x was cached so grad_w could use it', '--muted']], { gap: .068 });
+    } else if (S <= 12) {
+      const bn = b => { const m = mean(b), sd = Math.sqrt(vari(b) + 1e-5); return { m, sd, xh: b.map(x => (x - m) / sd) }; };
+      const n1 = bn(B1), n2 = bn(B2), out = S === 11 ? n1.xh.map(x => s.gam * x + s.bet) : B1.map(x => s.gam * x + s.bet);
+      const A = Pl.panel(0, 0, .3, .62, [0, 4, -2.5, 6.5], false); A.frame('layer output, batch 1'); NN.bars(A, B1, { labels: ['s1', 's2', 's3', 's4'], cols: ['--a', '--a', '--a', '--a'] });
+      A.line([0, n1.m], [4, n1.m], '--ink', 1.5, [5, 4]); A.text([4, n1.m], 'μ ' + f(n1.m, 2), '--ink', -52, -5, { size: 11 });
+      const Bp = Pl.panel(.32, 0, .3, .62, [0, 4, -2.5, 6.5], false); Bp.frame(S === 11 ? 'y = γ·x̂ + β' : 'y = γ·x + β (your version)'); NN.bars(Bp, out.map(x => Math.max(-2.5, Math.min(6.5, x))), { labels: ['s1', 's2', 's3', 's4'], cols: ['--c', '--c', '--c', '--c'] });
+      const L = Pl.panel(0, .64, .62, .36, [0, 1, 0, 1], false); L.frame();
+      NN.lines(L, S === 11 ? [['batch 1: μ = ' + f(n1.m, 3) + '  σ = ' + f(n1.sd, 3) + '     batch 2: μ = ' + f(n2.m, 3) + '  σ = ' + f(n2.sd, 3), '--ink'], ['same layer, same weights — the statistics moved by ' + f(n2.m - n1.m, 2) + ' and ' + f(n2.sd - n1.sd, 2) + ' from 4 samples', '--bad'], ['x̂ has mean 0, variance 1 by construction; γ and β then put scale and offset back', '--muted']]
+        : [['no μ, no σ: nothing depends on the other samples in the batch', '--c'], ['γ = ' + f(s.gam) + ' scales, β = ' + f(s.bet) + ' shifts — both learned by backprop (Adam updates them too)', '--ink'], ['"layer 1 is too quiet, multiply by 2 before layer 2" — a learnable volume knob', '--muted']], { top: .25, gap: .25, size: 11 });
+      side(S === 11 ? [['batch 1 = [' + B1.map(x => f(x, 1)).join(', ') + ']', '--a'], ['μ = (' + B1.map(x => f(x, 1)).join(' + ') + ')/4', '--ink'], ['  = ' + f(n1.m, 3), '--ink'], ['σ² = mean((x − μ)²) = ' + f(vari(B1), 3), '--ink'], ['x̂ = (x − μ)/√(σ² + ε)', '--muted'], ['  = [' + n1.xh.map(x => f(x, 2)).join(', ') + ']', '--ink'], ['y = ' + f(s.gam) + '·x̂ + ' + f(s.bet), '--c'], ['  = [' + out.map(x => f(x, 2)).join(', ') + ']', '--c'], ['', ''], ['inference needs running μ, σ', '--muted'], ['averaged over training: extra state', '--muted']]
+        : [['why drop the statistics', '--ink'], ['• batch size 4: μ, σ from 4', '--bad'], ['  samples are mostly noise', '--bad'], ['• real time: no running', '--bad'], ['  averages to maintain', '--bad'], ['', ''], ['y = ' + f(s.gam) + '·x + ' + f(s.bet), '--c'], ['  = [' + out.map(x => f(x, 2)).join(', ') + ']', '--c'], ['', ''], ['γ = 1, β = 0 → identity', '--muted']]);
+    } else {
+      const q = run('adam', s, p => [2 * (p[0] - rlY)], [RL.q0], N), A = Pl.panel(0, 0, .62, 1, [0, N, 0, 4], false);
+      A.series([{ pts: [[0, RL.q0], [.01, rlY], [N, rlY]], cl: '--d', w: 2.2, dash: [6, 4], label: 'tabular: Q ← y (one step)' }, { pts: q.map((r, i) => [i, r.p[0]]), cl: '--c', w: 2.6, label: 'network + Adam: nudged' }], { title: 'Q(s, a) chasing its Bellman target y = ' + f(rlY, 2) });
+      const k = Math.max(1, t), r = q[k]; A.line([k, 0], [k, 4], '--ink', 1, [3, 3]); A.dot([k, r.p[0]], 5, '--c');
+      side([['y = r + γ·max Q′', '--ink'], ['  = ' + f(RL.r, 1) + ' + ' + f(RL.gd, 1) + '·' + f(RL.qn, 1) + ' = ' + f(rlY, 2), '--ink'], ['', ''], ['tabular: V(s) ← max Q', '--d'], ['  one assignment, done', '--d'], ['', ''], ['network: loss = (Q − y)²', '--c'], ['t = ' + k + ': Q = ' + f(r.pp[0], 3), '--c'], ['grad = 2(Q − y) = ' + f(r.g[0], 3), '--c'], ['Adam Δ = ' + f(r.d[0], 4), '--c'], ['Q → ' + f(r.p[0], 3), '--c'], ['', ''], ['Bellman unchanged; only how', '--muted'], ['it is enforced changed', '--muted']]);
+    }
+  },
+  math(S) {
+    const s = st(), R = all(s), k = Math.max(1, Math.min(s.t, N)), r = R.adam[k];
+    const rows = [
+`${E(`L(x, y) = 10x² + ½y²
+g = ∇L = (20x, y)
+at (−1, −1.6):  L = ${f(loss(START), 2)},  g = (−20, −1.6)`)}
+<p>A table needs no optimiser: you assign the right value to the right slot. Once V or Q is a network, the only thing you can do is move weights downhill on a loss. Adam decides how far each weight moves.</p>`,
+`${E(`θ_t = θ_{t−1} − lr·g_t       lr = ${f(s.lr, 3)}
+t = ${k}:  g = (${f(R.sgd[k].g[0], 3)}, ${f(R.sgd[k].g[1], 3)}),  Δθ = (${f(R.sgd[k].d[0], 3)}, ${f(R.sgd[k].d[1], 3)})`)}
+<p>The hiker feels the slope and takes one step downhill, the same size rule for every direction.</p>`,
+`${E(`x_t = (1 − 20·lr)ᵗ·x₀ = ${f(1 - 20 * s.lr, 3)}ᵗ·x₀
+y_t = (1 − lr)ᵗ·y₀     = ${f(1 - s.lr, 3)}ᵗ·y₀
+stable in x  ⇔  |1 − 20·lr| < 1  ⇔  lr < 0.1`)}`,
+`${E(`m_t = β₁·m_{t−1} + (1 − β₁)·g_t
+    = (1 − β₁)·Σ_k β₁^{t−k}·g_k        β₁ = ${f(s.b1)}`)}
+<p>An exponential moving average: the newest gradient gets weight ${f(1 - s.b1)}, the one before ${f((1 - s.b1) * s.b1, 3)}, and so on. With β₁ = 0.9 that is "keep 90% of the old direction, add 10% of the new".</p>`,
+`${E(`v_t = β₂·v_{t−1} + (1 − β₂)·g_t²      β₂ = ${f(s.b2, 4)}`)}
+<p>v is the "second raw moment": the average of g², not of (g − mean)². β₂ = 0.999 remembers roughly the last ${f(1 / (1 - s.b2), 0)} steps, which is a long history.</p>`,
+`${E(`m̂_t = m_t / (1 − β₁ᵗ)      t = ${k}: divide by ${f(1 - s.b1 ** k, 4)}
+v̂_t = v_t / (1 − β₂ᵗ)      t = ${k}: divide by ${f(1 - s.b2 ** k, 5)}`)}
+<p>As t grows, (1 − βᵗ) → 1 and the correction stops doing anything. For β₂ = 0.999 that takes thousands of steps, so v̂'s correction matters for a long time.</p>`,
+`${E(`Δθ = −α·m̂ / (√v̂ + ε)        α = ${f(s.a)},  ε = 1e−8
+t = 1:  m̂ = g,  √v̂ = |g|   ⇒   Δθ = −α·sign(g)`)}
+<p>Steep, volatile terrain (big v̂) → divide by a big number → small careful steps. Flat terrain (small v̂) → speed up. ε only prevents division by zero.</p>`,
+`${E(`t = ${k}
+g  = (${f(r.g[0], 4)}, ${f(r.g[1], 4)})
+m  = (${f(r.m[0], 4)}, ${f(r.m[1], 4)})
+v  = (${f(r.v[0], 5)}, ${f(r.v[1], 5)})
+m̂  = (${f(r.mh[0], 4)}, ${f(r.mh[1], 4)})
+v̂  = (${f(r.vh[0], 4)}, ${f(r.vh[1], 4)})
+Δθ = (${f(r.d[0], 4)}, ${f(r.d[1], 4)})`)}
+<p>Adam stores two extra numbers per weight (m and v). That is its whole memory cost: 3× the parameters.</p>`,
+`${E(`effective rate_i = α / (√v̂_i + ε)
+t = ${k}:  x ${f(s.a / (Math.sqrt(r.vh[0]) + EPS), 4)},   y ${f(s.a / (Math.sqrt(r.vh[1]) + EPS), 4)}`)}
+<p>Each weight's step is about α·(m̂/√v̂), and |m̂/√v̂| ≤ 1 roughly, so α is close to a cap on how far any weight moves per step.</p>`,
+`${E(['sgd', 'mom', 'adam'].map(q => `${NAME[q].padEnd(10)} L(${N}) = ${f(loss(R[q][N].p), 6)}`).join('\n'))}
+<p>The heavy ball: momentum carries it through small bumps, and v̂ adapts its friction to how rough the ground is.</p>`,
+`${ul(['<b>A · forward</b>: input → hidden → output; cache each layer\'s input; Z = input·W + b; activation.', '<b>B · backward</b>: error from the layer ahead × activation derivative (only active neurons pass error); grad_W = error × cached input; grad_b = error; pass error × W back.', '<b>C · Adam</b>: grad_W → m, v → W_new = W_old − α·m̂/(√v̂ + ε).'])}`,
+`${E(`x̂ = (x − μ_B) / √(σ²_B + ε)
+y = γ·x̂ + β`)}
+<p>The problem it targets is a signal that grows, vanishes or drifts off-centre as it passes through layers ("internal covariate shift"). γ and β are learnable, so the network can undo the normalisation if it needs to.</p>`,
+`${E(`your layer:  y = γ·x + β      (γ = ${f(s.gam)}, β = ${f(s.bet)})`)}
+${ul(['batch size 4: batch statistics from 4 samples do more harm than good', 'real-time: no running statistics to keep for inference', 'kept: a dedicated place to rescale a layer\'s output'])}`,
+`${E(`DP:       V(s) ← max_a Q(s, a)          assignment
+network:  y = r + γ·max_a′ Q(s′, a′) = ${f(rlY, 2)}
+          loss = (Q(s, a) − y)²
+          Adam minimises the loss`)}
+<p>The Bellman equation did not change. Only the way it is enforced did.</p>`];
+    return rows[S];
+  },
+  stats() { const s = st(), R = all(s), t = Math.min(s.t, N); return ['sgd', 'mom', 'adam'].map(k => `<span><b>${NAME[k]} L</b>${f(loss(R[k][t].p), 4)}</span>`).join(''); },
+});
+</script>
+</body></html>
