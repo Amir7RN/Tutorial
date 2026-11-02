@@ -232,6 +232,7 @@ from .deeprl import (
     FunctionApproxPage,
     KneeRLPage,
     MDPandFamilyPage,
+    TwinCATCodePage,
 )
 from .extras import BanditPage, ConvergencePage, HyperPage, ModelPage
 from .forcefb import PFFIntroPage, PFFMathPage
@@ -394,6 +395,7 @@ PAGE_CLASSES = [
     AgentSkeletonPage,     # 92  the shared rulebook, and where PPO breaks it
     KneeRLPage,            # 93  case study: one gait cycle is one timestep
     DeployRLPage,          # 94  1 kHz controller, 20 Hz learner, shared memory
+    TwinCATCodePage,       # 95  the TwinCAT C++ read file by file, plus an audit
     # ======================================================================
     # APPLIED · BEAM BALANCE -- the mediolateral hip exoskeleton
     # ======================================================================

@@ -1,5 +1,5 @@
 """
-Pages 86-94: deep RL for continuous control, ending at a real deployment.
+Pages 86-95: deep RL for continuous control, ending at a real deployment.
 (Pages 89, 90 and 92 live in ddpgnn.py; the neural-network fundamentals they
 lean on are pages 80-85, in nn.py.)
 
@@ -14,6 +14,8 @@ lean on are pages 80-85, in nn.py.)
                            one timestep
   94  Shipping It          the 1 kHz controller and the 20 Hz learner, and the
                            shared memory between them
+  95  TwinCAT Code         the same system read file by file: tasks, shared
+                           block, hand-written networks, and an audit
 
 The through-line of this block is a single sentence, and it is the same
 sentence as the controller-design block, transposed:
@@ -1794,3 +1796,438 @@ class DeployRLPage(Page):
         a2.set_title("merged: overruns vs rate", fontsize=9)
         c.legend(a2, loc="upper left")
         c.refresh()
+
+
+# ======================================================================
+# PAGE -- the TwinCAT code, read file by file
+# ======================================================================
+class TwinCATCodePage(Page):
+    TITLE = "Inside the TwinCAT Code: DDPG in Real-Time C++"
+    SUBTITLE = ("The previous page was the architecture. This one is the code: "
+                "two TcCOM modules, two tasks, one shared block, and every "
+                "network written by hand.")
+    SECTION = SECTION
+    NOTES = "deep RL · real-time · code"
+
+    # Sizes read from DDPG_Networks.h. Everything numeric on this page is
+    # derived from these, so the calculator cannot drift from the code.
+    ACTOR = ((5, 250), (250, 250), (250, 2))
+    CRITIC = ((5, 250), (250, 250), (2, 250), (250, 1))
+    BN = 250
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.add(callout(
+            "<b>What this page is.</b> A file-by-file reading of the "
+            "TwinCAT 3 solution <code>ContinousImp_RL</code>: two C++ "
+            "kernel modules, <code>RT_Control</code> and "
+            "<code>RL_Trainer</code>, that run the knee case study on the real "
+            "controller. There is no Python and no ONNX "
+            "runtime anywhere in it. The actor, the critic, both target "
+            "networks, back-propagation, Adam and the replay buffer are "
+            "plain C++ arrays and loops, compiled into the real-time "
+            "runtime. The last card is an audit: what the code does that "
+            "textbook DDPG would not, and what to change.", "key"))
+
+        # ---- the solution ------------------------------------------------
+        files = Card("the solution, file by file")
+        files.add(_table(
+            ["File", "Module", "What it holds"],
+            [("ContinousImp_RL.tsproj", "project",
+              "two tasks, the module instances, and the link that hands "
+              "RT_Control a pointer into RL_Trainer's memory"),
+             ("RT_Control.cpp / .h", "RT_Control",
+              "CycleUpdate() at 1 kHz: sensors, gait estimator, actor "
+              "inference, impedance law, experience push, weight import"),
+             ("GaitStateEstimator.cpp / .h", "RT_Control",
+              "heel-strike detection from the load cell; per-stride resample "
+              "to 100 points; 4 kinematic features + correlation to a "
+              "reference stride"),
+             ("RL_Trainer.cpp / .h", "RL_Trainer",
+              "CycleUpdate() at 20 Hz: drain the ring buffer, gate training "
+              "on 4 new strides, TrainStep(), publish weights"),
+             ("DDPG_Networks.h (one copy per module)", "both",
+              "FCLayer, BNLAyer, AdamState, ActorNetwork, CriticNetwork, "
+              "export / import of the flat weight array"),
+             ("*Services.h, *.tmc", "both",
+              "generated: data types (TransferData, SharedMemory), "
+              "parameter and data-area IDs"),
+             ("SharedDefs.h", "both",
+              "older constants (ring 100, batch 32 / 16); superseded by the "
+              "TMC-generated types")],
+            col0=230, colw=460, height=330))
+        self.add(files)
+
+        # ---- the two tasks ----------------------------------------------
+        tasks = Card("two tasks, read from the .tsproj")
+        tasks.add(_table(
+            ["", "FastTask → RT_Control", "SlowTask → RL_Trainer"],
+            [("CycleTime", "10 000 × 100 ns = 1 ms", "500 000 × 100 ns = 50 ms"),
+             ("Priority", "1 (preempts everything below)", "2"),
+             ("AMS port", "350", "351"),
+             ("Shared memory", "data pointer m_pSharedMem",
+              "owns m_SharedData by value"),
+             ("Link", "Data Pointer^m_pSharedMem",
+              "VarA = m_SharedData (type SharedMemory)")],
+            col0=150, colw=500, height=210))
+        tasks.add(body(
+            "TwinCAT expresses cycle time in units of 100 ns, so the two "
+            "numbers in the project file are 1 ms and 50 ms. Priority 1 "
+            "beats priority 2, which means a long <code>TrainStep()</code> "
+            "is simply interrupted every millisecond while the control tick "
+            "runs, then resumes. The link line is the whole inter-module "
+            "interface: no ADS calls, no message queue, two modules reading "
+            "and writing one struct in kernel memory.", dim=True))
+        self.add(tasks)
+
+        # ---- RT_Control -------------------------------------------------
+        rt = Card("RT_Control::CycleUpdate(), every millisecond")
+        rt.add(CodePane(
+            "double angle = m_Inputs.KneeAngle, force = m_Inputs.LoadCellForce;\n"
+            "double vel   = (angle - m_prevAngle) / 0.001;  m_prevAngle = angle;\n"
+            "\n"
+            "bool newStep = m_GaitStEstimator.update(angle, force);\n"
+            "if (newStep && !m_bStepLatch) {               // heel strike: once per stride\n"
+            "    if (m_pSharedMem->newWeightsAvailable) {   // 1. take new actor, if any\n"
+            "        m_Actor.import_weights(m_pSharedMem->actorWeightsFlat);\n"
+            "        m_pSharedMem->newWeightsAvailable = false;\n"
+            "    }\n"
+            "    double s[5] = { heelStrike, stancePeak, stanceValley,\n"
+            "                    swingPeak, correlation };  // 2. state of the stride\n"
+            "    double r = s[4] * s[4];                    //    reward\n"
+            "    push (m_PrevState, m_PrevAction, r, s);    // 3. ring buffer, drop if full\n"
+            "    m_Actor.forward(s, a);                     // 4. one inference\n"
+            "    m_K_current = clamp(50.0 + 10.0 * a[0], 10.0, 90.0);\n"
+            "    m_PrevState = s;  m_PrevAction = a;\n"
+            "}\n"
+            "m_bStepLatch = newStep;\n"
+            "m_Outputs.Torque = m_K_current * (m_Theta_Eq - angle)\n"
+            "                 - m_B_damping * vel;          // 5. impedance, every tick"))
+        rt.add(body(
+            "<b>Read it as two loops at two rates sharing one function.</b> "
+            "Lines 1–4 and the last line run 1000 times a second and cost a "
+            "handful of multiplies. The block inside the <code>if</code> "
+            "runs once per stride, on the tick where the load cell crosses "
+            "its threshold, and is where all the learning-related work sits: "
+            "a possible 65 252-double weight copy, the feature extraction, "
+            "one push into the ring, and one forward pass of 64 250 "
+            "multiply-accumulates. <b>That tick is the control task's worst "
+            "case</b>, and it is the one to measure.<br><br>"
+            "The transition pushed at heel strike <i>k</i> pairs the state "
+            "and action from heel strike <i>k−1</i> with the reward and state "
+            "observed now, so one stride is one MDP timestep, exactly as in "
+            "the case study. The action is applied as a stiffness for the whole "
+            "next stride, so the policy can never change impedance "
+            "mid-stride. Only <code>a[0]</code> is used; <code>a[1]</code> "
+            "is computed and stored but drives nothing, and "
+            "<code>m_Theta_Eq = 0</code>, <code>m_B_damping = 1.5</code> "
+            "are constants.", dim=True))
+        self.add(rt)
+
+        # ---- RL_Trainer -------------------------------------------------
+        tr = Card("RL_Trainer: drain, gate, train, publish")
+        tr.add(CodePane(
+            "// CycleUpdate(), every 50 ms\n"
+            "while (readIdx != writeIdx) {                  // drain the SPSC ring\n"
+            "    m_ReplayBuffer[m_ReplayIdx] = transferQueue[readIdx];\n"
+            "    m_ReplayIdx = (m_ReplayIdx + 1) % 2000;    // local replay, 2000 slots\n"
+            "    m_stepsSinceLastTrain++;\n"
+            "    readIdx = (readIdx + 1) % 300;\n"
+            "}\n"
+            "if (m_ReplayCount > BATCH_SIZE && m_stepsSinceLastTrain >= 4) {\n"
+            "    TrainStep();  m_stepsSinceLastTrain = 0;   // every 4 strides\n"
+            "}\n"
+            "\n"
+            "// TrainStep(): BATCH_SIZE = 8 sampled transitions\n"
+            "for (i = 0; i < 8; i++) {\n"
+            "    t = m_ReplayBuffer[rand() % m_ReplayCount];\n"
+            "    y  = t.reward + 0.99 * Q_targ(s', mu_targ(s'));\n"
+            "    td = Q(s, a) - y;\n"
+            "    critic.backward(td);  critic.optimize(1e-3);\n"
+            "    actor.forward(s);  critic.backward(1.0, dQ_da);\n"
+            "    actor.backward(dQ_da); actor.optimize(1e-4);\n"
+            "}\n"
+            "if (!newWeightsAvailable) {                    // publish, then raise flag\n"
+            "    actor.export_weights(actorWeightsFlat);\n"
+            "    newWeightsAvailable = true;\n"
+            "}"))
+        tr.add(body(
+            "<b>How the learning is spread out.</b> Nothing here runs in the "
+            "1 kHz task. Training is gated twice: by data (at least 4 new "
+            "strides since the last update) and by the clock (the trainer "
+            "only looks every 50 ms). When it does run, the 1 kHz task "
+            "preempts it every millisecond, so one <code>TrainStep()</code> "
+            "is interleaved across many control ticks rather than packed "
+            "into one. The weights it produces wait in shared memory until "
+            "the next heel strike, so the policy the user feels changes at "
+            "most once per stride.<br><br>"
+            "<b>The handshake is one-slot and lock-free.</b> The trainer only "
+            "writes the weight array while the flag is clear, and the "
+            "controller only reads it while the flag is set, so the two "
+            "never touch the array at the same time. If the trainer "
+            "publishes twice before a heel strike, the second publish is "
+            "simply skipped; the controller always sees a complete actor.",
+            dim=True))
+        self.add(tr)
+
+        # ---- the networks ----------------------------------------------
+        nets = Card("DDPG_Networks.h: a neural network with no framework")
+        nets.add(CodePane(
+            "template <int N_IN, int N_OUT> struct FCLayer {\n"
+            "    double weights[N_OUT * N_IN], bias[N_OUT];\n"
+            "    double grad_weights[N_OUT * N_IN], grad_bias[N_OUT];\n"
+            "    double input_cache[N_IN], output_cache[N_OUT];\n"
+            "    void forward(const double* in, double* out);   // out = W in + b\n"
+            "    void backward(const double* d_in, double* d_out);\n"
+            "};\n"
+            "struct AdamState { double *m, *v; void update(w, g, lr); };\n"
+            "\n"
+            "Actor : FC 5→250, ReLU, FC 250→250, BN, ReLU, FC 250→2, tanh\n"
+            "Critic: s → FC 5→250, BN, ReLU → FC 250→250 ┐\n"
+            "        a → FC 2→250 ───────────────────────┴ + → BN → ReLU → FC 250→1"))
+        pa = sum(i * o + o for i, o in self.ACTOR)
+        pc = sum(i * o + o for i, o in self.CRITIC)
+        nets.add(_table(
+            ["", "Actor", "Critic"],
+            [("Trainable parameters", f"{pa:,}", f"{pc:,}"),
+             ("Batch-norm scale + shift", f"{2 * self.BN:,} (not trained)",
+              f"{4 * self.BN:,} (not trained)"),
+             ("Multiply-accumulates, forward",
+              f"{sum(i * o for i, o in self.ACTOR):,}",
+              f"{sum(i * o for i, o in self.CRITIC):,}"),
+             ("Bytes on the wire (double)", f"{(pa + 2 * self.BN) * 8:,}",
+              "never leaves the trainer")],
+            col0=260, colw=460, height=180))
+        nets.add(body(
+            "<b>Every size is a template argument</b>, so every array "
+            "exists at compile time and the forward pass has the same "
+            "instruction path on every call — the property that makes its "
+            "execution time a constant you can put in a budget. The only "
+            "heap allocation is the Adam moment buffers, made once in "
+            "<code>init()</code> at construction, never in a cycle. Weights "
+            "start from <code>sin(index) * 0.1</code>: deterministic, so two "
+            "boots begin from the same policy. The 'BN' layers are a "
+            "per-unit scale and shift initialised to 1 and 0 with no "
+            "running statistics, so as written they are an identity map. "
+            "The critic merges its state and action paths by addition, as "
+            "in the original DDPG critic.", dim=True))
+        self.add(nets)
+
+        # ---- gait state -------------------------------------------------
+        gait = Card("GaitStateEstimator: where s and r come from")
+        gait.add(body(
+            "A stride begins when <code>LoadCellForce</code> rises above "
+            "20 (raw units). Knee angle is logged every millisecond into a "
+            "2000-sample buffer (2 s, the longest stride it can hold). At the "
+            "next heel strike, if more than 50 samples were logged, the "
+            "stride is resampled to 100 points and reduced to five numbers:"
+            "<br>&nbsp;&nbsp;<b>s₀</b> angle at heel strike, <b>s₁</b> max "
+            "over 5–30 %, <b>s₂</b> min over 20–50 %, <b>s₃</b> max over "
+            "30–90 %, <b>s₄</b> Pearson correlation with a hard-coded "
+            "100-point reference knee trajectory.<br>"
+            "The reward is <b>r = s₄²</b>: the closer the stride's shape to "
+            "the reference, the larger the reward. This is the only part of "
+            "the 1 kHz task whose work grows with stride length, and it is "
+            "a few hundred operations once per stride."))
+        self.add(gait)
+
+        # ---- interactive: the budget -------------------------------------
+        bud = Card("budget calculator: will it fit?")
+        bud.add(body(
+            "Operation counts are fixed by the code above; only the machine "
+            "is unknown. Set an effective arithmetic rate and memory-copy "
+            "bandwidth for the controller CPU and read off the heel-strike "
+            "tick against 1 ms and one <code>TrainStep()</code> against "
+            "50 ms. These are estimates for reasoning about margin; the "
+            "number to quote is TwinCAT's measured task execution time.",
+            dim=True))
+        self.s_mac = slider(50, 4000, 500)       # million MAC / s
+        self.s_bw = slider(1, 40, 5)             # GB / s
+        self.s_batch = slider(1, 64, 8)
+        self.s_stride = slider(60, 200, 110)     # stride period, ×0.01 s
+        self.l_mac, self.l_bw, self.l_batch, self.l_stride = (
+            QLabel(), QLabel(), QLabel(), QLabel())
+        bud.add_layout(slider_row("arithmetic (M MAC/s)", self.s_mac, self.l_mac))
+        bud.add_layout(slider_row("copy bandwidth (GB/s)", self.s_bw, self.l_bw))
+        bud.add_layout(slider_row("batch size", self.s_batch, self.l_batch))
+        bud.add_layout(slider_row("stride period", self.s_stride, self.l_stride))
+        self.st_hs = Stat("heel-strike tick", "--", theme.ACCENT)
+        self.st_ts = Stat("one TrainStep", "--", theme.VIOLET)
+        self.st_up = Stat("experience ↑", "--", theme.GOOD)
+        self.st_down = Stat("weights ↓", "--", theme.WARN)
+        bud.add_layout(stat_row(self.st_hs, self.st_ts, self.st_up, self.st_down))
+        self.cB = MplCanvas(width=7.6, height=2.6, ncols=2)
+        bud.add(self.cB)
+        self.tB = body("", dim=True)
+        bud.add(self.tB)
+        self.add(bud)
+        for s in (self.s_mac, self.s_bw, self.s_batch, self.s_stride):
+            s.valueChanged.connect(self._redraw_budget)
+        self._redraw_budget()
+
+        # ---- audit ------------------------------------------------------
+        audit = Card("audit: this code against textbook DDPG")
+        audit.add(body(
+            "Read the folder as a reviewer would. Some of these change what "
+            "is learned; some only matter under load. Each is a one- or "
+            "two-line fix, and each is a good answer to 'tell me about a bug "
+            "that crossed a software boundary'.", dim=True))
+        audit.add(_table(
+            ["Where", "What the code does", "Effect", "Fix"],
+            [("export_weights (trainer) vs import_weights (control)",
+              "control copy reads 500 BN values between fc2 and fc3; trainer "
+              "copy does not write them",
+              "fc3 and BN are read from shifted offsets: the deployed actor "
+              "is not the trained one",
+              "one shared header; version + length check in the block"),
+             ("TrainStep, actor update",
+              "dQ/da is computed, then Adam subtracts it",
+              "gradient descent on Q: the actor is pushed toward lower value",
+              "pass −dQ/da to backward(), or add with a flag"),
+             ("TrainStep, actor update",
+              "critic.backward(1.0) without critic.forward(s, μ(s))",
+              "dQ/da is taken at the stored action, not the actor's action",
+              "forward the critic at (s, μ(s)) first"),
+             ("TrainStep, targets",
+              "soft update is a TODO; targets are copies of the initial nets",
+              "a frozen target: y never improves past the random critic",
+              "θ′ ← τθ + (1−τ)θ′ after each batch"),
+             ("AdamState::update",
+              "m̂ = m/(1−β₁), v̂ = v/(1−β₂), constant",
+              "not Adam's bias correction; early steps are mis-scaled",
+              "keep a step counter t; use 1−β₁ᵗ, 1−β₂ᵗ"),
+             ("GaitStateEstimator::InterpolateData",
+              "guard is idx2 < TARGET_SIZE (100), not < N",
+              "for strides longer than 100 samples most of the resampled "
+              "stride is one repeated value; s₁–s₄ degenerate",
+              "test idx2 < N"),
+             ("RT_Control, action",
+              "no exploration noise added to μ(s)",
+              "DDPG explores only through the initial weights",
+              "Gaussian / OU noise on a, clipped (the deck's parameter "
+              "noise is another option)"),
+             ("FCLayer::backward",
+              "gradients are overwritten per sample",
+              "batch = 8 successive SGD steps, not one averaged step",
+              "accumulate, divide by batch, then optimise"),
+             ("RT_Control, output",
+              "double torque assigned to a 16-bit output",
+              "no saturation: overflow wraps sign",
+              "clamp to the drive limit before the cast"),
+             ("Reward", "r = corr²", "a mirrored stride (corr = −1) scores 1",
+              "r = max(corr, 0)² or corr itself"),
+             ("Headers", "BATCH_SIZE defined as 32, 4 and 8 along one "
+              "include chain", "the last definition (8) wins silently",
+              "one definition, static_assert on sizes"),
+             ("SharedMemory", "volatile fields in a pack(1) struct",
+              "works on x64 + MSVC, but the ordering guarantee is implicit",
+              "aligned std::atomic, release on publish, acquire on read")],
+            col0=190, colw=325, height=640))
+        audit.add(callout(
+            "<b>What is solid, and worth saying in an interview.</b> The "
+            "split itself: inference and impedance in a 1 kHz task with no "
+            "allocation, locks or unbounded loops; training in a preempted "
+            "lower-priority task gated every 4 strides; a single-producer "
+            "single-consumer ring for experience and a one-slot, "
+            "flag-guarded mailbox for weights; safety limits in the "
+            "controller, not the policy; and one shared struct linked "
+            "between modules by the runtime instead of any IPC. The "
+            "findings above sit inside that structure and do not change "
+            "it.", "good"))
+        audit.add(body(
+            "<b>Two places where the slides and this folder disagree.</b> "
+            "The project deck shows the trainer at 100 Hz with a batch of "
+            "16 and soft target updates; this folder's project runs it at "
+            "50 ms with an effective batch of 8 and the soft update left as "
+            "a TODO. Quote the version that ran on the device.", dim=True))
+        self.add(audit)
+
+        self.finish()
+
+    # ------------------------------------------------------------------
+    def _redraw_budget(self):
+        mac = self.s_mac.value() * 1e6               # MAC / s
+        bw = self.s_bw.value() * 1e9                 # bytes / s
+        batch = int(self.s_batch.value())
+        stride = self.s_stride.value() / 100.0       # s
+        self.l_mac.setText(f"{self.s_mac.value()} M")
+        self.l_bw.setText(f"{self.s_bw.value()} GB/s")
+        self.l_batch.setText(f"{batch}")
+        self.l_stride.setText(f"{stride:.2f} s")
+
+        a_fwd = sum(i * o for i, o in self.ACTOR)              # 64 250
+        c_fwd = sum(i * o for i, o in self.CRITIC)             # 64 500
+        a_par = sum(i * o + o for i, o in self.ACTOR)
+        c_par = sum(i * o + o for i, o in self.CRITIC)
+        w_bytes = (a_par + 2 * self.BN) * 8                    # the import
+        gait_ops = 1_000
+        # heel-strike tick: features + forward + (possibly) the weight copy
+        t_fwd = (a_fwd + gait_ops) / mac * 1e3
+        t_copy = w_bytes / bw * 1e3
+        t_hs = 0.002 + t_fwd + t_copy                          # ms
+        # one sample: targ actor + targ critic + critic fwd, critic bwd x2,
+        # actor fwd + bwd, and Adam (~10 ops per parameter) on both nets
+        per = (a_fwd + 2 * c_fwd + 2 * (2 * c_fwd) + a_fwd + 2 * a_fwd
+               + 10 * (a_par + c_par))
+        t_ts = batch * per / mac * 1e3
+        up = 13 * 8 / stride                                   # B/s
+        down = w_bytes / (4 * stride)                          # B/s
+
+        self.st_hs.set(f"{t_hs:.3f} ms")
+        self.st_hs.set_color(theme.GOOD if t_hs < 0.5 else
+                             theme.WARN if t_hs < 1.0 else theme.BAD)
+        self.st_ts.set(f"{t_ts:.1f} ms")
+        self.st_ts.set_color(theme.GOOD if t_ts < 25 else
+                             theme.WARN if t_ts < 50 else theme.BAD)
+        self.st_up.set(f"{up:.0f} B/s")
+        self.st_down.set(f"{down / 1e3:.0f} kB/s")
+
+        c = self.cB
+        c.clear()
+        a1, a2 = c.axes
+        parts = [("impedance + I/O", 0.002, theme.GOOD),
+                 ("features + μ(s)", t_fwd, theme.ACCENT),
+                 ("weight import", t_copy, theme.WARN)]
+        left = 0.0
+        for name, v, col in parts:
+            a1.barh([0], [v], left=left, color=col, label=name, height=0.5)
+            left += v
+        a1.axvline(1.0, color=theme.BAD, lw=1.6, ls="--", label="1 ms deadline")
+        a1.set_xlim(0, max(1.2, left * 1.15))
+        a1.set_yticks([])
+        a1.set_xlabel("ms")
+        a1.set_title("heel-strike tick (fast task)", fontsize=9)
+        c.legend(a1, loc="upper right")
+
+        n = max(1, int(round(t_ts)))
+        a2.bar(["TrainStep"], [t_ts], color=theme.VIOLET, width=0.5)
+        a2.axhline(50.0, color=theme.BAD, lw=1.6, ls="--", label="50 ms period")
+        a2.set_ylim(0, max(60.0, t_ts * 1.2))
+        a2.set_ylabel("ms")
+        a2.set_title("one TrainStep (slow task)", fontsize=9)
+        c.legend(a2, loc="upper right")
+        c.refresh()
+
+        cmp = "more" if t_copy > t_fwd else "less"
+        msg = (f"<b>Heel-strike tick ≈ {t_hs:.3f} ms</b>, of which "
+               f"{t_copy:.3f} ms is copying {w_bytes / 1e3:.0f} kB of weights "
+               f"— {cmp} than the forward pass ({t_fwd:.3f} ms) at these "
+               f"settings. A double-buffered actor with a pointer swap removes "
+               f"that copy from the fast task entirely. ")
+        if t_hs >= 1.0:
+            msg += ("<b>That misses the 1 ms deadline:</b> at this arithmetic "
+                    "rate even the forward pass does not fit in one tick. ")
+        if t_ts < 50:
+            msg += (f"<b>One TrainStep ≈ {t_ts:.1f} ms</b>: it finishes within "
+                    f"one 50 ms slow-task period while being preempted about "
+                    f"{n} times by the 1 kHz task. ")
+        else:
+            msg += (f"<b>One TrainStep ≈ {t_ts:.1f} ms</b> overruns the 50 ms "
+                    f"period. The control task is unaffected (it has priority), "
+                    f"but the trainer would raise exceed counters; shrink the "
+                    f"batch or split it over several slow cycles. ")
+        msg += (f"Experience flows up at about {up:.0f} B/s and weights down at "
+                f"about {down / 1e3:.0f} kB/s: three orders of magnitude apart, "
+                f"which is why each direction gets its own mechanism.")
+        self.tB.setText(msg)

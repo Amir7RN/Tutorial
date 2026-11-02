@@ -553,6 +553,11 @@ STORIES = {
         S("Pass experience to the learner", "The controller publishes completed experience to a bounded queue. It must not wait for a gradient calculation to finish.", equation="Fast → slow: experience queue, bounded nonblocking work."),
         S("Publish a complete actor snapshot", "The learner publishes validated actor parameters. The controller switches to a complete snapshot at a safe boundary; partially copied weights must never be used.", equation="Slow → fast: versioned or double-buffered actor snapshot."),
         S("Keep control independent of training", "If training takes longer or stalls, the controller retains a valid policy and enforces limits locally. The critic and replay storage remain on the learner side.", equation="Training latency must not become a missed motor-control deadline.")),
+    "TwinCATCodePage": movie("The same split, read as TwinCAT code", "clocks",
+        S("Two tasks in the project file", "FastTask has CycleTime 10 000 and priority 1; SlowTask has CycleTime 500 000 and priority 2. TwinCAT counts cycle time in 100 ns units.", equation="10 000 × 100 ns = 1 ms;  500 000 × 100 ns = 50 ms."),
+        S("Heel strike is the busy tick", "Once per stride RT_Control may copy new actor weights, extracts five gait features, pushes one transition and runs one forward pass. Every other tick evaluates only the impedance law.", equation="Actor forward: 5·250 + 250·250 + 250·2 = 64 250 multiply-accumulates."),
+        S("Train every four strides", "RL_Trainer drains the ring into its replay buffer and calls TrainStep() once at least four new transitions have arrived. The 1 kHz task preempts it throughout.", equation="Update period: 4 strides; batch: 8 sampled transitions."),
+        S("Publish, then raise the flag", "The trainer writes the flat actor array only while the flag is clear, then sets it. The controller copies only while it is set, then clears it. Both sides must agree on the array layout.", equation="Weights crossing per update: 65 252 doubles ≈ 522 kB.")),
 }
 
 # --------------------------------------------------------------------------
