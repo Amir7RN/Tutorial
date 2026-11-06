@@ -3,3 +3,7 @@
 cpp/workshop/my_rrpr.cpp
 cpp/workshop/my_rrpr2.cpp
 cpp/workshop/build/
+
+# C++ course (C++ chapter): the learner's own files, progress and g++ output
+cpp/learn/work/
+cpp/learn/build/

@@ -88,6 +88,15 @@ ROBOT MECHANICS
    143-145 computed torque, operational space + null space, force control
    146-148 grasping, wheeled mobile robots, interview drill
 
+C++ FOR ROBOTICS
+   150     roadmap: a class exists to protect an invariant; progress tracker
+   151-153 the build (translation units, ODR, linker), ownership and RAII,
+           copy/move/const
+   154-156 invariants, interfaces and factories, templates
+   157-158 threads/atomics/SPSC, and the robotics layer (Eigen, ros2_control)
+   159-162 the project: cascade loops, scheduler + config factory, lock-free
+           hand-off + mutation-graded tests, interview drill
+
 The mechanics block is appended rather than inserted so that every earlier
 page keeps its number. It derives the plant the control half assumed: where
 M(q), c, g and J come from, following the twelve Modern Robotics playlists.
@@ -267,6 +276,7 @@ from .paradigms import (
     TorqueControlPage,
 )
 from .pid import PIDPracticePage
+from .cpp_course import CPP_PAGES
 from .realtime import RealTimePage
 from .proprio import ActiveCompliancePage, BioProprioPage, RobotProprioPage
 from .values import ActionValuePage, BellmanPage, StateValuePage, VvsQPage
@@ -464,7 +474,13 @@ PAGE_CLASSES = [
     # ---- Manipulation & mobility (playlists 11-12) ------------------------
     GraspingPage,          # 146 friction cones, force closure
     MobileRobotPage,       # 147 nonholonomic unicycle tracking
-    InterviewDrillPage,    # 148 the questions, answered
+    InterviewDrillPage,    # 149 the questions, answered
+    # ======================================================================
+    # C++ FOR ROBOTICS -- the gap is design, not syntax. Seven stages, one
+    # project (a multi-rate controller scheduler) carried through all of them.
+    # Every exercise is compiled with g++ and graded (ctrlcore/cpp_course.py).
+    # ======================================================================
+    *CPP_PAGES,            # 150-162 roadmap, stages 0-7, project v0-v5, drill
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

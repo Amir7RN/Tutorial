@@ -38,7 +38,8 @@ class LessonAnimationTests(unittest.TestCase):
         cls.app.setStyleSheet(theme.QSS)
 
     def test_exact_requested_page_coverage(self):
-        self.assertEqual(set(STORIES), {p.__name__ for p in LESSON_CLASSES})
+        # the C++ chapter (NO_RECAP) teaches through its own web labs and graded exercises
+        self.assertEqual(set(STORIES), {p.__name__ for p in LESSON_CLASSES if not getattr(p, 'NO_RECAP', False)})
         for story in STORIES.values():
             self.assertGreaterEqual(len(story.steps), 3)
             self.assertTrue(all(s.title and s.caption for s in story.steps))

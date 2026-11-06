@@ -24,7 +24,7 @@ class LessonConnection(Card):
         self.links.linkActivated.connect(self.navigate.emit)
         if connection.previous:
             self.add(self.links)
-        keys = ('Control',) if number < 25 else ('Control', 'Interaction') if number < 52 else ('Learning',) if number < 80 else ('Learning', 'Networks')
+        keys = ('Control',) if number < 25 else ('Control', 'Interaction') if number < 52 else ('Learning',) if number < 80 else ('C++',) if number >= 150 else ('Learning', 'Networks')
         self.definitions = body('<br><br>'.join(f'<b>{key} notation.</b> {VOCABULARY[key]}' for key in keys))
         self.toggle = QPushButton('Show terminology reminder')
         self.toggle.setCheckable(True)

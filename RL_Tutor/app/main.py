@@ -41,7 +41,7 @@ class MainWindow(QWidget):
         # ---------------- sidebar ----------------
         side = QWidget()
         side.setObjectName("Sidebar")
-        side.setFixedWidth(260)
+        side.setFixedWidth(290)
         sl = QVBoxLayout(side)
         sl.setContentsMargins(0, 0, 0, 10)
         sl.setSpacing(0)
@@ -49,7 +49,7 @@ class MainWindow(QWidget):
         t = QLabel("Control & RL Tutor")
         t.setObjectName("SidebarTitle")
         sl.addWidget(t)
-        s = QLabel("dynamics · control · impedance · RL")
+        s = QLabel("systems · control · dynamics · RL · robotics · C++")
         s.setObjectName("SidebarSub")
         sl.addWidget(s)
 
@@ -69,7 +69,7 @@ class MainWindow(QWidget):
         sl.addWidget(self.nav, 1)
 
         hint = QLabel("Ctrl+← / Ctrl+→   prev / next page\n"
-                      "click a section to expand it")
+                      "click a group or section to expand it")
         hint.setStyleSheet(
             f"color:{theme.TEXT_FAINT}; font-size:10px; padding:8px 16px;"
             f"background:transparent;")
@@ -87,18 +87,31 @@ class MainWindow(QWidget):
         self._class_indices = {cls.__name__: i for i, cls in enumerate(self.page_classes)}
         self._page_items = {}        # stack index  -> QTreeWidgetItem
         self._section_items = {}     # section name -> QTreeWidgetItem
+        self._group_items = {}       # group name   -> QTreeWidgetItem
 
+        grp_font = QFont("Segoe UI", 9)
+        grp_font.setBold(True)
+        grp_font.setLetterSpacing(QFont.AbsoluteSpacing, 1.3)
         sec_font = QFont("Segoe UI", 8)
         sec_font.setBold(True)
         sec_font.setLetterSpacing(QFont.AbsoluteSpacing, 1.1)
+
+        # three levels: group -> section -> page. Groups and sections only
+        # organise; they never navigate anywhere themselves.
+        for name, colour, _sections in theme.SIDEBAR_GROUPS:
+            g = QTreeWidgetItem(self.nav, [name.upper()])
+            g.setFlags(Qt.ItemIsEnabled)
+            g.setFont(0, grp_font)
+            g.setForeground(0, QColor(colour))
+            g.setData(0, Qt.UserRole, None)
+            self._group_items[name] = g
 
         for i, page in enumerate(self.page_classes):
             self.stack.addWidget(QWidget())
             sec = page.SECTION
             top = self._section_items.get(sec)
             if top is None:
-                top = QTreeWidgetItem(self.nav, [sec.upper()])
-                # a section header groups; it never navigates anywhere itself
+                top = QTreeWidgetItem(self._group_items[theme.group_of(sec)], [sec.upper()])
                 top.setFlags(Qt.ItemIsEnabled)
                 top.setFont(0, sec_font)
                 top.setForeground(0, QColor(
@@ -113,6 +126,13 @@ class MainWindow(QWidget):
         # page counts on the headers, now that every page has been placed
         for sec, top in self._section_items.items():
             top.setText(0, f"{sec.upper()}   ({top.childCount()})")
+        for name, g in list(self._group_items.items()):
+            n = sum(g.child(k).childCount() for k in range(g.childCount()))
+            if n == 0:
+                self.nav.takeTopLevelItem(self.nav.indexOfTopLevelItem(g))
+                del self._group_items[name]
+                continue
+            g.setText(0, f"{name.upper()}   ({n})")
 
         self.nav.collapseAll()
         self.nav.currentItemChanged.connect(self._nav_changed)
@@ -136,11 +156,17 @@ class MainWindow(QWidget):
         item = self._page_items.get(idx)
         if item is None:
             return
-        parent = item.parent()
-        if parent is not None and not parent.isExpanded():
-            parent.setExpanded(True)
+        self._expand_to(item)
         self.nav.setCurrentItem(item)
         self.nav.scrollToItem(item)
+
+    @staticmethod
+    def _expand_to(item):
+        parent = item.parent()
+        while parent is not None:
+            if not parent.isExpanded():
+                parent.setExpanded(True)
+            parent = parent.parent()
 
     def _item_clicked(self, item, _column):
         """Clicking a section header toggles it -- headers are not selectable,
@@ -173,26 +199,35 @@ class MainWindow(QWidget):
         self.pages[idx].on_show()
 
     def _apply_filter(self, text: str):
-        """Hide pages that do not match; hide sections left with no matches."""
+        """Hide pages that do not match; hide sections and groups left empty."""
         q = text.strip().lower()
-        for sec, top in self._section_items.items():
-            shown = 0
-            for k in range(top.childCount()):
-                child = top.child(k)
-                hit = (not q
-                       or q in child.text(0).lower()
-                       or q in sec.lower())
-                child.setHidden(not hit)
-                shown += 1 if hit else 0
-            top.setHidden(shown == 0)
+        for gname, g in self._group_items.items():
+            g_shown = 0
+            for j in range(g.childCount()):
+                top = g.child(j)
+                sec = top.text(0).lower()
+                shown = 0
+                for k in range(top.childCount()):
+                    child = top.child(k)
+                    hit = (not q
+                           or q in child.text(0).lower()
+                           or q in sec
+                           or q in gname.lower())
+                    child.setHidden(not hit)
+                    shown += 1 if hit else 0
+                top.setHidden(shown == 0)
+                if q:
+                    top.setExpanded(shown > 0)
+                g_shown += shown
+            g.setHidden(g_shown == 0)
             if q:
-                top.setExpanded(shown > 0)
+                g.setExpanded(g_shown > 0)
         if not q:
-            # restore the accordion, keeping the section you are reading open
+            # restore the accordion, keeping the page you are reading open
             self.nav.collapseAll()
             item = self._page_items.get(self._current)
-            if item is not None and item.parent() is not None:
-                item.parent().setExpanded(True)
+            if item is not None:
+                self._expand_to(item)
                 self.nav.scrollToItem(item)
 
     def next_page(self):

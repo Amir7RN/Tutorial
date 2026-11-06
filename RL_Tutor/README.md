@@ -52,6 +52,43 @@ The numerics are in `ctrlcore/robokin.py` and `ctrlcore/robodyn.py`; checks
 null-space torques produce no hand acceleration, energy conservation, IK,
 force closure) are in `tests/test_robotics.py`.
 
+### C++ for Robotics block (pages 150–162)
+
+The chapter after Manipulation & Mobility. Its premise is that the gap is software
+*design*, not syntax: a class exists to protect an invariant, the header is the
+contract and the .cpp is the secret. It has seven stages, each answering one question, and one
+project carried through all of them: a multi-rate controller scheduler (current
+loop 32 kHz, velocity 8 kHz, position 1 kHz) built from a config file, with a
+lock-free hand-off to a slow reader.
+
+| Section | Pages | Covers |
+|---|---|---|
+| C++ · Foundations | 150–153 | roadmap + progress tracker; the build (translation units, ODR, linker, CMake); ownership (stack/heap, RAII, unique/shared/weak_ptr); copy/move/const |
+| C++ · Design | 154–156 | invariants and encapsulation, header reconstruction; interfaces, factories, composition; templates |
+| C++ · Real-Time & Robotics | 157–158 | atomics, acquire/release, SPSC queue, clean thread shutdown; Eigen pitfalls, ros2_control lifecycle |
+| C++ · Project | 159–162 | cascade loops, Scheduler, config factory, triple buffer, mutation-graded tests, interview drill |
+
+- **23 graded exercises.** Each one is compiled by your own g++ against a hidden test main
+  (`cpp/learn/exercises/<id>/`). Your files are saved as you type to
+  `cpp/learn/work/<id>/`, which is git-ignored, so any outside editor works too. Tests count heap
+  allocations, so "no leak" and "tick() never allocates" are checked rather than
+  taken on trust. Compile errors put a red dot on the line and give a clickable location.
+- **Editor**: Tab/Shift+Tab indent and dedent lines or selections, Enter keeps the indent
+  and opens `{}` blocks, a `}` typed on a blank line dedents, brackets auto-close, Ctrl+/ toggles comments,
+  Alt+↑/↓ moves lines, Ctrl+Enter runs Check.
+- **Labs**: `cpp_memory.html` shows stack, heap and static memory in 3D, stepped through real code
+  (new/delete, leaks, RAII, unique_ptr, shared_ptr, dangling pointers, copy vs move, vtables);
+  `cpp_build.html` takes code through preprocess, compile and link with mistakes you can switch on; `cpp_rt.html`
+  animates the SPSC ring and triple buffer, and shows a 32 kHz tick budget.
+- Checks: `tests/test_cpp_course.py` (every solution passes, every starter does not),
+  `tests/test_cpp_gui.py` (editor keys, a real Check through the GUI, page wiring).
+
+### Sidebar groups
+
+The sidebar groups sections under seven headings: System Analysis, Control,
+Dynamics, Reinforcement Learning, PhD Project (Beam Balance, Fault Tolerance),
+Robotics and C++ (`theme.SIDEBAR_GROUPS`). Page numbers and order are unchanged.
+
 ## Run it
 
 On Windows, run `.\run.bat` or double-click `run.bat`. The window opens before

@@ -221,6 +221,8 @@ def with_summaries(classes):
     result=[]
     for i,cls in enumerate(classes):
         result.append(cls)
+        if getattr(cls,'NO_RECAP',False):
+            continue
         if i==len(classes)-1 or classes[i+1].SECTION != cls.SECTION:
             if cls.SECTION not in RECAPS:
                 raise ValueError('Missing section recap: '+cls.SECTION)

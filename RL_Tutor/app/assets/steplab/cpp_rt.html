@@ -1,0 +1,298 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Rates and hand-offs</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.45fr) minmax(330px,1fr)}
+  .view{min-height:400px;position:relative}
+  .view canvas{position:absolute;left:4px;top:4px}
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .stat div{background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:4px 8px}
+  .stat b{display:block;font-family:var(--mono);font-size:1.05rem}
+  .stat span{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .code{font-family:var(--mono);font-size:.78rem;white-space:pre;background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:6px 0;overflow-x:auto}
+  .code div{padding:0 8px;border-left:3px solid transparent}
+  .code div.on{background:var(--hi);border-left-color:var(--a)}
+  .tabs{display:flex;gap:6px}
+  .bad{color:var(--bad)}.good{color:var(--c)}
+  select{font:inherit;font-size:.84rem;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:3px 6px}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1 id="title"></h1><p id="sub"></p></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card view"><canvas id="cv"></canvas></div>
+      <div class="card"><div class="controls" id="ctl"></div>
+        <div class="btns" style="margin-top:6px" id="btns"></div></div>
+    </div>
+    <div class="side">
+      <div class="card"><div class="stat" id="stat"></div></div>
+      <div class="card"><p class="h" id="codeh">the code</p><div class="code" id="code"></div></div>
+      <div class="card math" id="note"></div>
+    </div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let W = 0, H = 0;
+function resize() {
+  const d = window.devicePixelRatio || 1, el = cv.parentElement;
+  W = Math.max(200, el.clientWidth - 8); H = Math.max(300, el.clientHeight - 8);
+  cv.width = W * d; cv.height = H * d; cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+}
+function slider(key, label, min, max, step, val, fmt) {
+  return `<label class="ctl"><span>${label}</span><input type="range" id="${key}" min="${min}" max="${max}" step="${step}" value="${val}"><output id="${key}o"></output></label>`;
+}
+const val = k => +$(k).value;
+
+/* =================================================================
+   MODE 1: the SPSC ring and the triple buffer
+   ================================================================= */
+const RING = {
+  title: 'A 1 kHz producer and a slow consumer, sharing memory without a lock',
+  sub: 'The control loop pushes a sample every tick; the logger wakes rarely and drains what is there. Watch head (producer) and tail (consumer) chase each other.',
+  controls: () => slider('n', 'ring size N', 4, 32, 1, 12) + slider('pr', 'producer (Hz)', 100, 2000, 50, 1000) +
+                  slider('cr', 'consumer wakes (Hz)', 5, 400, 5, 100) + slider('sp', 'slow motion', 1, 60, 1, 20) +
+                  `<label class="ctl"><span>hand-off</span><select id="kind"><option value="q">queue: every sample (SPSC)</option><option value="t">latest value only (triple buffer)</option></select><output></output></label>`,
+  code: {
+    q: ['bool push(const T& x) {               // producer thread',
+        '  h = head_.load(relaxed);            //   only I write head_',
+        '  if ((h+1)%N == tail_.load(acquire)) return false;  // full: drop',
+        '  buf_[h] = x;                        //   1. write the data',
+        '  head_.store((h+1)%N, release);      //   2. THEN publish it',
+        '}',
+        'bool pop(T& out) {                    // consumer thread',
+        '  t = tail_.load(relaxed);',
+        '  if (t == head_.load(acquire)) return false;    // empty',
+        '  out = buf_[t];                      //   sees the data: acquire pairs with release',
+        '  tail_.store((t+1)%N, release);      //   give the slot back',
+        '}'],
+    t: ['void write(const T& v) {              // 1 kHz loop',
+        '  slots_[w_] = v;                     //   fill MY private slot',
+        '  old = middle_.exchange(w_|FRESH);   //   swap it into the middle, atomically',
+        '  w_ = old & 3;                       //   the old middle is mine now',
+        '}',
+        'bool read(T& out) {                   // slow reader',
+        '  if (!(middle_ & FRESH)) return false;  // nothing new',
+        '  old = middle_.exchange(r_);         //   swap my slot into the middle',
+        '  r_ = old & 3;  out = slots_[r_];    //   take the freshest one',
+        '}'],
+  },
+  reset() {
+    this.N = val('n'); this.buf = Array(this.N).fill(null); this.head = 0; this.tail = 0; this.pending = -1;
+    this.seq = 0; this.pushed = 0; this.popped = 0; this.dropped = 0; this.maxOcc = 0; this.hist = [];
+    this.tnext = 0; this.cnext = 0; this.sim = 0; this.line = -1; this.flash = 0;
+    this.slots = [0, 0, 0]; this.w = 0; this.r = 2; this.mid = 1; this.fresh = false; this.lastRead = 0; this.reads = 0; this.skipped = 0;
+  },
+  step(dtReal) {
+    const kind = $('kind').value;
+    const pr = val('pr'), cr = val('cr'), slow = val('sp');
+    if (this.N !== val('n')) this.reset();
+    this.sim += dtReal / slow;
+    while (this.tnext <= this.sim || this.cnext <= this.sim) {
+      if (this.tnext <= this.cnext) {           // producer tick
+        this.seq++;
+        if (kind === 'q') {
+          const nx = (this.head + 1) % this.N;
+          if (nx === this.tail) { this.dropped++; this.line = 2; }
+          else { this.buf[this.head] = this.seq; this.head = nx; this.pushed++; this.line = 4; }
+        } else {
+          this.slots[this.w] = this.seq;
+          const old = this.mid; this.mid = this.w; if (this.fresh) this.skipped++; this.fresh = true; this.w = old; this.line = 2;
+        }
+        this.tnext += 1 / pr;
+      } else {                                  // consumer wakes: drain
+        if (kind === 'q') {
+          let n = 0;
+          while (this.tail !== this.head) { this.buf[this.tail] = null; this.tail = (this.tail + 1) % this.N; this.popped++; n++; }
+          this.line = n ? 9 : 8;
+        } else {
+          if (this.fresh) { const old = this.mid; this.mid = this.r; this.r = old; this.fresh = false; this.lastRead = this.slots[this.r]; this.reads++; this.line = 8; }
+          else this.line = 6;
+        }
+        this.cnext += 1 / cr; this.flash = 1;
+      }
+    }
+    const occ = (this.head - this.tail + this.N) % this.N;
+    this.maxOcc = Math.max(this.maxOcc, occ);
+    this.hist.push(kind === 'q' ? occ / (this.N - 1) : this.fresh ? 1 : 0);
+    if (this.hist.length > 400) this.hist.shift();
+    this.flash *= 0.9;
+  },
+  draw() {
+    const kind = $('kind').value;
+    ctx.clearRect(0, 0, W, H);
+    const cx = W * 0.5, cy = H * 0.42, R = Math.min(W, H) * 0.3;
+    ctx.font = '600 12px ' + css('--mono');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (kind === 'q') {
+      for (let i = 0; i < this.N; i++) {
+        const a0 = -Math.PI / 2 + i * 2 * Math.PI / this.N, a1 = a0 + 2 * Math.PI / this.N - 0.04;
+        ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.arc(cx, cy, R * 0.68, a1, a0, true); ctx.closePath();
+        ctx.fillStyle = this.buf[i] != null ? css('--c') : css('--inset'); ctx.fill();
+        ctx.strokeStyle = css('--line'); ctx.stroke();
+        if (this.buf[i] != null) {
+          const am = (a0 + a1) / 2; ctx.fillStyle = css('--panel');
+          ctx.fillText(this.buf[i] % 1000, cx + Math.cos(am) * R * 0.84, cy + Math.sin(am) * R * 0.84);
+        }
+      }
+      const mark = (idx, col, txt, r) => {
+        const a = -Math.PI / 2 + (idx + 0.5) * 2 * Math.PI / this.N;
+        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+        ctx.strokeStyle = col; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx + Math.cos(a) * R * 0.66, cy + Math.sin(a) * R * 0.66); ctx.lineTo(x, y); ctx.stroke();
+        ctx.fillStyle = col; ctx.font = '700 12px ' + css('--mono'); ctx.fillText(txt, cx + Math.cos(a) * (r - 18), cy + Math.sin(a) * (r - 18)); ctx.lineWidth = 1;
+      };
+      mark(this.head, css('--b'), 'head (write)', R * 0.32);
+      mark(this.tail, css('--a'), 'tail (read)', R * 0.5);
+      ctx.fillStyle = css('--muted'); ctx.font = '600 11px ' + css('--body');
+      ctx.fillText('one slot always stays empty: head == tail means EMPTY', cx, cy + R + 22);
+    } else {
+      const names = ['writer owns', 'middle (hand-off)', 'reader owns'];
+      const own = i => i === this.w ? 0 : i === this.mid ? 1 : 2;
+      for (let i = 0; i < 3; i++) {
+        const o = own(i), x = W * (0.2 + 0.3 * o), y = cy;
+        ctx.fillStyle = o === 1 ? (this.fresh ? css('--c') : css('--grey')) : o === 0 ? css('--b') : css('--a');
+        ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.roundRect(x - 60, y - 40, 120, 80, 10); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.fillStyle = css('--panel'); ctx.font = '700 18px ' + css('--mono'); ctx.fillText(this.slots[i] % 1000, x, y - 6);
+        ctx.font = '600 11px ' + css('--mono'); ctx.fillText('slot ' + i, x, y + 22);
+        ctx.fillStyle = css('--ink'); ctx.font = '700 12px ' + css('--body'); ctx.fillText(names[o], x, y - 56);
+      }
+      ctx.fillStyle = css('--muted'); ctx.font = '600 12px ' + css('--body');
+      ctx.fillText(this.fresh ? 'FRESH: the middle holds a value the reader has not taken' : 'not fresh: the reader already has the newest', W / 2, cy + 74);
+      ctx.fillText('reader last got #' + (this.lastRead % 1000) + ' — it never waits, the writer never waits', W / 2, cy + 94);
+    }
+    // occupancy strip
+    const y0 = H - 70, h = 50;
+    ctx.strokeStyle = css('--line'); ctx.strokeRect(20, y0, W - 40, h);
+    ctx.beginPath();
+    this.hist.forEach((v, i) => { const x = 20 + (W - 40) * i / 400, y = y0 + h - v * h; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.strokeStyle = kind === 'q' ? css('--c') : css('--f'); ctx.lineWidth = 1.6; ctx.stroke(); ctx.lineWidth = 1;
+    ctx.fillStyle = css('--muted'); ctx.textAlign = 'left'; ctx.font = '600 11px ' + css('--body');
+    ctx.fillText(kind === 'q' ? 'fill level over time (top = full: samples are DROPPED)' : 'fresh flag over time', 24, y0 - 8);
+    if (this.flash > 0.05) { ctx.fillStyle = css('--a'); ctx.globalAlpha = this.flash; ctx.fillText('consumer woke', W - 120, 20); ctx.globalAlpha = 1; }
+  },
+  stats() {
+    const kind = $('kind').value;
+    const pr = val('pr'), cr = val('cr');
+    const need = Math.ceil(pr / cr) + 1;
+    if (kind === 'q') return [['pushed', this.pushed], ['popped', this.popped], ['dropped', `<span class="${this.dropped ? 'bad' : 'good'}">${this.dropped}</span>`], ['N needed ≥', need]];
+    return [['written', this.seq], ['reads', this.reads], ['overwritten unread', this.skipped], ['torn reads', '<span class="good">0</span>']];
+  },
+  note() {
+    const kind = $('kind').value, pr = val('pr'), cr = val('cr'), need = Math.ceil(pr / cr) + 1;
+    if (kind === 'q') return `<p>Between two wake-ups the producer adds <b>${(pr / cr).toFixed(1)}</b> samples, so the ring needs at least <b>${need}</b> slots (one is always empty) <i>plus margin for the consumer's jitter</i>. If it is smaller, <code>push</code> returns false and samples are dropped. The control loop must never block, so dropping is the only safe choice.</p>
+      <p>No lock anywhere. Each index has exactly one writer. <code>release</code> on the store and <code>acquire</code> on the other thread's load are what guarantee the consumer sees <code>buf_[h]</code> filled in once it sees the new head.</p>`;
+    return `<p>The reader wants the <b>current</b> state, not a history: an RL policy observing the joint, a GUI, a supervisor. A queue would make it read stale samples in order. The triple buffer keeps only the newest, and old values are simply overwritten (${this.skipped} so far).</p>
+      <p>Both sides only ever touch the slot they own. The single atomic <code>exchange</code> on <code>middle_</code> trades slots, so the reader can never see a half-written struct. This is project v4.</p>`;
+  },
+};
+
+/* =================================================================
+   MODE 2: multi-rate scheduling on one core
+   ================================================================= */
+const SCHED = {
+  title: 'Three loops, three rates, one core: does every tick finish in time?',
+  sub: 'A 32 kHz base tick. The current loop runs every tick, the velocity loop every 4th, the position loop every 32nd. Each bar is the CPU time used inside one 31.25 µs tick.',
+  controls: () => slider('cc', 'current loop work (µs)', 1, 30, 0.5, 6) + slider('cv2', 'velocity loop work (µs)', 1, 30, 0.5, 8) +
+                  slider('cp', 'position loop work (µs)', 1, 60, 1, 18) + slider('ov', 'scheduler + I/O overhead (µs)', 0, 15, 0.5, 3) +
+                  `<label class="ctl"><span>phase the slow loops</span><select id="phase"><option value="0">all start on tick 0</option><option value="1">offset them (vel @1, pos @2)</option></select><output></output></label>`,
+  code: { s: [
+    'void Scheduler::tick() {            // every 31.25 us',
+    '  for (Task& t : tasks_)            // slowest first',
+    '    if ((tick_ - t.phase) % t.divider == 0)',
+    '      t.ctrl->update(t.divider / double(baseHz_));',
+    '  ++tick_;',
+    '}',
+    '// U = sum(C_i / T_i) must be < 1 -- necessary, NOT sufficient:',
+    '// the WORST single tick must also fit.'] },
+  reset() { this.line = 2; },
+  step() {},
+  data() {
+    const C = [val('cc'), val('cv2'), val('cp')], O = val('ov'), ph = +$('phase').value;
+    const div = [1, 4, 32], phase = ph ? [0, 1, 2] : [0, 0, 0];
+    const ticks = [];
+    for (let k = 0; k < 32; k++) {
+      const run = [2, 1, 0].filter(i => (k - phase[i]) % div[i] === 0);
+      const used = O + run.reduce((a, i) => a + C[i], 0);
+      ticks.push({ run, used });
+    }
+    const U = (O + C[0]) / 31.25 + C[1] / 125 + C[2] / 1000;
+    return { C, O, ticks, U, worst: Math.max(...ticks.map(t => t.used)) };
+  },
+  draw() {
+    const d = this.data();
+    ctx.clearRect(0, 0, W, H);
+    const L = 50, R = W - 16, T = 34, B = H - 46, slot = (R - L) / 32, budget = 31.25;
+    const ymax = Math.max(budget * 1.6, d.worst * 1.1), y = v => B - (B - T) * v / ymax;
+    ctx.strokeStyle = css('--bad'); ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(L, y(budget)); ctx.lineTo(R, y(budget)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = css('--bad'); ctx.font = '700 11px ' + css('--body'); ctx.textAlign = 'right';
+    ctx.fillText('deadline: 31.25 µs per tick', R, y(budget) - 6);
+    const col = [css('--b'), css('--a'), css('--d')], names = ['current 32 kHz', 'velocity 8 kHz', 'position 1 kHz'];
+    d.ticks.forEach((t, k) => {
+      let v = 0; const x = L + k * slot + 1, w = slot - 2;
+      ctx.fillStyle = css('--grey'); ctx.fillRect(x, y(d.O), w, B - y(d.O)); v = d.O;
+      for (const i of [2, 1, 0]) if (t.run.includes(i)) { ctx.fillStyle = col[i]; ctx.fillRect(x, y(v + d.C[i]), w, y(v) - y(v + d.C[i])); v += d.C[i]; }
+      if (t.used > budget) { ctx.strokeStyle = css('--bad'); ctx.lineWidth = 2; ctx.strokeRect(x, y(t.used), w, B - y(t.used)); ctx.lineWidth = 1; }
+    });
+    ctx.fillStyle = css('--muted'); ctx.textAlign = 'center'; ctx.font = '600 10px ' + css('--mono');
+    for (let k = 0; k < 32; k += 4) ctx.fillText(k, L + (k + 0.5) * slot, B + 14);
+    ctx.fillText('base tick (one row of 32 = 1 ms)', (L + R) / 2, B + 30);
+    ctx.textAlign = 'right'; for (let v = 0; v <= ymax; v += 10) ctx.fillText(v, L - 6, y(v) + 3);
+    ctx.textAlign = 'left'; ctx.font = '700 11px ' + css('--body');
+    names.forEach((n, i) => { ctx.fillStyle = col[i]; ctx.fillRect(L + i * 150, 10, 12, 10); ctx.fillStyle = css('--ink'); ctx.fillText(n, L + i * 150 + 16, 19); });
+  },
+  stats() {
+    const d = this.data(), miss = d.ticks.filter(t => t.used > 31.25).length;
+    return [['utilisation U', `<span class="${d.U < 1 ? 'good' : 'bad'}">${(d.U * 100).toFixed(0)}%</span>`], ['worst tick', d.worst.toFixed(1) + ' µs'],
+            ['ticks over budget', `<span class="${miss ? 'bad' : 'good'}">${miss} / 32</span>`], ['slack (worst)', (31.25 - d.worst).toFixed(1) + ' µs']];
+  },
+  note() {
+    const d = this.data(), miss = d.ticks.filter(t => t.used > 31.25).length;
+    return `<p>Average load is <b>U = ${(d.U * 100).toFixed(0)}%</b>, but deadlines are per tick: tick 0 stacks all three loops (<b>${d.ticks[0].used.toFixed(1)} µs</b>). ${miss ? '<span class="bad">Some ticks overrun, so the next current-loop update starts late: jitter in the fastest loop, the one that can least afford it.</span>' : 'Every tick fits.'}</p>
+      <p><b>Offsetting</b> the slow loops onto different ticks spreads the work without changing any rate. Real systems do this, or run the slow loops in a lower-priority thread that the fast loop preempts (rate-monotonic scheduling). On a Jetson the current loop usually lives on the motor driver's MCU, and the Linux side runs the slower loops under PREEMPT_RT.</p>
+      <p>Measure the work times, do not guess them. Take the <i>worst</i> of many runs (WCET), not the average.</p>`;
+  },
+};
+
+const MODES = { ring: RING, sched: SCHED };
+let mode = null, last = 0;
+function set(name) {
+  mode = MODES[name];
+  $('title').textContent = mode.title; $('sub').textContent = mode.sub;
+  $('ctl').innerHTML = mode.controls();
+  document.querySelectorAll('#ctl input, #ctl select').forEach(el => el.oninput = el.onchange = () => { if (el.id === 'n' || el.id === 'kind') mode.reset(); out(); });
+  $('btns').innerHTML = name === 'ring' ? '<button id="rs">reset</button><button id="pz">pause</button>' : '';
+  if ($('rs')) $('rs').onclick = () => mode.reset();
+  if ($('pz')) $('pz').onclick = () => { paused = !paused; $('pz').textContent = paused ? 'resume' : 'pause'; };
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === name));
+  mode.reset(); out();
+}
+let paused = false;
+function out() {
+  document.querySelectorAll('#ctl input').forEach(el => { const o = $(el.id + 'o'); if (o) o.textContent = el.value; });
+  const s = mode.stats();
+  $('stat').innerHTML = s.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('');
+  $('note').innerHTML = mode.note();
+  const kind = mode === RING ? $('kind').value : 's';
+  $('code').innerHTML = mode.code[kind].map((l, i) => `<div class="${i === mode.line ? 'on' : ''}">${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</div>`).join('');
+}
+function loop(ts) {
+  const dt = Math.min(0.05, (ts - last) / 1000); last = ts;
+  if (!paused && mode === RING) mode.step(dt);
+  mode.draw();
+  if (mode === RING && Math.floor(ts / 120) !== Math.floor((ts - dt * 1000) / 120)) out();
+  requestAnimationFrame(loop);
+}
+const m = /m=(\w+)/.exec(location.hash);
+const list = m && MODES[m[1]] ? [m[1]] : Object.keys(MODES);
+$('tabs').innerHTML = list.length > 1 ? list.map(k => `<button data-k="${k}">${k === 'ring' ? 'SPSC ring / triple buffer' : 'multi-rate scheduler'}</button>`).join('') : '';
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => set(b.dataset.k));
+resize(); new ResizeObserver(resize).observe(cv.parentElement);
+set(list[0]); requestAnimationFrame(ts => { last = ts; loop(ts); });
+</script>
+</body></html>

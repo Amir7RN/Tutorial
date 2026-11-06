@@ -23,7 +23,9 @@ class LessonConnectionsTests(unittest.TestCase):
 
     def test_every_section_ends_with_three_worked_movies(self):
         summaries=[c for c in PAGE_CLASSES if getattr(c,'IS_SUMMARY',False)]
-        self.assertEqual(len(PAGE_CLASSES),len(LESSON_CLASSES)+len({c.SECTION for c in LESSON_CLASSES}))
+        # sections marked NO_RECAP (the C++ chapter) carry their own tracker and drill instead
+        recapped={c.SECTION for c in LESSON_CLASSES if not getattr(c,'NO_RECAP',False)}
+        self.assertEqual(len(PAGE_CLASSES),len(LESSON_CLASSES)+len(recapped))
         self.assertEqual({c.SECTION for c in summaries},set(RECAPS))
         for i,c in enumerate(PAGE_CLASSES):
             if getattr(c,'IS_SUMMARY',False):

@@ -1,0 +1,180 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>From source to program</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .pipe{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;position:relative}
+  .col h3{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+  .box{border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-bottom:8px;background:var(--inset);font-family:var(--mono);font-size:.74rem;white-space:pre;overflow:hidden;position:relative}
+  .box .t{font-family:var(--body);font-weight:700;font-size:.8rem;margin-bottom:3px;white-space:normal}
+  .box.err{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad) inset}
+  .box.ok{border-color:var(--c)}
+  .paste{border-left:3px solid var(--d);padding-left:5px;margin:2px 0;color:var(--muted)}
+  .dup{border-left-color:var(--bad);color:var(--bad)}
+  .sym{display:flex;gap:6px}
+  .sym b{width:14px;text-align:center}
+  .T{color:var(--c)}.U{color:var(--b)}.W{color:var(--f)}
+  .X{color:var(--bad)}
+  svg.links{position:absolute;inset:0;pointer-events:none;overflow:visible}
+  .toggles{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:6px 14px;font-size:.88rem}
+  .toggles label{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
+  .verdict{font-family:var(--mono);font-size:.84rem;white-space:pre-wrap;border-radius:8px;padding:8px 10px;border:1px solid var(--line)}
+  .verdict.bad{border-color:var(--bad);color:var(--bad)}
+  .verdict.good{border-color:var(--c);color:var(--c)}
+  .why{font-size:.9rem;line-height:1.5}
+  .dim{opacity:.35}
+</style>
+</head><body>
+<div class="wrap" style="height:auto">
+  <div class="top"><h1>From source files to one program</h1>
+    <p>Flip a mistake on and see which stage catches it: the preprocessor pastes text, the compiler sees one
+       translation unit at a time, and only the linker sees the whole program.</p></div>
+  <div class="card toggles" id="tg"></div>
+  <div class="card"><div class="pipe" id="pipe"><svg class="links" id="links"></svg></div></div>
+  <div class="card"><p class="h">what g++ says</p><div class="verdict" id="verdict"></div>
+    <p class="why" id="why"></p></div>
+</div>
+<script>
+const OPTS = [
+  ['guard', true, 'pid.hpp has <code>#pragma once</code>', 'Turn it off: main.cpp includes pid.hpp twice (directly and via util.hpp).'],
+  ['inlineDef', false, 'pid.hpp DEFINES <code>clampOut()</code> (not inline)', 'A function body in a header lands in every .cpp that includes it.'],
+  ['inlineKw', false, '…and marks it <code>inline</code>', 'inline tells the linker "identical copies are expected, keep one".'],
+  ['linkPid', true, 'pid.cpp is given to the linker', 'Forget it in CMakeLists (add_executable) and see.'],
+  ['declMismatch', false, 'pid.cpp defines <code>update(float)</code> instead of <code>update(double)</code>', 'A different signature is a different function.'],
+];
+const S = {}; OPTS.forEach(([k, v]) => S[k] = v);
+
+function sources() {
+  const def = S.inlineDef ? `\n${S.inlineKw ? 'inline ' : ''}double clampOut(double u) {\n  return u > 24 ? 24 : u;\n}` : '';
+  return {
+    'pid.hpp': `${S.guard ? '#pragma once\n' : ''}class Pid {\npublic:\n  double update(double e);\nprivate:\n  double i_ = 0;\n};${def}`,
+    'util.hpp': `#include "pid.hpp"\ndouble run(Pid& p);`,
+    'pid.cpp': `#include "pid.hpp"\ndouble Pid::update(${S.declMismatch ? 'float' : 'double'} e) {\n  i_ += e;\n  return 2*e + i_;\n}`,
+    'main.cpp': `#include "pid.hpp"\n#include "util.hpp"\nint main() {\n  Pid p;\n  return p.update(1.0) > 0;\n}`,
+  };
+}
+
+/* translation units: what each .cpp becomes after #include is pasted */
+function preprocess(src, file, seen = new Set(), depth = 0) {
+  const out = [];
+  for (const line of src[file].split('\n')) {
+    const m = /#include "(.+)"/.exec(line);
+    if (m) {
+      const inc = m[1];
+      const guarded = S.guard && inc === 'pid.hpp';
+      if (guarded && seen.has(inc)) { out.push({ txt: `// ${inc}: skipped (#pragma once)`, inc, skip: true, depth }); continue; }
+      const dup = seen.has(inc);
+      seen.add(inc);
+      out.push({ txt: `// ---- pasted from ${inc} ----`, inc, dup, depth });
+      out.push(...preprocess(src, inc, seen, depth + 1).map(o => ({ ...o, from: o.from || inc, dup: o.dup || dup })));
+    } else if (!line.startsWith('#pragma')) out.push({ txt: line, depth });
+  }
+  return out;
+}
+
+function analyse() {
+  const src = sources();
+  const tus = ['pid.cpp', 'main.cpp'].map(f => ({ file: f, lines: preprocess(src, f) }));
+  const errs = [];
+  // compile errors: class defined twice in one TU
+  for (const tu of tus) {
+    const n = tu.lines.filter(l => /^class Pid/.test(l.txt)).length;
+    tu.compileError = n > 1 ? `${tu.file}: error: redefinition of 'class Pid'` : '';
+    if (tu.compileError) errs.push({ stage: 'compile', msg: tu.compileError.replace(tu.file, 'pid.hpp:2:7') + `\n  (in the translation unit for ${tu.file})` });
+    const defs = tu.lines.filter(l => /double clampOut\(double u\) \{/.test(l.txt)).length;
+    if (defs > 1 && !tu.compileError) { tu.compileError = `redefinition of 'double clampOut(double)'`; errs.push({ stage: 'compile', msg: 'pid.hpp: error: ' + tu.compileError }); }
+  }
+  // objects and their symbols
+  const objs = tus.map(tu => {
+    const sym = [];
+    if (tu.file === 'pid.cpp') sym.push({ k: 'T', n: `Pid::update(${S.declMismatch ? 'float' : 'double'})` });
+    if (tu.file === 'main.cpp') { sym.push({ k: 'T', n: 'main' }); sym.push({ k: 'U', n: 'Pid::update(double)' }); }
+    if (S.inlineDef) sym.push({ k: S.inlineKw ? 'W' : 'T', n: 'clampOut(double)' });
+    return { file: tu.file.replace('.cpp', '.o'), sym, dead: !!tu.compileError, linked: tu.file !== 'pid.cpp' || S.linkPid };
+  });
+  // the linker
+  if (!errs.length) {
+    const defs = {};
+    for (const o of objs) if (o.linked) for (const s of o.sym) if (s.k !== 'U') (defs[s.n] = defs[s.n] || []).push({ o, s });
+    for (const o of objs) if (o.linked) for (const s of o.sym) if (s.k === 'U' && !defs[s.n]) {
+      s.bad = true;
+      errs.push({ stage: 'link', msg: `ld: ${o.file}: in function 'main':\nmain.cpp:5: undefined reference to \`${s.n}'` });
+    }
+    for (const [n, list] of Object.entries(defs)) {
+      if (list.length > 1 && list.some(x => x.s.k === 'T')) {
+        list.forEach(x => x.s.bad = true);
+        errs.push({ stage: 'link', msg: `ld: ${list[1].o.file}: multiple definition of \`${n}'; ${list[0].o.file}: first defined here` });
+      }
+    }
+  }
+  return { src, tus, objs, errs };
+}
+
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function render() {
+  const { src, tus, objs, errs } = analyse();
+  const compileErr = errs.find(e => e.stage === 'compile');
+  const pipe = document.getElementById('pipe');
+  const col = (title, html) => `<div class="col"><h3>${title}</h3>${html}</div>`;
+  const files = Object.entries(src).map(([f, t]) =>
+    `<div class="box" id="src-${f.replace('.', '_')}"><div class="t">${f}</div>${esc(t)}</div>`).join('');
+  const tuHtml = tus.map(tu => `<div class="box ${tu.compileError ? 'err' : 'ok'}" id="tu-${tu.file.replace('.', '_')}">
+      <div class="t">translation unit: ${tu.file}</div>${tu.lines.map(l =>
+        `<div class="${l.from || l.inc ? 'paste' : ''} ${l.dup ? 'dup' : ''}">${esc('  '.repeat(Math.min(l.depth, 2)) + l.txt)}</div>`).join('')}</div>`).join('');
+  const objHtml = objs.map(o => `<div class="box ${o.dead ? 'err dim' : o.linked ? '' : 'dim'}" id="obj-${o.file.replace('.', '_')}">
+      <div class="t">${o.file}${o.dead ? ' (not produced)' : o.linked ? '' : ' (left out of the link)'}</div>${o.sym.map(s =>
+        `<div class="sym ${s.bad ? 'X' : ''}"><b class="${s.k}">${s.k}</b><span>${esc(s.n)}</span></div>`).join('')}</div>`).join('');
+  const linkOk = !errs.length;
+  const exe = `<div class="box ${linkOk ? 'ok' : 'err'}" id="exe"><div class="t">${linkOk ? 'pid_demo.exe' : 'no program'}</div>${linkOk ?
+      'every U matched exactly one T\n(W copies merged into one)' : compileErr ? 'compilation stopped first' : 'the linker refused'}</div>`;
+  pipe.innerHTML = '<svg class="links" id="links"></svg>' + col('1 · source files', files) + col('2 · preprocessor (#include = paste)', tuHtml) +
+    col('3 · compiler → object files', objHtml) + col('4 · linker → program', exe);
+  drawLinks(objs);
+  const v = document.getElementById('verdict');
+  v.className = 'verdict ' + (linkOk ? 'good' : 'bad');
+  v.textContent = linkOk ? '$ g++ pid.cpp main.cpp -o pid_demo\n(no output: success)' :
+    '$ g++ ' + (S.linkPid ? 'pid.cpp ' : '') + 'main.cpp -o pid_demo\n' + errs.map(e => e.msg).join('\n');
+  document.getElementById('why').innerHTML = explain(errs);
+}
+
+function explain(errs) {
+  if (!errs.length) {
+    if (S.inlineDef && S.inlineKw) return '<b>inline</b> functions are allowed one copy per translation unit (shown as W: weak). The linker keeps one and discards the rest. Templates and functions defined inside a class body are implicitly inline for the same reason.';
+    return '<b>Each .cpp compiled alone</b> into an object file. main.o only <i>needs</i> Pid::update (U); pid.o <i>provides</i> it (T); the linker connects them. That is why a header holds declarations: it tells each translation unit what exists, without providing it twice.';
+  }
+  const e = errs[0];
+  if (e.stage === 'compile' && /class Pid/.test(e.msg)) return '<b>Compile error.</b> main.cpp pulls pid.hpp in twice, once directly and once through util.hpp, so the class is defined twice in ONE translation unit. <code>#pragma once</code> (or <code>#ifndef PID_HPP / #define / #endif</code>) makes the second paste a no-op.';
+  if (/multiple definition/.test(e.msg)) return '<b>Link error.</b> Every translation unit compiled fine, but each got its own clampOut body (T in both). The guard cannot help: it works <i>within</i> one translation unit. Fix: declare in the header and define once in a .cpp, or mark it <code>inline</code>.';
+  if (/undefined reference/.test(e.msg) && S.declMismatch) return '<b>Link error.</b> pid.o provides <code>Pid::update(float)</code>; main.o needs <code>Pid::update(double)</code>. In C++ the parameter types are part of the symbol name (mangling), so these are two different functions. The compiler did not complain because pid.cpp\'s definition is legal on its own. In real g++ it would also say "no declaration matches", since out-of-class definitions must match a declaration.';
+  if (/undefined reference/.test(e.msg)) return '<b>Link error.</b> main.o says "I need Pid::update" and no object provides it, because pid.cpp was never compiled into the link. In CMake this is a missing file in <code>add_executable(... pid.cpp)</code> or a missing <code>target_link_libraries</code>.';
+  return '';
+}
+
+function drawLinks(objs) {
+  const svg = document.getElementById('links'), pipe = document.getElementById('pipe').getBoundingClientRect();
+  const c = (id, side) => { const el = document.getElementById(id); if (!el) return null; const r = el.getBoundingClientRect();
+    return [side === 'r' ? r.right - pipe.left : r.left - pipe.left, r.top - pipe.top + Math.min(24, r.height / 2)]; };
+  const paths = [];
+  const link = (a, b, colour, dash) => { if (!a || !b) return;
+    const mx = (a[0] + b[0]) / 2;
+    paths.push(`<path d="M${a[0]},${a[1]} C${mx},${a[1]} ${mx},${b[1]} ${b[0]},${b[1]}" fill="none" stroke="${colour}" stroke-width="1.6" ${dash ? 'stroke-dasharray="5 4"' : ''} opacity=".7"/>`); };
+  const cs = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  link(c('src-pid_cpp', 'r'), c('tu-pid_cpp', 'l'), cs('--d'));
+  link(c('src-main_cpp', 'r'), c('tu-main_cpp', 'l'), cs('--d'));
+  link(c('src-pid_hpp', 'r'), c('tu-pid_cpp', 'l'), cs('--d'), true);
+  link(c('src-pid_hpp', 'r'), c('tu-main_cpp', 'l'), cs('--d'), true);
+  link(c('src-util_hpp', 'r'), c('tu-main_cpp', 'l'), cs('--d'), true);
+  link(c('tu-pid_cpp', 'r'), c('obj-pid_o', 'l'), cs('--a'));
+  link(c('tu-main_cpp', 'r'), c('obj-main_o', 'l'), cs('--a'));
+  for (const o of objs) if (o.linked && !o.dead) link(c('obj-' + o.file.replace('.', '_'), 'r'), c('exe', 'l'), cs('--c'));
+  svg.innerHTML = paths.join('');
+}
+
+document.getElementById('tg').innerHTML = OPTS.map(([k, v, text, tip]) =>
+  `<label title="${tip.replace(/<[^>]+>/g, '')}"><input type="checkbox" data-k="${k}" ${v ? 'checked' : ''}><span>${text}<br><small style="color:var(--muted)">${tip}</small></span></label>`).join('');
+document.querySelectorAll('#tg input').forEach(i => i.onchange = () => { S[i.dataset.k] = i.checked; render(); });
+window.addEventListener('resize', render);
+render();
+</script>
+</body></html>

@@ -74,7 +74,35 @@ SECTION_COLORS = {
     "Beyond":          PINK,
     "Neural Networks": INDIGO,
     "Deep RL & Continuous Control": TEAL,
+    # C++ for robotics
+    "C++ · Foundations": CYAN,
+    "C++ · Design": VIOLET,
+    "C++ · Real-Time & Robotics": ORANGE,
+    "C++ · Project": GOOD,
 }
+
+# The sidebar's top level: each group lists its sections in page order. A
+# section not named here falls into the last group, so a new section is never
+# lost from the navigation.
+SIDEBAR_GROUPS = [
+    ("System Analysis", ACCENT, ("Real-Time", "Systems & Stability", "Capstone · Systems", "Nonlinear")),
+    ("Control", TEAL, ("Controller Design", "Control Paradigms", "Capstone · Control",
+                       "Proprioception", "Force Feedback")),
+    ("Dynamics", BAD, ("Actuators", "Capstone · Actuators", "Robot Design", "Bio → Robot")),
+    ("Reinforcement Learning", VIOLET, ("Start Here", "Value Functions", "Dynamic Prog.", "Monte Carlo",
+                                        "Beyond", "Neural Networks", "Deep RL & Continuous Control")),
+    ("PhD Project", ORANGE, ("Beam Balance", "Fault Tolerance")),
+    ("Robotics", PINK, ("C-Space & Rigid Motion", "Kinematics", "Dynamics", "Trajectories & Planning",
+                        "Robot Control", "Manipulation & Mobility")),
+    ("C++", CYAN, ("C++ · Foundations", "C++ · Design", "C++ · Real-Time & Robotics", "C++ · Project")),
+]
+
+
+def group_of(section: str) -> str:
+    for name, _colour, sections in SIDEBAR_GROUPS:
+        if section in sections:
+            return name
+    return SIDEBAR_GROUPS[-1][0]
 
 
 def heat_color(v: float, lo: float, hi: float) -> QColor:
