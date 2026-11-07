@@ -32,6 +32,7 @@ from .. import theme
 from ..widgets import Card, body, callout
 from ..widgets.cpp_editor import CppEditor
 from ..widgets.cpp_exercise import ExerciseCard
+from ..widgets.cpp_tryit import ErrorDecoder, LinkTable, TryItCard, python_table
 from ..widgets.step_lab import STEPLAB_DIR
 from .base import Page
 
@@ -148,6 +149,12 @@ class CppPage(Page):
         self.add(card)
         return card
 
+    def from_zero(self, text: str, *tryits: str):
+        """The beginner layer: what a newcomer needs before this stage's exercises, as runnable programs."""
+        self.add(callout(text, "good", label="FROM ZERO · NEW TO C++? START HERE"))
+        for t in tryits:
+            self.add(TryItCard(t))
+
 
 # =====================================================================
 # 1. the roadmap
@@ -193,6 +200,15 @@ class CppRoadmapPage(CppPage):
             "because the member is part of a guarantee. Every design question (what goes in, what "
             "stays out, what is public, what is const) follows from <i>what does this thing promise?</i>",
             "key", label="START HERE — THE ONE REFRAME"))
+        self.add(callout(
+            "Every stage page opens with <b>From zero</b> cards: small programs that run as they are, "
+            "with the comments as the lesson, a question to answer before you press Run, and edits to "
+            "make afterwards. They cover what the exercises assume: what <code>#include</code> really "
+            "does, what a class, a constructor and <code>this</code> are, when destructors run, "
+            "references and pointers, <code>= default</code> and <code>= delete</code>, "
+            "<code>const</code>, <code>virtual</code>, templates and threads. When a build fails, in a "
+            "Try-it or an exercise, the tutor explains the error message in plain words. If C++ is new "
+            "to you, do every Try-it on a page before its exercises.", "good", label="NEW TO C++?"))
         self.add(two_col(
             snippet("""
 // limits.hpp -- the CONTRACT. Written first, by asking:
@@ -323,6 +339,17 @@ class CppBuildPage(CppPage):
             "nothing about the other .cpp files. The linker then joins the object files: every symbol "
             "something needs (U) must be defined (T) exactly once. Almost every confusing build "
             "error comes from one of those three steps.", "key", label="START HERE"))
+        self.add(python_table())
+        self.from_zero(
+            "Three ideas carry the whole of Stage 0. <b>(1)</b> <code>#include</code> is copy-paste: the "
+            "compiler never sees a header on its own, only the .cpp with the header's text pasted in. "
+            "<b>(2)</b> A <b>declaration</b> says a thing exists (<code>double clamp(double);</code>, "
+            "<code>extern int g;</code>). A <b>definition</b> creates it (a body, or memory). Declare as "
+            "often as you like, define once. <b>(3)</b> A class is declared in the header and its member "
+            "functions are defined in the .cpp with <code>Pid::</code> in front, which is what lets "
+            "their bodies use the members. Run each program, then break it the way the list says.",
+            "t_include", "t_class", "t_this")
+        self.add(LinkTable())
         self.add(WebLab("cpp_build.html", "", "Lab · switch a mistake on and see which stage catches it", 900))
         self.add(two_col(
             Reveal("Say it out loud", [
@@ -368,6 +395,7 @@ target_link_libraries(tests PRIVATE control)
             "unit, and <i>symbols</i> shows the object file's T/U table, the same two views as the "
             "lab above but for your own code. The compile error is the exercise, so press "
             "<b>Check</b> first and read it."))
+        self.add(ErrorDecoder())
         self.exercise("s0_header")
         self.exercise("s0_linker")
         self.finish()
@@ -395,6 +423,13 @@ class CppOwnershipPage(CppPage):
             "almost never writes <code>delete</code>: ownership lives in a type "
             "(<code>vector</code>, <code>unique_ptr</code>, <code>shared_ptr</code>).", "key",
             label="START HERE"))
+        self.from_zero(
+            "Before ownership makes sense you need two things: the exact moment a <b>constructor</b> "
+            "and a <b>destructor</b> run, and what <code>&amp;</code> and <code>*</code> mean. A "
+            "constructor runs when an object is created and sets it up. A destructor (<code>~T()</code>) "
+            "runs when the object dies and cleans up. For a local variable that happens at its "
+            "closing brace, guaranteed. Everything in this stage builds on that one guarantee.",
+            "t_lifetime", "t_refs")
         self.add(WebLab("cpp_memory.html", "s=stack_heap,leak,raii,unique,shared,dangling",
                         "Lab · memory in 3D: step through the code, drag to orbit", 860))
         left, right = Card("Which owner?"), Card("Where it bites in a controller")
@@ -431,6 +466,7 @@ class CppOwnershipPage(CppPage):
              ("std::vector<Controller>", False,
               "It slices: a PidController copied into a Controller slot loses everything that made it a "
               "PID, and Controller is abstract anyway.")]))
+        self.add(TryItCard("t_unique"))
         self.exercise("s1_raii")
         self.exercise("s1_unique")
         self.exercise("s1_leak")
@@ -458,6 +494,14 @@ class CppMovePage(CppPage):
             "every element. A move copies three pointers and leaves the source empty. "
             "<code>const</code> answers the other question, <i>may this function change it?</i>, "
             "in the signature where a reviewer can see it.", "key", label="START HERE"))
+        self.from_zero(
+            "Every class has six <b>special member functions</b>: the default constructor, the copy "
+            "constructor, the move constructor, copy assignment, move assignment and the destructor. "
+            "If you do not write them, the compiler may write them for you. <code>= default</code> "
+            "means \"write it the normal way\" and <code>= delete</code> means \"this must not exist\". "
+            "Watch each of the six announce itself, then see <code>= default</code>, "
+            "<code>= delete</code> and <code>const</code> at work.",
+            "t_special", "t_default_delete", "t_const")
         self.add(WebLab("cpp_memory.html", "s=copy_move,params", "Lab · a copy, a move, and a const&", 820))
         self.add(two_col(
             snippet("""
@@ -560,6 +604,7 @@ private:
              ("class with getters and setters", False,
               "A setter for every field protects nothing: it is a public member with extra typing. Write "
               "accessors only when they defend something.")]))
+        self.add(TryItCard("t_explicit"))
         self.add(Reveal("Say it out loud", [
             ("When should a function be a member, and when a free function?",
              "A member if it needs the private state to keep the invariant. Otherwise a free function "
@@ -598,6 +643,13 @@ class CppInterfacePage(CppPage):
             "functions that says <i>what</i> a controller can do. Code on the stable side depends only "
             "on the interface, so a new controller changes no existing file. A <b>factory</b> is the one "
             "place that knows the concrete names.", "key", label="START HERE"))
+        self.from_zero(
+            "<code>virtual</code> makes a call through a base-class pointer run the <i>derived</i> "
+            "class's version. <code>= 0</code> makes a function pure, which turns the class into an "
+            "interface that cannot be created on its own. <code>override</code> asks the compiler to "
+            "check that you really replaced a base function. <code>virtual ~Controller() = default;</code> "
+            "is an empty destructor that is virtual, so that deleting through a base pointer destroys "
+            "the whole object. All four in one program:", "t_virtual")
         self.add(WebLab("cpp_memory.html", "s=vtable", "Lab · what virtual actually costs", 760))
         self.add(two_col(
             snippet("""
@@ -676,6 +728,10 @@ class CppTemplatePage(CppPage):
             "out a copy for each type or size you use. Nothing is looked up at run time, so templates "
             "inline fully. That is why <code>std::array&lt;double, 6&gt;</code> and Eigen's "
             "<code>Matrix&lt;double, 6, 6&gt;</code> fit in a control loop.", "key", label="START HERE"))
+        self.from_zero(
+            "<code>template &lt;typename T&gt;</code> introduces a blank called T. The function or class "
+            "below it is a recipe, not code: each time you use it with a new type, the compiler fills "
+            "in T and writes a real function or class for that type.", "t_template")
         self.add(two_col(
             snippet("""
 template <class T>                     // works for any T with operator<
@@ -728,6 +784,11 @@ class CppConcurrencyPage(CppPage):
             "do on a 20 Hz logger. <b>Atomics with acquire/release</b> order them without waiting. "
             "<b>One writer per variable</b> is the design rule that makes that possible.",
             "key", label="START HERE"))
+        self.from_zero(
+            "Three pieces of syntax first. A <b>lambda</b> <code>[capture](args) { body }</code> is a "
+            "function written in place; it is what you hand to a thread. A <code>std::thread</code> runs "
+            "that function in parallel and must be <code>join()</code>ed. <code>std::atomic&lt;T&gt;</code> "
+            "is a variable whose reads and writes cannot tear when two threads touch it.", "t_threads")
         self.add(WebLab("cpp_rt.html", "m=ring", "Lab · the SPSC ring and the triple buffer, slowed down", 820))
         self.add(Reveal("Say it out loud", [
             ("What does memory_order_release / acquire actually guarantee?",

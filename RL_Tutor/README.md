@@ -68,6 +68,15 @@ lock-free hand-off to a slow reader.
 | C++ · Real-Time & Robotics | 157–158 | atomics, acquire/release, SPSC queue, clean thread shutdown; Eigen pitfalls, ros2_control lifecycle |
 | C++ · Project | 159–162 | cascade loops, Scheduler, config factory, triple buffer, mutation-graded tests, interview drill |
 
+- **From zero, for newcomers.** Each stage opens with Try-it cards (`ctrlcore/cpp_concepts.py`):
+  13 short programs that run as-is (`#include` as text pasting, a class from zero, `this`,
+  constructor/destructor timing, references and pointers, `unique_ptr`, the six special
+  members, `= default`/`= delete`, `const`, `explicit`, `virtual`, templates, threads), each with
+  edits to try that break it on purpose. Stage 0 also has a header-vs-.cpp linkage table
+  (extern / inline / static, measured with g++) and an error decoder that explains g++
+  messages in plain words; the exercises use the same decoder when a build fails.
+  `tests/test_cpp_concepts.py` checks every program, every suggested edit, every table cell
+  and every decoder example against the real compiler.
 - **23 graded exercises.** Each one is compiled by your own g++ against a hidden test main
   (`cpp/learn/exercises/<id>/`). Your files are saved as you type to
   `cpp/learn/work/<id>/`, which is git-ignored, so any outside editor works too. Tests count heap

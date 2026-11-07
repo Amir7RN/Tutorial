@@ -22,6 +22,7 @@ from PySide6.QtGui import QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QHBoxLayout, QLabel, QPlainTextEdit, QPushButton, QTabWidget,
                                QVBoxLayout, QWidget)
 
+from ctrlcore import cpp_concepts as concepts
 from ctrlcore import cpp_course as cc
 from .. import theme
 from .common import Card, body
@@ -39,11 +40,22 @@ def _btn(text, primary=False, tip=""):
     return b
 
 
+def decoded_html(log: str) -> str:
+    """'What this error usually means' for the first few messages in a g++ log ('' if none known)."""
+    hints = concepts.decode(log)
+    if not hints:
+        return ""
+    rows = [f"<b style='color:{theme.CYAN}'>{html.escape(h.title)}.</b> {h.meaning}" for h in hints]
+    return (f"<span style='color:{theme.TEXT_DIM}'>WHAT THIS ERROR USUALLY MEANS</span><br>"
+            + "<br><br>".join(rows))
+
+
 class _Chain:
     """Run a list of argv lists one after another; call done(list_of_(rc, out))."""
 
-    def __init__(self, parent, cmds, done, timeout_ms=RUN_TIMEOUT_MS):
+    def __init__(self, parent, cmds, done, timeout_ms=RUN_TIMEOUT_MS, cwd=None):
         self.parent, self.cmds, self.done, self.timeout = parent, list(cmds), done, timeout_ms
+        self.cwd = cwd
         self.out = []
         self.proc = None
         self._next()
@@ -55,6 +67,8 @@ class _Chain:
         argv = self.cmds.pop(0)
         p = self.proc = QProcess(self.parent)
         p.setProcessChannelMode(QProcess.MergedChannels)
+        if self.cwd:
+            p.setWorkingDirectory(self.cwd)
         self.timer = QTimer(self.parent)
         self.timer.setSingleShot(True)
         self.timer.timeout.connect(p.kill)
@@ -167,6 +181,9 @@ class ExerciseCard(Card):
         self.results.linkActivated.connect(self._jump)
         self.results.hide()
         self.add(self.results)
+        self.decoded = body("")
+        self.decoded.hide()
+        self.add(self.decoded)
         self.log = QPlainTextEdit()
         self.log.setReadOnly(True)
         self.log.setFont(mono_font(9))
@@ -318,6 +335,9 @@ class ExerciseCard(Card):
         self._status(f"<b>{stage}.</b> Click a location to jump there; the full message is below.", theme.BAD)
         self.results.setText("<br>".join(links) if links else "")
         self.results.setVisible(bool(links))
+        explained = decoded_html(log)
+        self.decoded.setText(explained)
+        self.decoded.setVisible(bool(explained))
         self.log.setPlainText(log[-12000:])
         self.log.show()
         if per_file:
@@ -341,6 +361,7 @@ class ExerciseCard(Card):
         self._clear_marks()
         self.log.hide()
         self.results.hide()
+        self.decoded.hide()
         self.steps = cc.plan(self.ex, self.dir, "check", gxx=self.gxx)
         self.report = cc.Report()
         self._t0 = time.perf_counter()
@@ -409,6 +430,7 @@ class ExerciseCard(Card):
         self.save_all()
         self._clear_marks()
         self.results.hide()
+        self.decoded.hide()
         step = cc.plan(self.ex, self.dir, "run", gxx=self.gxx)[0]
         self._set_busy(True, "compiling your main.cpp …")
 

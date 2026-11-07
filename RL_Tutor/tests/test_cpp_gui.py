@@ -139,6 +139,7 @@ class ExerciseCardCheck(unittest.TestCase):
         self.assertFalse(card.report.compiled)
         self.assertTrue(card.editors["joint_state.hpp"].diags)   # a red dot in the gutter
         self.assertIn("joint_state.hpp:", card.results.text())   # a clickable location
+        self.assertIn("USUALLY MEANS", card.decoded.text())       # and the message in plain words
 
 
 class Pages(unittest.TestCase):
