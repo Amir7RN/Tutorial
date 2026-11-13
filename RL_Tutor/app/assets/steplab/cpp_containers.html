@@ -1,0 +1,658 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Containers in 3D</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr)}
+  .view{min-height:470px;cursor:grab;position:relative}
+  .view canvas{position:absolute;left:4px;top:4px}
+  .view.drag{cursor:grabbing}
+  .code{font-family:var(--mono);font-size:.78rem;line-height:1.5;background:var(--inset);border:1px solid var(--line);
+        border-radius:8px;padding:6px 0;overflow-x:auto;white-space:pre}
+  .code div{padding:0 10px 0 6px;border-left:3px solid transparent}
+  .code div.on{background:var(--hi);border-left-color:var(--a)}
+  .code .ln{display:inline-block;width:22px;color:var(--grey);text-align:right;margin-right:10px;user-select:none}
+  .code .cm{color:var(--grey);font-style:italic}
+  .note{font-size:.92rem;line-height:1.5;min-height:6em}
+  .note b{color:var(--a)}
+  .note code{font-family:var(--mono);font-size:.82em;background:var(--inset);border:1px solid var(--line);border-radius:4px;padding:0 3px}
+  .cost{display:inline-block;font-family:var(--mono);font-weight:700;font-size:.78rem;border:1px solid var(--b);color:var(--b);
+        border-radius:99px;padding:0 8px;margin-left:6px;vertical-align:middle}
+  .term{font-family:var(--mono);font-size:.78rem;line-height:1.45;background:#0b0e13;color:#d7dde6;border-radius:8px;
+        padding:6px 10px;white-space:pre;min-height:2.5em;max-height:7em;overflow-y:auto}
+  .term .new{color:#7ee2a8;font-weight:700}
+  .sel{display:flex;flex-wrap:wrap;gap:6px}
+  .sel button{font-size:.8rem;padding:4px 9px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row input[type=range]{flex:1;min-width:120px;accent-color:var(--a)}
+  .tag{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+  .kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+  body.compact .top,body.compact .sel{display:none}
+  body.compact .view{min-height:400px}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1 id="title">Containers in 3D</h1>
+    <p>Left: the container object itself, where you declared it (usually main's stack frame). Right: the heap memory it owns.
+       An arrow means <b>"holds the address of"</b>. Drag to orbit, wheel to zoom. <span class="kbd">←</span> <span class="kbd">→</span> step</p></div>
+  <div class="sel" id="sel"></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card view" id="view"><canvas id="cv"></canvas></div>
+      <div class="card">
+        <div class="row">
+          <button id="prev">◀ back</button><button class="primary" id="next">step ▶</button>
+          <button id="play">play</button>
+          <input type="range" id="scrub" min="0" max="0" value="0">
+          <span class="tag" id="count">1 / 1</span>
+          <button id="cam">reset view</button><button id="topv">top view</button>
+        </div>
+        <div class="legend" style="margin-top:6px">
+          <span><i class="sw" style="background:var(--a)"></i>the container object (stack)</span>
+          <span><i class="sw" style="background:var(--c)"></i>heap memory it owns</span>
+          <span><i class="sw" style="background:var(--grey)"></i>empty slot / black tree node</span>
+          <span><i class="sw" style="background:var(--b)"></i>being read or changed now</span>
+          <span><i class="sw" style="background:var(--bad)"></i>freed (dashed) / red tree node (solid)</span>
+          <span><i class="sw" style="background:var(--d)"></i>how to picture it (not extra memory)</span>
+          <span><i class="sw" style="background:var(--e)"></i>arrow: holds the address of</span>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card"><p class="h">the code</p><div class="code" id="code"></div></div>
+      <div class="card"><p class="h">what just happened <span class="cost" id="cost"></span></p><div class="note" id="note"></div></div>
+      <div class="card" id="tcard"><p class="h">values read so far</p><div class="term" id="term"></div></div>
+    </div>
+  </div>
+</div>
+<script>
+/* ===================================================================
+   A step is a full snapshot: a list of blocks plus optional links.
+     Bk(id, label, region, x, z, cells, o)  a row of cells; region 'stack' | 'heap' | 'view'
+         o.vert  cells stacked upward · o.idx  show indices · o.cw cell width · o.y height
+         o.st 'freed' · o.tint 'red' | 'black' (red-black tree nodes) · o.sub  a line under the block
+     C(v, o)  a cell: o.to = 'block' | 'block:i' draws an arrow (i == length: one past the end)
+              o.st = 'hl' (highlight) · E() an empty slot
+     links: [{a: 'block:i', b: 'block:i', kind: 'tree' | 'map'}]  lines that are NOT pointers
+   Blocks with the same id in consecutive steps slide to their new place.
+   =================================================================== */
+const C = (v, o = {}) => ({ v: String(v), ...o });
+const E = () => ({ v: '', st: 'empty' });
+const Bk = (id, label, region, x, z, cells, o = {}) => ({ id, label, region, x, z, y: 0, cells, ...o });
+const SC = {};
+const HX = -12;                        // where the container object sits, in the stack area
+
+/* ================================================================ array */
+{
+  const A = (vals, hl = []) => Bk('a', 'a : std::array<int, 5>  (20 bytes)', 'stack', HX, 0,
+    vals.map((v, i) => C(v, hl.includes(i) ? { st: 'hl' } : {})), { idx: true, sub: 'the elements ARE the object' });
+  const B = Bk('b', 'b : int[5]  (C array, 20 bytes)', 'stack', HX, 3.4, [0, 0, 0, 0, 0].map(v => C(v)), { idx: true });
+  SC.array = { title: 'Array: the elements are the object', code: [
+'std::array<int, 5> a = {7, 2, 9, 4, 1};   // 5 ints inside a',
+'int x = a[3];        // address of a[0] + 3 × 4 bytes',
+'a[1] = 8;            // write in place',
+'// a.push_back(3);   // does not exist: 5 is part of the type',
+'int b[5] = {};       // the C array: same 20 bytes, no methods',
+'int cnt[26] = {};    // LeetCode: one counter per letter'],
+  steps: [
+   { line: 1, cost: 'no heap', note: '<b>An array is its elements, nothing else.</b> Five ints, 4 bytes each, side by side: 20 bytes, all inside the variable <code>a</code>, so all on the stack (in main\'s frame). There is no pointer and no heap. The size, 5, is part of the <i>type</i>, so the compiler reserves exactly 20 bytes while compiling.', blocks: [A([7, 2, 9, 4, 1])] },
+   { line: 2, cost: 'O(1)', note: '<b>a[3] does not search.</b> Element i is always at the address of a[0] plus i × sizeof(int). If a starts at 0x…100, then a[3] is at 0x…100 + 3 × 4 = 0x…10C. That is one multiply, one add and one read, the same cost for i = 3 or i = 3,000,000. This is what <b>random access, O(1)</b> means, and it only works because the elements are <i>contiguous</i>: side by side, with no gaps.<br>a[7] would compute 0x…11C and read whatever happens to be there, with no check. <code>a.at(7)</code> checks and throws an error instead.', blocks: [A([7, 2, 9, 4, 1], [3])], out: 'x = 4' },
+   { line: 3, cost: 'O(1)', note: '<b>a[1] = 8</b>: the same address arithmetic, then a write. Nothing moves.', blocks: [A([7, 8, 9, 4, 1], [1])] },
+   { line: 4, cost: '—', note: '<b>An array cannot grow.</b> Its 20 bytes sit between other variables in the frame, and there is no room to add a sixth int after them. So a std::array has no push_back. When the count is only known while running, you need a container that keeps its elements somewhere it <i>can</i> replace: the heap. That is the vector, next.', blocks: [A([7, 8, 9, 4, 1])] },
+   { line: [5, 6], cost: 'no heap', note: '<b>int b[5]</b> is the C-style array: the same 20 bytes, but with no <code>.size()</code> and no <code>.at()</code>, and it turns into a plain pointer the moment you pass it to a function. Prefer std::array.<br><b>LeetCode:</b> a fixed array is the fastest "hash map" when the keys are small integers. <code>int cnt[26]</code> counts letters as <code>cnt[c - \'a\']++</code>, and <code>bool seen[128]</code> marks ASCII characters. No hashing and no heap, just address arithmetic.', blocks: [A([7, 8, 9, 4, 1]), B] },
+  ] };
+}
+
+/* ================================================================ vector */
+{
+  const VB = (id, cap, vals, o = {}) => Bk(id, `heap buffer · capacity ${cap}`, 'heap', -4, o.z ?? 0,
+    Array.from({ length: cap }, (_, i) => i < vals.length ? C(vals[i], (o.hl || []).includes(i) ? { st: 'hl' } : {}) : E()),
+    { idx: true, st: o.st });
+  const VH = (buf, size, cap) => Bk('v', 'v : std::vector<int>  (24 bytes)', 'stack', HX, 0, buf
+    ? [C('begin', { to: buf + ':0' }), C('end', { to: buf + ':' + size }), C('cap', { to: buf + ':' + cap })]
+    : [C('null'), C('null'), C('null')], { sub: `size ${size} · capacity ${cap}` });
+  SC.vector = { title: 'Vector: three pointers on the stack, the elements on the heap', code: [
+'std::vector<int> v;      // three pointers, all null',
+'v.push_back(7);',
+'v.push_back(2);          // full: grow',
+'v.push_back(9);          // full: grow again',
+'v.push_back(4);',
+'v.push_back(1);          // full: grow to 8',
+'int x = v[2];            // begin + 2',
+'int last = v.back();     // *(end - 1)',
+'v.pop_back();            // end moves left',
+'v.insert(v.begin(), 5);  // everyone shifts right',
+'v.clear();               // size 0, capacity stays'],
+  steps: [
+   { line: 1, cost: 'O(1)', note: '<b>A vector object is three pointers</b> (24 bytes), wherever you declare it: here on the stack. <b>begin</b> will hold the address of the first element, <b>end</b> one past the last element, and <b>cap</b> one past the end of the buffer. size = end − begin and capacity = cap − begin. An empty vector has no buffer at all, so all three are null.', blocks: [VH(null, 0, 0)] },
+   { line: 2, cost: 'O(1)', note: '<b>push_back(7)</b> with no buffer: the vector asks the heap for room for 1 int, puts 7 in it, and points begin at it. end and cap both point one past it, so the buffer is full already (size 1, capacity 1).', blocks: [VH('b1', 1, 1), VB('b1', 1, [7], { hl: [0] })] },
+   { line: 3, cost: 'O(n) this time', note: '<b>push_back(2), but the buffer is full</b> (end == cap). The vector cannot stretch its buffer: the bytes right after it may belong to something else. So it allocates a <b>new, bigger</b> buffer, twice the size (libstdc++ doubles; Microsoft\'s library grows 1.5×), in front.', blocks: [VH('b1', 1, 1), VB('b1', 1, [7]), VB('b2', 2, [], { z: 3.2 })] },
+   { line: 3, cost: 'O(n) this time', note: '<b>The old elements are moved over</b> one by one (for an int, moving is copying). With n elements this costs n copies.', blocks: [VH('b1', 1, 1), VB('b1', 1, [7]), VB('b2', 2, [7], { z: 3.2, hl: [0] })] },
+   { line: 3, cost: 'O(n) this time', note: '<b>The old buffer is freed</b> (red, dashed), the three pointers now point into the new one, and 2 is written at the end. <b>Any pointer, reference or iterator you kept into the old buffer now dangles.</b> This is "iterator invalidation", the classic bug of holding <code>&amp;v[0]</code> and then calling push_back.', blocks: [VH('b2', 2, 2), VB('b1', 1, [7], { st: 'freed' }), VB('b2', 2, [7, 2], { z: 3.2, hl: [1] })] },
+   { line: 4, cost: 'O(n) this time', note: '<b>push_back(9): full again</b>, so the same three moves in one step: a new buffer of 4, copy 7 and 2, free the old one, write 9.', blocks: [VH('b4', 3, 4), VB('b2', 2, [7, 2], { st: 'freed' }), VB('b4', 4, [7, 2, 9], { z: 3.2, hl: [2] })] },
+   { line: 5, cost: 'O(1)', note: '<b>push_back(4) fits</b>: write into the next empty slot and move end by one. No allocation. This is the common case.', blocks: [VH('b4', 4, 4), VB('b4', 4, [7, 2, 9, 4], { hl: [3] })] },
+   { line: 6, cost: 'O(n) this time', note: '<b>push_back(1): full, so grow to 8.</b> Notice how rarely this happens: after 1, 2, 4 and 8 elements. Over n push_backs the total number of copies is less than 2n, so <b>on average each push_back costs O(1)</b>. That is "amortized O(1)". If you know the final size, <code>v.reserve(n)</code> allocates once and no copies ever happen.', blocks: [VH('b4', 4, 4), VB('b4', 4, [7, 2, 9, 4]), VB('b8', 8, [7, 2, 9, 4], { z: 3.2, hl: [0, 1, 2, 3] })] },
+   { line: 6, cost: 'O(1)', note: '<b>The old buffer is freed and 1 is written.</b> size 5, capacity 8: three empty slots ready for the next push_backs.', blocks: [VH('b8', 5, 8), VB('b4', 4, [7, 2, 9, 4], { st: 'freed' }), VB('b8', 8, [7, 2, 9, 4, 1], { z: 3.2, hl: [4] })] },
+   { line: 7, cost: 'O(1)', note: '<b>v[2]</b> is <code>*(begin + 2)</code>: follow begin, then step 2 ints to the right. It is the same address arithmetic as the array, with one extra hop through the pointer. No bounds check (<code>v.at(2)</code> has one).', blocks: [VH('b8', 5, 8), VB('b8', 8, [7, 2, 9, 4, 1], { hl: [2] })], out: 'x = 9' },
+   { line: 8, cost: 'O(1)', note: '<b>v.back()</b> is <code>*(end - 1)</code>: the slot just before where end points. <code>v.front()</code> is <code>*begin</code>.', blocks: [VH('b8', 5, 8), VB('b8', 8, [7, 2, 9, 4, 1], { hl: [4] })], out: 'last = 1' },
+   { line: 9, cost: 'O(1)', note: '<b>pop_back()</b> destroys the last element and moves end one slot left. Nothing is freed: the capacity stays 8, ready for the next push_back.', blocks: [VH('b8', 4, 8), VB('b8', 8, [7, 2, 9, 4])] },
+   { line: 10, cost: 'O(n)', note: '<b>insert at the front</b>: to make room at index 0, every element moves one slot right (4, then 9, then 2, then 7), then 5 is written. With n elements that is n moves. Inserting or erasing anywhere except the end is O(n). <code>v.erase(v.begin())</code> has the same cost the other way, which is why a queue is <i>not</i> built on a vector.', blocks: [VH('b8', 5, 8), VB('b8', 8, [5, 7, 2, 9, 4], { hl: [0, 1, 2, 3, 4] })] },
+   { line: 11, cost: 'O(n)', note: '<b>clear()</b> destroys the elements and sets end = begin. <b>The capacity stays 8</b>: the buffer is kept for reuse, which is exactly what a control loop wants (clear in every cycle, never reallocate). The buffer is freed only when v itself dies. In LeetCode, vector is the default for everything: dp tables, adjacency lists (<code>vector&lt;vector&lt;int&gt;&gt;</code>) and results.', blocks: [VH('b8', 0, 8), VB('b8', 8, [])] },
+  ] };
+}
+
+/* ================================================================ stack */
+{
+  const SB = (vals, hl = []) => Bk('sb', 'storage inside st', 'heap', -3, 0,
+    Array.from({ length: 4 }, (_, i) => i < vals.length ? C(vals[i], hl.includes(i) ? { st: 'hl' } : {}) : E()),
+    { vert: true, idx: true });
+  const SH = n => Bk('st', 'st : std::stack<int>', 'stack', HX, 0,
+    [C('begin', { to: 'sb:0' }), C('end', { to: 'sb:' + n }), C('cap', { to: 'sb:4' })], { sub: `size ${n} · top = the last one` });
+  SC.stack = { title: 'Stack: a wrapper that only touches the back', code: [
+'std::stack<int> st;   // a wrapper around a container',
+'st.push(3);           // = c.push_back(3)',
+'st.push(8);',
+'st.push(5);',
+'int t = st.top();     // = c.back(): the LAST one in',
+'st.pop();             // = c.pop_back()',
+'t = st.top();         // 8',
+'bool e = st.empty();  // size == 0 ?'],
+  steps: [
+   { line: 1, cost: 'O(1)', note: '<b>std::stack is not a new data structure in memory: it is a wrapper</b> (an "adapter") around another container, called <code>c</code>, and it lets you use only one end of it. By default <code>c</code> is a std::deque. A vector inside is drawn here, standing upright, because at the back both behave the same and the picture is simpler (room for 4 shown).<br><b>Beware the name:</b> the <i>stack data structure</i> has nothing to do with the <i>stack memory region</i>. std::stack keeps its elements on the heap, like any container.', blocks: [SH(0), SB([])] },
+   { line: 2, cost: 'O(1)', note: '<b>push(3)</b> just calls <code>c.push_back(3)</code>: the element goes on top.', blocks: [SH(1), SB([3], [0])] },
+   { line: 3, cost: 'O(1)', note: '<b>push(8)</b> goes on top of 3.', blocks: [SH(2), SB([3, 8], [1])] },
+   { line: 4, cost: 'O(1)', note: '<b>push(5)</b> goes on top of 8.', blocks: [SH(3), SB([3, 8, 5], [2])] },
+   { line: 5, cost: 'O(1)', note: '<b>top()</b> is <code>c.back()</code>, the element just below where end points. That is always the <b>last one pushed</b>: LIFO, last in, first out, like a pile of plates.', blocks: [SH(3), SB([3, 8, 5], [2])], out: 'top = 5' },
+   { line: 6, cost: 'O(1)', note: '<b>pop()</b> is <code>c.pop_back()</code>. It removes the top and returns <i>nothing</i>, so read top() first if you need the value. (Two separate calls, so that a copy that throws can never lose an element.)', blocks: [SH(2), SB([3, 8])] },
+   { line: 7, cost: 'O(1)', note: '<b>top() is now 8.</b>', blocks: [SH(2), SB([3, 8], [1])], out: 'top = 8' },
+   { line: 8, cost: 'O(1)', note: '<b>empty()</b> checks size == 0. That is all a stack offers: push, top, pop, empty and size. There is no indexing and no iteration, on purpose.<br><b>LeetCode:</b> matching brackets (push "(", pop at ")"); the <i>monotonic stack</i> for "next greater element" and "largest rectangle in histogram", where you pop everything smaller before pushing; and iterative DFS. A <code>vector</code> used with push_back, back and pop_back works the same and is often simpler.', blocks: [SH(2), SB([3, 8])], out: 'empty = false' },
+  ] };
+}
+
+/* ================================================================ deque and queue (chunks) */
+function chunkSim(kind) {
+  const N = 4, steps = [];
+  const map = [null, 'c1', null, null];
+  const chunks = { c1: { slot: 1, vals: [null, null, null, null] } };
+  let start = { s: 1, i: 0 }, finish = { s: 1, i: 0 }, freed = [];
+  const name = kind === 'deque' ? 'd' : 'q';
+  const label = kind === 'deque' ? 'd : std::deque<int>' : 'q : std::queue<int>  (a deque inside)';
+  const at = g => { const p = start.i + g; return { s: start.s + Math.floor(p / N), i: p % N }; };
+  const size = () => (finish.s - start.s) * N + finish.i - start.i;
+  const snap = (line, cost, note, hl = [], out) => {
+    const blocks = [Bk(name, label, 'stack', HX, 0,
+      [C('map', { to: 'map:0' }), C('start', { to: `${map[start.s]}:${start.i}` }), C('finish', { to: `${map[finish.s]}:${finish.i}` })],
+      { sub: `size ${size()} · chunks of ${N}` })];
+    blocks.push(Bk('map', 'map: one pointer per chunk', 'heap', -4, -4.2,
+      map.map(id => id ? C('•', { to: id + ':0' }) : E()), { idx: true }));
+    for (const [id, ch] of Object.entries(chunks))
+      blocks.push(Bk(id, 'chunk', 'heap', -4.6 + ch.slot * 5.6, 1.2,
+        ch.vals.map((v, i) => v === null ? E() : C(v, hl.some(h => h.s === ch.slot && h.i === i) ? { st: 'hl' } : {}))));
+    for (const f of freed) blocks.push(Bk(f.id, 'chunk (freed)', 'heap', -4.6 + f.slot * 5.6, 1.2, f.vals.map(() => E()), { st: 'freed' }));
+    steps.push({ line, cost, note, blocks, out });
+    freed = [];
+  };
+  const newChunk = s => { const id = 'c' + s + '_' + steps.length; map[s] = id; chunks[id] = { slot: s, vals: [null, null, null, null] }; };
+  const push_back = v => {
+    if (finish.i === N) { newChunk(finish.s + 1); finish = { s: finish.s + 1, i: 0 }; }
+    chunks[map[finish.s]].vals[finish.i] = v; const h = { ...finish }; finish = { s: finish.s, i: finish.i + 1 }; return h;
+  };
+  const push_front = v => {
+    if (start.i === 0) { newChunk(start.s - 1); start = { s: start.s - 1, i: N }; }
+    start = { s: start.s, i: start.i - 1 }; chunks[map[start.s]].vals[start.i] = v; return { ...start };
+  };
+  const pop_front = () => {
+    const ch = chunks[map[start.s]]; ch.vals[start.i] = null; start = { s: start.s, i: start.i + 1 };
+    if (start.i === N && size() > 0) {
+      const id = map[start.s]; freed.push({ id, slot: start.s, vals: ch.vals }); delete chunks[id]; map[start.s] = null;
+      start = { s: start.s + 1, i: 0 };
+    }
+  };
+  const pop_back = () => { finish = { s: finish.s, i: finish.i - 1 }; chunks[map[finish.s]].vals[finish.i] = null; };
+  return { snap, push_back, push_front, pop_front, pop_back, at, size, steps };
+}
+{
+  const d = chunkSim('deque');
+  d.snap(1, 'O(1)', '<b>A deque ("double-ended queue", pronounced "deck") is built from chunks.</b> The object holds three things: a pointer to the <b>map</b> (an array of chunk pointers), <b>start</b> (where the first element is) and <b>finish</b> (one past the last). Elements live in fixed-size <b>chunks</b> on the heap: 4 ints each here, 512 bytes each in libstdc++. The map has free slots on <i>both</i> sides, so the deque can grow both ways.');
+  d.snap(2, 'O(1)', '<b>push_back(1)</b> writes into the current chunk at finish, then moves finish one slot right.', [d.push_back(1)]);
+  const h = [d.push_back(2), d.push_back(3), d.push_back(4)];
+  d.snap(3, 'O(1)', '<b>Three more push_backs</b> fill the chunk.', h);
+  d.snap(4, 'O(1)', '<b>push_back(5): the chunk is full</b>, so the deque allocates a <i>new chunk</i>, stores its address in the next map slot, and writes 5 there. <b>Nothing moves.</b> This is the big difference from a vector: the existing elements stay at their addresses, so references to them stay valid.', [d.push_back(5)]);
+  d.snap(5, 'O(1)', '<b>push_front(0)</b>: there is no room before 1, so a new chunk is allocated on the <i>left</i>, recorded in the map slot before, and 0 goes into its <i>last</i> cell. start now points there. A vector would have to shift every element to do this.', [d.push_front(0)]);
+  d.snap(6, 'O(1)', '<b>d[3] is still O(1), with two hops.</b> Position 3 from start (which is cell 3 of the left chunk) is cell 2 of the next chunk, found as <code>map[slot + (3+3)/4]</code>, then cell <code>(3+3) % 4</code>. That is one division, two pointer loads and one read. It is a little slower than a vector, and the elements are not one contiguous block, so <code>&amp;d[0] + 3</code> is <i>wrong</i>.', [d.at(3)], 'd[3] = 3');
+  d.pop_front();
+  d.snap(7, 'O(1)', '<b>pop_front()</b> destroys 0 and moves start one cell right. That left chunk is now empty, and it is freed when start leaves it (red).');
+  d.pop_back();
+  d.snap(8, 'O(1)', '<b>pop_back()</b> destroys 5 and moves finish left. Both ends cost O(1) because nothing ever shifts. <b>LeetCode:</b> the <i>sliding window maximum</i> (keep a decreasing deque of indices, pop from the back while smaller, pop from the front when it leaves the window), and 0-1 BFS (push_front for cost 0, push_back for cost 1).');
+  SC.deque = { title: 'Deque: chunks and a map, so both ends are O(1)', code: [
+'std::deque<int> d;   // a map of chunk pointers + chunks',
+'d.push_back(1);',
+'d.push_back(2); d.push_back(3); d.push_back(4);',
+'d.push_back(5);      // chunk full: new chunk, nothing moves',
+'d.push_front(0);     // new chunk on the LEFT',
+'int x = d[3];        // map -> chunk -> cell: O(1)',
+'d.pop_front();',
+'d.pop_back();'], steps: d.steps };
+}
+{
+  const q = chunkSim('queue');
+  q.snap(1, 'O(1)', '<b>std::queue is a wrapper around a deque</b>, like std::stack, but it uses <i>both</i> ends: <code>push</code> = push_back at the back, <code>pop</code> = pop_front at the front. The first one in is the first one out: <b>FIFO</b>, like a line at a counter. It is not built on a vector, because removing the front of a vector shifts every element (O(n)), while a deque just moves start.');
+  q.snap(2, 'O(1)', '<b>push(1)</b> = <code>d.push_back(1)</code>.', [q.push_back(1)]);
+  const a = [q.push_back(2), q.push_back(3)];
+  q.snap(3, 'O(1)', '<b>push(2), push(3)</b> join the back of the line.', a);
+  const b = [q.push_back(4), q.push_back(5)];
+  q.snap(4, 'O(1)', '<b>push(4) fills the chunk, and push(5) starts a new one.</b> Nothing already in the queue moves.', b);
+  q.snap(5, 'O(1)', '<b>front()</b> reads at start: <b>1</b>, the first one pushed (the oldest).', [q.at(0)], 'front = 1');
+  q.pop_front();
+  q.snap(6, 'O(1)', '<b>pop()</b> = <code>d.pop_front()</code>: 1 is destroyed and start moves one cell right. No element shifts. Like stack::pop, it returns nothing: read front() first.');
+  q.pop_front(); q.pop_front(); q.pop_front();
+  q.snap(7, 'O(1)', '<b>Three more pops</b> (2, 3, 4). The first chunk is now empty, so it is freed (red) and start jumps into the next chunk. A long-running queue therefore never needs more memory than the elements currently waiting in it.');
+  q.snap(8, 'O(1)', '<b>back()</b> reads just before finish: 5, the newest. <b>LeetCode:</b> BFS. Push the start node; then repeatedly take <code>front()</code>, <code>pop()</code> it, and push its unvisited neighbours. Because the oldest entry always comes out first, nodes are processed level by level, which is why BFS finds shortest paths in unweighted graphs. Also level-order traversal of a tree and "rotting oranges".', [q.at(q.size() - 1)], 'back = 5');
+  SC.queue = { title: 'Queue: a deque used at both ends, first in first out', code: [
+'std::queue<int> q;    // a wrapper: the storage is a deque',
+'q.push(1);            // = d.push_back(1)',
+'q.push(2); q.push(3);',
+'q.push(4); q.push(5); // a second chunk',
+'int f = q.front();    // the FIRST one in',
+'q.pop();              // = d.pop_front()',
+'q.pop(); q.pop(); q.pop();',
+'int b = q.back();     // the newest'], steps: q.steps };
+}
+
+/* ================================================================ priority_queue */
+{
+  const steps = [], a = [], CAP = 8;
+  const pos = i => { const d = Math.floor(Math.log2(i + 1)), k = i - (2 ** d - 1), span = 13 / 2 ** d;
+                     return { x: -4.6 + (k + 0.5) * span - 0.6, y: 5.8 - d * 1.7 }; };
+  const snap = (line, cost, note, hl = [], out) => {
+    const blocks = [Bk('pq', 'pq : std::priority_queue<int>  (a vector inside)', 'stack', HX, 0,
+      [C('begin', { to: 'hb:0' }), C('end', { to: 'hb:' + a.length }), C('cap', { to: 'hb:' + CAP })], { sub: `size ${a.length} · top() = v[0]` }),
+      Bk('hb', 'the vector\'s heap buffer: THIS is the memory', 'heap', -4.6, 2.6,
+        Array.from({ length: CAP }, (_, i) => i < a.length ? C(a[i], hl.includes(i) ? { st: 'hl' } : {}) : E()), { idx: true })];
+    const links = [];
+    a.forEach((v, i) => {
+      const p = pos(i);
+      blocks.push(Bk('n' + i, i === 0 ? 'the same values, pictured as a tree' : '', 'view', p.x, -2.6,
+        [C(v, hl.includes(i) ? { st: 'hl' } : {})], { y: p.y, cw: 1.2 }));
+      links.push({ a: 'n' + i + ':0', b: 'hb:' + i, kind: 'map' });
+      if (i > 0) links.push({ a: 'n' + ((i - 1) >> 1) + ':0', b: 'n' + i + ':0', kind: 'tree' });
+    });
+    steps.push({ line, cost, note, blocks, links, out });
+  };
+  const push = (x, line) => {
+    a.push(x); let i = a.length - 1;
+    if (i === 0) { snap(line, 'O(log n)', `<b>push(${x})</b>: append it to the vector at index 0. It is the only element, so it is the root: the top.`, [0]); return; }
+    let p = (i - 1) >> 1;
+    snap(line, 'O(log n)', `<b>push(${x})</b>: first, append it at the end of the vector, index ${i}. In the tree picture that is the next free spot on the bottom row. Its parent is at index (${i} − 1) / 2 = ${p}, holding ${a[p]}. ` +
+      (a[p] >= x ? `${a[p]} ≥ ${x}, so every parent is still ≥ its children: done, no moves.` : `${x} &gt; ${a[p]}: a child is bigger than its parent, so ${x} must move up.`), [i, p]);
+    while (i > 0 && a[(i - 1) >> 1] < a[i]) {
+      p = (i - 1) >> 1; const old = a[p], ci = i; [a[p], a[i]] = [a[i], a[p]]; i = p;
+      const np = (i - 1) >> 1;
+      snap(line, 'O(log n)', `<b>Sift up:</b> swap ${x} with its parent ${old}: two writes in the vector, at indices ${p} and ${ci}. ` +
+        (i === 0 ? `${x} is now at index 0: the new top.` : (a[np] >= x ? `Its new parent ${a[np]} is bigger: stop.` : `Its new parent ${a[np]} is still smaller: keep going.`)), [p, ci]);
+    }
+  };
+  snap(1, 'O(1)', '<b>A priority_queue is a vector</b> whose elements are kept in <b>heap order</b>. If you picture index 0 as the root and the children of index i at 2i+1 and 2i+2 (purple tree, the same numbers, not extra memory), then every parent is ≥ its children. So the biggest is always at index 0. It is <i>not</i> sorted: only the top is guaranteed.<br><b>Beware the name:</b> this "heap" (a data structure) and heap <i>memory</i> are unrelated. It is two meanings of one word. (The buffer is shown with capacity 8 to keep the picture still.)');
+  push(5, 2); push(9, 3); push(3, 4); push(12, 5);
+  snap(6, 'O(1)', '<b>top()</b> is just <code>v[0]</code>: 12. Reading the maximum is instant, because heap order guarantees it is always at index 0.', [0], 'top = 12');
+  const last = a.length - 1;
+  [a[0], a[last]] = [a[last], a[0]];
+  snap(7, 'O(log n)', `<b>pop()</b> must remove v[0]. Erasing index 0 of a vector would shift everything (O(n)), so instead it <b>swaps the root with the last element</b>: 12 goes to the end, and ${a[0]} jumps to the root.`, [0, last]);
+  a.pop();
+  snap(7, 'O(log n)', `<b>pop_back</b> removes 12 from the end, which is O(1). But ${a[0]} at the root is smaller than a child: heap order is broken at the top.`, [0]);
+  let i = 0;
+  for (;;) {
+    const l = 2 * i + 1, r = 2 * i + 2; let big = i;
+    if (l < a.length && a[l] > a[big]) big = l; if (r < a.length && a[r] > a[big]) big = r;
+    if (big === i) break;
+    const cur = a[i], other = a[big]; [a[i], a[big]] = [a[big], a[i]];
+    snap(7, 'O(log n)', `<b>Sift down:</b> compare ${cur} with its children and swap it with the <i>bigger</i> one, ${other}, so the new parent is ≥ both children.`, [i, big]);
+    i = big;
+  }
+  snap(7, 'O(log n)', `<b>Heap order is restored</b>: the top is ${a[0]}, the next biggest. Push and pop each move one element along a single root-to-leaf path, which is at most log₂(n) levels: about 20 swaps for a million elements.`, [0]);
+  snap(8, 'O(log n)', '<b>Min-heap:</b> <code>std::priority_queue&lt;int, std::vector&lt;int&gt;, std::greater&lt;int&gt;&gt;</code> flips the comparison, so the smallest is on top. (Python\'s <code>heapq</code> is always a min-heap.)<br><b>LeetCode:</b> the k-th largest (keep a min-heap of size k and pop when it grows past k); Dijkstra (a min-heap of {distance, node}); merging k sorted lists; top-k frequent; task scheduling. Whenever you need "the best one so far" repeatedly, while elements keep arriving, think priority_queue.');
+  SC.pq = { title: 'Priority queue: a vector in heap order, the biggest at v[0]', code: [
+'std::priority_queue<int> pq;   // a vector kept in "heap order"',
+'pq.push(5);',
+'pq.push(9);                    // bigger than its parent: up',
+'pq.push(3);',
+'pq.push(12);                   // swaps up twice, to the top',
+'int t = pq.top();              // always v[0]',
+'pq.pop();                      // last -> root, then sift down',
+'// min-heap: priority_queue<int, vector<int>, greater<int>>'], steps };
+}
+
+/* ================================================================ set / map: red-black tree */
+{
+  const steps = []; let root = null, n = 0;
+  const mk = k => ({ k, c: 'red', l: null, r: null, p: null });
+  const rotL = x => { const y = x.r; x.r = y.l; if (y.l) y.l.p = x; y.p = x.p; if (!x.p) root = y; else if (x === x.p.l) x.p.l = y; else x.p.r = y; y.l = x; x.p = y; };
+  const rotR = x => { const y = x.l; x.l = y.r; if (y.r) y.r.p = x; y.p = x.p; if (!x.p) root = y; else if (x === x.p.r) x.p.r = y; else x.p.l = y; y.r = x; x.p = y; };
+  const snap = (line, cost, note, hl = [], out) => {
+    const order = []; const walk = (t, d) => { if (!t) return; walk(t.l, d + 1); order.push([t, d]); walk(t.r, d + 1); }; walk(root, 0);
+    const blocks = [Bk('s', 's : std::set<int>', 'stack', HX, 0,
+      [C('root', { to: root ? 'k' + root.k + ':1' : null }), C('size ' + n)], { sub: 'one heap node per element', cw: 1.7 })];
+    order.forEach(([t, d], rank) => blocks.push(Bk('k' + t.k, '', 'heap', -5.2 + rank * 3.6, -5 + d * 2.7,
+      [C(t.l ? 'L' : '∅', { to: t.l ? 'k' + t.l.k + ':1' : null }), C(t.k, hl.includes(t.k) ? { st: 'hl' } : {}),
+       C(t.r ? 'R' : '∅', { to: t.r ? 'k' + t.r.k + ':1' : null })], { tint: t.c, cw: 1.05 })));
+    steps.push({ line, cost, note, blocks, out });
+  };
+  const insert = (k, line) => {
+    let y = null, x = root; const path = [];
+    while (x) { y = x; path.push(x.k); x = k < x.k ? x.l : x.r; }
+    const z = mk(k); z.p = y; if (!y) root = z; else if (k < y.k) y.l = z; else y.r = z; n++;
+    const walkTxt = path.length ? 'walk down from the root: ' + path.map(pk => `${k} ${k < pk ? '&lt;' : '&gt;'} ${pk}, go ${k < pk ? 'left' : 'right'}`).join('; ') + '.'
+                                : 'the tree is empty.';
+    snap(line, 'O(log n)', `<b>insert(${k})</b>: ${walkTxt} A new node is allocated on the heap (a separate allocation for every element) and hung in the empty spot, coloured <b>red</b>. ` +
+      (z === root ? 'It is the root.' : (z.p.c === 'black' ? `Its parent ${z.p.k} is black, so all the rules hold: done.` : `Its parent ${z.p.k} is red too: two reds in a row break a rule, which is fixed next.`)), [...path, k]);
+    let w = z;
+    while (w.p && w.p.c === 'red') {
+      const p = w.p, g = p.p, left = p === g.l, u = left ? g.r : g.l;
+      if (u && u.c === 'red') {
+        p.c = 'black'; u.c = 'black'; g.c = 'red';
+        snap(line, 'O(log n)', `<b>Recolour.</b> ${p.k} and ${w.k} are both red, and the "uncle" ${u.k} is red as well. So ${p.k} and ${u.k} turn black and ${g.k} turns red. No node moves and no pointer changes; if that makes ${g.k} clash with its own parent, the same check repeats one level up.`, [p.k, u.k, g.k]);
+        w = g;
+      } else {
+        if (left ? w === p.r : w === p.l) { w = p; left ? rotL(w) : rotR(w);
+          snap(line, 'O(log n)', `<b>Rotate to straighten a zig-zag</b> at ${w.k}, so that the case below applies.`, [w.k, w.p.k]); }
+        const p2 = w.p, g2 = p2.p; p2.c = 'black'; g2.c = 'red'; left ? rotR(g2) : rotL(g2);
+        snap(line, 'O(log n)', `<b>Rotate.</b> ${p2.k} and its child are both red, and the uncle is black (missing). So ${p2.k} moves <i>up</i> into ${g2.k}'s place, ${g2.k} becomes its child, and they swap colours. A rotation rewires three pointers; every node stays at its heap address (the picture slides them only to keep it readable). This is what keeps the tree <b>balanced</b>: no root-to-leaf path is more than twice as long as any other, so the height stays about log₂ n.`, [p2.k, g2.k]);
+        break;
+      }
+    }
+    if (root.c === 'red') { root.c = 'black'; snap(line, 'O(log n)', `<b>Rule: the root is always black</b>, so ${root.k} is recoloured.`, [root.k]); }
+  };
+  snap(1, 'O(1)', '<b>std::set is a red-black tree</b>, a balanced binary search tree. Every element gets its <i>own</i> heap node: here [left pointer, key, right pointer]. Real nodes also have a parent pointer and a colour, which are not drawn. In every node, smaller keys are to the left and bigger keys to the right. The set object itself holds only a pointer to the root and the size. Nodes are coloured red or black, and a few colour rules keep the tree from getting lopsided.');
+  insert(10, 2); insert(20, 3); insert(30, 4); insert(15, 5); insert(25, 6); insert(5, 7);
+  snap(8, 'O(log n)', '<b>count(25) / find(25)</b>: 25 &gt; 20, go right; 25 &lt; 30, go left; found. That is three comparisons for six elements. Each comparison halves what is left, so a million elements take about 20. That is <b>O(log n)</b>. Compare: a vector would need up to n comparisons, unless it is sorted and you use binary search.', [20, 30, 25], 'count(25) = 1');
+  snap(9, 'O(n) total', '<b>Iterating gives the keys in sorted order</b>: left subtree, then the node, then the right subtree, which is called in-order. ++it follows child and parent pointers, so each step can hop across the heap. That is why a set is much slower to scan than a vector, even though both are "O(n)". Also cheap: <code>s.lower_bound(x)</code> (first key ≥ x), <code>*s.begin()</code> (the minimum), <code>*s.rbegin()</code> (the maximum).', [5, 10, 15, 20, 25, 30], '5 10 15 20 25 30');
+  snap(10, 'O(log n)', '<b>std::map is the same tree</b>, with nodes holding a pair <code>{key, value}</code> and ordered by key. <code>m["apple"] = 3</code> walks the tree; if the key is missing, it inserts a node with a default value first, which is a classic surprise: reading <code>m[k]</code> inserts k. Use <code>m.count(k)</code> or <code>m.find(k)</code> to only look.<br><b>LeetCode:</b> use set or map when you need <i>order</i>: the smallest or largest so far, "the next key ≥ x" (lower_bound), sliding windows that need min and max (a multiset), or interval scheduling. If you only need "have I seen this?", the unordered (hash) versions below are faster.');
+  SC.set = { title: 'Set and map: a red-black tree, one heap node per element', code: [
+'std::set<int> s;            // a balanced binary search tree',
+'s.insert(10);',
+'s.insert(20);',
+'s.insert(30);               // lopsided: rotate',
+'s.insert(15);               // recolour',
+'s.insert(25);',
+'s.insert(5);',
+'bool has = s.count(25);     // walk down: O(log n)',
+'for (int x : s) ...         // in order: sorted',
+'// std::map<string,int>: same tree, nodes hold {key, value}'], steps };
+}
+
+/* ================================================================ unordered_set / unordered_map: hash table */
+{
+  const steps = []; let size = 0;
+  const bx = i => -4.6 + (i + 0.5) * 1.25;
+  const empty = B => Array.from({ length: B }, () => []);
+  const arr = (id, B, bks, z, st) => Bk(id, `bucket array · ${B} buckets${st ? ' (freed)' : ''}`, 'heap', -4.6, z,
+    bks.map(ch => ch.length ? C('•', { to: 'e' + ch[0] + ':0' }) : E()), { idx: true, st });
+  const snap = (line, cost, note, o) => {
+    const hl = o.hl || [], act = o.arrays.find(a => !a.st && a.active) || o.arrays.find(a => !a.st);
+    const blocks = [Bk('h', 'h : std::unordered_set<int>', 'stack', HX, 0,
+      [C('buckets', { to: act.id + ':0' }), C(act.B + ' bkts'), C('size ' + size)], { sub: `load factor = size / buckets = ${(size / act.B).toFixed(2)}`, cw: 1.7 })];
+    for (const a of o.arrays) blocks.push(arr(a.id, a.B, a.st ? empty(a.B) : a.bks, a.z, a.st));
+    o.nodes.forEach((ch, bi) => ch.forEach((k, d) => blocks.push(Bk('e' + k, '', 'heap', bx(bi) - 0.6, -0.8 + d * 2.0,
+      [C(k, hl.includes(k) ? { st: 'hl' } : {}), C(d < ch.length - 1 ? 'next' : '∅', { to: d < ch.length - 1 ? 'e' + ch[d + 1] + ':0' : null })],
+      { vert: true, cw: 1.2 }))));
+    steps.push({ line, cost, note, blocks, out: o.out });
+  };
+  let B = 5, bk = empty(5);
+  const ins = (k, line, extra = '') => {
+    const b = k % B, was = bk[b].length; bk[b].unshift(k); size++;
+    snap(line, 'O(1) average', `<b>insert(${k})</b>: hash it. For an int, libstdc++'s <code>std::hash</code> simply returns the number, so hash = ${k}. Then bucket = hash % bucket count = ${k} % ${B} = <b>${b}</b>. That is one division to know <i>exactly</i> where to look, with no searching. ` +
+      (was ? `Bucket ${b} already holds ${bk[b].slice(1).join(', ')}: a <b>collision</b>. The new node (its own heap allocation) is linked into the same bucket's chain, in front.`
+           : `Bucket ${b} was empty: a node is allocated on the heap, and bucket ${b} now points to it.`) + extra, { arrays: [{ id: 'bk5', B, bks: bk, z: -4.2 }], nodes: bk, hl: [k] });
+  };
+  snap(1, 'O(1)', '<b>A hash table is an array of buckets plus one heap node per element.</b> Each bucket holds a pointer to a short chain of nodes; ∅ means empty. The object itself holds the bucket array pointer, the bucket count and the size. The idea: turn the key into a bucket number with arithmetic, so you never compare against every element. (5 buckets here; real libraries pick their own prime sizes.)', { arrays: [{ id: 'bk5', B: 5, bks: bk, z: -4.2 }], nodes: bk });
+  ins(12, 2); ins(7, 3); ins(3, 4);
+  { const k1 = 20, k2 = 9; bk[k1 % B].unshift(k1); bk[k2 % B].unshift(k2); size += 2;
+    snap(5, 'O(1) average', '<b>insert(20), insert(9)</b>: 20 % 5 = 0 and 9 % 5 = 4, both empty buckets. Now there are 5 elements in 5 buckets: <b>load factor 1.0</b>, the default maximum. Chains stay short only while load factor stays small.', { arrays: [{ id: 'bk5', B, bks: bk, z: -4.2 }], nodes: bk, hl: [20, 9] }); }
+  const nb = empty(11);
+  snap(6, 'O(n) this time', '<b>insert(14) would push the load factor above 1.0, so the table rehashes first.</b> It allocates a <b>new, bigger bucket array</b> (11 buckets, behind). The nodes are still linked from the old array.', { arrays: [{ id: 'bk5', B: 5, bks: bk, z: -4.2, active: true }, { id: 'bk11', B: 11, bks: nb, z: -7.8 }], nodes: bk });
+  for (const ch of bk) for (const k of [...ch].reverse()) nb[k % 11].unshift(k);
+  snap(6, 'O(n) this time', '<b>Every node is re-hung</b> by its new bucket number: 12 % 11 = 1, 7 % 11 = 7, 3 % 11 = 3, 20 % 11 = 9, 9 % 11 = 9. <b>The nodes themselves stay where they are in the heap; only pointers change</b> (they slide in the picture to sit in front of their new bucket). The old array is freed. Like a vector\'s growth this is O(n), but it is rare, so insert is O(1) on average. Like a vector, it invalidates iterators. <code>h.reserve(n)</code> avoids it.', { arrays: [{ id: 'bk5', B: 5, bks: bk, z: -4.2, st: 'freed' }, { id: 'bk11', B: 11, bks: nb, z: -7.8, active: true }], nodes: nb });
+  B = 11; bk = nb;
+  bk[14 % 11].unshift(14); size++;
+  snap(6, 'O(1) average', '<b>Now insert(14)</b>: 14 % 11 = 3, which collides with 3 and is chained in front. Load factor 6 / 11 = 0.55.', { arrays: [{ id: 'bk11', B, bks: bk, z: -4.2 }], nodes: bk, hl: [14] });
+  snap(7, 'O(1) average', '<b>count(7)</b>: 7 % 11 = 7. Go straight to bucket 7, follow its pointer, compare one node: found. <b>No matter how many elements there are, a lookup touches one bucket and its short chain.</b> count(5): 5 % 11 = 5, the bucket is empty, so the answer is 0 immediately. The worst case, when every key lands in one bucket, is a chain of n, i.e. O(n), which is why a good hash function matters.', { arrays: [{ id: 'bk11', B, bks: bk, z: -4.2 }], nodes: bk, hl: [7], out: 'count(7) = 1   count(5) = 0' });
+  snap(8, 'O(1) average', '<b>unordered_map is the same table</b>, with each node holding <code>{key, value}</code>. <code>m["apple"]++</code> hashes "apple" (a string hash mixes all its characters into one number), finds the bucket, and inserts {"apple", 0} if it is missing, then adds 1. There is <b>no order</b>: iterating visits buckets in array order, which looks random.<br><b>LeetCode:</b> two-sum (<code>unordered_map&lt;int,int&gt;</code> from value to index: for each x, look up target − x), frequency counts, "have I seen this before?" (<code>unordered_set</code>), grouping anagrams (key = the sorted string), and memoisation. In Python these are <code>dict</code> and <code>set</code>.', { arrays: [{ id: 'bk11', B, bks: bk, z: -4.2 }], nodes: bk });
+  SC.hash = { title: 'Unordered set and map: a hash table of buckets and chains', code: [
+'std::unordered_set<int> h;   // buckets + one heap node per element',
+'h.insert(12);                // 12 % 5 = 2',
+'h.insert(7);                 // 7 % 5 = 2: collision, chained',
+'h.insert(3);',
+'h.insert(20); h.insert(9);   // load factor 1.0',
+'h.insert(14);                // over 1.0: rehash to 11 buckets',
+'bool has = h.count(7);       // 7 % 11 = 7: one bucket, O(1)',
+'// unordered_map<string,int> m; m["apple"]++;  // node = {key, value}'], steps };
+}
+
+/* ===================================================================
+   tiny 3D engine
+   =================================================================== */
+const ORDER = ['array', 'vector', 'stack', 'queue', 'deque', 'pq', 'set', 'hash'];
+const CW = 1.25, CH = 0.8, CD = 1.0;
+const cv = document.getElementById('cv'), view = document.getElementById('view');
+const ctx = cv.getContext('2d');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || '#888';
+let COL = {};
+function readColours() {
+  COL = { a: css('--a'), b: css('--b'), c: css('--c'), d: css('--d'), e: css('--e'), f: css('--f'), bad: css('--bad'),
+          ink: css('--ink'), muted: css('--muted'), panel: css('--panel'), grey: css('--grey') };
+}
+const CAM0 = { yaw: -0.28, pitch: 0.78, dist: 95, zoom: 1 };
+let cam = { ...CAM0 }, FIT = { s: 1, ox: 0, oy: 0 }, CEN = [0, 0, 0];
+function hexRgb(h) { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function shade(hex, k, a = 1) { if (!hex.startsWith('#')) return hex; const [r, g, b] = hexRgb(hex);
+  return `rgba(${Math.min(255, Math.round(r * k))},${Math.min(255, Math.round(g * k))},${Math.min(255, Math.round(b * k))},${a})`; }
+let W = 0, Hh = 0;
+function resize() { const dpr = window.devicePixelRatio || 1; W = Math.max(240, view.clientWidth - 8); Hh = Math.max(300, view.clientHeight - 8);
+  cv.width = W * dpr; cv.height = Hh * dpr; cv.style.width = W + 'px'; cv.style.height = Hh + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+function raw(p) {
+  const x = p[0] - CEN[0], y = p[1] - CEN[1], z = p[2] - CEN[2];
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const x1 = cy * x - sy * z, z1 = sy * x + cy * z, y2 = cp * y - sp * z1, z2 = sp * y + cp * z1, d = cam.dist - z2;
+  return [x1 / d, -y2 / d, d];
+}
+function proj(p) { const r = raw(p), k = FIT.s * cam.zoom; return [W / 2 + (r[0] - FIT.ox) * k, Hh / 2 + (r[1] - FIT.oy) * k, r[2]]; }
+function fit() {
+  const b = sc.box; CEN = [(b[0] + b[1]) / 2, (b[2] + b[3]) / 2, (b[4] + b[5]) / 2];
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const X of [b[0], b[1]]) for (const Y of [b[2], b[3]]) for (const Z of [b[4], b[5]]) {
+    const r = raw([X, Y, Z]); x0 = Math.min(x0, r[0]); x1 = Math.max(x1, r[0]); y0 = Math.min(y0, r[1]); y1 = Math.max(y1, r[1]); }
+  FIT = { s: Math.min(W * 0.95 / (x1 - x0), Hh * 0.92 / (y1 - y0)), ox: (x0 + x1) / 2, oy: (y0 + y1) / 2 };
+}
+function boxFaces(x, y0, z, w, h, d, col, alpha, wire) {
+  const X = [x - w / 2, x + w / 2], Y = [y0, y0 + h], Z = [z - d / 2, z + d / 2], v = (i, j, k) => [X[i], Y[j], Z[k]];
+  return [[[v(0, 1, 0), v(1, 1, 0), v(1, 1, 1), v(0, 1, 1)], 1.0], [[v(0, 0, 1), v(1, 0, 1), v(1, 1, 1), v(0, 1, 1)], 0.82],
+          [[v(0, 0, 0), v(1, 0, 0), v(1, 1, 0), v(0, 1, 0)], 0.6], [[v(1, 0, 0), v(1, 0, 1), v(1, 1, 1), v(1, 1, 0)], 0.7],
+          [[v(0, 0, 0), v(0, 0, 1), v(0, 1, 1), v(0, 1, 0)], 0.66], [[v(0, 0, 0), v(1, 0, 0), v(1, 0, 1), v(0, 0, 1)], 0.45]]
+    .map(([pts, k]) => { const s = pts.map(proj); return { s, depth: s.reduce((a, p) => a + p[2], 0) / 4, k, col, alpha, wire }; });
+}
+function drawFaces(faces) {
+  faces.sort((a, b) => b.depth - a.depth);
+  for (const f of faces) {
+    ctx.beginPath(); f.s.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath();
+    if (f.wire) { ctx.setLineDash([4, 3]); ctx.strokeStyle = shade(f.col, 1, 0.8 * f.alpha); ctx.lineWidth = 1.1; ctx.stroke(); ctx.setLineDash([]); }
+    else { ctx.fillStyle = shade(f.col, f.k, f.alpha); ctx.fill(); ctx.strokeStyle = shade(f.col, 0.4, 0.55 * f.alpha); ctx.lineWidth = 0.8; ctx.stroke(); }
+  }
+}
+function label(p, text, colour, o = {}) {
+  const s = o.screen ? p : proj(p), size = o.size || 11;
+  ctx.font = `${o.bold ? 700 : 600} ${size}px ${css('--mono') || 'Consolas'}`;
+  const w = ctx.measureText(text).width + 8, h = size + 6;
+  ctx.globalAlpha = o.alpha ?? 1;
+  const ax = o.align === 'left' ? s[0] + w / 2 : o.align === 'right' ? s[0] - w / 2 : s[0];
+  if (!o.bare) { ctx.fillStyle = shade(COL.panel, 1, 0.84); ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(ax - w / 2, s[1] - h / 2, w, h, 4); else ctx.rect(ax - w / 2, s[1] - h / 2, w, h); ctx.fill(); }
+  ctx.fillStyle = colour; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(text, ax, s[1] + 0.5);
+  ctx.globalAlpha = 1;
+}
+function arc(a, b, colour, o = {}) {
+  const mid = [(a[0] + b[0]) / 2, Math.max(a[1], b[1]) + (o.lift ?? 1.2), (a[2] + b[2]) / 2];
+  const pts = []; for (let i = 0; i <= 28; i++) { const t = i / 28, u = 1 - t; pts.push(proj([0, 1, 2].map(j => u * u * a[j] + 2 * u * t * mid[j] + t * t * b[j]))); }
+  ctx.globalAlpha = o.alpha ?? 1; ctx.strokeStyle = colour; ctx.lineWidth = o.width || 2;
+  if (o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke(); ctx.setLineDash([]);
+  const [p1, p2] = [pts[pts.length - 3], pts[pts.length - 1]], ang = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]);
+  ctx.fillStyle = colour; ctx.beginPath(); ctx.moveTo(p2[0], p2[1]);
+  ctx.lineTo(p2[0] - 9 * Math.cos(ang - 0.4), p2[1] - 9 * Math.sin(ang - 0.4)); ctx.lineTo(p2[0] - 9 * Math.cos(ang + 0.4), p2[1] - 9 * Math.sin(ang + 0.4)); ctx.fill();
+  ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], 2.6, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+}
+function line3(a, b, colour, o = {}) {
+  const p = proj(a), q = proj(b); ctx.globalAlpha = o.alpha ?? 1; ctx.strokeStyle = colour; ctx.lineWidth = o.width || 1.5;
+  if (o.dash) ctx.setLineDash(o.dash); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
+}
+
+/* cell geometry and arrow anchors */
+const cwOf = b => b.cw || CW;
+function cellBox(b, i) { const cw = cwOf(b);
+  return b.vert ? { cx: b.x + cw / 2, y0: b.y + i * CH, z: b.z } : { cx: b.x + (i + 0.5) * cw, y0: b.y, z: b.z }; }
+function anchor(b, i, mode) { const cw = cwOf(b), n = b.cells.length;
+  if (b.vert) return i < n ? [b.x + cw / 2, b.y + (i + 0.5) * CH, b.z + CD / 2] : [b.x + cw / 2, b.y + n * CH + 0.05, b.z];
+  if (i >= n) return [b.x + n * cw, b.y + CH, b.z];
+  return mode === 'mid' ? [b.x + (i + 0.5) * cw, b.y + CH / 2, b.z] : [b.x + (i + 0.5) * cw, b.y + CH, b.z]; }
+function bounds(b) { const cw = cwOf(b), n = b.cells.length;
+  return b.vert ? [b.x, b.x + cw, b.y, b.y + n * CH, b.z - CD / 2, b.z + CD / 2] : [b.x, b.x + n * cw, b.y, b.y + CH, b.z - CD / 2, b.z + CD / 2]; }
+
+function prepare(s) {
+  const st = [1e9, -1e9, 1e9, -1e9], hp = [1e9, -1e9, 1e9, -1e9], all = [1e9, -1e9, 0, 2, 1e9, -1e9];
+  for (const step of s.steps) for (const b of step.blocks) {
+    const B = bounds(b), Z = b.region === 'stack' ? st : hp;
+    Z[0] = Math.min(Z[0], B[0]); Z[1] = Math.max(Z[1], B[1]); Z[2] = Math.min(Z[2], B[4]); Z[3] = Math.max(Z[3], B[5]);
+    all[0] = Math.min(all[0], B[0]); all[1] = Math.max(all[1], B[1]); all[3] = Math.max(all[3], B[3] + 1.2);
+    all[4] = Math.min(all[4], B[4]); all[5] = Math.max(all[5], B[5]);
+  }
+  s.zs = st; s.zh = hp[0] < hp[1] ? hp : null;
+  s.box = [all[0] - 1.5, all[1] + 1.5, -0.6, all[3], all[4] - 1.5, all[5] + 1.5];
+}
+
+let sc = null, idx = 0, prevIdx = 0, t0 = 0, playing = null, pending = false;
+function kick() { if (!pending) { pending = true; requestAnimationFrame(ts => { pending = false; render(ts); }); } }
+const DUR = 560;
+function colourOf(b, c, pulse) {
+  if (b.st === 'freed') return [COL.bad, 0.9, true];
+  if (c.st === 'empty') return [COL.grey, 0.75, true];
+  if (c.st === 'hl') return [COL.b, 0.6 + 0.4 * pulse, false];
+  if (b.tint === 'red') return [COL.bad, 0.92, false];
+  if (b.tint === 'black') return [COL.grey, 0.95, false];
+  return [b.region === 'stack' ? COL.a : b.region === 'view' ? COL.d : COL.c, b.region === 'view' ? 0.6 : 0.95, false];
+}
+function render(now) {
+  if (!sc) return;
+  const t = Math.min(1, (now - t0) / DUR), e = t * t * (3 - 2 * t), pulse = 0.6 + 0.4 * Math.sin(now / 230);
+  const cur = sc.steps[idx], prev = sc.steps[prevIdx];
+  const A = Object.fromEntries(cur.blocks.map(b => [b.id, b])), Bp = Object.fromEntries(prev.blocks.map(b => [b.id, b]));
+  ctx.clearRect(0, 0, W, Hh); fit();
+  const faces = [];
+  const plate = (Z, col) => faces.push(...boxFaces((Z[0] + Z[1]) / 2, -0.35, (Z[2] + Z[3]) / 2, Z[1] - Z[0] + 1.6, 0.25, Z[3] - Z[2] + 1.6, col, 0.14));
+  plate(sc.zs, COL.a); if (sc.zh) plate(sc.zh, COL.c);
+  const G = {};                         // where each block is drawn this frame
+  for (const id of new Set([...Object.keys(A), ...Object.keys(Bp)])) {
+    const a = A[id], b = Bp[id];
+    let blk, grow = 1;
+    if (a && b && idx !== prevIdx) blk = { ...a, x: b.x + (a.x - b.x) * e, y: b.y + (a.y - b.y) * e, z: b.z + (a.z - b.z) * e };
+    else if (a) { blk = a; if (!b && idx !== prevIdx) grow = e; }
+    else { blk = b; grow = 1 - e; }
+    if (grow <= 0.02) continue;
+    if (a) G[id] = blk;
+    const cw = cwOf(blk);
+    blk.cells.forEach((c, i) => {
+      const g = cellBox(blk, i), [col, al, wire] = colourOf(blk, c, pulse);
+      faces.push(...boxFaces(g.cx, g.y0, g.z, cw - 0.08, (CH - (blk.vert ? 0.06 : 0)) * grow, CD, col, al * (a ? 1 : grow), wire));
+    });
+  }
+  drawFaces(faces);
+  // labels for the two areas
+  label([sc.zs[0] - 0.6, -0.2, sc.zs[3] + 1.2], 'STACK · the container object', COL.a, { bold: true, align: 'left', size: 11 });
+  if (sc.zh) label([sc.zh[0] - 0.6, -0.2, sc.zh[3] + 1.2], 'HEAP · what it owns', COL.c, { bold: true, align: 'left', size: 11 });
+  else label([sc.zs[1] + 3, -0.2, sc.zs[3] + 1.2], 'HEAP · nothing: no allocation at all', COL.muted, { align: 'left', size: 10, bare: true });
+  // links that are not pointers: tree edges and "same element" guides
+  for (const L of cur.links || []) {
+    const [ai, ii] = L.a.split(':'), [bi, ji] = L.b.split(':'), p = G[ai], q = G[bi]; if (!p || !q) continue;
+    if (L.kind === 'tree') line3(anchor(p, +ii, 'mid'), anchor(q, +ji, 'mid'), COL.d, { width: 2, alpha: 0.85 * e + (idx === prevIdx ? 0.15 : 0) });
+    else line3(anchor(p, +ii, 'mid'), anchor(q, +ji, 'top'), COL.grey, { dash: [2, 4], alpha: 0.45 });
+  }
+  // pointers
+  for (const b of Object.values(G)) b.cells.forEach((c, i) => {
+    if (!c.to) return;
+    const [tid, ti] = c.to.split(':'), tb = G[tid]; if (!tb) return;
+    const from = anchor(b, i, 'top'), to = anchor(tb, ti === undefined ? 0 : +ti, 'top');
+    const dist = Math.hypot(to[0] - from[0], to[2] - from[2]);
+    const fresh = !(Bp[b.id] && Bp[b.id].cells[i] && Bp[b.id].cells[i].to === c.to);
+    const dead = tb.st === 'freed';
+    arc(from, to, dead ? COL.bad : COL.e, { lift: 0.5 + dist * 0.09, alpha: fresh ? e : 1, dash: dead ? [6, 4] : null, width: b.region === 'stack' ? 2.2 : 1.6 });
+  });
+  // text
+  for (const b of Object.values(G)) {
+    const B = bounds(b), cx = (B[0] + B[1]) / 2;
+    if (b.label) label([b.vert ? cx : B[0], B[3] + 0.75, b.z - CD / 2 - 0.25], b.label, b.st === 'freed' ? COL.bad : b.region === 'stack' ? COL.a : b.region === 'view' ? COL.d : COL.c,
+                       { size: 10, bold: true, align: b.vert ? undefined : 'left' });
+    if (b.sub) label([cx, B[2] - 0.2, b.z + CD / 2 + 0.9], b.sub, COL.muted, { size: 9, bare: true });
+    b.cells.forEach((c, i) => {
+      const g = cellBox(b, i);
+      if (c.v) label([g.cx, g.y0 + CH * 0.5, g.z + CD / 2 + 0.02], c.v, b.tint === 'red' || b.tint === 'black' ? '#ffffff' : COL.ink,
+                     { size: c.v.length > 5 ? 9 : 10, bold: true, bare: true });
+      if (b.idx) label(b.vert ? [b.x - 0.35, g.y0 + CH * 0.5, g.z + CD / 2] : [g.cx, g.y0 - 0.3, g.z + CD / 2], String(i), COL.muted, { size: 9, bare: true });
+    });
+  }
+  if (t < 1 || cur.blocks.some(b => b.cells.some(c => c.st === 'hl'))) { if (!document.hidden) kick(); }
+}
+
+/* ===================================================================
+   UI
+   =================================================================== */
+const $ = id => document.getElementById(id);
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function showCode() {
+  const st = sc.steps[idx], lines = Array.isArray(st.line) ? st.line : [st.line];
+  $('code').innerHTML = sc.code.map((l, i) => { const c = l.indexOf('//');
+    const body = c >= 0 ? esc(l.slice(0, c)) + '<span class="cm">' + esc(l.slice(c)) + '</span>' : esc(l);
+    return `<div class="${lines.includes(i + 1) ? 'on' : ''}"><span class="ln">${i + 1}</span>${body}</div>`; }).join('');
+  $('note').innerHTML = st.note; $('cost').textContent = st.cost || ''; $('cost').style.display = st.cost ? '' : 'none';
+  const out = []; sc.steps.slice(0, idx + 1).forEach((s, i) => { if (s.out) out.push(`<span class="${i === idx ? 'new' : ''}">${esc(s.out)}</span>`); });
+  $('term').innerHTML = out.join('\n'); $('tcard').style.display = sc.steps.some(s => s.out) ? '' : 'none'; $('term').scrollTop = 1e6;
+  $('count').textContent = `${idx + 1} / ${sc.steps.length}`; $('scrub').max = sc.steps.length - 1; $('scrub').value = idx;
+  $('prev').disabled = idx === 0; $('next').disabled = idx === sc.steps.length - 1;
+}
+function go(i) { i = Math.max(0, Math.min(sc.steps.length - 1, i)); prevIdx = idx; idx = i; t0 = performance.now(); showCode(); kick(); }
+function load(name) {
+  sc = SC[name]; if (!sc.box) prepare(sc); idx = prevIdx = 0; t0 = performance.now() - DUR; $('title').textContent = sc.title;
+  document.querySelectorAll('#sel button').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === name)); stop(); showCode(); kick();
+}
+function stop() { if (playing) { clearInterval(playing); playing = null; $('play').textContent = 'play'; } }
+$('play').onclick = () => { if (playing) return stop(); if (idx === sc.steps.length - 1) go(0); $('play').textContent = 'pause';
+  playing = setInterval(() => { if (idx >= sc.steps.length - 1) stop(); else go(idx + 1); }, 3200); };
+$('prev').onclick = () => { stop(); go(idx - 1); };
+$('next').onclick = () => { stop(); go(idx + 1); };
+$('scrub').oninput = ev => { stop(); go(+ev.target.value); };
+$('cam').onclick = () => { cam = { ...CAM0 }; kick(); };
+$('topv').onclick = () => { cam = { ...CAM0, yaw: 0, pitch: 1.45 }; kick(); };
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'ArrowRight') { stop(); go(idx + 1); } else if (ev.key === 'ArrowLeft') { stop(); go(idx - 1); }
+  else if (ev.key === ' ') { ev.preventDefault(); $('play').click(); } });
+let drag = null;
+cv.addEventListener('pointerdown', ev => { drag = { x: ev.clientX, y: ev.clientY, yaw: cam.yaw, pitch: cam.pitch }; view.classList.add('drag'); cv.setPointerCapture(ev.pointerId); });
+cv.addEventListener('pointermove', ev => { if (!drag) return;
+  cam.yaw = Math.max(-1.5, Math.min(1.5, drag.yaw + (ev.clientX - drag.x) * 0.008));
+  cam.pitch = Math.max(0.05, Math.min(1.5, drag.pitch + (ev.clientY - drag.y) * 0.006)); kick(); });
+cv.addEventListener('pointerup', () => { drag = null; view.classList.remove('drag'); });
+cv.addEventListener('wheel', ev => { ev.preventDefault(); cam.zoom = Math.max(0.6, Math.min(3, cam.zoom * (ev.deltaY > 0 ? 0.92 : 1.08))); kick(); }, { passive: false });
+/* #s=vector,deque picks the walkthroughs; add ,compact (or &compact) to hide the header when embedded in a card */
+function init() {
+  readColours(); resize();
+  if (/compact/.test(location.hash)) document.body.classList.add('compact');
+  const m = /s=([\w,]+)/.exec(location.hash);
+  const list = (m ? m[1].split(',') : ORDER).filter(k => SC[k]);
+  $('sel').innerHTML = list.map(k => `<button data-k="${k}">${SC[k].title.split(':')[0]}</button>`).join('');
+  document.querySelectorAll('#sel button').forEach(b => b.onclick = () => load(b.dataset.k));
+  if (list.length < 2) $('sel').style.display = 'none';
+  load(list[0] || 'vector');
+}
+new ResizeObserver(() => { resize(); kick(); }).observe(view);
+new MutationObserver(() => { readColours(); kick(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+init();
+
+</script>
+</body></html>

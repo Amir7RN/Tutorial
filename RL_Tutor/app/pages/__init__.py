@@ -90,11 +90,15 @@ ROBOT MECHANICS
 
 C++ FOR ROBOTICS
    150     roadmap: a class exists to protect an invariant; progress tracker
-   151-153 the build (translation units, ODR, linker), ownership and RAII,
+   151     where objects live: stack, heap and static, and what a pointer does
+           not tell you (a 3D address-space lab)
+   152     the LeetCode containers in memory: array, vector, stack, queue,
+           deque, priority_queue, set/map, unordered_set/map (3D labs)
+   153-155 the build (translation units, ODR, linker), ownership and RAII,
            copy/move/const
-   154-156 invariants, interfaces and factories, templates
-   157-158 threads/atomics/SPSC, and the robotics layer (Eigen, ros2_control)
-   159-162 the project: cascade loops, scheduler + config factory, lock-free
+   156-158 invariants, interfaces and factories, templates
+   159-160 threads/atomics/SPSC, and the robotics layer (Eigen, ros2_control)
+   161-164 the project: cascade loops, scheduler + config factory, lock-free
            hand-off + mutation-graded tests, interview drill
 
 The mechanics block is appended rather than inserted so that every earlier
@@ -480,7 +484,7 @@ PAGE_CLASSES = [
     # project (a multi-rate controller scheduler) carried through all of them.
     # Every exercise is compiled with g++ and graded (ctrlcore/cpp_course.py).
     # ======================================================================
-    *CPP_PAGES,            # 150-162 roadmap, stages 0-7, project v0-v5, drill
+    *CPP_PAGES,            # 150-164 roadmap, memory map, containers, stages 0-7, project v0-v5, drill
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

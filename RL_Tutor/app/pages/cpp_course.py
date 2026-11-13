@@ -13,6 +13,8 @@ reader. Every exercise is compiled with the real g++ and graded by a test main
 (ctrlcore/cpp_course.py; files in cpp/learn/).
 
 Visual labs (app/assets/steplab):
+    cpp_address_space.html  code / static / heap / stack as one 3D tower, stepped through real code
+    cpp_containers.html     array, vector, stack, queue, deque, priority_queue, set/map, unordered_*
     cpp_build.html    preprocess -> compile -> link, with mistakes to switch on
     cpp_memory.html   stack / heap / static in 3D, stepped through real code
     cpp_rt.html       SPSC ring, triple buffer, and a multi-rate tick budget
@@ -321,6 +323,286 @@ double Limits::clamp(double x) const {
 # =====================================================================
 # 2. Stage 0 -- the build
 # =====================================================================
+
+# =====================================================================
+# 2. before Stage 0 -- where objects live
+# =====================================================================
+
+_REGIONS = [
+    ("Stack", theme.ACCENT,
+     "locals, parameters, return addresses, the <code>this</code> argument",
+     "when execution reaches the declaration (the frame's bytes were reserved when the function was entered)",
+     "at the closing brace of its scope, automatically, in reverse order",
+     "about 1 MB (Windows) or 8 MB (Linux) per thread; one instruction to grow or shrink",
+     "returning the address of a local (dangling); a huge local array or deep recursion (overflow)"),
+    ("Heap", theme.GOOD,
+     "whatever <code>new</code>, <code>make_unique</code>, <code>make_shared</code> or a "
+     "<code>std::vector</code> allocates",
+     "when <code>new</code> runs",
+     "when <code>delete</code> runs, either written by you or by an owner's destructor",
+     "gigabytes; each allocation is a call that may lock or search, so its time is unbounded",
+     "a leak (no delete), a double delete, use after free"),
+    ("Static", theme.VIOLET,
+     "globals, <code>static</code> locals, <code>static</code> class members, string literals",
+     "before <code>main</code> starts (a <code>static</code> local: the first time its line runs)",
+     "after <code>main</code> returns, in reverse order of construction",
+     "fixed when the program is built; costs nothing at run time",
+     "order of initialisation between .cpp files; shared state that two threads write"),
+]
+
+
+class CppMemoryMapPage(CppPage):
+    TITLE = "Before Stage 0 · Where Objects Live: Stack, Heap and Static"
+    SUBTITLE = ("One program's memory has three regions with three different rules for when an object "
+                "dies. A pointer can hold an address in any of them, and its type never says which.")
+    SECTION = SEC_FOUND
+    NOTES = "C++ · memory map"
+
+    def __init__(self):
+        super().__init__()
+        self.add(callout(
+            "Every object lives in exactly one of three regions, and <b>how it was created</b> decides "
+            "which. That region then decides <b>when it dies</b>. A local variable lives on the "
+            "<b>stack</b> and dies at its closing brace. Whatever <code>new</code> creates lives on the "
+            "<b>heap</b> and dies when someone deletes it. A global lives in <b>static</b> memory and "
+            "dies after <code>main</code> returns. A pointer is just a variable that holds an address, "
+            "and it can point into any of the three. <code>int*</code> means \"holds an address\", "
+            "not \"heap\".", "key", label="START HERE"))
+
+        rows = "".join(
+            f"<tr><td style='padding:6px 10px 6px 0;vertical-align:top'><b style='color:{col}'>{name}</b></td>"
+            + "".join(f"<td style='padding:6px 10px;vertical-align:top'>{cell}</td>" for cell in cells)
+            + "</tr>" for name, col, *cells in _REGIONS)
+        head = "".join(f"<th align='left' style='padding:4px 10px;color:{theme.TEXT_DIM}'>{h}</th>" for h in
+                       ("", "what lives there", "created", "destroyed", "size and speed", "the typical bug"))
+        table = Card("The three regions, side by side")
+        table.add(body(f"<table cellspacing='0'><tr>{head}</tr>{rows}</table>"))
+        self.add(table)
+
+        self.add(WebLab("cpp_address_space.html", "s=noisy,why_heap,anywhere,growth",
+                        "Lab · the address space in 3D: your Noisy program, why the heap, pointers, stack size", 1040))
+
+        right = Card("Three things that are easy to get wrong")
+        right.add(body(
+            "<b>\"A pointer means heap.\"</b> No. <code>Counter* p = &amp;a;</code> points at the stack, "
+            "<code>&amp;g_ticks</code> points at static memory, and the <code>this</code> inside a "
+            "constructor points wherever the object is being built. The heap comes from <code>new</code>, "
+            "never from the <code>*</code>. And the pointer <i>variable</i> is itself usually on the "
+            "stack.<br><br>"
+            "<b>\"No ~T() means it is never destroyed.\"</b> No. Every class has a destructor. If you do "
+            "not write one, the compiler writes one that does nothing extra. The object still dies at "
+            "the same moment, and its members' destructors still run. You write your own only when the "
+            "object owns something that needs releasing (heap memory, a file, a driver handle).<br><br>"
+            "<b>\"Destroying a pointer deletes what it points at.\"</b> No. When <code>Noisy* h</code> "
+            "goes out of scope, 8 bytes holding an address disappear and nothing else happens. That is "
+            "exactly how a leak happens, and why owners (<code>unique_ptr</code>, <code>vector</code>) "
+            "exist: they are objects whose destructor calls delete."))
+        self.add(two_col(
+            Reveal("Say it out loud", [
+                ("Why is the stack so fast?",
+                 "Allocating a frame is one subtraction from the stack pointer, and freeing it is one "
+                 "addition, however many variables the frame holds. There is no search, no lock and no "
+                 "bookkeeping, because the newest frame is always the next to go. That is also why a "
+                 "1 kHz loop's locals are free and its <code>new</code> calls are not."),
+                ("Where does a std::vector's data live?",
+                 "Both places. The vector object (three pointers, 24 bytes) lives wherever you declared it, "
+                 "usually the stack. Its elements live in a heap buffer it owns, allocated in its "
+                 "constructor or by <code>push_back</code> and freed in its destructor."),
+                ("What does the { } with no function name do?",
+                 "It opens a scope. Everything declared inside dies at its closing brace, in reverse order. "
+                 "Use it to end a lifetime early, such as releasing a lock, closing a file or stopping a "
+                 "timer, without writing a separate function."),
+                ("Where is this, in these terms?",
+                 "A pointer parameter that the compiler passes for you. For <code>a.bump()</code> it holds "
+                 "<code>&amp;a</code>, which is a stack address if a is a local, a static address if a is "
+                 "global, and a heap address if a was made with <code>new</code>. Same code, different "
+                 "address."),
+            ]),
+            right))
+
+        self.add(TryItCard("t_where"))
+        self.add(Choice(
+            "Quick check",
+            "<code>Noisy a(\"a\");  Noisy* p = &amp;a;  delete p;</code> &nbsp;What happens?",
+            [("a is destroyed early, cleanly", False,
+              "delete runs ~Noisy, then hands a's stack address to the heap allocator, which never "
+              "gave it out. And a's destructor runs again at the closing brace."),
+             ("undefined behaviour, usually a crash", True,
+              "delete is only for addresses that new returned. Here the allocator is handed a stack "
+              "address, and typically aborts with <code>free(): invalid pointer</code>. Delete what new "
+              "gave you, once, or better, let an owner do it."),
+             ("nothing: delete ignores stack pointers", False,
+              "delete cannot tell. A Noisy* is a number; nothing in it records where it came from."),
+             ("a compile error", False,
+              "It compiles. g++ 11 and later warn (<code>-Wfree-nonheap-object</code>) when they can "
+              "see it, but the type Noisy* is legal to delete, so it is not an error.")]))
+        self.finish()
+
+
+# =====================================================================
+# 2b. before Stage 0 -- the containers, in memory
+# =====================================================================
+
+_CONTAINERS = [
+    # (title, lab scenario, what it is in memory, [(operation, what happens, cost)])
+    ("std::array<T, N> and T[N]", "array",
+     "The elements <i>are</i> the object: N values side by side, wherever the array is declared (a local array "
+     "is entirely on the stack). There is no pointer and no heap, and N is fixed when compiling. Contiguous "
+     "elements are what make <code>a[i]</code> a single address calculation.",
+     [("a[i]", "address of a[0] + i × sizeof(T), then one read", "O(1)"),
+      ("a.size()", "a constant known while compiling", "O(1)"),
+      ("grow or shrink", "impossible: the size is part of the type", "—"),
+      ("LeetCode", "<code>int cnt[26]</code> letter counts, <code>bool seen[128]</code>, small fixed tables", "")]),
+    ("std::vector<T>", "vector",
+     "The object is three pointers, 24 bytes: <b>begin</b>, <b>end</b> (one past the last element) and <b>cap</b> "
+     "(one past the end of the buffer). The elements are in <i>one contiguous heap buffer</i> that the vector owns. "
+     "When the buffer is full, push_back allocates a bigger one (twice the size), moves every element, and frees "
+     "the old one, which invalidates any pointer or iterator into it.",
+     [("v[i], v.front(), v.back()", "*(begin + i), *begin, *(end − 1)", "O(1)"),
+      ("v.push_back(x)", "write at end, end++; if end == cap: new buffer, move all, free old", "O(1) amortized"),
+      ("v.pop_back()", "destroy the last element, end−−; nothing freed", "O(1)"),
+      ("v.insert(it, x) / v.erase(it)", "shift every element after it by one slot", "O(n)"),
+      ("v.reserve(n)", "allocate once, so later push_backs never move", "O(n) once"),
+      ("LeetCode", "the default for everything: dp tables, results, <code>vector&lt;vector&lt;int&gt;&gt;</code> adjacency lists", "")]),
+    ("std::stack<T>", "stack",
+     "Not a new structure: an <b>adapter</b>, a wrapper around a container <code>c</code> (a deque by default) that "
+     "exposes only its back. Last in, first out. The name has nothing to do with the stack <i>memory region</i>: "
+     "its elements are on the heap.",
+     [("st.push(x)", "c.push_back(x)", "O(1)"),
+      ("st.top()", "c.back(), the last one pushed", "O(1)"),
+      ("st.pop()", "c.pop_back(); returns nothing, so read top() first", "O(1)"),
+      ("LeetCode", "valid parentheses, monotonic stack (next greater element, histogram), iterative DFS", "")]),
+    ("std::queue<T>", "queue",
+     "An adapter around a <b>deque</b>: push at the back, pop at the front. First in, first out. It is not built on "
+     "a vector, because removing the front of a vector shifts every element.",
+     [("q.push(x)", "d.push_back(x)", "O(1)"),
+      ("q.front() / q.back()", "the oldest / the newest", "O(1)"),
+      ("q.pop()", "d.pop_front(): start moves right, nothing shifts", "O(1)"),
+      ("LeetCode", "BFS (shortest path in unweighted graphs), level-order traversal, rotting oranges", "")]),
+    ("std::deque<T>", "deque",
+     "A <b>map</b> (an array of pointers) to fixed-size <b>chunks</b> on the heap, plus start and finish positions. "
+     "Growing at either end adds a chunk; existing elements never move, so references to them stay valid. "
+     "Indexing takes two hops and the elements are not one contiguous block.",
+     [("d.push_back(x) / d.push_front(x)", "write next to finish / before start; new chunk when needed", "O(1)"),
+      ("d.pop_back() / d.pop_front()", "move finish / start; free an emptied chunk", "O(1)"),
+      ("d[i]", "map[(start + i) / chunk] then cell (start + i) % chunk", "O(1)"),
+      ("insert in the middle", "shift elements toward the nearer end", "O(n)"),
+      ("LeetCode", "sliding window maximum (monotonic deque), 0-1 BFS", "")]),
+    ("std::priority_queue<T>", "pq",
+     "A <b>vector kept in heap order</b>: picture index i's children at 2i+1 and 2i+2; every parent is ≥ its "
+     "children, so the maximum is always v[0]. It is not sorted. This \"heap\" is a data structure and has "
+     "nothing to do with heap memory.",
+     [("pq.top()", "v[0]", "O(1)"),
+      ("pq.push(x)", "push_back, then swap upward while bigger than the parent", "O(log n)"),
+      ("pq.pop()", "swap root with last, pop_back, then swap downward with the bigger child", "O(log n)"),
+      ("min-heap", "<code>priority_queue&lt;int, vector&lt;int&gt;, greater&lt;int&gt;&gt;</code> (Python's heapq is a min-heap)", ""),
+      ("LeetCode", "k-th largest (min-heap of size k), Dijkstra, merge k sorted lists, top-k frequent", "")]),
+    ("std::set<T> and std::map<K, V>", "set",
+     "A <b>red-black tree</b>: every element is its own heap node with left, right and parent pointers and a colour; "
+     "the object holds the root pointer and the size. Smaller keys go left, bigger keys right; recolouring and "
+     "rotations keep the height about log₂ n. A map's nodes hold <code>{key, value}</code>.",
+     [("s.insert(x) / s.erase(x)", "walk down comparing, attach or unlink a node, rebalance", "O(log n)"),
+      ("s.count(x) / s.find(x)", "walk down: one comparison per level", "O(log n)"),
+      ("s.lower_bound(x)", "the first key ≥ x", "O(log n)"),
+      ("for (auto x : s)", "in-order walk: keys come out sorted", "O(n) total"),
+      ("m[k]", "find k, or <i>insert</i> {k, V()} if missing", "O(log n)"),
+      ("LeetCode", "anything that needs order: next key ≥ x, running min/max (multiset), intervals", "")]),
+    ("std::unordered_set<T> and std::unordered_map<K, V>", "hash",
+     "A <b>hash table</b>: a bucket array on the heap, each bucket pointing to a short chain of nodes. "
+     "bucket = hash(key) % bucket count, so a lookup goes straight to one bucket. When size / buckets passes 1.0 "
+     "it <b>rehashes</b> into a bigger array. No order.",
+     [("h.insert(x) / h.count(x) / h.erase(x)", "hash, pick the bucket, walk its short chain", "O(1) average"),
+      ("m[k]++", "find or insert {k, 0}, then add 1", "O(1) average"),
+      ("rehash", "new bucket array, re-hang every node (nodes stay put)", "O(n), rare"),
+      ("worst case", "every key in one bucket: a chain of n", "O(n)"),
+      ("LeetCode", "two-sum, frequency counts, \"seen before?\", group anagrams, memoisation", "")]),
+]
+
+_SUMMARY = [
+    ("array", "elements inline, no heap", "O(1) [i]", "fixed size", "O(n) scan", "fixed list", "cnt[26]"),
+    ("vector", "3 pointers → one contiguous buffer", "O(1) [i]", "back O(1)*, middle O(n)", "O(n); O(log n) if sorted", "list", "default for everything"),
+    ("stack", "adapter: back of a deque", "O(1) top", "O(1) push / pop", "—", "list append / pop", "brackets, monotonic stack"),
+    ("queue", "adapter: both ends of a deque", "O(1) front / back", "O(1) push / pop", "—", "collections.deque", "BFS"),
+    ("deque", "map of pointers → fixed chunks", "O(1) [i], 2 hops", "both ends O(1)", "O(n)", "collections.deque", "sliding window max"),
+    ("priority_queue", "vector in heap order", "O(1) top", "O(log n) push / pop", "—", "heapq (min!)", "k-th largest, Dijkstra"),
+    ("set / map", "red-black tree, node per element", "O(log n)", "O(log n)", "O(log n), lower_bound", "no built-in (sortedcontainers)", "order, next ≥ x"),
+    ("unordered_set / map", "buckets + chained nodes", "O(1) avg", "O(1) avg", "O(1) avg", "set / dict", "two-sum, counts"),
+]
+
+
+class CppContainersPage(CppPage):
+    TITLE = "Before Stage 0 · Your LeetCode Containers, in Memory"
+    SUBTITLE = ("array, vector, stack, queue, deque, priority_queue, set/map and unordered_set/map: what each one is "
+                "in memory, and why each operation costs what it costs.")
+    SECTION = SEC_FOUND
+    NOTES = "C++ · containers"
+
+    def __init__(self):
+        super().__init__()
+        self.add(callout(
+            "Every container except <code>std::array</code> has two parts. The first is a <b>small fixed-size "
+            "object</b> where you declare it (on the stack, for a local): a few pointers and counts. The second is "
+            "the <b>elements on the heap</b>, which that object owns and frees in its destructor. The <i>shape</i> "
+            "of the heap part decides every cost. One contiguous buffer gives O(1) indexing but O(n) inserts in the "
+            "middle. Chunks give O(1) at both ends. A tree gives sorted order and O(log n). Hash buckets give O(1) "
+            "on average but no order. Learn the eight shapes and you can <i>derive</i> the complexity table instead "
+            "of memorising it.", "key", label="START HERE"))
+        head = "".join(f"<th align='left' style='padding:4px 10px;color:{theme.TEXT_DIM}'>{h}</th>" for h in
+                       ("container", "in memory", "access", "add / remove", "find", "Python", "LeetCode"))
+        rows = "".join(
+            "<tr>" + f"<td style='padding:4px 10px 4px 0'><code style='color:{theme.CYAN}'>{r[0]}</code></td>"
+            + "".join(f"<td style='padding:4px 10px'>{c}</td>" for c in r[1:]) + "</tr>" for r in _SUMMARY)
+        summary = Card("All eight on one table  (* amortized)")
+        summary.add(body(f"<table cellspacing='0'><tr>{head}</tr>{rows}</table>"))
+        self.add(summary)
+
+        for n, (title, scen, what, ops) in enumerate(_CONTAINERS, 1):
+            card = Card(f"{n} · {title}")
+            card.add(body(what))
+            trs = "".join(
+                f"<tr><td style='padding:3px 12px 3px 0;vertical-align:top'><code>{op}</code></td>"
+                f"<td style='padding:3px 12px;vertical-align:top'>{how}</td>"
+                f"<td style='padding:3px 0;vertical-align:top;color:{theme.ORANGE}'><b>{cost}</b></td></tr>"
+                for op, how, cost in ops)
+            card.add(body(f"<table cellspacing='0'>{trs}</table>"))
+            self.add(card)
+            self.add(WebLab("cpp_containers.html", f"s={scen},compact",
+                            f"3D · {title}: step through the code, drag to orbit", 680))
+
+        self.add(TryItCard("t_vector_growth"))
+        self.add(two_col(
+            Reveal("Say it out loud", [
+                ("Why is push_back O(1) if it sometimes copies everything?",
+                 "Because the copies get rarer as the vector grows: the buffer doubles, so after n push_backs the "
+                 "total number of element moves is 1 + 2 + 4 + … &lt; 2n. Spread over n calls, that is a constant "
+                 "per call: <i>amortized</i> O(1). A single unlucky push_back is still O(n), which is why a "
+                 "real-time loop reserves in configure()."),
+                ("Why can't you index a stack or a priority_queue?",
+                 "They are adapters: the data sits in a deque or vector you could index, but the wrapper hides it "
+                 "on purpose, so that only the operations that keep its promise (LIFO, or the max on top) are possible."),
+                ("set or unordered_set?",
+                 "unordered_set when you only ask \"is it there?\": O(1) on average. set when you need order: "
+                 "sorted iteration, the smallest or largest, or lower_bound. Also, unordered containers need a hash for "
+                 "the key; <code>std::pair</code> has none by default, so <code>set&lt;pair&lt;int,int&gt;&gt;</code> "
+                 "compiles and <code>unordered_set&lt;pair&lt;int,int&gt;&gt;</code> does not."),
+                ("Why is a vector often faster than a set, even at the same big-O?",
+                 "Contiguous memory. The CPU loads memory 64 bytes at a time, so scanning a vector brings in 16 ints "
+                 "per load and the next ones are already on their way. A set's nodes are scattered across the heap, "
+                 "so each step can be a separate slow load. For small n, a sorted vector with binary search often "
+                 "beats a set."),
+            ]),
+            Choice("Quick check",
+                   "Numbers arrive one at a time. After each one you must answer: <i>what is the smallest number seen "
+                   "so far that is ≥ x?</i> Which container?",
+                   [("vector", False, "Finding the answer is O(n), or O(log n) if you keep it sorted, but keeping it "
+                     "sorted makes every insert O(n)."),
+                    ("unordered_set", False, "O(1) insert, but it has no order, so \"the smallest ≥ x\" means "
+                     "scanning everything."),
+                    ("priority_queue", False, "It only gives you the top, not the smallest value above a threshold."),
+                    ("set + lower_bound", True, "O(log n) insert and <code>*s.lower_bound(x)</code> is exactly "
+                     "\"the smallest ≥ x\", also O(log n).")])))
+        self.finish()
+
 
 class CppBuildPage(CppPage):
     TITLE = "Stage 0 · How a C++ Program Gets Built"
@@ -1072,7 +1354,7 @@ class CppInterviewPage(CppPage):
 
 
 CPP_PAGES = [
-    CppRoadmapPage, CppBuildPage, CppOwnershipPage, CppMovePage,
+    CppRoadmapPage, CppMemoryMapPage, CppContainersPage, CppBuildPage, CppOwnershipPage, CppMovePage,
     CppInvariantPage, CppInterfacePage, CppTemplatePage,
     CppConcurrencyPage, CppRoboticsPage,
     CppProjectLoopsPage, CppProjectSchedPage, CppProjectRtPage, CppInterviewPage,

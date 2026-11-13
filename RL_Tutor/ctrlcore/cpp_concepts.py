@@ -49,6 +49,123 @@ def _t(id, title, files, expect, **kw):
 
 _TRY = [
     # ---------------------------------------------------------------- Stage 0
+    _t("t_where", "Where does each variable live? Print the addresses", [
+        ("main.cpp", r"""
+#include <cstdint>
+#include <cstdio>
+
+int g_ticks = 0;                       // STATIC: one copy, fixed address, the whole program
+
+// noinline keeps callee a real call with a real frame, even with optimisation on
+[[gnu::noinline]] std::uintptr_t callee() {
+    int local = 0;                     // STACK: in callee's frame, BELOW main's frame
+    std::printf("  stack   callee's &local = %p\n", (void*)&local);
+    return reinterpret_cast<std::uintptr_t>(&local);   // just the number, not a pointer
+}
+
+int main() {
+    int  q = 5;                        // STACK: in main's frame
+    int* p = new int(7);               // p is on the STACK; the int it points at is on the HEAP
+    int* s = &q;                       // a pointer to the STACK: it never came from new
+    static int calls = 0;              // STATIC, even though it is written inside main
+
+    std::printf("  stack   main's   &q     = %p\n", (void*)&q);
+    std::uintptr_t deeper = callee();
+    std::printf("  heap    p holds         = %p\n", (void*)p);
+    std::printf("  stack   s holds         = %p   (a pointer, pointing at the stack)\n", (void*)s);
+    std::printf("  static  &g_ticks        = %p\n", (void*)&g_ticks);
+    std::printf("  static  &calls          = %p\n", (void*)&calls);
+    std::printf("  and the pointer p itself lives at %p, on the stack\n", (void*)&p);
+
+    std::printf("stack grows down: %s\n",
+                deeper < reinterpret_cast<std::uintptr_t>(&q) ? "yes" : "no");
+    ++calls; ++g_ticks;
+    delete p;                          // p came from new: delete it exactly once
+    // delete s;                       // s did NOT come from new: never delete it
+    return 0;
+}
+""")],
+        "stack grows down: yes",
+        intro=("Every variable lives in one of three regions. <b>Stack</b>: locals and parameters, "
+               "one frame per function call. <b>Heap</b>: whatever <code>new</code> (or a vector, or "
+               "<code>make_unique</code>) allocates. <b>Static</b>: globals and <code>static</code> "
+               "variables, which exist for the whole program. This program prints a real address "
+               "from each region. Look at the comment on every line: it says which region that "
+               "variable is in, and for a pointer, where it points."),
+        predict=("Before you press Run: <code>p</code> is a pointer to a heap int. Is <code>p</code> "
+                 "itself on the heap?"),
+        after=("Three groups of numbers come out, far apart: the stack addresses are close to each "
+               "other, the heap address is somewhere else, and the static ones are somewhere else "
+               "again. <b>callee's local has a lower address than main's q</b>: a deeper call sits "
+               "lower, because the stack grows down. <b>p lives on the stack</b> (its own address is "
+               "a stack address); only the int it holds the address of is on the heap. And "
+               "<b>s</b> has exactly the same type as p, <code>int*</code>, but holds a stack "
+               "address. The type of a pointer never says which region it points into, or who "
+               "must free it. That is why the rule is about <i>origin</i>: delete exactly what "
+               "<code>new</code> returned, once.<br><br>On Linux the regions sit in the order the 3D "
+               "lab draws (code and statics low, heap above them, stack near the top). Windows "
+               "places them differently (the stack is usually lowest, the .exe's code and statics "
+               "near <code>0x7ff6…</code>), so do not read meaning into which region has the bigger "
+               "number. What carries over everywhere is that the regions are separate, the stack "
+               "grows down, and each region has its own rule for when an object dies."),
+        tasks=["Uncomment <code>delete s;</code> and Run. g++ (version 11 or later) warns that "
+               "<code>operator delete</code> is <code>called on unallocated object 'q'</code> "
+               "(<code>-Wfree-nonheap-object</code>), and the program aborts (<code>free(): invalid "
+               "pointer</code> on Linux; on Windows it may crash or quietly corrupt memory). The "
+               "compiler can only warn: the type <code>int*</code> does not record where the address "
+               "came from.",
+               "Change <code>int  q = 5;</code> to <code>static int q = 5;</code> and Run. &amp;q now "
+               "prints right next to &amp;g_ticks: <code>static</code> inside a function means static "
+               "<i>storage</i>. q is created once and keeps its value between calls. The last line "
+               "no longer means anything, because q is not on the stack any more.",
+               "Inside <code>callee</code>, add <code>volatile char big[4000000]; big[0] = 1;</code> "
+               "(4 MB in one frame; <code>volatile</code> stops the optimiser from removing it). On "
+               "Windows, where the default stack is 1 MB, the program dies with a stack overflow "
+               "inside callee and the output is lost. On Linux (8 MB) it survives; make it 10000000 "
+               "and it dies there too, with a segmentation fault."]),
+
+    _t("t_vector_growth", "Watch a vector grow: size, capacity, and the moves", [
+        ("main.cpp", r"""
+#include <cstdio>
+#include <deque>
+#include <vector>
+
+int main() {
+    std::vector<int> v;                    // begin = end = cap = null: no buffer yet
+    const int* where = v.data();           // the address of the buffer (null while empty)
+    for (int i = 1; i <= 9; ++i) {
+        v.push_back(i * 10);
+        bool moved = v.data() != where;    // did push_back switch to a NEW buffer?
+        std::printf("push_back(%2d)  size %d  capacity %2d  %s\n", i * 10, (int)v.size(), (int)v.capacity(),
+                    moved ? "<- NEW buffer: every element was moved there" : "");
+        where = v.data();
+    }
+    std::printf("v[4] = %d, back() = %d, front() = %d\n", v[4], v.back(), v.front());
+    v.clear();
+    std::printf("after clear(): size %d, capacity %d (the buffer is kept)\n", (int)v.size(), (int)v.capacity());
+    return 0;
+}
+""")],
+        "size 5  capacity  8",
+        intro=("<code>v.data()</code> is the address in the vector's <b>begin</b> pointer: where its heap buffer "
+               "starts. The loop remembers it, and after every <code>push_back</code> checks whether it changed. "
+               "A changed address means the vector had to allocate a new buffer and move every element into it, "
+               "exactly the red-dashed step in the 3D lab."),
+        predict="Before you press Run: after how many push_backs does the buffer move?",
+        after=("The buffer moves at sizes 1, 2, 3, 5 and 9, which is every time size passes a power of two, because "
+               "libstdc++ doubles the capacity (Microsoft's library grows it 1.5 times). Between those moments "
+               "push_back only writes into a free slot. Nine push_backs caused 1 + 2 + 4 + 8 = 15 element moves, "
+               "fewer than 2 × 9: that is why push_back is <i>amortized</i> O(1). <code>clear()</code> keeps the "
+               "capacity; the buffer is only freed when <code>v</code> dies."),
+        tasks=["Right after <code>std::vector&lt;int&gt; v;</code> add <code>v.reserve(9);</code> and Run. "
+               "The capacity is 9 from the start and no line says NEW buffer: one allocation, zero moves. "
+               "When you know the size in advance (n from the input in LeetCode, the number of joints in a "
+               "robot), reserve it.",
+               "Change <code>std::vector&lt;int&gt; v;</code> to <code>std::deque&lt;int&gt; v;</code>. The compiler "
+               "stops at <code>'class std::deque&lt;int&gt;' has no member named 'data'</code>: a deque has no single "
+               "buffer to point at, just chunks (see the deque card), so there is no <code>data()</code> and no "
+               "<code>capacity()</code> either."]),
+
     _t("t_include", "#include pastes text", [
         ("main.cpp", r"""
 // main.cpp
@@ -282,7 +399,9 @@ int main() {
                "member is initialised <i>in the order the members are declared</i>, from the initializer "
                "list if it names it, otherwise from its default initializer; (3) the body "
                "<code>{ }</code> runs. Destruction is the mirror image: the destructor body, then the "
-               "members in reverse order, then the memory is released."),
+               "members in reverse order, then the memory is released. If you write no destructor at "
+               "all, the compiler writes one for you: it prints nothing, but the object and its "
+               "members are still destroyed at exactly the same moments."),
         tasks=["Comment out <code>delete h;</code> and Run. \"destroy heap\" never appears: nothing ever "
                "calls its destructor. That is a <b>leak</b>.",
                "Now fix it the modern way. Add <code>#include &lt;memory&gt;</code> at the top, change the "

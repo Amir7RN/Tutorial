@@ -52,7 +52,7 @@ The numerics are in `ctrlcore/robokin.py` and `ctrlcore/robodyn.py`; checks
 null-space torques produce no hand acceleration, energy conservation, IK,
 force closure) are in `tests/test_robotics.py`.
 
-### C++ for Robotics block (pages 150–162)
+### C++ for Robotics block (pages 150–164)
 
 The chapter after Manipulation & Mobility. Its premise is that the gap is software
 *design*, not syntax: a class exists to protect an invariant, the header is the
@@ -63,13 +63,13 @@ lock-free hand-off to a slow reader.
 
 | Section | Pages | Covers |
 |---|---|---|
-| C++ · Foundations | 150–153 | roadmap + progress tracker; the build (translation units, ODR, linker, CMake); ownership (stack/heap, RAII, unique/shared/weak_ptr); copy/move/const |
-| C++ · Design | 154–156 | invariants and encapsulation, header reconstruction; interfaces, factories, composition; templates |
-| C++ · Real-Time & Robotics | 157–158 | atomics, acquire/release, SPSC queue, clean thread shutdown; Eigen pitfalls, ros2_control lifecycle |
-| C++ · Project | 159–162 | cascade loops, Scheduler, config factory, triple buffer, mutation-graded tests, interview drill |
+| C++ · Foundations | 150–155 | roadmap + progress tracker; where objects live (stack, heap, static; a pointer can point into any of them); the LeetCode containers in memory (array, vector, stack, queue, deque, priority_queue, set/map, unordered_set/map); the build (translation units, ODR, linker, CMake); ownership (stack/heap, RAII, unique/shared/weak_ptr); copy/move/const |
+| C++ · Design | 156–158 | invariants and encapsulation, header reconstruction; interfaces, factories, composition; templates |
+| C++ · Real-Time & Robotics | 159–160 | atomics, acquire/release, SPSC queue, clean thread shutdown; Eigen pitfalls, ros2_control lifecycle |
+| C++ · Project | 161–164 | cascade loops, Scheduler, config factory, triple buffer, mutation-graded tests, interview drill |
 
 - **From zero, for newcomers.** Each stage opens with Try-it cards (`ctrlcore/cpp_concepts.py`):
-  13 short programs that run as-is (`#include` as text pasting, a class from zero, `this`,
+  15 short programs that run as-is (the address of a variable in each memory region, a vector growing, `#include` as text pasting, a class from zero, `this`,
   constructor/destructor timing, references and pointers, `unique_ptr`, the six special
   members, `= default`/`= delete`, `const`, `explicit`, `virtual`, templates, threads), each with
   edits to try that break it on purpose. Stage 0 also has a header-vs-.cpp linkage table
@@ -85,7 +85,11 @@ lock-free hand-off to a slow reader.
 - **Editor**: Tab/Shift+Tab indent and dedent lines or selections, Enter keeps the indent
   and opens `{}` blocks, a `}` typed on a blank line dedents, brackets auto-close, Ctrl+/ toggles comments,
   Alt+↑/↓ moves lines, Ctrl+Enter runs Check.
-- **Labs**: `cpp_memory.html` shows stack, heap and static memory in 3D, stepped through real code
+- **Labs**: `cpp_containers.html` steps through eight containers in 3D (the object on the stack, what it
+  owns on the heap: buffer growth, deque chunks, heap order, red-black rotations, hash buckets and rehash);
+  `cpp_address_space.html` draws one program's memory as a 3D tower (code, static,
+  heap growing up, stack growing down) and steps through the Noisy lifetime program, pointers
+  into each region, and stack growth up to the stack limit; `cpp_memory.html` shows stack, heap and static memory in 3D, stepped through real code
   (new/delete, leaks, RAII, unique_ptr, shared_ptr, dangling pointers, copy vs move, vtables);
   `cpp_build.html` takes code through preprocess, compile and link with mistakes you can switch on; `cpp_rt.html`
   animates the SPSC ring and triple buffer, and shows a 32 kHz tick budget.

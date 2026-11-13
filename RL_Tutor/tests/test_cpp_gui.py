@@ -159,7 +159,7 @@ class Pages(unittest.TestCase):
         from app.pages import LESSON_CLASSES
         from app.pages.cpp_course import CPP_PAGES, ExerciseCard
         from app.widgets.step_lab import STEPLAB_DIR
-        for name in ("cpp_memory.html", "cpp_build.html", "cpp_rt.html"):
+        for name in ("cpp_memory.html", "cpp_build.html", "cpp_rt.html", "cpp_address_space.html", "cpp_containers.html"):
             src = open(os.path.join(STEPLAB_DIR, name), encoding="utf-8").read()
             self.assertFalse(re.findall(r'<script src="http', src), name)
         self.assertEqual([c.NUM for c in CPP_PAGES], list(range(150, 150 + len(CPP_PAGES))))

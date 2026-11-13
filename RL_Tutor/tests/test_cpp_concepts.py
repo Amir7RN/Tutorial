@@ -63,6 +63,9 @@ EDITS = [
      "}                                            // <-- this", "log", "expected ';' after class definition"),
     ("t_this", "main.cpp", "        ++n;                // the compiler", "        ++this->n;          // the compiler",
      "out", "n = 3"),
+    ("t_vector_growth", "main.cpp", "    std::vector<int> v;  ", "    std::vector<int> v; v.reserve(9);", "not", "NEW buffer"),
+    ("t_vector_growth", "main.cpp", "    std::vector<int> v;  ", "    std::deque<int> v;   ", "log",
+     "'class std::deque<int>' has no member named 'data'"),
     ("t_lifetime", "main.cpp", "    delete h;  ", "    // delete h;  ", "not", "destroy   heap"),
     ("t_lifetime", "main.cpp", '        std::printf("  inner block ends\\n");',
      '        if (true) return 0;\n        std::printf("  inner block ends\\n");', "out", "- destroy   a"),
@@ -129,6 +132,20 @@ class TryIts(_TempDirs):
                 else:
                     self.assertTrue(ok, log)
                     self.assertNotIn(want, out)
+
+    def test_deleting_a_stack_pointer_is_flagged(self):
+        """t_where's first task: g++ >= 11 warns about delete on a stack address."""
+        import subprocess
+        ver = subprocess.run([cc.find_gxx(), "-dumpversion"], capture_output=True, text=True).stdout
+        if int((ver.strip() or "0").split(".")[0]) < 11:
+            self.skipTest("-Wfree-nonheap-object needs g++ 11")
+        files = dict(k.TRYITS["t_where"].files)
+        old = "    // delete s; "
+        self.assertIn(old, files["main.cpp"])
+        files["main.cpp"] = files["main.cpp"].replace(old, "    delete s;    ")
+        ok, log, _ = k.run_tryit(k.TRYITS["t_where"], files)
+        self.assertTrue(ok, log)
+        self.assertIn("free-nonheap-object", log)
 
     def test_destruction_order_is_what_the_card_explains(self):
         ok, _, out = k.run_tryit(k.TRYITS["t_lifetime"])

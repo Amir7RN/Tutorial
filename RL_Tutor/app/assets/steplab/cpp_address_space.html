@@ -1,0 +1,744 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Address Space in 3D</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.55fr) minmax(340px,1fr)}
+  .view{min-height:520px;cursor:grab;position:relative}
+  .view canvas{position:absolute;left:4px;top:4px}
+  .view.drag{cursor:grabbing}
+  .code{font-family:var(--mono);font-size:.78rem;line-height:1.5;background:var(--inset);border:1px solid var(--line);
+        border-radius:8px;padding:6px 0;overflow-x:auto;white-space:pre}
+  .code div{padding:0 10px 0 6px;border-left:3px solid transparent}
+  .code div.on{background:var(--hi);border-left-color:var(--a)}
+  .code .ln{display:inline-block;width:22px;color:var(--grey);text-align:right;margin-right:10px;user-select:none}
+  .code .cm{color:var(--grey);font-style:italic}
+  .note{font-size:.92rem;line-height:1.5;min-height:7em}
+  .note b{color:var(--a)}
+  .term{font-family:var(--mono);font-size:.78rem;line-height:1.45;background:#0b0e13;color:#d7dde6;border-radius:8px;
+        padding:6px 10px;white-space:pre;min-height:5.5em;max-height:9em;overflow-y:auto}
+  .term .new{color:#7ee2a8;font-weight:700}
+  .term .dim{color:#6b7584}
+  .sel{display:flex;flex-wrap:wrap;gap:6px}
+  .sel button{font-size:.8rem;padding:4px 9px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row input[type=range]{flex:1;min-width:120px;accent-color:var(--a)}
+  .tag{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+  .gloss{margin:0}
+  .gloss dt{font-family:var(--mono);font-weight:700;font-size:.82rem;color:var(--a);margin-top:6px}
+  .gloss dd{margin:2px 0 0;font-size:.86rem;line-height:1.45}
+  .note code,.gloss code{font-family:var(--mono);font-size:.82em;background:var(--inset);border:1px solid var(--line);border-radius:4px;padding:0 3px}
+  .kbd{font-family:var(--mono);font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1 id="title">Address space in 3D</h1>
+    <p>One program's memory as a tower: code and static data at the bottom, the heap growing up, the stack growing down from the top.
+       An arrow always means <b>"holds the address of"</b>. Drag to orbit, wheel to zoom. <span class="kbd">←</span> <span class="kbd">→</span> step · <span class="kbd">space</span> play</p></div>
+  <div class="sel" id="sel"></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card view" id="view"><canvas id="cv"></canvas></div>
+      <div class="card">
+        <div class="row">
+          <button id="prev">◀ back</button><button class="primary" id="next">step ▶</button>
+          <button id="play">play</button>
+          <input type="range" id="scrub" min="0" max="0" value="0">
+          <span class="tag" id="count">1 / 1</span>
+          <button id="cam">reset view</button><button id="front">front view</button>
+        </div>
+        <div class="legend" style="margin-top:6px">
+          <span><i class="sw" style="background:var(--a)"></i>live object on the stack</span>
+          <span><i class="sw" style="background:var(--c)"></i>live heap block</span>
+          <span><i class="sw" style="background:var(--d)"></i>static object</span>
+          <span><i class="sw" style="background:var(--grey)"></i>bytes reserved, no object yet</span>
+          <span><i class="sw" style="background:var(--b)"></i>destructor running</span>
+          <span><i class="sw" style="background:var(--bad)"></i>gone / freed / dangling</span>
+          <span><i class="sw" style="background:var(--e)"></i>arrow: "holds the address of"</span>
+          <span><i class="sw" style="background:var(--f)"></i>reference / this</span>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card"><p class="h">the code</p><div class="code" id="code"></div></div>
+      <div class="card"><p class="h">what just happened</p><div class="note" id="note"></div></div>
+      <div class="card" id="gcard"><p class="h">words used in this step</p><dl class="gloss" id="gloss"></dl></div>
+      <div class="card"><p class="h">program output so far</p><div class="term" id="term"></div></div>
+    </div>
+  </div>
+</div>
+<script>
+/* ===================================================================
+   Scenario DSL. Each step is a full snapshot of memory.
+     F(fn, ...vars)            a stack frame; frames are listed oldest (top of the tower) first
+     V(name, type, value, o)   a variable in a frame
+         o.st  'raw'  bytes reserved, no object yet (grey wire)
+               'live' (default) · 'dying' destructor running · 'dead' gone, bytes left behind
+         o.to  'v:frame.var' | 'h:id' | 's:id'   draws an arrow: this variable holds that address
+         o.ref true  reference or this (teal arrow) · o.blk true  lives inside a { } block
+     H(id, label, value, o)    a heap block, o.st 'live' | 'dying' | 'freed', o.w width, o.to arrow
+     G(id, label, value, o)    a static object (globals, static locals, string literals)
+     S(line, note, o)          o.stack, o.heap, o.stat, o.run (code block to light up),
+                               o.pr (text the step prints), o.bad (keys drawn as errors), o.ghost
+   =================================================================== */
+const F = (fn, ...vars) => ({ fn, vars });
+const V = (n, t, v, o = {}) => ({ n, t, v, st: 'live', ...o });
+const H = (id, label, v, o = {}) => ({ id, label, v, st: 'live', ...o });
+const G = (id, label, v, o = {}) => ({ id, label, v, st: 'live', ...o });
+const S = (line, note, o = {}) => ({ line, note, stack: [], heap: [], stat: [], ...o });
+
+const SC = {};
+
+/* words a newcomer meets in the notes; each step lists the ones it uses */
+const GLOSS = {
+  'pointer': 'A variable that holds an <i>address</i>: a number saying where something is in memory. <code>T*</code> means "pointer to a T". <code>&amp;x</code> gives the address of x; <code>*p</code> (or <code>p-&gt;member</code>) goes to that address. A pointer says nothing about which region it points into.',
+  'struct': 'A type you define yourself: a blueprint listing the members every object of that type has. <code>struct</code> and <code>class</code> are the same thing, except that struct members are public by default.',
+  'member': 'A variable that lives inside each object of a type. Every Noisy has its own <code>name</code>.',
+  'constructor': 'The function that runs automatically when an object is created, to set it up. It has the type\'s name and no return type. You never call it by name.',
+  'destructor': '<code>~TypeName()</code>. It runs automatically when the object dies. If you write none, the compiler writes an empty one, and the object still dies at the same moment.',
+  'const': 'Means "read-only through this name". <code>const char* p</code>: p itself may be changed to point elsewhere, but the characters it points at may not be changed through p.',
+  'string literal': 'Text written in double quotes in the source code, such as <code>"a"</code>. The compiler stores its characters, plus a hidden 0 byte marking the end, inside the program file. At run time they sit in static memory, read-only, for the whole program. Its type is <code>const char[N]</code>; used as a value, it turns into the address of its first character.',
+  'parameter': 'A variable a function receives from its caller (n in the constructor). It lives in that call\'s frame and dies when the call returns.',
+  'initializer list': 'The <code>: member(value), …</code> between a constructor\'s <code>)</code> and its <code>{</code>. It gives each member its starting value before the body runs.',
+  'compile': 'Translating the whole source code into machine code, once, before the program runs (that is g++). Running the program is a separate, later event, and that is what this tower shows.',
+  'static storage': 'Memory reserved when the program starts and kept until it exits. It holds globals, <code>static</code> variables and string literals. Its size is fixed when the program is compiled.',
+  'global': 'A variable declared outside every function (g here). There is one copy, in static storage. Its constructor runs before main.',
+  'frame': 'The block of stack memory for one function call: its parameters, its local variables and the address to return to. It is pushed when the call starts and popped when it returns, and everything in it dies then.',
+  'stack pointer': 'A CPU register (SP) holding the address of the bottom of the newest frame. Moving it down by N bytes creates a frame; moving it back up removes the frame. That is one instruction either way.',
+  'this': 'A hidden pointer parameter of every member function and constructor: the address of the object the function is working on. In <code>a.bump()</code>, <code>this == &amp;a</code>. One copy of the code serves every object.',
+  'scope': 'A region of code between <code>{</code> and <code>}</code>. Variables declared inside it die at its closing brace, in reverse order.',
+  'heap': 'A large pool of memory run by an allocator. <code>new</code> asks it for bytes and gets an address back; <code>delete</code> gives them back. Nothing on the heap is ever freed automatically, unless an owner object does it.',
+  'new': '<code>new T(args)</code>: get <code>sizeof(T)</code> bytes from the heap, run T\'s constructor in them, and return their address as a <code>T*</code>.',
+  'delete': '<code>delete p</code>: run the destructor of the object at p, then give its bytes back to the heap. Only for an address that <code>new</code> returned, and exactly once.',
+  'dangling': 'A pointer that still holds an address, but the object at that address is gone. Following it is undefined behaviour.',
+  'undefined behaviour': 'Code for which the C++ rules promise nothing: it may seem to work, crash, or quietly corrupt data, and it can change from run to run.',
+  'reference': '<code>int&amp; r = q;</code>: another name for an existing variable. It cannot be null and cannot later refer to something else.',
+  'stack overflow': 'The stack has a fixed size (about 1 MB on Windows, 8 MB on Linux). A chain of calls or a local array that needs more than that crashes the program.',
+  'unique_ptr': '<code>std::unique_ptr&lt;T&gt;</code>: an object holding a heap address whose destructor calls delete. The heap object dies when its owner does, and you never write delete.',
+  'factory': 'A function whose job is to create an object and hand it to the caller, often choosing the exact type at run time (for example, from a config file).',
+  'vector': '<code>std::vector&lt;T&gt;</code>: a small object (three pointers) that owns a heap buffer of Ts, grows it as needed, and frees it in its destructor.',
+};
+
+/* ------------------------------------------------------------------ 1 */
+{
+  const lit = G('lit', 'string literals', '"global" "a" "b" "c" …', { t: 'const char[]', w: 4.6 });
+  const g = (st = 'live') => G('g', 'g', st === 'raw' ? '(no object yet)' : 'name="global"',
+                               { t: 'Noisy', st, an: 'g.name', to: st === 'raw' || st === 'dead' ? null : 's:lit' });
+  const run = F('startup');
+  const mainF = (a, b, c, h) => F('main', a, b, c, h);
+  const A = (st = 'live') => V('a', 'Noisy', st === 'raw' ? '(raw bytes)' : 'name="a"', { st });
+  const Bv = (st = 'live') => V('b', 'Noisy', st === 'raw' ? '(raw bytes)' : 'name="b"', { st, blk: true });
+  const Cv = (st = 'live') => V('c', 'Noisy', st === 'raw' ? '(raw bytes)' : 'name="c"', { st, blk: true });
+  const Hp = (v = '?', o = {}) => V('h', 'Noisy*', v, { st: v === '?' ? 'raw' : 'live', ...o });
+  const raw4 = () => mainF(A('raw'), Bv('raw'), Cv('raw'), Hp());
+  const ctor = (who, txt, st = 'live') => F('Noisy::Noisy', V('this', 'Noisy*', '&' + who, { to: who === 'g' ? 's:g' : 'v:main.' + who, ref: true, st, w: 2.8 }),
+                                                       V('n', 'const char*', txt, { to: 's:lit', st, w: 3.0 }));
+  SC.noisy = { title: 'Your Noisy program: who lives where, and when each one dies',
+    fns: ['startup', 'main()', 'f()', 'Noisy::Noisy', '~Noisy'],
+    code: [
+'#include <cstdio>',
+'struct Noisy {',
+'    const char* name;',
+'    Noisy(const char* n) : name(n) { printf("+ construct %s", name); }',
+'    ~Noisy()                      { printf("- destroy %s", name); }',
+'};',
+'Noisy g("global");          // static storage',
+'void f() {',
+'    Noisy local("f\'s local");',
+'    printf("f is returning");',
+'}',
+'int main() {',
+'    printf("main starts");',
+'    Noisy a("a");',
+'    {                       // a block: a new scope',
+'        Noisy b("b");',
+'        Noisy c("c");',
+'        printf("inner block ends");',
+'    }                       // c dies, then b',
+'    f();',
+'    Noisy* h = new Noisy("heap");',
+'    printf("deleting heap");',
+'    delete h;',
+'    printf("main ends");',
+'    return 0;',
+'}                           // a dies; then g, after main'],
+    steps: [
+ S([], '<b>How to read this picture.</b> The tall box is all the memory your program uses while it runs, drawn as one tower: low addresses at the bottom, high addresses at the top. Each coloured layer is a <b>region</b>: CODE, STATIC, HEAP and STACK. Every small box that will appear is one variable or object, meaning some bytes at some address. The text on top of a box says <i>name : type</i>, and the text on its front says what those bytes hold right now.<br><br>An <b>arrow</b> always means <i>"holds the address of"</i>. It starts at a variable that stores an address (a pointer, a reference, or <code>this</code>), and its head lands on the thing at that address. The small label in the middle reads it out: <code>this → g</code> means "the variable this holds the address of g". The first three steps explain the code itself. The program starts running at step 5.',
+   { terms: ['pointer'] }),
+ S([2, 3, 4, 5, 6], '<b>Lines 2 to 6 define a type, not a variable.</b> <code>struct Noisy { … };</code> is a blueprint. It says what every Noisy object will contain (one <b>member</b>, <code>name</code>), which function runs when one is created (the <b>constructor</b>, line 4), and which runs when one dies (the <b>destructor</b>, line 5). Writing the blueprint uses no memory, so the tower stays empty. Memory is used only when you make an object from it, as on lines 7, 9, 14, 16, 17 and 21. Each Noisy object is 8 bytes: just the one member, a pointer.',
+   { terms: ['struct', 'member', 'constructor', 'destructor'] }),
+ S(3, '<b>Why <code>const char* name</code>, and not a string?</b> Read the type right to left: name is a <b>pointer</b> (<code>*</code>) to <b>char</b>s (single characters) that are <b>const</b> (they may not be changed through name). So name does <i>not</i> hold any text. It holds an <i>address</i>, the place where some text begins, in 8 bytes.<br><br>That is enough here because every name this program uses is written in double quotes, like <code>"a"</code>. Text in double quotes is a <b>string literal</b>: the compiler stores those characters (plus an invisible 0 byte that marks the end) inside the program file itself, and while the program runs they sit in STATIC memory, shown purple at the bottom, for the whole run. So name only needs to remember where that text already is. Nothing is copied or allocated, and the address can never become invalid. <code>printf("%s", name)</code> goes to that address and prints characters until it reaches the 0.<br><br><b>With <code>std::string name;</code></b> each object would keep its own copy of the text. That is what you use in real code when the text comes from a file, a user or a network message, because nobody guarantees that text stays alive. Here <code>const char*</code> keeps the object to one pointer, and it gives you an arrow you can follow.',
+   { stat: [lit], terms: ['pointer', 'const', 'string literal'] }),
+ S(4, '<b>The constructor, piece by piece:</b> <code>Noisy(const char* n) : name(n) { printf(…); }</code><br>• <b>Noisy( … )</b>: it has the type\'s own name and no return type. That is how C++ recognises a constructor.<br>• <b>const char* n</b> is its <b>parameter</b>: whoever creates a Noisy hands it the address of some text. <code>Noisy a("a")</code> hands it the address of the literal "a".<br>• <b>: name(n)</b> is the <b>member initializer list</b>. It means "start the member name with the value n", and it runs before the body. The result is the same as writing <code>name = n;</code> inside the body, but the member is initialised directly instead of being created first and overwritten afterwards. For const members and references it is the only way.<br>• <b>{ printf(…); }</b> is the body, which runs last.<br>So after the constructor, the object\'s name holds the same address n held: both point at the same text.',
+   { stat: [lit], terms: ['constructor', 'parameter', 'initializer list'] }),
+ S(7, '<b>First compile, then run.</b> C++ does not run your file line by line. Before anything runs, the compiler (g++) translates the <i>whole</i> program into machine code, which becomes the CODE region at the bottom. It also works out exactly how many bytes every global needs. That happened earlier, on your disk. What you see now is the program <i>running</i>.<br><br>When you start the program, the operating system loads the machine code and reserves the whole STATIC region in one go: 8 bytes for <b>g</b> and the bytes of the string literals. That is why g\'s bytes exist from the very first instant. But bytes are not yet an object: g only becomes a Noisy once its constructor has run on those bytes, and nothing has run yet. That is why g is drawn grey, reserved but not built. The STACK holds one frame for the startup code, a hidden function the compiler adds that runs <i>before</i> main.',
+   { stack: [run], stat: [g('raw'), lit], run: 'startup', terms: ['compile', 'static storage', 'global', 'frame'] }),
+ S([7, 4], '<b>Before main, the startup code builds g.</b> Calling the constructor is an ordinary function call, so a new <b>frame</b> appears on the stack, just below startup\'s. A frame is the scratch space for one function call, and it holds that call\'s parameters and local variables. This one holds two variables, and each draws one arrow:<br>• <b>this</b> (teal, <code>this → g</code>) is a hidden parameter the compiler passes: the address of the object being built. Here that is <code>&amp;g</code>, an address down in STATIC memory. So a pointer does not mean heap; this one points at static memory.<br>• <b>n</b> (pink, <code>n → string literals</code>) holds the address of the text "global".<br>Then <code>: name(n)</code> copies that address into g\'s member, so g gets its own arrow (<code>g.name → string literals</code>) and turns purple: it is now a real Noisy. Two variables now hold the same address. That is fine, because pointing at something does not own it.',
+   { stack: [run, ctor('g', '"global"')], stat: [g(), lit], run: 'Noisy::Noisy', pr: '  + construct global', terms: ['this', 'frame', 'parameter'] }),
+ S(4, '<b>The constructor returns, and its frame is removed</b> (orange means "dying"). <code>this</code> and <code>n</code> were the constructor\'s parameters, and parameters are local variables of their function: they exist only while that call is running. At the constructor\'s closing brace they disappear, and so do their two arrows. g is not affected: it keeps its member name and its arrow, because g lives in STATIC memory, not in that frame.<br><br>This is why this and n "vanish" before main starts: they never belonged to main. They belonged to one call of the constructor, and that call is over.',
+   { stack: [run, ctor('g', '"global"', 'dying')], stat: [g(), lit], run: 'Noisy::Noisy', terms: ['frame', 'parameter'] }),
+ S(13, '<b>main starts.</b> The startup code calls main, so main gets a frame. The compiler already knows every local variable main will ever have (a, b, c and h), so it reserves room for all of them at once when main is entered. That costs one instruction, which moves the <b>stack pointer</b> (SP, on the right) down. The four slots are grey: the bytes are there, but no constructor has run in them yet. b and c can only be <i>used</i> inside the <code>{ }</code> block, but their bytes are part of main\'s frame from the start.',
+   { stack: [run, raw4()], stat: [g(), lit], run: 'main()', pr: 'main starts', terms: ['frame', 'stack pointer'] }),
+ S([14, 4], '<b>Noisy a("a")</b> runs the same constructor again, now with <b>this = &amp;a</b> (teal arrow up into main\'s frame, <code>this → a</code>) and <b>n</b> = the address of the literal "a". This time the object is on the STACK, inside main\'s frame. It is the same machine code as for g: <code>this</code> is how one function knows which object it is building. That is exactly the hidden this from the Counter program.',
+   { stack: [run, mainF(A('raw'), Bv('raw'), Cv('raw'), Hp()), ctor('a', '"a"')], stat: [g(), lit], run: 'Noisy::Noisy', pr: '  + construct a', terms: ['this'] }),
+ S(16, '<b>The constructor has returned</b> (its frame is gone, as for g), <b>and inside the block b is built</b> the same way. That constructor\'s frame is not drawn again. The <code>{ }</code> on line 15 has no function name. It is just a <b>scope</b>: a region of code that decides when the variables declared inside it die. Use one when you want something to end early, for example to release a lock or close a file before the rest of the function runs.',
+   { stack: [run, mainF(A(), Bv(), Cv('raw'), Hp())], stat: [g(), lit], run: 'Noisy::Noisy', pr: '  + construct b', terms: ['scope'] }),
+ S(17, '<b>c is built.</b> There are now three live Noisy objects on the stack (a, b, c) and one in static memory (g). All four names point into the same string-literal area.',
+   { stack: [run, mainF(A(), Bv(), Cv(), Hp())], stat: [g(), lit], run: 'Noisy::Noisy', pr: '  + construct c' }),
+ S(18, '<b>The last line inside the block.</b>',
+   { stack: [run, mainF(A(), Bv(), Cv(), Hp())], stat: [g(), lit], run: 'main()', pr: '  inner block ends' }),
+ S([19, 5], '<b>The block\'s closing brace.</b> The compiler put destructor calls here for you: <b>~Noisy for c, then for b</b>, the reverse of creation, like taking plates off a stack. If you had not written <code>~Noisy</code>, the compiler would have written an empty one: the objects would still die here, you just would not see a print.',
+   { stack: [run, mainF(A(), Bv('dying'), Cv('dying'), Hp())], stat: [g(), lit], run: '~Noisy', pr: '  - destroy   c\n  - destroy   b', terms: ['destructor', 'scope'] }),
+ S([20, 8], '<b>f() is called</b>, and its frame is pushed <i>below</i> main\'s: the stack grows <b>down</b>, toward lower addresses, and SP moves down with it. b and c are gone, but their bytes are still part of main\'s frame, so the slots are grey again. The compiler may reuse them later.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp()), F('f', V('local', 'Noisy', '(raw bytes)', { st: 'raw' }))], stat: [g(), lit], run: 'f()', terms: ['frame', 'stack pointer'] }),
+ S(9, '<b>local is built</b> inside f\'s frame.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp()), F('f', V('local', 'Noisy', 'name="f\'s local"'))], stat: [g(), lit], run: 'Noisy::Noisy', pr: "  + construct f's local" }),
+ S(10, '<b>f prints, about to return.</b>',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp()), F('f', V('local', 'Noisy', 'name="f\'s local"'))], stat: [g(), lit], run: 'f()', pr: '  f is returning' }),
+ S([11, 5], '<b>f\'s closing brace</b>: ~Noisy runs for local, then the whole frame is popped by moving the stack pointer back up. That is one instruction, however much the frame holds. This is why the stack is so fast.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp()), F('f', V('local', 'Noisy', 'name="f\'s local"', { st: 'dying' }))], stat: [g(), lit], run: '~Noisy', pr: "  - destroy   f's local" }),
+ S([21, 4], '<b><code>new Noisy("heap")</code></b> does three things: it asks the <b>heap</b> for 8 bytes, runs the constructor in them, and gives back their address. Two separate things now exist. The pointer <b>h</b> is an ordinary local variable in main\'s <i>stack</i> frame, with a name. The Noisy object is on the <i>heap</i>, with no name of its own: the only way to reach it is through the address in h (pink arrow <code>h → Noisy</code>). <b>The heap came from <code>new</code>, not from the <code>*</code></b> in <code>Noisy*</code>.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp('0x…a0', { to: 'h:obj' }))], heap: [H('obj', 'Noisy (no name)', 'name="heap"', { to: 's:lit', an: 'name' })], stat: [g(), lit], run: 'Noisy::Noisy', pr: '  + construct heap', terms: ['heap', 'new'] }),
+ S(21, '<b>Why would anyone put it on the heap?</b> In <i>this</i> program there is no good reason: <code>Noisy h2("heap");</code> on the stack would do the same job, faster, and with no delete to forget. It is here only to show the difference. The heap is worth using when one of these is true:<br><b>1. The object must outlive the function that creates it.</b> A stack object always dies at its function\'s closing brace. A heap object lives until someone deletes it, so a function can build it and hand it back. The next walkthrough, "Why put an object on the heap?", shows this step by step.<br><b>2. How many, or how big, is only known while running.</b> For example, the number of joints read from a config file. <code>std::vector</code> handles this by keeping its elements on the heap.<br><b>3. It is too big for the stack</b> (about 1 MB on Windows): a 50 MB map or a long log buffer.<br><b>4. The exact type is chosen while running.</b> For example, a PID or an impedance controller picked from a config file and stored as a <code>Controller*</code>. That is the factory in the project pages.<br>In modern C++ you get the heap through an owner (<code>std::vector</code>, <code>std::unique_ptr</code>), so the delete is never yours to forget.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp('0x…a0', { to: 'h:obj' }))], heap: [H('obj', 'Noisy (no name)', 'name="heap"', { to: 's:lit', an: 'name' })], stat: [g(), lit], run: 'main()', terms: ['heap', 'vector', 'factory', 'unique_ptr'] }),
+ S(22, '<b>Nothing frees the heap object by itself.</b> No closing brace belongs to it. It stays alive until someone calls <code>delete</code> with its address.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp('0x…a0', { to: 'h:obj' }))], heap: [H('obj', 'Noisy (no name)', 'name="heap"', { to: 's:lit', an: 'name' })], stat: [g(), lit], run: 'main()', pr: '  deleting heap' }),
+ S([23, 5], '<b><code>delete h</code></b> does two things: it runs ~Noisy on the heap object, then gives its bytes back to the heap. <b>h itself is not changed</b>: it still holds 0x…a0, which now points at memory nobody owns (red, dashed arrow). That is a <b>dangling</b> pointer. Reading through it is undefined behaviour, and deleting it a second time corrupts the heap.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp('0x…a0 ✗', { to: 'h:obj' }))], heap: [H('obj', 'Noisy (freed)', 'name="heap"', { st: 'freed' })], stat: [g(), lit], run: '~Noisy', pr: '  - destroy   heap', terms: ['delete', 'dangling', 'undefined behaviour'] }),
+ S(24, '<b>main is about to end.</b> The heap object is gone, a is still alive, and g has been alive the whole time.',
+   { stack: [run, mainF(A(), Bv('raw'), Cv('raw'), Hp('0x…a0 ✗', { to: 'h:obj' }))], stat: [g(), lit], run: 'main()', pr: 'main ends' }),
+ S([26, 5], '<b>main\'s closing brace</b>: ~Noisy for a, then main\'s frame is popped. h disappears too, but h is only a pointer, and destroying a pointer never deletes what it points at. That is exactly how a forgotten <code>delete</code> becomes a leak.',
+   { stack: [run, mainF(A('dying'), Bv('raw'), Cv('raw'), Hp('0x…a0 ✗'))], stat: [g(), lit], run: '~Noisy', pr: '  - destroy   a' }),
+ S([26, 7], '<b>After main returns</b>, the startup code destroys static objects, in reverse order of construction. g is the last object to die. Then the program exits, and the operating system takes back the whole tower.',
+   { stack: [run], stat: [g('dying'), lit], run: '~Noisy', pr: '  - destroy   global', terms: ['static storage'] }),
+ S(26, '<b>Three regions, three rules for "when does it die".</b> <b>Stack</b>: at the closing brace, automatically, in reverse order. <b>Heap</b>: when someone calls delete, either you or an owner such as unique_ptr. <b>Static</b>: after main returns. The region is decided by <i>how</i> the object was created (a local, <code>new</code>, or a global), never by whether you hold a pointer to it.',
+   { stack: [], stat: [g('dead'), lit], run: '' }),
+]};
+}
+
+/* ------------------------------------------------------------------ 1b */
+{
+  const lit = G('lit', 'string literals', '"stack one" "heap one"', { t: 'const char[]', w: 4.6 });
+  const Fd = (fn, ...vars) => ({ fn, vars, dead: true });
+  const M = (a, b) => F('main', a, b);
+  const Ar = () => V('a', 'Noisy*', '?', { st: 'raw' });
+  const Br = () => V('b', 'Noisy*', '?', { st: 'raw' });
+  const obj = (st = 'live') => H('obj', st === 'freed' ? 'Noisy (freed)' : 'Noisy (no name)', 'name="heap one"', { st, to: st === 'live' || st === 'dying' ? 's:lit' : null, an: 'name' });
+  SC.why_heap = { title: 'Why put an object on the heap? It can outlive its function',
+    fns: ['main()', 'makeOnStack', 'makeOnHeap', 'Noisy::Noisy', '~Noisy'],
+    code: [
+'struct Noisy { /* the same as before */ };',
+'Noisy* makeOnStack() {',
+'    Noisy s("stack one");     // lives in this frame',
+'    return &s;                // BUG: s dies at the next }',
+'}',
+'Noisy* makeOnHeap() {',
+'    return new Noisy("heap one");   // lives until delete',
+'}',
+'int main() {',
+'    Noisy* a = makeOnStack(); // a dangles',
+'    Noisy* b = makeOnHeap();  // b points at a live object',
+'    delete b;                 // WE decide when it dies',
+'    // modern: auto b = std::make_unique<Noisy>("heap one");',
+'}'],
+    steps: [
+ S(9, '<b>The question:</b> a function wants to <i>create</i> an object and hand it to its caller. This is very common, and it is called a <b>factory</b>: "read the config file and build me the right controller". Here are two attempts. makeOnStack builds the object as a local variable. makeOnHeap builds it with <code>new</code>. main has two pointers, a and b, to receive the results.',
+   { stack: [M(Ar(), Br())], stat: [lit], run: 'main()', terms: ['factory', 'pointer'] }),
+ S([10, 2, 3], '<b>makeOnStack is called</b> and gets a frame below main\'s. <b>s</b> is a local variable, so it lives in that frame.',
+   { stack: [M(Ar(), Br()), F('makeOnStack', V('s', 'Noisy', 'name="stack one"', { to: 's:lit', an: 's.name' }))], stat: [lit], run: 'Noisy::Noisy', pr: '  + construct stack one', terms: ['frame'] }),
+ S(4, '<b><code>return &amp;s;</code></b> copies s\'s address out to the caller. But a local variable always dies at its function\'s closing brace, so ~Noisy now runs for s, no matter that someone is about to keep its address. g++ even warns: <code>function returns address of local variable [-Wreturn-local-addr]</code>.',
+   { stack: [M(Ar(), Br()), F('makeOnStack', V('s', 'Noisy', 'name="stack one"', { st: 'dying', to: 's:lit', an: 's.name' }))], stat: [lit], run: '~Noisy', pr: '  - destroy   stack one', terms: ['destructor'] }),
+ S(10, '<b>The frame is popped</b> (red outline: those bytes now belong to no one), <b>and a receives the address of s</b>. a is a <b>dangling</b> pointer: it holds an address, but the object there is dead. Using <code>a-&gt;name</code> is undefined behaviour. It may even "work" in a test, because the dead bytes have not been overwritten yet. Watch what happens next.',
+   { stack: [M(V('a', 'Noisy*', '&s ✗', { to: 'v:makeOnStack.s' }), Br()), Fd('makeOnStack', V('s', 'Noisy', 'dead', { st: 'dead' }))], stat: [lit], run: 'main()', terms: ['dangling', 'undefined behaviour'] }),
+ S([11, 6, 7], '<b>makeOnHeap is called, and its frame lands on exactly the same bytes</b> that makeOnStack used. That is why a dangling pointer into the stack reads garbage: the next call reuses the space. a\'s arrow is gone because what it pointed at no longer exists. Inside makeOnHeap, <code>new</code> puts the Noisy on the <b>heap</b>, outside every frame.',
+   { stack: [M(V('a', 'Noisy*', '&s ✗ (reused)', { st: 'live' }), Br()), F('makeOnHeap')], heap: [obj()], stat: [lit], run: 'Noisy::Noisy', pr: '  + construct heap one', bad: ['v:main.a'], terms: ['heap', 'new'] }),
+ S(11, '<b>makeOnHeap returns.</b> Its frame is popped as usual, but the Noisy is not <i>in</i> the frame, so nothing destroys it. b receives its address, and the object is fully alive in main, after the function that made it has ended. <b>This is reason 1 for the heap: the object\'s lifetime is not tied to any closing brace.</b>',
+   { stack: [M(V('a', 'Noisy*', '&s ✗ (reused)'), V('b', 'Noisy*', '0x…b0', { to: 'h:obj' }))], heap: [obj()], stat: [lit], run: 'main()', bad: ['v:main.a'] }),
+ S(12, '<b>delete b</b>: you choose the exact moment the object dies. That is the power and the danger of the heap together. Forget this line and the object leaks. Run it twice and the heap is corrupted.',
+   { stack: [M(V('a', 'Noisy*', '&s ✗ (reused)'), V('b', 'Noisy*', '0x…b0 ✗', { to: 'h:obj' }))], heap: [obj('freed')], stat: [lit], run: '~Noisy', pr: '  - destroy   heap one', bad: ['v:main.a'], terms: ['delete'] }),
+ S([13, 14], '<b>The modern way to write a factory</b> is to return an owner: <code>std::unique_ptr&lt;Noisy&gt; makeOnHeap() { return std::make_unique&lt;Noisy&gt;("heap one"); }</code>. The object still lives on the heap and still outlives the function, but the unique_ptr\'s destructor calls delete for you. <b>Rule of thumb:</b> put objects on the stack by default. Use the heap, behind an owner, when the lifetime, the size or the exact type is only known while the program runs.',
+   { stack: [], stat: [lit], run: '', terms: ['unique_ptr', 'vector'] }),
+]};
+}
+
+/* ------------------------------------------------------------------ 2 */
+{
+  const gt = (v = '0') => G('gt', 'g_ticks', v, { t: 'int' });
+  const Q = (v = '5', o = {}) => V('q', 'int', v, o);
+  const P1 = (o = {}) => V('p1', 'int*', '&g_ticks', { to: 's:gt', ...o });
+  const P2 = (o = {}) => V('p2', 'int*', '&q', { to: 'v:main.q', ...o });
+  const P3 = (v = '0x…c0', o = {}) => V('p3', 'int*', v, { to: 'h:i', ...o });
+  const R = () => V('r', 'int&', 'alias of q', { to: 'v:main.q', ref: true });
+  SC.anywhere = { title: 'A pointer can point into any region',
+    fns: ['main()'],
+    code: [
+'int g_ticks = 0;            // static: the whole program',
+'int main() {',
+'    int  q  = 5;            // stack',
+'    int* p1 = &g_ticks;     // a pointer into STATIC',
+'    int* p2 = &q;           // a pointer into the STACK',
+'    int* p3 = new int(7);   // a pointer into the HEAP',
+'    int& r  = q;            // a reference: another name for q',
+'    *p2 = 6;                // writes q, through its address',
+'    delete p3;              // fine: p3 came from new',
+'    // delete p2;           // crash: q never came from new',
+'}'],
+    steps: [
+ S(2, '<b>main\'s frame</b> has room for q, p1, p2 and p3. All four are stack variables, including the three pointers. A pointer is just a variable that holds a number, an address: 8 bytes on a 64-bit machine. Where the pointer <i>lives</i> and where it <i>points</i> are two separate questions.',
+   { stack: [F('main', Q('?', { st: 'raw' }), V('p1', 'int*', '?', { st: 'raw' }), V('p2', 'int*', '?', { st: 'raw' }), V('p3', 'int*', '?', { st: 'raw' }))], stat: [gt()], run: 'main()', terms: ['pointer', 'frame', 'global'] }),
+ S(3, '<b>q = 5</b>, in main\'s frame.',
+   { stack: [F('main', Q(), V('p1', 'int*', '?', { st: 'raw' }), V('p2', 'int*', '?', { st: 'raw' }), V('p3', 'int*', '?', { st: 'raw' }))], stat: [gt()], run: 'main()' }),
+ S(4, '<b>p1 = &amp;g_ticks</b>: a stack variable holding a <i>static</i> address. Never delete it, because g_ticks did not come from new.',
+   { stack: [F('main', Q(), P1(), V('p2', 'int*', '?', { st: 'raw' }), V('p3', 'int*', '?', { st: 'raw' }))], stat: [gt()], run: 'main()', terms: ['static storage', 'delete'] }),
+ S(5, '<b>p2 = &amp;q</b>: a stack variable holding a <i>stack</i> address, one slot to its left. This is the Counter program\'s <code>bump_by_hand(&amp;a)</code>: the address of a stack object, with no heap anywhere.',
+   { stack: [F('main', Q(), P1(), P2(), V('p3', 'int*', '?', { st: 'raw' }))], stat: [gt()], run: 'main()' }),
+ S(6, '<b>p3 = new int(7)</b>: only now does the heap get involved. <b>new</b> allocates, and the pointer just records where. The same type, <code>int*</code>, can hold any of the three kinds of address. The type says nothing about where the memory is or who frees it.',
+   { stack: [F('main', Q(), P1(), P2(), P3())], heap: [H('i', 'int (no name)', '7')], stat: [gt()], run: 'main()', terms: ['new', 'heap'] }),
+ S(7, '<b>int&amp; r = q</b>: a reference is another name for q. It cannot be null and cannot be re-pointed. Under the hood it is an address, but often the compiler does not store anything: it simply uses q wherever you wrote r.',
+   { stack: [F('main', Q(), P1(), P2(), P3(), R())], heap: [H('i', 'int (no name)', '7')], stat: [gt()], run: 'main()', terms: ['reference'] }),
+ S(8, '<b>*p2 = 6</b>: follow p2\'s address and write there. q changes, and p2 does not.',
+   { stack: [F('main', Q('6'), P1(), P2(), P3(), R())], heap: [H('i', 'int (no name)', '7')], stat: [gt()], run: 'main()', hot: ['v:main.q', 'v:main.p2'] }),
+ S(9, '<b>delete p3</b>: correct, because p3 holds exactly what new returned. The block goes back, and p3 now dangles.',
+   { stack: [F('main', Q('6'), P1(), P2(), P3('0x…c0 ✗'), R())], heap: [H('i', 'int (freed)', '7', { st: 'freed' })], stat: [gt()], run: 'main()', terms: ['delete', 'dangling'] }),
+ S(10, '<b>delete p2 would be a bug</b>: it hands a <i>stack</i> address to the heap allocator, which never gave it out. g++ warns at compile time (<code>-Wfree-nonheap-object</code>) and the program aborts with <code>free(): invalid pointer</code>, or silently corrupts memory. Rule: delete exactly what new gave you, exactly once. Better still, never write delete: let <code>std::unique_ptr</code> do it.',
+   { stack: [F('main', Q('6'), P1(), P2(), P3('0x…c0 ✗'), R())], stat: [gt()], run: 'main()', bad: ['v:main.p2'], terms: ['undefined behaviour', 'unique_ptr'] }),
+ S(11, '<b>Closing brace</b>: q, p1, p2, p3 and r vanish together in one move of the stack pointer. g_ticks lives on until the program ends.',
+   { stack: [], stat: [gt()], run: '' }),
+]};
+}
+
+/* ------------------------------------------------------------------ 3 */
+{
+  const deep = (n, st = 'live') => F('deep(' + n + ')', V('n', 'int', String(n), { st }), V('buf', 'double[1000]', '8 KB', { st, w: 3.4 }));
+  const Vv = (st = 'raw', o = {}) => V('v', 'vector<double>', st === 'raw' ? '(raw bytes)' : 'size 1000000', { st, w: 3.2, ...o });
+  SC.growth = { title: 'Why the stack is fast, and why it is small',
+    fns: ['main()', 'deep()'], limit: true,
+    code: [
+'void deep(int n) {',
+'    double buf[1000];          // 8 KB on the stack, every call',
+'    if (n > 0) deep(n - 1);',
+'}',
+'int main() {',
+'    deep(2);                   // three frames: 24 KB',
+'    std::vector<double> v(1000000);',
+'                               // v: 24 bytes on the stack',
+'                               // its 8 MB of data: on the heap',
+'    // double big[1000000];    // 8 MB ON the stack: overflow',
+'}'],
+    steps: [
+ S(5, '<b>main\'s frame</b> is pushed. The dashed red line is the <b>stack limit</b>: about 1 MB by default on Windows and 8 MB on Linux, fixed when the thread starts. The heap can grow to gigabytes.',
+   { stack: [F('main', Vv())], run: 'main()', terms: ['stack overflow'] }),
+ S([6, 2], '<b>deep(2)</b>: calling a function moves the stack pointer down by the frame\'s size (here a little over 8 KB) in one instruction. There is no search and no lock. Allocating on the stack is the cheapest operation a program has.',
+   { stack: [F('main', Vv()), deep(2)], run: 'deep()', terms: ['frame', 'stack pointer'] }),
+ S([3, 2], '<b>deep(1)</b>: another frame, directly below. The stack is always contiguous: the newest frame is at the bottom of the stack, and it is the next one to be removed.',
+   { stack: [F('main', Vv()), deep(2), deep(1)], run: 'deep()' }),
+ S([3, 2], '<b>deep(0)</b>: three frames, 24 KB. Recursion 1000 levels deep with this frame would need 8 MB, and the program would crash with a <i>stack overflow</i> at the limit line. Deep recursion and large local arrays are the usual causes.',
+   { stack: [F('main', Vv()), deep(2), deep(1), deep(0)], run: 'deep()' }),
+ S(4, '<b>Unwinding</b>: each return pops one frame, in reverse order. Popping all three costs three stack-pointer moves, no matter how big the buffers were.',
+   { stack: [F('main', Vv()), deep(2, 'dying'), deep(1, 'dying'), deep(0, 'dying')], run: 'deep()' }),
+ S([7, 8, 9], '<b>std::vector&lt;double&gt; v(1000000)</b>: the vector object (three pointers, 24 bytes) sits in main\'s frame, and its 8 MB buffer is on the heap. Its constructor called new for you, and its destructor will call delete for you. Big or variable-sized data goes on the heap, but in a 1 kHz loop you allocate it once in <code>configure()</code>, never in <code>update()</code>, because new may lock or search.',
+   { stack: [F('main', Vv('live', { to: 'h:buf' }))], heap: [H('buf', 'vector buffer', '1,000,000 doubles · 8 MB', { w: 6.4 })], run: 'main()', terms: ['vector', 'heap'] }),
+ S(10, '<b>double big[1000000] on the stack</b> asks for 8 MB in one frame. It runs past the limit (drawn in red), and the program dies with a stack overflow (a segfault on Linux, <code>0xC00000FD</code> on Windows) before it reaches the next line.',
+   { stack: [F('main', Vv('live', { to: 'h:buf' }))], heap: [H('buf', 'vector buffer', '1,000,000 doubles · 8 MB', { w: 6.4 })], run: 'main()', ghost: true }),
+ S(11, '<b>Closing brace</b>: ~vector deletes the 8 MB buffer, then the frame is popped. Rule of thumb: put small, fixed-size things on the stack (doubles, small structs, std::array). Put big or variable-sized things on the heap, behind an owner (vector, unique_ptr).',
+   { stack: [F('main', Vv('dying', { to: 'h:buf' }))], heap: [H('buf', 'vector buffer (freed)', '1,000,000 doubles · 8 MB', { w: 6.4, st: 'freed' })], run: '~vector' }),
+]};
+}
+
+/* ===================================================================
+   geometry of the tower (world units; y is up, +z faces the camera)
+   =================================================================== */
+const TW = { x0: -6.4, x1: 6.4, z0: -1.5, z1: 1.5 };
+const ZONES = [
+  { key: 'code',   name: 'CODE',   sub: 'machine instructions', y0: 0.0, y1: 1.5,  col: 'grey', addr: 'low addresses ↓' },
+  { key: 'static', name: 'STATIC', sub: 'globals · static locals · literals', y0: 1.8, y1: 3.8, col: 'd', addr: '' },
+  { key: 'heap',   name: 'HEAP  ↑', sub: 'new / malloc · grows up', y0: 4.1, y1: 8.6, col: 'c', addr: '' },
+  { key: 'free',   name: '(unused)', sub: 'heap and stack grow toward each other', y0: 8.6, y1: 10.4, col: 'grey', addr: '' },
+  { key: 'stack',  name: 'STACK  ↓', sub: 'one frame per call · grows down', y0: 10.4, y1: 18.6, col: 'a', addr: 'high addresses ↑' },
+];
+const ZONE = Object.fromEntries(ZONES.map(z => [z.key, z]));
+const STACK_TOP = 18.4, FRAME_H = 1.42, FRAME_GAP = 0.1, VAR_H = 0.8, VAR_D = 1.0;
+const LIMIT_Y = 10.9;
+const HEAP_SLOTS = [[-2.6, 0.5, 0.3], [2.6, 1.9, -0.5], [-0.3, 3.0, 0.4]];
+const STAT_SLOTS = [-3.3, 2.7];
+
+/* ===================================================================
+   tiny 3D engine: boxes with faces sorted back to front, arcs, labels
+   =================================================================== */
+const cv = document.getElementById('cv'), view = document.getElementById('view');
+const ctx = cv.getContext('2d');
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim() || '#888';
+let COL = {};
+function readColours() {
+  COL = { a: css('--a'), b: css('--b'), c: css('--c'), d: css('--d'), e: css('--e'), f: css('--f'), bad: css('--bad'),
+          ink: css('--ink'), muted: css('--muted'), line: css('--line'), panel: css('--panel'), grey: css('--grey') };
+}
+const CAM0 = { yaw: -0.38, pitch: 0.14, dist: 70, zoom: 1 };
+let cam = { ...CAM0 }, FIT = { s: 1, ox: 0, oy: 0 };
+const BOX = [-11.5, 11, -0.4, 19.0, -1.8, 1.8];
+const CEN = [(BOX[0] + BOX[1]) / 2, (BOX[2] + BOX[3]) / 2, 0];
+
+function hexRgb(h) {
+  h = h.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function shade(hex, k, a = 1) {
+  if (!hex.startsWith('#')) return hex;
+  const [r, g, b] = hexRgb(hex);
+  return `rgba(${Math.min(255, Math.round(r * k))},${Math.min(255, Math.round(g * k))},${Math.min(255, Math.round(b * k))},${a})`;
+}
+
+let W = 0, Hh = 0;
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  W = Math.max(240, view.clientWidth - 8); Hh = Math.max(320, view.clientHeight - 8);
+  cv.width = W * dpr; cv.height = Hh * dpr;
+  cv.style.width = W + 'px'; cv.style.height = Hh + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function raw(p) {
+  const x = p[0] - CEN[0], y = p[1] - CEN[1], z = p[2] - CEN[2];
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const x1 = cy * x - sy * z, z1 = sy * x + cy * z;
+  const y2 = cp * y - sp * z1, z2 = sp * y + cp * z1;
+  const d = cam.dist - z2;
+  return [x1 / d, -y2 / d, d];
+}
+function proj(p) {
+  const r = raw(p), k = FIT.s * cam.zoom;
+  return [W / 2 + (r[0] - FIT.ox) * k, Hh / 2 + (r[1] - FIT.oy) * k, r[2]];
+}
+function fit() {
+  let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+  for (const X of [BOX[0], BOX[1]]) for (const Y of [BOX[2], BOX[3]]) for (const Z of [BOX[4], BOX[5]]) {
+    const r = raw([X, Y, Z]);
+    x0 = Math.min(x0, r[0]); x1 = Math.max(x1, r[0]); y0 = Math.min(y0, r[1]); y1 = Math.max(y1, r[1]);
+  }
+  FIT = { s: Math.min(W * 0.96 / (x1 - x0), Hh * 0.95 / (y1 - y0)), ox: (x0 + x1) / 2, oy: (y0 + y1) / 2 };
+}
+
+/* an axis-aligned box: centre x, bottom y0, centre z, size w h d */
+function boxFaces(x, y0, z, w, h, d, col, alpha, wire) {
+  const X = [x - w / 2, x + w / 2], Y = [y0, y0 + h], Z = [z - d / 2, z + d / 2];
+  const v = (i, j, k) => [X[i], Y[j], Z[k]];
+  const quads = [
+    [[v(0, 1, 0), v(1, 1, 0), v(1, 1, 1), v(0, 1, 1)], 1.0],
+    [[v(0, 0, 1), v(1, 0, 1), v(1, 1, 1), v(0, 1, 1)], 0.82],
+    [[v(0, 0, 0), v(1, 0, 0), v(1, 1, 0), v(0, 1, 0)], 0.6],
+    [[v(1, 0, 0), v(1, 0, 1), v(1, 1, 1), v(1, 1, 0)], 0.7],
+    [[v(0, 0, 0), v(0, 0, 1), v(0, 1, 1), v(0, 1, 0)], 0.66],
+    [[v(0, 0, 0), v(1, 0, 0), v(1, 0, 1), v(0, 0, 1)], 0.45],
+  ];
+  return quads.map(([pts, k]) => {
+    const s = pts.map(proj);
+    return { s, depth: s.reduce((a, p) => a + p[2], 0) / 4, k, col, alpha, wire };
+  });
+}
+function drawFaces(faces) {
+  faces.sort((a, b) => b.depth - a.depth);
+  for (const f of faces) {
+    ctx.beginPath();
+    f.s.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    ctx.closePath();
+    if (f.wire) {
+      ctx.setLineDash(f.wire === 'solid' ? [] : [4, 3]);
+      ctx.strokeStyle = shade(f.col, 1, 0.8 * f.alpha);
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle = shade(f.col, f.k, f.alpha);
+      ctx.fill();
+      ctx.strokeStyle = shade(f.col, 0.4, 0.55 * f.alpha);
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+  }
+}
+function label(p, text, colour, o = {}) {
+  const s = o.screen ? p : proj(p), size = o.size || 11;
+  ctx.font = `${o.bold ? 700 : 600} ${size}px ${css('--mono') || 'Consolas'}`;
+  const w = ctx.measureText(text).width + 8, h = size + 6;
+  ctx.globalAlpha = o.alpha ?? 1;
+  const ax = o.align === 'left' ? s[0] + w / 2 : o.align === 'right' ? s[0] - w / 2 : s[0];
+  if (!o.bare) {
+    ctx.fillStyle = shade(COL.panel, 1, 0.84);
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(ax - w / 2, s[1] - h / 2, w, h, 4); else ctx.rect(ax - w / 2, s[1] - h / 2, w, h);
+    ctx.fill();
+  }
+  ctx.fillStyle = colour; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(text, ax, s[1] + 0.5);
+  ctx.globalAlpha = 1;
+}
+function arc(a, b, colour, o = {}) {
+  const mid = [(a[0] + b[0]) / 2 + (o.dx || 0), Math.max(a[1], b[1]) + (o.lift ?? 1.2), Math.max(a[2], b[2]) + (o.out ?? 2.6)];
+  const pts = [];
+  for (let i = 0; i <= 32; i++) {
+    const t = i / 32, u = 1 - t;
+    pts.push(proj([0, 1, 2].map(j => u * u * a[j] + 2 * u * t * mid[j] + t * t * b[j])));
+  }
+  ctx.globalAlpha = o.alpha ?? 1;
+  ctx.strokeStyle = colour; ctx.lineWidth = o.width || 2.2;
+  if (o.dash) ctx.setLineDash(o.dash);
+  ctx.beginPath();
+  pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+  ctx.stroke(); ctx.setLineDash([]);
+  const [p1, p2] = [pts[pts.length - 3], pts[pts.length - 1]];
+  const ang = Math.atan2(p2[1] - p1[1], p2[0] - p1[0]);
+  ctx.fillStyle = colour;
+  ctx.beginPath();
+  ctx.moveTo(p2[0], p2[1]);
+  ctx.lineTo(p2[0] - 10 * Math.cos(ang - 0.4), p2[1] - 10 * Math.sin(ang - 0.4));
+  ctx.lineTo(p2[0] - 10 * Math.cos(ang + 0.4), p2[1] - 10 * Math.sin(ang + 0.4));
+  ctx.fill();
+  ctx.beginPath(); ctx.arc(pts[0][0], pts[0][1], 3, 0, 7); ctx.fill();
+  ctx.globalAlpha = 1;
+  if (o.text) label(pts[o.at ?? 16], o.text, colour, { size: 9, bold: true, screen: true, alpha: o.alpha ?? 1 });
+}
+
+/* ===================================================================
+   layout: where every frame, variable and block sits in one step
+   =================================================================== */
+function layout(sc, st) {
+  const it = {};
+  st.stack.forEach((fr, fi) => {
+    const top = STACK_TOP - fi * (FRAME_H + FRAME_GAP), y0 = top - FRAME_H;
+    it['f:' + fi + ':' + fr.fn] = { kind: 'frame', fn: fr.fn, dead: fr.dead, x: (TW.x0 + TW.x1) / 2, y0, z: 0,
+                                    w: TW.x1 - TW.x0 - 0.3, h: FRAME_H, d: TW.z1 - TW.z0 - 0.3, depth: fi };
+    let x = TW.x0 + 0.5;
+    fr.vars.forEach(v => {
+      const w = v.w || 2.1;
+      it['v:' + fr.fn + '.' + v.n] = { kind: 'var', v, fn: fr.fn, x: x + w / 2, y0: y0 + 0.16, z: 0.2, w, h: VAR_H, d: VAR_D };
+      x += w + 0.32;
+    });
+  });
+  const hs = {};
+  for (const s of sc.steps) for (const h of s.heap) if (!(h.id in hs)) hs[h.id] = Object.keys(hs).length;
+  for (const h of st.heap) {
+    const k = hs[h.id], [x, dy, z] = HEAP_SLOTS[k % HEAP_SLOTS.length], w = h.w || 3.6;
+    it['h:' + h.id] = { kind: 'heap', b: h, x, y0: ZONE.heap.y0 + dy, z: z * 0.6, w, h: 0.85, d: 1.1 };
+  }
+  st.stat.forEach((g, k) => {
+    const w = g.w || 3.4;
+    it['s:' + g.id] = { kind: 'stat', b: g, x: STAT_SLOTS[k % 2], y0: ZONE.static.y0 + 0.35, z: 0.2, w, h: 0.85, d: 1.1 };
+  });
+  return it;
+}
+const topOf = o => [o.x, o.y0 + o.h, o.z];
+const frontOf = o => [o.x, o.y0 + o.h * 0.5, o.z + o.d / 2];
+
+/* ===================================================================
+   drawing one frame of the animation
+   =================================================================== */
+let sc = null, idx = 0, prevIdx = 0, t0 = 0, playing = null, pending = false;
+function kick() { if (!pending) { pending = true; requestAnimationFrame(ts => { pending = false; render(ts); }); } }
+const DUR = 520;
+
+function stateColour(st, base) {
+  return st === 'dying' ? COL.b : st === 'dead' || st === 'freed' ? COL.bad : st === 'raw' ? COL.grey : base;
+}
+
+function render(now) {
+  if (!sc) return;
+  const t = Math.min(1, (now - t0) / DUR), e = t * t * (3 - 2 * t);
+  const cur = sc.steps[idx], prev = sc.steps[prevIdx];
+  const A = layout(sc, cur), B = idx === prevIdx ? A : layout(sc, prev);
+  const pulse = 0.6 + 0.4 * Math.sin(now / 230);
+  const bad = new Set(cur.bad || []), hot = new Set(cur.hot || []);
+  ctx.clearRect(0, 0, W, Hh);
+  fit();
+
+  const faces = [];
+  // the tower: one translucent slab per zone, plus a dashed outline
+  for (const z of ZONES) {
+    const col = COL[z.col];
+    if (z.key === 'free') faces.push(...boxFaces(0, z.y0, 0, TW.x1 - TW.x0, z.y1 - z.y0, TW.z1 - TW.z0, COL.grey, 0.5, true));
+    else {
+      faces.push(...boxFaces(0, z.y0, 0, TW.x1 - TW.x0, 0.12, TW.z1 - TW.z0, col, 0.22));
+      faces.push(...boxFaces(0, z.y0, 0, TW.x1 - TW.x0, z.y1 - z.y0, TW.z1 - TW.z0, col, 0.35, true));
+    }
+  }
+  // code blocks: one per function, the running one lit
+  const nf = sc.fns.length, cw = Math.min(2.6, (TW.x1 - TW.x0 - 0.6) / nf - 0.25);
+  const codeX = i => TW.x0 + 0.4 + cw / 2 + i * (cw + 0.25);
+  sc.fns.forEach((fn, i) => {
+    const on = cur.run === fn || (cur.run === 'deep()' && fn === 'deep()');
+    faces.push(...boxFaces(codeX(i), 0.15, 0.2, cw, on ? 0.8 : 0.5, 1.0, on ? COL.a : COL.grey, on ? 0.95 : 0.5));
+  });
+  // frames, variables, heap and static blocks: appear and vanish by growing
+  const keys = new Set([...Object.keys(A), ...Object.keys(B)]);
+  for (const k of keys) {
+    const a = A[k], b = B[k], o = a || b;
+    const grow = a && b ? 1 : a ? e : 1 - e;
+    if (grow <= 0.01) continue;
+    if (o.kind === 'frame') {
+      faces.push(...boxFaces(o.x, o.y0, o.z, o.w, 0.12, o.d, o.dead ? COL.bad : COL.grey, 0.5 * grow));
+      faces.push(...boxFaces(o.x, o.y0, o.z, o.w, o.h * grow, o.d, o.dead ? COL.bad : COL.a, 0.55 * grow, o.dead ? true : 'solid'));
+      continue;
+    }
+    const v = o.kind === 'var' ? o.v : o.b;
+    const base = o.kind === 'var' ? COL.a : o.kind === 'heap' ? COL.c : COL.d;
+    let col = stateColour(v.st, base), alpha = 0.95, wire = false;
+    if (v.st === 'raw' || v.st === 'dead' || v.st === 'freed') { wire = true; alpha = 0.9; }
+    if (v.st === 'dying') alpha = 0.55 + 0.4 * pulse;
+    if (bad.has(k)) { col = COL.bad; alpha = 0.55 + 0.4 * pulse; wire = false; }
+    if (hot.has(k)) alpha = 0.6 + 0.4 * pulse;
+    faces.push(...boxFaces(o.x, o.y0, o.z, o.w, o.h * grow, o.d, col, alpha, wire));
+  }
+  // the hypothetical 8 MB array: a red slab punching through the limit
+  if (cur.ghost) faces.push(...boxFaces(0, ZONE.free.y0 + 0.2, 0, TW.x1 - TW.x0 - 0.6, STACK_TOP - FRAME_H - ZONE.free.y0 - 0.3, TW.z1 - TW.z0 - 0.6, COL.bad, 0.35 + 0.35 * pulse * e));
+  drawFaces(faces);
+
+  if (sc.limit) {   // the stack limit: a dashed red rectangle across the tower
+    const yl = LIMIT_Y, c = [[TW.x0, yl, TW.z0], [TW.x1, yl, TW.z0], [TW.x1, yl, TW.z1], [TW.x0, yl, TW.z1]].map(proj);
+    ctx.setLineDash([7, 5]); ctx.strokeStyle = COL.bad; ctx.lineWidth = 2;
+    ctx.beginPath(); c.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.closePath(); ctx.stroke();
+    ctx.setLineDash([]);
+    label([TW.x1 + 0.3, yl + 0.3, TW.z1], 'stack limit', COL.bad, { size: 10, bold: true, align: 'left' });
+    label([TW.x1 + 0.3, yl - 0.35, TW.z1], '≈1 MB Windows · 8 MB Linux', COL.bad, { size: 9, align: 'left', bare: true });
+  }
+
+  // arrows: a pointer, reference or this holds the address of its target
+  const arrowsOf = o => {
+    const v = o.kind === 'var' ? o.v : o.b;
+    if (!v.to || !A[v.to]) return;
+    const tg = A[v.to];
+    const dead = ['dead', 'freed'].includes(tg.kind === 'var' ? tg.v.st : tg.b.st);
+    const key = o.kind === 'var' ? 'v:' + o.fn + '.' + v.n : (o.kind === 'heap' ? 'h:' : 's:') + v.id;
+    const isBad = bad.has(key);
+    const colr = dead || isBad ? COL.bad : v.ref ? COL.f : COL.e;
+    const same = Math.abs(tg.y0 - o.y0) < 0.5;
+    const down = tg.y0 < o.y0 - 0.5;
+    const from = same ? topOf(o) : down ? frontOf(o) : topOf(o);
+    const to = same ? topOf(tg) : down ? topOf(tg) : [tg.x, tg.y0, tg.z + tg.d / 2];
+    const wasThere = B[key] && (B[key].kind === 'var' ? B[key].v.to : B[key].b.to) === v.to;
+    const tname = tg.kind === 'var' ? tg.v.n : tg.b.label.replace(' (no name)', '').replace(' (freed)', '');
+    const sname = v.an || v.n;
+    arc(from, to, colr, { alpha: (wasThere ? 1 : e) * (o.kind === 'var' ? 1 : 0.6), dash: dead || isBad ? [6, 4] : null,
+                          lift: same ? (o.kind === 'var' ? 1.0 : 2.0) : 0.6, out: same ? 0.4 : 3.2, width: o.kind === 'var' ? 2.3 : 1.5,
+                          text: sname + ' → ' + tname, at: same ? 16 : 13 });
+  };
+  for (const o of Object.values(A)) if (o.kind !== 'frame') arrowsOf(o);
+
+  // labels on top of everything
+  for (const z of ZONES) {
+    label([TW.x0 - 0.3, (z.y0 + z.y1) / 2 + 0.25, TW.z1], z.name, z.key === 'free' ? COL.muted : COL[z.col] || COL.ink, { bold: true, size: 12, align: 'right' });
+    label([TW.x0 - 0.3, (z.y0 + z.y1) / 2 - 0.35, TW.z1], z.sub, COL.muted, { size: 9, align: 'right', bare: true });
+    if (z.addr) label([TW.x1 + 0.3, z.key === 'stack' ? z.y1 + 0.35 : z.y0 + 0.3, TW.z1], z.addr, COL.muted, { size: 9, align: 'left', bare: true });
+  }
+  sc.fns.forEach((fn, i) => {
+    const on = cur.run === fn;
+    label([codeX(i), on ? 1.25 : 0.95, 0.9], fn, on ? COL.a : COL.muted, { size: 10, bold: on });
+  });
+  let lowest = null;
+  for (const o of Object.values(A)) {
+    if (o.kind === 'frame') {
+      label([TW.x1 + 0.3, o.y0 + o.h * 0.62, TW.z1], o.fn + (o.fn === 'startup' ? ' (C runtime)' : '') + (o.dead ? ' frame · popped' : ' frame'), o.dead ? COL.bad : COL.ink, { bold: true, size: 10, align: 'left' });
+      if (!o.dead && (!lowest || o.y0 < lowest.y0)) lowest = o;
+    } else if (o.kind === 'var') {
+      const v = o.v, c = bad.has('v:' + o.fn + '.' + v.n) ? COL.bad : v.st === 'raw' ? COL.muted : v.st === 'dying' ? COL.b : COL.ink;
+      label([o.x, o.y0 + o.h + 0.3, o.z], v.n + ' : ' + v.t, c, { size: 10, bold: true });
+      label([o.x, o.y0 + 0.4, o.z + o.d / 2 + 0.05], v.v, v.st === 'raw' ? COL.muted : COL.ink, { size: 9 });
+    } else {
+      const v = o.b, c = v.st === 'freed' || v.st === 'dead' ? COL.bad : v.st === 'dying' ? COL.b : o.kind === 'heap' ? COL.c : COL.d;
+      label([o.x, o.y0 + o.h + 0.45, o.z], v.label + (v.t ? ' : ' + v.t : ''), c, { size: 10, bold: true });
+      label([o.x, o.y0 + 0.35, o.z + o.d / 2 + 0.05], v.v, COL.ink, { size: 9 });
+    }
+  }
+  if (lowest) {   // the stack pointer sits at the bottom of the newest frame
+    const p = [TW.x1 + 0.3, lowest.y0 + 0.05, TW.z1];
+    label(p, '◀ SP (stack pointer)', COL.a, { size: 10, bold: true, align: 'left' });
+  }
+  if (t < 1 || cur.bad || cur.hot || cur.ghost || [...cur.stack.flatMap(f => f.vars), ...cur.heap, ...cur.stat].some(v => v.st === 'dying')) {
+    if (!document.hidden) kick();
+  }
+}
+
+/* ===================================================================
+   UI
+   =================================================================== */
+const $ = id => document.getElementById(id);
+function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+function showCode() {
+  const st = sc.steps[idx];
+  const lines = Array.isArray(st.line) ? st.line : [st.line];
+  $('code').innerHTML = sc.code.map((l, i) => {
+    const c = l.indexOf('//');
+    const body = c >= 0 ? esc(l.slice(0, c)) + '<span class="cm">' + esc(l.slice(c)) + '</span>' : esc(l);
+    return `<div class="${lines.includes(i + 1) ? 'on' : ''}"><span class="ln">${i + 1}</span>${body}</div>`;
+  }).join('');
+  $('note').innerHTML = st.note;
+  const ts = (st.terms || []).filter(k => GLOSS[k]);
+  $('gloss').innerHTML = ts.map(k => `<dt>${esc(k)}</dt><dd>${GLOSS[k]}</dd>`).join('');
+  $('gcard').style.display = ts.length ? '' : 'none';
+  const out = [];
+  sc.steps.slice(0, idx + 1).forEach((s, i) => {
+    if (s.pr) for (const ln of s.pr.split('\n')) out.push(`<span class="${i === idx ? 'new' : ''}">${esc(ln)}</span>`);
+  });
+  $('term').innerHTML = out.length ? out.join('\n') : '<span class="dim">(nothing printed yet)</span>';
+  $('term').scrollTop = 1e6;
+  $('term').parentElement.style.display = sc.steps.some(s => s.pr) ? '' : 'none';
+  $('count').textContent = `${idx + 1} / ${sc.steps.length}`;
+  $('scrub').max = sc.steps.length - 1; $('scrub').value = idx;
+  $('prev').disabled = idx === 0; $('next').disabled = idx === sc.steps.length - 1;
+}
+function go(i) {
+  i = Math.max(0, Math.min(sc.steps.length - 1, i));
+  prevIdx = idx; idx = i; t0 = performance.now();
+  showCode(); kick();
+}
+function load(name) {
+  sc = SC[name];
+  idx = prevIdx = 0; t0 = performance.now() - DUR;
+  $('title').textContent = sc.title;
+  document.querySelectorAll('#sel button').forEach(b => b.setAttribute('aria-pressed', b.dataset.k === name));
+  stop(); showCode(); kick();
+}
+function stop() { if (playing) { clearInterval(playing); playing = null; $('play').textContent = 'play'; } }
+$('play').onclick = () => {
+  if (playing) return stop();
+  if (idx === sc.steps.length - 1) go(0);
+  $('play').textContent = 'pause';
+  playing = setInterval(() => { if (idx >= sc.steps.length - 1) stop(); else go(idx + 1); }, 3200);
+};
+$('prev').onclick = () => { stop(); go(idx - 1); };
+$('next').onclick = () => { stop(); go(idx + 1); };
+$('scrub').oninput = ev => { stop(); go(+ev.target.value); };
+$('cam').onclick = () => { cam = { ...CAM0 }; kick(); };
+$('front').onclick = () => { cam = { ...CAM0, yaw: 0, pitch: 0.05 }; kick(); };
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'ArrowRight') { stop(); go(idx + 1); }
+  else if (ev.key === 'ArrowLeft') { stop(); go(idx - 1); }
+  else if (ev.key === ' ') { ev.preventDefault(); $('play').click(); }
+});
+let drag = null;
+cv.addEventListener('pointerdown', ev => { drag = { x: ev.clientX, y: ev.clientY, yaw: cam.yaw, pitch: cam.pitch }; view.classList.add('drag'); cv.setPointerCapture(ev.pointerId); });
+cv.addEventListener('pointermove', ev => {
+  if (!drag) return;
+  cam.yaw = Math.max(-1.45, Math.min(1.45, drag.yaw + (ev.clientX - drag.x) * 0.008));
+  cam.pitch = Math.max(-0.4, Math.min(1.3, drag.pitch + (ev.clientY - drag.y) * 0.006));
+  kick();
+});
+cv.addEventListener('pointerup', () => { drag = null; view.classList.remove('drag'); });
+cv.addEventListener('wheel', ev => { ev.preventDefault(); cam.zoom = Math.max(0.6, Math.min(3, cam.zoom * (ev.deltaY > 0 ? 0.92 : 1.08))); kick(); }, { passive: false });
+
+/* which scenarios this page shows: #s=a,b,c (default: all) */
+function init() {
+  readColours(); resize();
+  const m = /s=([\w,]+)/.exec(location.hash);
+  const list = (m ? m[1].split(',') : Object.keys(SC)).filter(k => SC[k]);
+  $('sel').innerHTML = list.map(k => `<button data-k="${k}">${SC[k].title}</button>`).join('');
+  document.querySelectorAll('#sel button').forEach(b => b.onclick = () => load(b.dataset.k));
+  if (list.length < 2) $('sel').style.display = 'none';
+  load(list[0]);
+}
+new ResizeObserver(() => { resize(); kick(); }).observe(view);
+new MutationObserver(() => { readColours(); kick(); })
+  .observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+init();
+</script>
+</body></html>
