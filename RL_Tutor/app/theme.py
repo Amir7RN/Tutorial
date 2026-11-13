@@ -79,6 +79,8 @@ SECTION_COLORS = {
     "C++ · Design": VIOLET,
     "C++ · Real-Time & Robotics": ORANGE,
     "C++ · Project": GOOD,
+    # humanoid balance project
+    "Upper-Body Balance": INDIGO,
 }
 
 # The sidebar's top level: each group lists its sections in page order. A
@@ -95,6 +97,7 @@ SIDEBAR_GROUPS = [
     ("Robotics", PINK, ("C-Space & Rigid Motion", "Kinematics", "Dynamics", "Trajectories & Planning",
                         "Robot Control", "Manipulation & Mobility")),
     ("C++", CYAN, ("C++ · Foundations", "C++ · Design", "C++ · Real-Time & Robotics", "C++ · Project")),
+    ("Humanoid Balance", INDIGO, ("Upper-Body Balance",)),
 ]
 
 

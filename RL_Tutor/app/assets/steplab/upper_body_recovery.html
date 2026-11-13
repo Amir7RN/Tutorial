@@ -1,0 +1,214 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Push recovery with the upper body</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.4fr) minmax(380px,1fr)}
+  .view{min-height:400px;cursor:grab}
+  .view canvas{position:absolute;left:4px;top:4px}
+  #plots{width:100%;height:330px;display:block}
+  .jc label{display:grid;grid-template-columns:140px minmax(0,1fr) 62px;gap:8px;align-items:center;font-size:.84rem;margin:3px 0}
+  .jc output{font-family:var(--mono);text-align:right;font-size:.8rem}
+  .jc input[type=range]{width:100%;accent-color:var(--a)}
+  .lk{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.82rem;color:var(--muted);margin:4px 0}
+  .lk label{display:flex;align-items:center;gap:5px}
+  .sel button{font-size:.8rem}
+  .note{font-size:.88rem;line-height:1.5}.note b{color:var(--a)}
+  .note code,.stat code{font-family:var(--mono);font-size:.82em;background:var(--inset);border:1px solid var(--line);border-radius:4px;padding:0 3px}
+  .big{font-family:var(--mono);font-size:1rem;font-weight:700}
+  table.t td:first-child,table.t th:first-child{text-align:left;font-family:var(--body)}
+  .ok{color:var(--c)}.bad2{color:var(--bad)}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1>Push recovery with the upper body</h1>
+    <p>A push arrives at the shoulder. The ankle can only do what the foot allows; the rest is up to the waist and the arms. Lock joints, change the law, change the push, and watch the momentum move between the links.</p></div>
+  <div class="sel">
+    <button class="primary" id="go">push ▶</button><button id="reset">reset</button><button id="pause">pause</button>
+    <button id="slow" aria-pressed="false">slow motion</button>
+    <span style="flex:1"></span>
+    <button id="cmp">compare the four strategies</button>
+    <button id="vside">side</button><button id="viso">3-D</button>
+  </div>
+  <div class="grid">
+    <div class="left">
+      <div class="card view" id="view"><canvas id="cv"></canvas></div>
+      <div class="card"><canvas id="plots"></canvas></div>
+    </div>
+    <div class="side">
+      <div class="card"><div class="stat" id="stat"></div></div>
+      <div class="card"><p class="h">the push and the foot</p><div class="jc" id="pushctl"></div></div>
+      <div class="card"><p class="h">who is allowed to move</p>
+        <div class="sel" id="planes"><button data-p="sagittal" aria-pressed="true">sagittal</button><button data-p="frontal">frontal</button><button data-p="transverse">transverse</button></div>
+        <div class="lk" id="locks"></div>
+        <p class="h" style="margin-top:8px">the law</p>
+        <div class="sel" id="laws"><button data-l="lqr" aria-pressed="true">LQR (linear state feedback)</button><button data-l="counterweight">counterweight (static COM shift)</button><button data-l="momentum">momentum QP (rate task)</button></div>
+        <div class="note" id="lawnote" style="margin-top:6px"></div></div>
+      <div class="card" id="cmpcard" hidden><p class="h">the same push, four ways</p><div id="cmpout"></div></div>
+      <div class="card"><p class="h">how to read the plots</p><div class="note">
+        <b>Top:</b> the lean (ankle angle) is the thing to be saved; the torso and arm angles are what was spent to save it. <b>Middle:</b> each link's share of the angular momentum about the ankle. The total only changes through the ankle torque, gravity and the push; the controller can only move it between links and shift the COM so that gravity works for it. <b>Bottom:</b> the torques, each against its motor's limit.</div></div>
+    </div>
+  </div>
+</div>
+<script src="three.min.js"></script><script src="ub.js"></script><script src="ub3d.js"></script>
+<script>
+(() => {
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f = (x, d = 2) => (Math.abs(x) < 5e-4 ? 0 : x).toFixed(d);
+const D = 180 / Math.PI;
+const LAWNOTE = {
+  lqr: `<b>u = −K x</b> on the machine linearised about standing, ankle spring included, Bryson weights (page 19). It finds the hip-and-arm strategy on its own: the torso and arms go <i>forward</i> with the fall for a moment, taking momentum from the legs, then come back while the ankle and gravity finish the job. Clipped to the motor limits.`,
+  counterweight: `Puts the whole-body COM <b>behind</b> the ankle in proportion to the lean (<span class="m">x<sub>c,des</sub> = −κ<sub>p</sub>q<sub>0</sub> − κ<sub>d</sub>q̇<sub>0</sub></span>), by a virtual spring on the upper body's own COM through <span class="m">Jᵀ</span> (page 144). It looks right and it is wrong: moving 17 kg backward kicks the legs forward (conservation of H about the ankle), so the lean grows before gravity can help.`,
+  momentum: `Resolved momentum control with a tiny QP: a desired momentum rate (DCM task), the ankle row as a constraint, torque limits as a box. The formula every humanoid paper writes. It fails here for a plain reason: a momentum <i>rate</i> cannot be sustained, and the torso runs into its stop with the COM in front of the foot.`,
+};
+const S = { plane: 'sagittal', law: 'lqr', locks: { sagittal: [false, false, false], frontal: [false, false], transverse: [false, false] },
+  force: 70, duration: 0.1, foot: 0.10, ankle_k: 300, slow: false, running: false, sim: null, hist: null, T: 4.0 };
+const view = document.getElementById('view'), cv = document.getElementById('cv');
+const stage = UB3D.stage(cv, view, { orbit: { az: 0, el: .12, r: 3.0, tgt: new THREE.Vector3(0, .7, 0) } });
+const fig = UB3D.figure(stage.scene);
+const pushArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), .5, 0xd9661f, .12, .07); pushArrow.visible = false; stage.scene.add(pushArrow);
+const labels = [0, 1].map(() => { const d = document.createElement('div'); d.className = 'lbl'; d.hidden = true; view.appendChild(d); return d; });
+
+const model = () => Object.assign({}, UB.planes[S.plane], { foot: S.foot });
+const active = () => S.locks[S.plane].map((l, i) => l ? -1 : i + 1).filter(i => i > 0);
+const gains = () => UB.gains({ law: S.law, ankle_k: S.ankle_k, ankle_b: S.ankle_k / 10 });
+const push = () => UB.push({ force: S.force, duration: S.duration, t0: 0.3, point: 2 });
+
+function pushControls() {
+  const el = document.getElementById('pushctl');
+  el.innerHTML = `
+   <label>push force <input id="pf" type="range" min="0" max="200" step="5" value="${S.force}"><output>${S.force} N</output></label>
+   <label>push duration <input id="pd" type="range" min="0.02" max="0.3" step="0.01" value="${S.duration}"><output>${f(S.duration)} s</output></label>
+   <label>foot half-length <input id="ft" type="range" min="0" max="0.2" step="0.01" value="${S.foot}"><output>${f(S.foot)} m</output></label>
+   <label>ankle stiffness <input id="ak" type="range" min="0" max="800" step="20" value="${S.ankle_k}"><output>${S.ankle_k} N·m/rad</output></label>
+   <div class="note" style="margin-top:4px">Ankle torque limit <b id="alim"></b> = m g × foot: the centre of pressure cannot leave the sole. The impulse is force × duration: <b id="imp"></b>.</div>`;
+  const upd = () => { const m = model(); document.getElementById('alim').textContent = f(UB.tauAnkleMax(m), 1) + ' N·m'; document.getElementById('imp').textContent = f(S.force * S.duration, 1) + ' N·s'; };
+  const bind = (id, key, fmt) => { const i = document.getElementById(id); i.oninput = () => { S[key] = +i.value; i.nextElementSibling.textContent = fmt(+i.value); upd(); }; };
+  bind('pf', 'force', v => v + ' N'); bind('pd', 'duration', v => f(v) + ' s'); bind('ft', 'foot', v => f(v) + ' m'); bind('ak', 'ankle_k', v => v + ' N·m/rad');
+  upd();
+}
+function lockControls() {
+  const m = model(), el = document.getElementById('locks');
+  el.innerHTML = m.links.slice(1).map((l, i) => `<label><input type="checkbox" data-i="${i}" ${S.locks[S.plane][i] ? 'checked' : ''}>lock ${l.joint}</label>`).join('') +
+    `<span>(joint 0, ${m.links[0].joint}, is the passive pivot)</span>`;
+  el.querySelectorAll('input').forEach(c => c.onchange = () => { S.locks[S.plane][+c.dataset.i] = c.checked; reset(); });
+  document.getElementById('lawnote').innerHTML = LAWNOTE[S.law];
+}
+function reset() {
+  S.running = false; S.sim = UB.stepper(model(), gains(), push(), active()); S.hist = { t: [], q: [], H: [], tau: [], xc: [] };
+  sample(); drawAll();
+}
+function sample() {
+  const sim = S.sim, k = UB.core(sim.model, sim.q, sim.qd);
+  S.hist.t.push(sim.t); S.hist.q.push(sim.q.slice()); S.hist.H.push(k.link_H); S.hist.tau.push(sim.tau || new Array(sim.q.length).fill(0)); S.hist.xc.push(k.xc[0]);
+  S.last = k;
+}
+let last = 0, pending = false;
+function frame(ts) {
+  if (!S.running) return;
+  const dtWall = Math.min(0.05, (ts - last) / 1000 || 0.016); last = ts;
+  const steps = Math.max(1, Math.round(dtWall * (S.slow ? 0.25 : 1) / S.sim.dt));
+  for (let i = 0; i < steps; i++) {
+    S.sim.step();
+    if (Math.round(S.sim.t / S.sim.dt) % 10 === 0) sample();
+    if (S.sim.fell || S.sim.t >= S.T) { S.running = false; break; }
+  }
+  drawAll();
+  if (S.running) requestAnimationFrame(frame);
+}
+function drawAll() {
+  const sim = S.sim, m = sim.model, k = S.last, p = push();
+  fig.pose(S.plane, sim.q, [false, ...S.locks[S.plane]]);
+  fig.markCom(S.plane, k, m.links);
+  const inPush = sim.t >= p.t0 && sim.t < p.t0 + p.duration;
+  pushArrow.visible = inPush;
+  if (inPush) { const sh = fig.toWorld(S.plane, k.p[2]); pushArrow.position.copy(sh.clone().sub(new THREE.Vector3(.55, 0, 0))); pushArrow.setLength(.5, .12, .07); }
+  stage.draw();
+  stage.label(labels[0], fig.toWorld(S.plane, k.xc).add(new THREE.Vector3(0, .12, 0)), `COM x ${f(k.xc[0], 3)} m`, css('--bad'));
+  stage.label(labels[1], new THREE.Vector3(0, 1.45, 0), sim.fell ? 'FELL' : (sim.t >= S.T ? 'recovered' : ''), sim.fell ? css('--bad') : css('--c'));
+  stat(); plots();
+}
+function stat() {
+  const sim = S.sim, k = S.last, g = gains(), m = sim.model, lim = UB.tauAnkleMax(m);
+  const tau = sim.tau || new Array(m.links.length).fill(0);
+  document.getElementById('stat').innerHTML =
+    `<span><b>t</b>${f(sim.t)} s</span><span><b>lean</b><span class="big ${Math.abs(sim.q[0]) > .25 ? 'bad2' : ''}">${f(sim.q[0] * D, 1)}°</span></span>` +
+    `<span><b>lean rate</b>${f(sim.qd[0] * D, 0)}°/s</span><span><b>H about ankle</b>${f(k.H_O, 2)} N·m·s</span><span><b>COM x</b>${f(k.xc[0], 3)} m</span>` +
+    m.links.map((l, j) => `<span><b>τ ${l.joint.split(' ')[0]}</b>${f(tau[j], 1)}${j === 0 ? ' / ' + f(lim, 0) : ' / ' + g.tau_max[j]}</span>`).join('') +
+    `<span><b>status</b>${sim.fell ? '<span class="bad2">fell</span>' : S.running ? 'running' : sim.t >= S.T ? '<span class="ok">recovered</span>' : 'ready'}</span>`;
+}
+/* ---------- plots ---------- */
+const pc = document.getElementById('plots');
+function plots() {
+  const r = pc.getBoundingClientRect(), W = Math.round(r.width), H = Math.round(r.height);
+  if (pc.width !== W * devicePixelRatio) { pc.width = W * devicePixelRatio; pc.height = H * devicePixelRatio; }
+  const c = pc.getContext('2d'); c.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
+  const h = S.hist, m = S.sim.model, n = m.links.length, T = S.T, cols = [css('--a'), css('--b'), css('--c'), css('--d')];
+  const panel = (y0, hh, title, series, ymin, ymax, unit, extra) => {
+    const x0 = 46, x1 = W - 10, y1 = y0 + hh;
+    c.strokeStyle = css('--line'); c.strokeRect(x0, y0, x1 - x0, hh);
+    const X = t => x0 + t / T * (x1 - x0), Y = v => y1 - (v - ymin) / (ymax - ymin) * hh;
+    c.fillStyle = css('--muted'); c.font = '11px ' + css('--body'); c.fillText(title, x0 + 6, y0 + 13);
+    c.textAlign = 'right'; c.fillText(f(ymax, 0) + unit, x0 - 4, y0 + 11); c.fillText(f(ymin, 0) + unit, x0 - 4, y1 - 2); c.fillText('0', x0 - 4, Y(0) + 4); c.textAlign = 'left';
+    c.strokeStyle = css('--grey'); c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.stroke(); c.setLineDash([]);
+    const p = push(); c.fillStyle = 'rgba(217,102,31,.15)'; c.fillRect(X(p.t0), y0, Math.max(2, X(p.t0 + p.duration) - X(p.t0)), hh);
+    series.forEach((s, i) => {
+      c.strokeStyle = s.col || cols[i % 4]; c.lineWidth = s.w || 1.6; c.setLineDash(s.dash || []); c.beginPath();
+      h.t.forEach((t, k) => { const v = s.get(k); k ? c.lineTo(X(t), Y(v)) : c.moveTo(X(t), Y(v)); }); c.stroke(); c.setLineDash([]);
+      c.fillStyle = s.col || cols[i % 4]; c.fillText(s.name, x0 + 6 + 110 * (i + 1), y0 + 13);
+    });
+    if (extra) extra(X, Y);
+  };
+  const ph = (H - 24) / 3;
+  const short = m.links.map(l => l.joint.split(' ')[0]);
+  panel(4, ph, 'angles', m.links.map((l, j) => ({ name: short[j], get: k => h.q[k][j] * D, w: j === 0 ? 2.4 : 1.4 })), -60, 60, '°',
+    (X, Y) => { c.strokeStyle = css('--bad'); c.setLineDash([2, 4]); [30, -30].forEach(v => { c.beginPath(); c.moveTo(X(0), Y(v)); c.lineTo(X(T), Y(v)); c.stroke(); }); c.setLineDash([]); });
+  const Hmax = Math.max(4, ...h.H.flat().map(Math.abs), ...h.H.map(r => Math.abs(r.reduce((a, b) => a + b, 0))));
+  panel(12 + ph, ph, 'H about the ankle', [...m.links.map((l, j) => ({ name: short[j], get: k => h.H[k][j] })),
+    { name: 'total', get: k => h.H[k].reduce((a, b) => a + b, 0), col: css('--ink'), w: 2.2, dash: [6, 3] }], -Hmax, Hmax, '');
+  const g = gains(), tmax = Math.max(UB.tauAnkleMax(m), ...g.tau_max.slice(1, n)) * 1.1;
+  panel(20 + 2 * ph, ph, 'torques (N·m)', m.links.map((l, j) => ({ name: short[j], get: k => h.tau[k][j] })), -tmax, tmax, '');
+}
+/* ---------- compare ---------- */
+function compare() {
+  const out = document.getElementById('cmpout'), card = document.getElementById('cmpcard');
+  card.hidden = false; out.innerHTML = 'running four simulations…';
+  const m = model(), n = m.links.length, g = gains(), p = push();
+  const sets = n === 4 ? [['everything locked', []], ['waist only', [1]], ['arms only', [2, 3]], ['whole upper body', [1, 2, 3]]]
+                       : [['everything locked', []], ['waist only', [1]], ['arms only', [2]], ['whole upper body', [1, 2]]];
+  const rows = [];
+  const next = i => {
+    if (i >= sets.length) {
+      out.innerHTML = `<table class="t"><tr><th>strategy</th><th>result</th><th>peak lean</th><th>biggest posture angle</th></tr>` +
+        rows.map(r => `<tr><td>${r[0]}</td><td class="${r[1] ? 'bad2' : 'ok'}">${r[1] ? 'fell at ' + f(r[4], 2) + ' s' : 'recovered'}</td><td>${f(r[2], 1)}°</td><td>${f(r[3], 0)}°</td></tr>`).join('') +
+        `</table><p class="note" style="margin:6px 0 0">Same push (${S.force} N for ${f(S.duration)} s), same foot, same law. Raise the force until the first row falls, then see which of the others still stand: that gap is what the upper body buys.</p>`;
+      return;
+    }
+    const [name, act] = sets[i];
+    const r = UB.simulate(m, g, p, act, { T: 3.0 });
+    const post = Math.max(0, ...r.q.map(q => Math.max(...q.slice(1).map(Math.abs)))) * D;
+    rows.push([name, r.fell, r.peak_lean_deg, post, r.t_fall]);
+    out.innerHTML = `running… ${i + 1} / ${sets.length}`;
+    setTimeout(() => next(i + 1), 30);
+  };
+  setTimeout(() => next(0), 30);
+}
+/* ---------- wiring ---------- */
+document.getElementById('go').onclick = () => { if (S.sim.t > 0) reset(); S.running = true; last = 0; requestAnimationFrame(frame); };
+document.getElementById('reset').onclick = reset;
+document.getElementById('pause').onclick = () => { S.running = !S.running; if (S.running) { last = 0; requestAnimationFrame(frame); } };
+document.getElementById('slow').onclick = e => { S.slow = !S.slow; e.target.setAttribute('aria-pressed', S.slow); };
+document.getElementById('cmp').onclick = compare;
+document.getElementById('vside').onclick = () => { stage.view(S.plane === 'frontal' ? 'front' : S.plane === 'transverse' ? 'top' : 'side'); drawAll(); };
+document.getElementById('viso').onclick = () => { stage.view('iso'); drawAll(); };
+document.querySelectorAll('#planes button').forEach(b => b.onclick = () => { document.querySelectorAll('#planes button').forEach(x => x.setAttribute('aria-pressed', x === b)); S.plane = b.dataset.p; lockControls(); stage.view(S.plane === 'frontal' ? 'front' : S.plane === 'transverse' ? 'top' : 'side'); reset(); });
+document.querySelectorAll('#laws button').forEach(b => b.onclick = () => { document.querySelectorAll('#laws button').forEach(x => x.setAttribute('aria-pressed', x === b)); S.law = b.dataset.l; lockControls(); reset(); });
+const q = new URLSearchParams(location.hash.slice(1));
+if (q.get('law')) { S.law = q.get('law'); document.querySelectorAll('#laws button').forEach(x => x.setAttribute('aria-pressed', x.dataset.l === S.law)); }
+if (q.get('force')) S.force = +q.get('force');
+pushControls(); lockControls(); reset();
+new ResizeObserver(() => drawAll()).observe(view);
+})();
+</script>
+</body></html>

@@ -101,6 +101,14 @@ C++ FOR ROBOTICS
    161-164 the project: cascade loops, scheduler + config factory, lock-free
            hand-off + mutation-graded tests, interview drill
 
+HUMANOID BALANCE
+   165     the G1 upper body as a machine: joints, planes, locks (3D lab)
+   166     sagittal plane: derive the equations of motion yourself (step lab)
+   167     momentum about the ankle, the momentum matrix, why the arms help
+   168     the recovery law: LQR vs counterweight vs momentum QP, measured
+           (a live push-recovery lab)
+   169     from this model to MuJoCo and C++: the project plan
+
 The mechanics block is appended rather than inserted so that every earlier
 page keeps its number. It derives the plant the control half assumed: where
 M(q), c, g and J come from, following the twelve Modern Robotics playlists.
@@ -281,6 +289,7 @@ from .paradigms import (
 )
 from .pid import PIDPracticePage
 from .cpp_course import CPP_PAGES
+from .humanoid_balance import BALANCE_PAGES
 from .realtime import RealTimePage
 from .proprio import ActiveCompliancePage, BioProprioPage, RobotProprioPage
 from .values import ActionValuePage, BellmanPage, StateValuePage, VvsQPage
@@ -485,6 +494,12 @@ PAGE_CLASSES = [
     # Every exercise is compiled with g++ and graded (ctrlcore/cpp_course.py).
     # ======================================================================
     *CPP_PAGES,            # 150-164 roadmap, memory map, containers, stages 0-7, project v0-v5, drill
+    # ======================================================================
+    # HUMANOID BALANCE -- the G1 upper body as a balance machine, for the
+    # MuJoCo push-recovery project. Planar dynamics derived by hand, momentum,
+    # the recovery law, and the path to MuJoCo and C++ (ctrlcore/upperbody.py).
+    # ======================================================================
+    *BALANCE_PAGES,        # 165-169 machine, derivation, momentum, recovery law, project
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

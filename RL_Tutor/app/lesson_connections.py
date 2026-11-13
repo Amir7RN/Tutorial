@@ -175,6 +175,11 @@ REVIEW = {
 162: ((161,154,157,1), 'The Scheduler owns the loops and its invariant is the timing contract: rates divide the base clock, slow loops run first within a tick, and tick() never allocates. The factory moves the cascade into a config file.'),
 163: ((162,159,95,96), 'A triple buffer hands the latest state from the 1 kHz loop to a slow reader with no waiting and no torn reads. Tests are only as good as the bugs they catch, and mutation testing measures that.'),
 164: ((150,156,157,159,162,149), 'Answer design questions in order: the invariant, the ownership, the real-time path, and the test.'),
+165: ((115,134,22), 'A plane of a humanoid is a serial chain of the joints whose axes are normal to it. Locking a joint keeps its mass in every sum and deletes its column: M_locked = S^T M S, with the free diagonal entries unchanged. The ankle is never locked: it is the thing to be balanced.'),
+166: ((165,133,134,135), 'Positions from cumulative angles, one Jacobian per centre of mass, M from the kinetic energy, g from the potential energy, c from the COM accelerations at qdd = 0. The ankle row of tau = M qdd + c + g is bounded by m g times half the foot.'),
+167: ((166,124,126), 'dH_O/dt = tau_ankle + m g x_c + push moment: internal torques cannot change the angular momentum about the ankle, only move it between links and shift the COM. H_O = A_O(q) qd with A the mass matrix without its outer J^T. Mass moving high above the pivot counts more than spin.'),
+168: ((167,19,144,24), 'A state-feedback law (LQR with the ankle spring in the model) extends the recoverable push by about 15 percent and halves the lean; a COM counterweight law and a momentum-rate QP both fail, because moving mass back kicks the legs forward and a rate cannot be sustained past a joint stop.'),
+169: ((168,165,160,163,135), 'Phase 1: Python and MuJoCo, checking M, g and the momentum of the real G1 against the planar oracle before each next step. Phase 2: port the working controller to C++ as classes with invariants, fixed-size Eigen, no allocation in update, and the same numeric comparison test.'),
 }
 
 VOCABULARY = {

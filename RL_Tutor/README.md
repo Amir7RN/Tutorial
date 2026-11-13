@@ -52,6 +52,18 @@ The numerics are in `ctrlcore/robokin.py` and `ctrlcore/robodyn.py`; checks
 null-space torques produce no hand acceleration, energy conservation, IK,
 force closure) are in `tests/test_robotics.py`.
 
+### Humanoid Balance block (pages 165–169)
+
+The G1 upper body as a balance machine, for a MuJoCo push-recovery project. A planar
+legs–torso–arms chain on a pinned ankle (`ctrlcore/upperbody.py`, three planes by one parameter
+set each, joints lockable by column selection), its equations of motion derived by hand in a
+step lab, the momentum matrix and the balance identity dH_O/dt = τ_ankle + m g x_c + push,
+and three recovery laws (LQR, counterweight, momentum QP) measured against each other in a live
+3-D simulator (`app/assets/steplab/ub.js`, `ub3d.js`, `g1_upper_body.html`,
+`upper_body_lagrange.html`, `upper_body_recovery.html`). `tests/test_upperbody.py` checks the
+model against the Newton–Euler arm, the identities, the JavaScript port under node, and the
+recoverable-push numbers quoted on page 168.
+
 ### C++ for Robotics block (pages 150–164)
 
 The chapter after Manipulation & Mobility. Its premise is that the gap is software

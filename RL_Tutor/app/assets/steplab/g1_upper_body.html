@@ -1,0 +1,142 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>The G1 upper body as a machine</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.45fr) minmax(360px,1fr)}
+  .view{min-height:520px;cursor:grab}
+  .view canvas{position:absolute;left:4px;top:4px}
+  .sel button{font-size:.82rem}
+  .jc label{display:grid;grid-template-columns:150px minmax(0,1fr) 54px;gap:8px;align-items:center;font-size:.86rem;margin:3px 0}
+  .jc output{font-family:var(--mono);text-align:right}
+  .jc input[type=range]{width:100%;accent-color:var(--a)}
+  .lk{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--muted)}
+  .mx{display:grid;gap:4px;align-items:center;margin-top:6px}
+  .mx .hd{font-size:.78rem;font-weight:700;text-align:center;font-family:var(--mono)}
+  .cell{font-family:var(--mono);font-size:.9rem;text-align:center;padding:7px 2px;border-radius:7px;border:1px solid var(--line)}
+  .cell.dead{color:var(--grey);text-decoration:line-through;background:transparent;border-style:dashed}
+  .note{font-size:.9rem;line-height:1.5}.note b{color:var(--a)}
+  .note code{font-family:var(--mono);font-size:.82em;background:var(--inset);border:1px solid var(--line);border-radius:4px;padding:0 3px}
+  .eq{display:block}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.84rem}
+  .kv b{font-family:var(--mono);font-weight:600;color:var(--muted)}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1 id="title">The G1 upper body as a machine</h1>
+    <p>Pick a plane. The joints whose axes are perpendicular to that plane stay; the rest are frozen. Lock a joint and watch its row and column leave the mass matrix. Drag to orbit, wheel to zoom.</p></div>
+  <div class="sel" id="planes">
+    <button data-p="sagittal" aria-pressed="true">sagittal (side view: pitch)</button>
+    <button data-p="frontal">frontal (front view: roll)</button>
+    <button data-p="transverse">transverse (top view: yaw)</button>
+    <span style="flex:1"></span>
+    <button id="vside">side</button><button id="vfront">front</button><button id="vtop">top</button><button id="viso">3-D</button>
+  </div>
+  <div class="grid">
+    <div class="left">
+      <div class="card view" id="view"><canvas id="cv"></canvas></div>
+      <div class="card">
+        <div class="legend">
+          <span><i class="sw" style="background:#c0398a"></i>pitch axis (sagittal)</span>
+          <span><i class="sw" style="background:#7a4fd0"></i>roll axis (frontal)</span>
+          <span><i class="sw" style="background:#0f8a86"></i>yaw axis (transverse)</span>
+          <span><i class="sw" style="background:var(--grey)"></i>locked joint (ring)</span>
+          <span><i class="sw" style="background:#d9661f"></i>link centre of mass</span>
+          <span><i class="sw" style="background:#c23b3b"></i>whole-body COM, dropped to the floor</span>
+        </div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card"><p class="h">joints in this plane</p><div class="jc" id="ctl"></div></div>
+      <div class="card"><p class="h" id="mxh">mass matrix M(q), kg·m²</p><div class="mx" id="mx"></div>
+        <p class="note" id="mxnote" style="margin:8px 0 0"></p></div>
+      <div class="card"><p class="h">what this plane is</p><div class="note" id="note"></div></div>
+      <div class="card"><p class="h">the G1 joints behind it (mujoco_menagerie names)</p><div class="kv" id="g1"></div></div>
+    </div>
+  </div>
+</div>
+<script src="three.min.js"></script><script src="ub.js"></script><script src="ub3d.js"></script>
+<script>
+(() => {
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f = (x, d = 2) => (Math.abs(x) < 5e-4 ? 0 : x).toFixed(d);
+const deg = r => f(r * 180 / Math.PI, 0) + '°';
+const PLANE_NOTES = {
+  sagittal: `<b>Side view.</b> Four pitch joints move the body forward and back: ankle, waist, shoulder, elbow. Both arms swing together, so they count as one link of twice the mass. This is the plane of a push from behind, and the plane page 166 derives by hand.<br><br>
+  <b>Read the matrix.</b> M<sub>00</sub> is what the ankle feels when it alone accelerates: every mass in the body, at its distance from the ankle. M<sub>01</sub> is how much a waist acceleration shoves the ankle. The off-diagonals are the coupling the recovery controller lives on: accelerate the torso and the legs feel a torque, with no motor at the ankle at all.`,
+  frontal: `<b>Front view.</b> Three roll joints: ankle roll, waist roll, shoulder roll (abduction). The arms are straight, so the elbow is out of the plane and gone. This is the plane of a sideways push, and of your beam-walking work: the mediolateral hip strategy is this chain.<br><br>
+  <b>Same recipe.</b> Nothing in the derivation changes except the joint names and which arm length is in play. Compare M<sub>00</sub> with the sagittal one: same legs, same torso, a longer arm link.`,
+  transverse: `<b>Top view.</b> No gravity in this plane. The feet twist on the floor only through friction (so joint 0 is passive), the waist yaws the torso, and the arms, held out forward, yaw about the shoulder. A twisting push is absorbed by swinging the arms the other way: pure angular-momentum exchange, because gravity cannot help.<br><br>
+  <b>Why L = 0 for the legs.</b> Seen from above the legs are a disc: they have inertia about the vertical axis but no length to the next joint. The torso's "length" is the spine-to-shoulder offset.`,
+};
+const G1 = {
+  sagittal: [['ankle pitch', 'left_ankle_pitch_joint, right_ankle_pitch_joint'], ['waist pitch', 'waist_pitch_joint (29-dof G1; the 23-dof has waist yaw only)'],
+    ['shoulder pitch', 'left_shoulder_pitch_joint, right_shoulder_pitch_joint (axis 0 1 0: positive = arm back)'], ['elbow', 'left_elbow_joint, right_elbow_joint']],
+  frontal: [['ankle roll', 'left_ankle_roll_joint, right_ankle_roll_joint'], ['waist roll', 'waist_roll_joint'], ['shoulder roll', 'left_shoulder_roll_joint, right_shoulder_roll_joint']],
+  transverse: [['feet on the floor', 'no joint: the sole and friction'], ['waist yaw', 'waist_yaw_joint'], ['shoulder yaw', 'left_shoulder_yaw_joint, right_shoulder_yaw_joint']],
+};
+const S = { plane: 'sagittal', q: { sagittal: [0.1, 0.15, -0.6, -0.5], frontal: [0.08, 0.1, 0.8], transverse: [0.1, 0.3, 0.5] }, locks: { sagittal: [false, false, false, false], frontal: [false, false, false], transverse: [false, false, false] } };
+const view = document.getElementById('view'), cv = document.getElementById('cv');
+const stage = UB3D.stage(cv, view, { orbit: { az: 0, el: .1, r: 3.2, tgt: new THREE.Vector3(0, .7, 0) } });
+const fig = UB3D.figure(stage.scene);
+const labels = [0, 1, 2, 3, 4].map(() => { const d = document.createElement('div'); d.className = 'lbl'; d.hidden = true; view.appendChild(d); return d; });
+
+function model() { return UB.planes[S.plane]; }
+function free() { return S.locks[S.plane].map((l, i) => l ? -1 : i).filter(i => i >= 0); }
+
+function controls() {
+  const m = model(), q = S.q[S.plane], ctl = document.getElementById('ctl');
+  ctl.innerHTML = m.links.map((l, i) => {
+    const lo = i === 0 ? -0.6 : Math.max(l.lo, -3.1), hi = i === 0 ? 0.6 : Math.min(l.hi, 3.1);
+    return `<label>${l.joint} <input type="range" data-i="${i}" min="${lo}" max="${hi}" step="0.01" value="${q[i]}" ${S.locks[S.plane][i] ? 'disabled' : ''}><output id="o${i}">${deg(q[i])}</output></label>
+      ${i > 0 ? `<div class="lk"><input type="checkbox" id="lk${i}" data-i="${i}" ${S.locks[S.plane][i] ? 'checked' : ''}><label for="lk${i}" style="display:inline">lock ${l.joint}</label></div>` : `<div class="lk">joint 0 is the pivot: it is never locked, it is the thing to be balanced</div>`}`;
+  }).join('');
+  ctl.querySelectorAll('input[type=range]').forEach(r => r.oninput = () => { S.q[S.plane][+r.dataset.i] = +r.value; document.getElementById('o' + r.dataset.i).textContent = deg(+r.value); draw(); });
+  ctl.querySelectorAll('input[type=checkbox]').forEach(c => c.onchange = () => { S.locks[S.plane][+c.dataset.i] = c.checked; controls(); draw(); });
+  document.getElementById('note').innerHTML = PLANE_NOTES[S.plane];
+  document.getElementById('g1').innerHTML = G1[S.plane].map(([a, b]) => `<b>${a}</b><span>${b}</span>`).join('');
+}
+function matrix(core) {
+  const m = model(), n = m.links.length, locks = S.locks[S.plane], fr = free(), mx = document.getElementById('mx');
+  const L = UB.locked(m, S.q[S.plane], new Array(n).fill(0), fr);
+  const short = m.links.map(l => l.joint.split(' ')[0]);
+  mx.style.gridTemplateColumns = `auto repeat(${n},minmax(0,1fr))`;
+  let mxv = 0; core.M.forEach(r => r.forEach(v => mxv = Math.max(mxv, Math.abs(v))));
+  let h = '<div></div>' + short.map((s, j) => `<div class="hd ${locks[j] ? 'cg' : ''}">q̈<sub>${j}</sub> ${s}</div>`).join('');
+  for (let i = 0; i < n; i++) {
+    h += `<div class="hd ${locks[i] ? 'cg' : ''}">τ<sub>${i}</sub></div>`;
+    for (let j = 0; j < n; j++) {
+      const dead = locks[i] || locks[j], a = Math.abs(core.M[i][j]) / mxv;
+      h += `<div class="cell ${dead ? 'dead' : ''}" style="${dead ? '' : `background:color-mix(in srgb,var(--b) ${Math.round(a * 35)}%,var(--panel))`}">${f(core.M[i][j], 2)}</div>`;
+    }
+  }
+  mx.innerHTML = h;
+  const k = fr.length;
+  document.getElementById('mxh').textContent = `mass matrix M(q), kg·m² — ${n}×${n}` + (k < n ? `, ${k}×${k} after the locks` : '');
+  document.getElementById('mxnote').innerHTML = k < n
+    ? `Locked: ${locks.map((l, i) => l ? m.links[i].joint : null).filter(Boolean).join(', ')}. The reduced matrix is <span class="m">SᵀMS</span> (S keeps the free columns): ${L.M.map(r => '[' + r.map(v => f(v)).join(', ') + ']').join(' ')}. Its <b>diagonal entries did not change</b>: a locked joint carries its link along, it does not move the masses. What changed is that the locked joint's row is now a constraint torque the structure supplies, not a motor command.`
+    : `Every entry is <span class="m">Σ m<sub>k</sub> (r<sub>ik</sub>·r<sub>jk</sub>) + I<sub>k</sub></span> over the masses that both joints swing (page 134). Move the sliders: the diagonal changes with posture because the arms move closer to or further from each pivot; M<sub>00</sub> is largest with the arms out.`;
+}
+function draw() {
+  const m = model(), q = S.q[S.plane], core = UB.core(m, q, new Array(q.length).fill(0));
+  fig.pose(S.plane, q, S.locks[S.plane]);
+  fig.markCom(S.plane, core, m.links);
+  stage.draw();
+  labels.forEach(l => l.hidden = true);
+  m.links.forEach((l, i) => stage.label(labels[i], fig.toWorld(S.plane, core.c[i]).add(new THREE.Vector3(0, .07, 0)), `${l.m} kg`, css('--b')));
+  stage.label(labels[4], fig.toWorld(S.plane, core.xc).add(new THREE.Vector3(0, .1, 0)), `COM x = ${f(core.xc[0], 3)} m`, css('--bad'));
+  matrix(core);
+}
+document.querySelectorAll('#planes button[data-p]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('#planes button[data-p]').forEach(x => x.setAttribute('aria-pressed', x === b)); S.plane = b.dataset.p;
+  stage.view(S.plane === 'sagittal' ? 'side' : S.plane === 'frontal' ? 'front' : 'top'); controls(); draw();
+});
+document.getElementById('vside').onclick = () => { stage.view('side'); draw(); };
+document.getElementById('vfront').onclick = () => { stage.view('front'); draw(); };
+document.getElementById('vtop').onclick = () => { stage.view('top'); draw(); };
+document.getElementById('viso').onclick = () => { stage.view('iso'); draw(); };
+controls(); draw();
+new ResizeObserver(() => draw()).observe(view);
+})();
+</script>
+</body></html>
