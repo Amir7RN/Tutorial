@@ -16,8 +16,9 @@
   .cell{font:inherit;font-family:var(--mono);font-size:.9rem;text-align:center;padding:7px 2px;border-radius:7px;border:1px solid var(--line);color:var(--ink);background:var(--panel);cursor:pointer}
   .cell[aria-pressed="true"]{outline:3px solid var(--b);outline-offset:1px}
   .bd{font-size:.86rem;line-height:1.5}.bd b{color:var(--a)}
-  .bd table{border-collapse:collapse;font-family:var(--mono);font-size:.78rem;margin:6px 0}
-  .bd td,.bd th{border-bottom:1px solid var(--line);padding:3px 7px;text-align:right;white-space:nowrap}
+  .bd .tw{overflow-x:auto;margin:6px 0}
+  .bd table{border-collapse:collapse;font-family:var(--mono);font-size:.74rem}
+  .bd td,.bd th{border-bottom:1px solid var(--line);padding:3px 5px;text-align:right;white-space:nowrap}
   .bd th{color:var(--muted);font-family:var(--body);font-weight:700}
   .bd td:first-child,.bd th:first-child{text-align:left}
   .bd tr.off td{color:var(--grey)}
@@ -159,16 +160,16 @@ function breakdown(core) {
     ? `<tr><th>link</th><th>m (kg)</th><th>|d| to ${short[i]} (m)</th><th>m |d|²</th><th>+ I</th><th>= term</th></tr>`
     : `<tr><th>link</th><th>m (kg)</th><th>|d<sub>i</sub>| (m)</th><th>|d<sub>j</sub>| (m)</th><th>cos</th><th>m d<sub>i</sub>·d<sub>j</sub></th><th>+ I</th><th>= term</th></tr>`;
   const body = rows.map(r => r.off
-    ? `<tr class="off"><td>${lname[r.k]}</td><td colspan="${diag ? 5 : 7}">not counted: the ${short[first]} joint does not move it</td></tr>`
+    ? `<tr class="off"><td>${lname[r.k]}</td><td colspan="${diag ? 5 : 7}">not counted (below the ${short[first]} joint)</td></tr>`
     : diag
       ? `<tr><td>${lname[r.k]}</td><td>${m.links[r.k].m}</td><td>${f(len(r.di), 3)}</td><td>${f(r.prod, 3)}</td><td>${m.links[r.k].I}</td><td>${f(r.term, 3)}</td></tr>`
       : `<tr><td>${lname[r.k]}</td><td>${m.links[r.k].m}</td><td>${f(len(r.di), 3)}</td><td>${f(len(r.dj), 3)}</td><td>${f(r.cos, 2)}</td><td>${f(r.prod, 3)}</td><td>${m.links[r.k].I}</td><td>${f(r.term, 3)}</td></tr>`).join('');
-  const total = `<tr class="sum"><td>M<sub>${i}${j}</sub></td><td colspan="${diag ? 4 : 6}"></td><td>${f(sum, 3)} kg·m²</td></tr>`;
+  const total = `<tr class="sum"><td>M<sub>${i}${j}</sub> = Σ</td><td colspan="${diag ? 4 : 6}"></td><td>${f(sum, 3)}</td></tr>`;
   const lock = (locks[i] || locks[j]) ? `<p><b>Locked.</b> This row or column belongs to a locked joint, so it is not a coordinate any more: the number still exists (the masses have not moved) but it is now the constraint torque the structure supplies, not something a motor can be asked for.</p>` : '';
   const read = diag
     ? `<p>Reading: with every other joint held, a torque of ${f(sum, 2)} N·m at the ${short[i]} joint gives 1 rad/s². Move the sliders: the entry is largest when the masses above are far from the joint (arms out, torso leaning), smallest when they are folded in.</p>`
     : `<p>Reading: accelerate the ${short[j]} joint at 1 rad/s² and the ${short[i]} joint must supply ${f(sum, 2)} N·m just to stay put. M<sub>${j}${i}</sub> is the same number (swap the two arms and the dot product does not change). For balance this coupling is the whole story: it is how a motor at the ${short[j]} joint acts on the ankle, which has no motor worth the name.</p>`;
-  document.getElementById('bd').innerHTML = why + `<table>${head}${body}${total}</table>` + read + lock;
+  document.getElementById('bd').innerHTML = why + `<div class="tw"><table>${head}${body}${total}</table></div>` + read + lock;
   // 3-D: dashed arms from joint i (blue) and joint j (pink) to every counted mass; dim the rest
   armLines.forEach(l => l.visible = false);
   for (let k = 0; k < n; k++) {
