@@ -54,7 +54,7 @@ UB3D.figure = function (scene, colors) {
   F.axes.shoulder = [axis(F.waist, new THREE.Vector3(0, G.torso, -G.shoulderZ)), axis(F.waist, new THREE.Vector3(0, G.torso, G.shoulderZ))];
   F.axes.elbow = F.shoulders.map(sh => axis(sh, new THREE.Vector3(0, -G.upperArm, 0)));
   // centre-of-mass markers: one per planar link, one for the whole body
-  F.comLinks = [0, 1, 2, 3].map(() => { const s = new THREE.Mesh(new THREE.SphereGeometry(.03, 14, 10), mats.com); scene.add(s); return s; });
+  F.comLinks = [0, 1, 2, 3].map(() => { const s = new THREE.Mesh(new THREE.SphereGeometry(.03, 14, 10), mats.com.clone()); scene.add(s); return s; });
   F.com = new THREE.Mesh(new THREE.SphereGeometry(.05, 16, 12), mat('#c23b3b', { emissive: new THREE.Color('#c23b3b'), emissiveIntensity: .35 })); scene.add(F.com);
   F.comDrop = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineDashedMaterial({ color: 0xc23b3b, dashSize: .04, gapSize: .03 })); scene.add(F.comDrop);
 
