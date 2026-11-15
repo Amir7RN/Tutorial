@@ -214,14 +214,22 @@ function draw(){
   let html='';
   if(step===0){
     const s=scale([...m.cols,m.v]);
+    const tw={w:0,vs:[0,0]};for(let j=0;j<=k;j++){tw.w+=S.td[j];tw.vs=add(tw.vs,sc([D.P[j][1],-D.P[j][0]],S.td[j]))}
+    tw.v=add(tw.vs,sc(perp(m.p),tw.w));
     for(let j=0;j<=k;j++){dline(D.P[j],m.p,css(jv[j]));arrow(m.p,m.cols[j],s,css(jv[j]),.12+.02*j)}
     arrow(m.p,m.v,s,css('--vel'),.2);label(m.p,`v = ${vs(m.v)}`,css('--vel'),.45);
     legend([['--j1','θ̇₁ × column 1'],['--j2','θ̇₂ × column 2'],['--j3','θ̇₃ × column 3'],['--vel','v = their sum'],['--lever','lever r from each joint']]);
     html=`<p class="goal"><b>Goal of the whole lab:</b> find the torque the joints need when they are already turning, c(θ, θ̇), and see where J̇ comes from. <b>This step:</b> how fast does ${mn(k)} move?</p>
     ${chips(['m₁','m₂','m₃'],k,'k')}
-    <p>Column j of J<sub>${k+1}</sub> is what joint j alone does to the mass: it swings it sideways to its lever r<sub>j</sub> = p − p<sub>j</sub>, so ${E('column j = ẑ × r<sub>j</sub> = (−r<sub>y</sub>, r<sub>x</sub>)')}. Joints after the mass do not move it, so their columns are 0.</p>
+    <p>J<sub>${k+1}</sub> below is the <b>point Jacobian</b> of ${mn(k)} (velocity of one point, not a twist). Column j of J<sub>${k+1}</sub> is what joint j alone does to the mass: it swings it sideways to its lever r<sub>j</sub> = p − p<sub>j</sub>, so ${E('column j = ẑ × r<sub>j</sub> = (−r<sub>y</sub>, r<sub>x</sub>)')}. Joints after the mass do not move it, so their columns are 0.</p>
     <div class="blk">J${SUBN[k]} = ${mat2x3(m.J)} θ̇ = ${colv(S.td)} → v = J${SUBN[k]}θ̇ = ${colv(m.v)}</div>
     ${[0,1,2].filter(j=>j<=k).map(j=>`<p class="${jc[j]}" style="margin:0 0 3px">θ̇${SUBN[j]} × column ${j+1} = ${f(S.td[j],1)} × ${vs(m.J[j])} = ${vs(m.cols[j])}</p>`).join('')}
+    <details open style="font-size:.88rem;margin:6px 0"><summary>Which J is this? Same v via the twist (Kinematics pages)</summary>
+    <p style="margin:4px 0">This J<sub>${k+1}</sub> is the <b>point Jacobian</b> of ${mn(k)}: 2×3, its output is the mass's velocity in m/s, <b>not a twist</b>. Its columns are not screw axes. The screw-axis route gives the same v in two steps. Planar twists are (ω<sub>z</sub>, v<sub>x</sub>, v<sub>y</sub>); joint j at q<sub>j</sub> has 𝒮<sub>j</sub> = (1, −ẑ × q<sub>j</sub>) = (1, q<sub>jy</sub>, −q<sub>jx</sub>).</p>
+    <div class="blk">${[0,1,2].filter(j=>j<=k).map(j=>`<span class="${jc[j]}">𝒮${SUBN[j]} = (1, ${f(D.P[j][1])}, ${f(-D.P[j][0])})</span>`).join('&nbsp;&nbsp; ')}<br>
+    1) 𝒱<sub>s</sub> = Σ 𝒮<sub>j</sub>θ̇<sub>j</sub> = (${f(tw.w)}, ${f(tw.vs[0])}, ${f(tw.vs[1])})<br><span class="mut">&nbsp;&nbsp;&nbsp;ω = sum of the rates; v<sub>s</sub> = velocity of the body point at the origin</span><br>
+    2) v = v<sub>s</sub> + ω ẑ × p = ${vs(tw.vs)} + ${f(tw.w)}·${vs(perp(m.p))} = <b>${vs(tw.v)}</b> <span class="ok">${nrm(sub(tw.v,m.v))<1e-9?'✓ = J θ̇':''}</span></div>
+    <p class="mut" style="margin:0">Why one step works: column j = ẑ × (p − q<sub>j</sub>) = (−ẑ × q<sub>j</sub>) + ẑ × p, the screw axis's linear part plus "spin × position". J has done the twist-to-point conversion inside every column, before multiplying by θ̇.</p></details>
     <p style="margin-top:6px">Remember this shape: <b>J depends on the pose θ</b> (through the levers). When the arm moves, the levers turn, so J changes. That change is J̇, the subject of the next steps.</p>`;
   }
   if(step===1){

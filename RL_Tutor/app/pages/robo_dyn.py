@@ -256,10 +256,64 @@ class VelocityProductPage(Page):
             "expansion. The 3-D lab above runs every step with live numbers; read a card, then do "
             "the matching lab step."))
 
+        w = Card("which Jacobian? the point Jacobian, not J_s or J_b")
+        w.add(body(
+            "The Kinematics pages used the <b>space and body Jacobians</b>: columns are screw axes, "
+            "J<sub>s</sub>θ̇ is a <b>twist</b> 𝒱 = (ω, v). Every J on this page is a <b>point Jacobian</b> "
+            "J<sub>p</sub>: it belongs to one point p (a mass), and J<sub>p</sub>θ̇ is that point's velocity "
+            "in m/s. Its columns are <b>not</b> screw axes. The twist's v is not the velocity of p either: it "
+            "is the velocity of the body point that happens to sit at the origin. One more step converts it:"))
+        w.add(math_label(r"\dot p=v_s+\omega_s\times p\quad\Rightarrow\quad "
+                         r"\hat\omega_j\times(p-q_j)=\underbrace{-\hat\omega_j\times q_j}_{\mathcal{S}_j\ \mathrm{linear\ part}}"
+                         r"+\hat\omega_j\times p,\qquad J_p=J_{s,v}-[p]\,J_{s,\omega}", 15))
+        w.add(body(
+            "So a point-Jacobian column is the screw axis with the twist-to-point step already applied. "
+            "The step is linear, so converting each column first and then multiplying by θ̇ gives the same "
+            "answer as forming the twist first and converting once."))
+        P0, _, _ = _point_mass_c(np.radians([20.0, 60.0]), [1.0, 1.5])
+        tdw = (1.0, 1.5)
+        q2, pm = P0[1], P0[2]
+        vs = tdw[1] * np.array([q2[1], -q2[0]])
+        om = sum(tdw)
+        vp = vs + om * np.array([-pm[1], pm[0]])
+        cols = [np.array([-pm[1], pm[0]]), np.array([-(pm - q2)[1], (pm - q2)[0]])]
+        vj = tdw[0] * cols[0] + tdw[1] * cols[1]
+        v2 = lambda v: f"({v[0]:.2f}, {v[1]:.2f})"
+        w.add(body(
+            f"<b>Lab step 1, m₂</b> (θ₁ = 20°, θ₂ = 60°, θ̇₁ = 1, θ̇₂ = 1.5; planar twist "
+            f"(ω<sub>z</sub>, v<sub>x</sub>, v<sub>y</sub>)): joint 1 at the origin, 𝒮₁ = (1, 0, 0); joint 2 "
+            f"at q₂ = {v2(q2)}, 𝒮₂ = (1, {q2[1]:.2f}, {-q2[0]:.2f}). <b>Twist route:</b> 𝒱<sub>s</sub> = "
+            f"𝒮₁θ̇₁ + 𝒮₂θ̇₂ = ({om:.1f}, {vs[0]:.2f}, {vs[1]:.2f}); then v = v<sub>s</sub> + ω ẑ × p = "
+            f"{v2(vs)} + {om:.1f}·{v2(np.array([-pm[1], pm[0]]))} = <b>{v2(vp)}</b>. "
+            f"<b>Point-Jacobian route:</b> columns ẑ × (p − q<sub>j</sub>) = {v2(cols[0])}, {v2(cols[1])}; "
+            f"J<sub>p</sub>θ̇ = <b>{v2(vj)}</b>. Same velocity: the twist groups it by total spin and axis "
+            f"offset, the point Jacobian by joint."))
+        w.add(body(_html_table(
+            ("", "space / body Jacobian", "point Jacobian"),
+            [("columns", "screw axes 𝒮<sub>j</sub> (or ℬ<sub>j</sub>)",
+              "ω̂<sub>j</sub> × (p − q<sub>j</sub>): what joint j does to p"),
+             ("J θ̇ is", "a twist (ω, v), 6 × n", "the velocity of p, 3 × n (2 × n in the plane)"),
+             ("depends on", "the frame {s} or {b}", "the point p"),
+             ("books, tools", "Lynch &amp; Park (Modern Robotics), Featherstone, Pinocchio",
+              "Spong, Craig, Siciliano (J<sub>v</sub>), MuJoCo mj_jac (jacp)")])))
+        w.add(plain(
+            "<b>Is the point Jacobian common?</b> Yes, very. Both are everywhere; they answer different "
+            "questions. Use the space or body Jacobian when you need a whole frame's motion (a tool's "
+            "orientation and position, a wrench, screws). Use the point Jacobian when you need one point's "
+            "velocity: a centre of mass, a fingertip contact, a foot. Most textbook dynamics (Spong, Craig) "
+            "and MuJoCo's API work with the pair J<sub>v</sub> (a point) and J<sub>ω</sub> (the rotation), "
+            "which is the twist's two rows re-referenced to that point. Same information: the linear rows of "
+            "the body Jacobian of a frame placed at p, rotated into world axes, are J<sub>p</sub>. That is how "
+            "page 167 builds M for the G1, with J<sub>b</sub> at each centre of mass. Here the masses are "
+            "points, so no angular row is needed; even for rigid planar links it would add nothing to c, "
+            "because the link rates θ̇₁ + … do not depend on θ, so J<sub>ω</sub> is constant and "
+            "J̇<sub>ω</sub> = 0."))
+        self.add(w)
+
         d = Card("move, push, feel: where c comes from in one line")
         d.add(body(
             "Take point masses m<sub>k</sub> at positions p<sub>k</sub>(θ). Each has its own "
-            "Jacobian J<sub>k</sub>(θ), so v<sub>k</sub> = J<sub>k</sub>θ̇. Differentiate in time. "
+            "point Jacobian J<sub>k</sub>(θ), so v<sub>k</sub> = J<sub>k</sub>θ̇. Differentiate in time. "
             "J<sub>k</sub> depends on θ, θ depends on t, so <b>both factors change</b>:"))
         d.add(math_label(r"a_k=\frac{d}{dt}\left(J_k\dot\theta\right)=J_k\ddot\theta+\dot J_k\dot\theta", 16))
         d.add(body("Newton on each mass, then statics (τ = JᵀF) for each, then add:"))
