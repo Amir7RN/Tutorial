@@ -29,11 +29,14 @@
   .eq{display:block}
   .kv{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:.84rem}
   .kv b{font-family:var(--mono);font-weight:600;color:var(--muted)}
+  .shw{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.84rem;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
+  .shw label{display:flex;align-items:center;gap:5px;cursor:pointer}
+  .shw input{accent-color:var(--a)}
 </style>
 </head><body>
 <div class="wrap">
   <div class="top"><h1 id="title">The G1 upper body as a machine</h1>
-    <p>Pick a plane. The joints whose axes are perpendicular to that plane stay; the rest are frozen. Lock a joint and watch its row and column leave the mass matrix. Drag to orbit, wheel to zoom.</p></div>
+    <p>Pick a plane. The joints whose axes are perpendicular to that plane stay; the rest are frozen. Lock a joint and watch its row and column leave the mass matrix. Click an entry of M to see only the masses and arms behind it (click it again to clear). Drag to orbit, wheel to zoom.</p></div>
   <div class="sel" id="planes">
     <button data-p="sagittal" aria-pressed="true">sagittal (side view: pitch)</button>
     <button data-p="frontal">frontal (front view: roll)</button>
@@ -55,6 +58,11 @@
           <span><i class="sw" style="background:#2a4fd6"></i>arm from the row joint to a counted mass</span>
           <span><i class="sw" style="background:#c0398a"></i>arm from the column joint</span>
         </div>
+        <div class="shw"><span style="color:var(--muted)">always show:</span>
+          <label><input type="checkbox" id="shLinks">link centres of mass</label>
+          <label><input type="checkbox" id="shKg">link masses (kg)</label>
+          <label><input type="checkbox" id="shCom">whole-body COM</label>
+        </div>
       </div>
     </div>
     <div class="side">
@@ -67,7 +75,7 @@
     </div>
   </div>
 </div>
-<script src="three.min.js"></script><script src="ub.js"></script><script src="ub3d.js"></script>
+<script src="three.min.js"></script><script src="ub.js"></script><script src="g1mesh.js"></script><script src="ub3d.js"></script>
 <script>
 (() => {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -87,15 +95,15 @@ const G1 = {
   frontal: [['ankle roll', 'left_ankle_roll_joint, right_ankle_roll_joint'], ['waist roll', 'waist_roll_joint'], ['shoulder roll', 'left_shoulder_roll_joint, right_shoulder_roll_joint']],
   transverse: [['feet on the floor', 'no joint: the sole and friction'], ['waist yaw', 'waist_yaw_joint'], ['shoulder yaw', 'left_shoulder_yaw_joint, right_shoulder_yaw_joint']],
 };
-const S = { sel: [0, 0], plane: 'sagittal', q: { sagittal: [0.1, 0.15, -0.6, -0.5], frontal: [0.08, 0.1, 0.8], transverse: [0.1, 0.3, 0.5] }, locks: { sagittal: [false, false, false, false], frontal: [false, false, false], transverse: [false, false, false] } };
+const S = { sel: null, show: { links: false, kg: false, com: false }, plane: 'sagittal', q: { sagittal: [0.1, 0.15, -0.6, -0.5], frontal: [0.08, 0.1, 0.8], transverse: [0.1, 0.3, 0.5] }, locks: { sagittal: [false, false, false, false], frontal: [false, false, false], transverse: [false, false, false] } };
 const view = document.getElementById('view'), cv = document.getElementById('cv');
 const stage = UB3D.stage(cv, view, { orbit: { az: 0, el: .1, r: 3.2, tgt: new THREE.Vector3(0, .7, 0) } });
 const fig = UB3D.figure(stage.scene);
 const armLines = [];
 for (let k = 0; k < 8; k++) {
   const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-  const l = new THREE.Line(g, new THREE.LineDashedMaterial({ color: k < 4 ? 0x2a4fd6 : 0xc0398a, dashSize: .04, gapSize: .03, linewidth: 2 }));
-  l.visible = false; stage.scene.add(l); armLines.push(l);
+  const l = new THREE.Line(g, new THREE.LineDashedMaterial({ color: k < 4 ? 0x2a4fd6 : 0xc0398a, dashSize: .04, gapSize: .03, linewidth: 2, depthTest: false }));
+  l.renderOrder = 11; l.visible = false; stage.scene.add(l); armLines.push(l);
 }
 function setLine(l, a, b) { const p = l.geometry.attributes.position; p.setXYZ(0, a.x, a.y, a.z); p.setXYZ(1, b.x, b.y, b.z); p.needsUpdate = true; l.geometry.computeBoundingSphere(); l.computeLineDistances(); l.visible = true; }
 const labels = [0, 1, 2, 3, 4].map(() => { const d = document.createElement('div'); d.className = 'lbl'; d.hidden = true; view.appendChild(d); return d; });
@@ -126,12 +134,12 @@ function matrix(core) {
     h += `<div class="hd ${locks[i] ? 'cg' : ''}">τ<sub>${i}</sub></div>`;
     for (let j = 0; j < n; j++) {
       const dead = locks[i] || locks[j], a = Math.abs(core.M[i][j]) / mxv;
-      const on = S.sel[0] === i && S.sel[1] === j;
+      const on = !!S.sel && S.sel[0] === i && S.sel[1] === j;
       h += `<button type="button" class="cell ${dead ? 'dead' : ''}" data-i="${i}" data-j="${j}" aria-pressed="${on}" style="${dead ? '' : `background:color-mix(in srgb,var(--b) ${Math.round(a * 35)}%,var(--panel))`}" aria-label="M ${i}${j} = ${f(core.M[i][j], 3)}">${f(core.M[i][j], 2)}</button>`;
     }
   }
   mx.innerHTML = h;
-  mx.querySelectorAll('.cell').forEach(b => b.onclick = () => { S.sel = [+b.dataset.i, +b.dataset.j]; draw(); });
+  mx.querySelectorAll('.cell').forEach(b => b.onclick = () => { const i = +b.dataset.i, j = +b.dataset.j; S.sel = S.sel && S.sel[0] === i && S.sel[1] === j ? null : [i, j]; draw(); });
   breakdown(core);
   const k = fr.length;
   document.getElementById('mxh').textContent = `mass matrix M(q), kg·m² — ${n}×${n}` + (k < n ? `, ${k}×${k} after the locks` : '');
@@ -140,6 +148,12 @@ function matrix(core) {
     : `Every entry is <span class="m">Σ m<sub>k</sub> (r<sub>ik</sub>·r<sub>jk</sub>) + I<sub>k</sub></span> over the masses that both joints swing (page 134). Move the sliders: the diagonal changes with posture because the arms move closer to or further from each pivot; M<sub>00</sub> is largest with the arms out.`;
 }
 function breakdown(core) {
+  armLines.forEach(l => l.visible = false);
+  if (!S.sel) {
+    document.getElementById('bdh').textContent = 'how an entry is computed';
+    document.getElementById('bd').innerHTML = '<p>Click any entry of M above. The robot then shows only what that entry adds up: the link masses both joints swing, and the arm from each joint to each of those masses.</p>';
+    return;
+  }
   const m = model(), n = m.links.length, [i, j] = S.sel, locks = S.locks[S.plane];
   const short = m.links.map(l => l.joint), lname = m.links.map(l => l.name);
   const first = Math.max(i, j), diag = i === j;
@@ -170,29 +184,31 @@ function breakdown(core) {
     ? `<p>Reading: with every other joint held, a torque of ${f(sum, 2)} N·m at the ${short[i]} joint gives 1 rad/s². Move the sliders: the entry is largest when the masses above are far from the joint (arms out, torso leaning), smallest when they are folded in.</p>`
     : `<p>Reading: accelerate the ${short[j]} joint at 1 rad/s² and the ${short[i]} joint must supply ${f(sum, 2)} N·m just to stay put. M<sub>${j}${i}</sub> is the same number (swap the two arms and the dot product does not change). For balance this coupling is the whole story: it is how a motor at the ${short[j]} joint acts on the ankle, which has no motor worth the name.</p>`;
   document.getElementById('bd').innerHTML = why + `<div class="tw"><table>${head}${body}${total}</table></div>` + read + lock;
-  // 3-D: dashed arms from joint i (blue) and joint j (pink) to every counted mass; dim the rest
-  armLines.forEach(l => l.visible = false);
-  for (let k = 0; k < n; k++) {
-    const counted = k >= first;
-    fig.comLinks[k].material.opacity = counted ? 1 : .25; fig.comLinks[k].material.transparent = true;
-    if (!counted) continue;
-    const ck = fig.toWorld(S.plane, core.c[k]);
-    setLine(armLines[k], fig.toWorld(S.plane, core.p[i]), ck);
-    if (!diag) setLine(armLines[4 + k], fig.toWorld(S.plane, core.p[j]), ck);
+  // 3-D: dashed arms from joint i (blue) and joint j (pink) to every counted mass
+  for (let k = first; k < n; k++) {
+    const ck = fig.comW(S.plane, core, m.links, k);
+    setLine(armLines[k], fig.jointW(S.plane, core, m.links, i), ck);
+    if (!diag) setLine(armLines[4 + k], fig.jointW(S.plane, core, m.links, j), ck);
   }
 }
+/* which markers and numbers are on: the selected entry's counted masses, plus whatever the toggles add */
+const counted = k => !!S.sel && k >= Math.max(S.sel[0], S.sel[1]);
 function draw() {
   const m = model(), q = S.q[S.plane], core = UB.core(m, q, new Array(q.length).fill(0));
   fig.pose(S.plane, q, S.locks[S.plane]);
   fig.markCom(S.plane, core, m.links);
+  m.links.forEach((l, k) => fig.comLinks[k].visible = S.show.links || counted(k));
+  fig.com.visible = S.show.com;
+  fig.comDrop.visible = S.show.com && S.plane !== 'transverse';
   matrix(core);
   stage.draw();
   labels.forEach(l => l.hidden = true);
-  m.links.forEach((l, i) => stage.label(labels[i], fig.toWorld(S.plane, core.c[i]).add(new THREE.Vector3(0, .07, 0)), `${l.m} kg`, css('--b')));
-  stage.label(labels[4], fig.toWorld(S.plane, core.xc).add(new THREE.Vector3(0, .1, 0)), `COM x = ${f(core.xc[0], 3)} m`, css('--bad'));
+  m.links.forEach((l, k) => { if (S.show.kg || counted(k)) stage.label(labels[k], fig.comLinks[k].position.clone().add(new THREE.Vector3(0, k % 2 ? -.07 : .07, 0)), `${l.m} kg`, css('--b')); });
+  if (S.show.com) stage.label(labels[4], fig.com.position.clone().add(new THREE.Vector3(0, .1, 0)), `COM x = ${f(core.xc[0], 3)} m`, css('--bad'));
 }
+['links', 'kg', 'com'].forEach(k => { const c = document.getElementById('sh' + k[0].toUpperCase() + k.slice(1)); c.onchange = () => { S.show[k] = c.checked; draw(); }; });
 document.querySelectorAll('#planes button[data-p]').forEach(b => b.onclick = () => {
-  document.querySelectorAll('#planes button[data-p]').forEach(x => x.setAttribute('aria-pressed', x === b)); S.plane = b.dataset.p; S.sel = [0, 0];
+  document.querySelectorAll('#planes button[data-p]').forEach(x => x.setAttribute('aria-pressed', x === b)); S.plane = b.dataset.p; S.sel = null;
   stage.view(S.plane === 'sagittal' ? 'side' : S.plane === 'frontal' ? 'front' : 'top'); controls(); draw();
 });
 document.getElementById('vside').onclick = () => { stage.view('side'); draw(); };

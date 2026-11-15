@@ -50,7 +50,7 @@
     </div>
   </div>
 </div>
-<script src="three.min.js"></script><script src="ub.js"></script><script src="ub3d.js"></script>
+<script src="three.min.js"></script><script src="ub.js"></script><script src="g1mesh.js"></script><script src="ub3d.js"></script>
 <script>
 (() => {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -122,9 +122,9 @@ function drawAll() {
   fig.markCom(S.plane, k, m.links);
   const inPush = sim.t >= p.t0 && sim.t < p.t0 + p.duration;
   pushArrow.visible = inPush;
-  if (inPush) { const sh = fig.toWorld(S.plane, k.p[2]); pushArrow.position.copy(sh.clone().sub(new THREE.Vector3(.55, 0, 0))); pushArrow.setLength(.5, .12, .07); }
+  if (inPush) { const sh = fig.jointW(S.plane, k, m.links, 2); pushArrow.position.copy(sh.clone().sub(new THREE.Vector3(.55, 0, 0))); pushArrow.setLength(.5, .12, .07); }
   stage.draw();
-  stage.label(labels[0], fig.toWorld(S.plane, k.xc).add(new THREE.Vector3(0, .12, 0)), `COM x ${f(k.xc[0], 3)} m`, css('--bad'));
+  stage.label(labels[0], fig.com.position.clone().add(new THREE.Vector3(0, .12, 0)), `COM x ${f(k.xc[0], 3)} m`, css('--bad'));
   stage.label(labels[1], new THREE.Vector3(0, 1.45, 0), sim.fell ? 'FELL' : (sim.t >= S.T ? 'recovered' : ''), sim.fell ? css('--bad') : css('--c'));
   stat(); plots();
 }
