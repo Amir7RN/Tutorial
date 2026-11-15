@@ -546,7 +546,7 @@ def inverse_velocity_card() -> Card:
     c.add(plain(
         "The book also gives weighted inverses that minimise other things, e.g. "
         "θ̇ᵀWθ̇ to make some joints 'expensive', or kinetic energy with W = M(θ) "
-        "(page 138). The structure is always the same: among all θ̇ that do the "
+        "(page 139). The structure is always the same: among all θ̇ that do the "
         "job, pick the cheapest by your measure."))
     return c
 

@@ -6,7 +6,7 @@
 </head><body>
 <script>
 /* Video 8.5: forward dynamics from n + 1 calls of the Newton–Euler inverse
-   dynamics, then M θ̈ = τ − h, then integrate. Same planar 3R arm as page 135. */
+   dynamics, then M θ̈ = τ − h, then integrate. Same planar 3R arm as page 136. */
 const L = [1, .8, .6], MS = [2, 1.5, 1];
 const R = R6.build(L, MS);
 const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul, v6 = R6.v6;
@@ -100,11 +100,11 @@ SL.app({
   },
   math(S) {
     const s = st(), j = S - 2;
-    const head = `<p class="cg">State now (t = ${f(sim.t, 2)} s): θ = (${s.th.map(SL.deg).join(', ')}), θ̇ = ${vs(s.thd, 2)}, τ = ${vs(s.tau, 1)} N·m. Same arm as page 135.</p>`;
+    const head = `<p class="cg">State now (t = ${f(sim.t, 2)} s): θ = (${s.th.map(SL.deg).join(', ')}), θ̇ = ${vs(s.thd, 2)}, τ = ${vs(s.tau, 1)} N·m. Same arm as page 136.</p>`;
     const rows = [
 `${E(`τ = M(θ) θ̈ + h(θ, θ̇),      h = c(θ, θ̇) + g(θ) + Jᵀ F_tip
 known:  θ, θ̇, τ          unknown: θ̈`)}
-${ul(['Inverse dynamics (page 135) maps (θ, θ̇, θ̈) → τ in O(n), with no derivatives.',
+${ul(['Inverse dynamics (page 136) maps (θ, θ̇, θ̈) → τ in O(n), with no derivatives.',
       'Trick: choose θ̈, θ̇, gravity cleverly, and read M and h off its output. That costs n + 1 calls.',
       'Then θ̈ = M⁻¹(τ − h). Never form M⁻¹ explicitly: solve the linear system.'])}`,
 `${E(`call 0:  RNEA(θ, θ̇, θ̈ = 0, g = 9.81) = M·0 + h = h

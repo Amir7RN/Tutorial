@@ -191,7 +191,7 @@ g₂ = m₂ g L₂ c₁₂                   = ${f(s.g[1], 3)} N·m`)}
 ${E(`τ = M(θ) θ̈ + c(θ, θ̇) + g(θ)
 τ₁ = ${f(s.Ma[0], 3)} + ${f(s.c[0], 3)} + ${f(s.g[0], 3)} = ${f(s.tau[0], 3)} N·m
 τ₂ = ${f(s.Ma[1], 3)} + ${f(s.c[1], 3)} + ${f(s.g[1], 3)} = ${f(s.tau[1], 3)} N·m`)}
-<p><b>Cross-check</b> with recursive Newton–Euler (page 135, no energy, no derivatives): τ = ${vs(s.rnea, 3)} → difference ${f(MR.norm(MR.sub(s.tau, s.rnea)), 6)} ✓</p>
+<p><b>Cross-check</b> with recursive Newton–Euler (page 136, no energy, no derivatives): τ = ${vs(s.rnea, 3)} → difference ${f(MR.norm(MR.sub(s.tau, s.rnea)), 6)} ✓</p>
 <p>Looks like f = ma + gravity, except the accelerations of the masses also contain velocity products, because joint coordinates are not inertial. If the hand pushes on the world with a wrench F_tip, add <b>Jᵀ F_tip</b> to the right side (page 126).</p>
 <p><b>Play</b>: τ = 0 is applied, so the θ̈ sliders become the free accelerations: M θ̈ + c + g = 0 and τ stays ≈ 0.</p>`];
     return head + rows[S];

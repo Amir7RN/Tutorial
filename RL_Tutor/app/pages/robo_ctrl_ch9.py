@@ -1,5 +1,5 @@
 """
-Chapter 9 lecture videos (Podcast/captions/Chapter9), as cards for pages 140-141.
+Chapter 9 lecture videos (Podcast/captions/Chapter9), as cards for pages 141-142.
 
     9.1-9.2 part 1   trajectory, path, time scaling; straight lines in joint space,
                      task space and SE(3)
@@ -21,7 +21,7 @@ from .robo_space_rigid import in_words, video_tag
 from .robo_dyn_ch8 import _table
 
 
-# ---------------------------------------------------------------- page 140
+# ---------------------------------------------------------------- page 141
 def path_video_card() -> Card:
     c = Card("video 9.1–9.2, part 1 — trajectory = path + time scaling")
     c.add(video_tag(
@@ -102,7 +102,7 @@ def via_video_card() -> Card:
     return c
 
 
-# ---------------------------------------------------------------- page 141
+# ---------------------------------------------------------------- page 142
 def topt_dyn_video_card() -> Card:
     c = Card("video 9.4, part 1 — dynamics along the path, and bounds on s̈")
     c.add(video_tag(
@@ -113,7 +113,7 @@ def topt_dyn_video_card() -> Card:
     c.add(math_label(r"m_i>0:\ L_i=\frac{\tau_i^{min}-c_i\dot s^2-g_i}{m_i},\ U_i=\frac{\tau_i^{max}-c_i\dot s^2-g_i}{m_i};"
                      r"\quad m_i<0:\ \text{swap}\qquad L=\max_iL_i,\ U=\min_iU_i", 14))
     c.add(body(
-        "<b>Worked numbers</b> (page 141's arm, straight path θ = (−1.4, 1.8) → (1.0, 0.2), "
+        "<b>Worked numbers</b> (page 142's arm, straight path θ = (−1.4, 1.8) → (1.0, 0.2), "
         "|τ₁| ≤ 40, |τ₂| ≤ 15 N·m) at s = 0.4, ṡ = 2 /s: θ = (−0.44, 1.16), m = (6.231, 0.831), "
         "c = (2.816, 3.168), g = (26.614, 4.425). Joint 1: L₁ = (−40 − 11.27 − 26.61)/6.231 = −12.50, "
         "U₁ = (40 − 37.88)/6.231 = 0.34. Joint 2: L₂ = (−15 − 12.67 − 4.43)/0.831 = −38.62, "

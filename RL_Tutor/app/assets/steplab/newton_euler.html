@@ -129,7 +129,7 @@ ${E(`a₀ = (0, +g) = (0, 9.81) m/s²      (the base “acceleration”)`)}
 `${E(`τ (RNEA) = ${vs(tr.tau, 3)} N·m`)}
 ${s.lag ? `<p><b>Check</b> against the Lagrangian form (page 133): M θ̈ + c + g + Jᵀ f_tip = ${vs(s.lag, 3)} → difference ${f(MR.norm(MR.sub(s.lag, tr.tau)), 8)} ✓</p>` : '<p>(Switch to 2 links to compare with the closed-form Lagrangian.)</p>'}
 ${ul(['<b>No derivatives</b>: only multiplications and additions, link by link.', '<b>O(n)</b>: one loop out, one loop back. A symbolic Lagrangian grows like n³–n⁴.',
-      'A tip force shows up in every joint torque: that is τ = Jᵀf from page 126, without ever building J.', 'M(θ) column i = RNEA with θ̇ = 0, θ̈ = eᵢ, no gravity: n calls give the whole mass matrix (page 137).'])}`,
+      'A tip force shows up in every joint torque: that is τ = Jᵀf from page 126, without ever building J.', 'M(θ) column i = RNEA with θ̇ = 0, θ̈ = eᵢ, no gravity: n calls give the whole mass matrix (page 138).'])}`,
 `<p><b>Single rigid body in 3-D</b> (video 8.2). Body frame {b} at the centre of mass, twist V_b = (ω_b, v_b), acceleration V̇_b:</p>
 ${E(`f_b = m (v̇_b + ω_b × v_b)
 m_b = I_b ω̇_b + ω_b × (I_b ω_b)

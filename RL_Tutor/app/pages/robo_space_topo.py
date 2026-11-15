@@ -219,7 +219,7 @@ _TOPO = {
             "a planner's distance, an interpolated path. Otherwise the arm "
             "turns 340° when 20° would do (the next lab). A grid planner on "
             "this C-space must link the right column to the left column, or it "
-            "misses short paths through the seam (page 142).",
+            "misses short paths through the seam (page 143).",
         extra="Where the zero of each angle is placed is an arbitrary choice; "
               "it moves the seams but cannot remove them. With joint limits "
               "(say ±150°) the C-space is a closed rectangle [−150°, 150°]², "
@@ -1153,7 +1153,7 @@ class HoopConstraintCard:
             "<b>Physically</b>, the red direction is also the direction in "
             "which the hoop pushes on the bead. A push along the red arrow "
             "can never speed up or slow down a motion along the green line, "
-            "so the hoop does no work. Page 139 uses exactly this: the "
+            "so the hoop does no work. Page 140 uses exactly this: the "
             "constraint force is Aᵀλ, and its power q̇ᵀAᵀλ = (A q̇)ᵀλ = 0."))
         self._draw()
 
@@ -1324,7 +1324,7 @@ class WallCard:
             "−3.00: the arrow lies flat along the wall and the gap rate is "
             "zero. Above −3 the finger pulls off the wall; below, it "
             "pushes into it, and the wall must push back (that push is the "
-            "constraint force Aᵀλ of page 139). At −3 the tip slides down "
+            "constraint force Aᵀλ of page 140). At −3 the tip slides down "
             "the wall at 1.73 m/s; to slide up, run both joints the other "
             "way. Same row of A, same cancellation."))
         self._draw()

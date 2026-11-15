@@ -27,7 +27,7 @@ const pushPath = (q0, F) => {
 const f = SL.f, vs = SL.vs, E = SL.eq, ul = SL.ul;
 SL.app({
   title: 'Task-space dynamics: the mass the hand feels',
-  sub: 'Write the dynamics in hand coordinates: F = Λ(q) ẍ + μ(q, q̇) + p(q). Same arm as pages 135–137. Gravity is ignored in steps 2–4 so only inertia shows.',
+  sub: 'Write the dynamics in hand coordinates: F = Λ(q) ẍ + μ(q, q̇) + p(q). Same arm as pages 136–138. Gravity is ignored in steps 2–4 so only inertia shows.',
   view: '2d',
   legend: [['--b', 'hand force F'], ['--d', 'hand acceleration ẍ = Λ⁻¹F'], ['--c', 'Λ: force needed per unit acceleration'], ['--a', 'actual hand path when pushed']],
   controls: [
@@ -130,8 +130,8 @@ J̄ᵀ c     = ${vs(MR.mv(MR.T(s.Jbar), s.c), 3)} N
 J̄ = M⁻¹ Jᵀ Λ    (the dynamically consistent inverse)
 p = J̄ᵀ g = ${vs(s.p, 3)} N`)}
 <p>Check: Jᵀp = ${vs(MR.mv(MR.T(s.J), s.p), 3)} vs g = ${vs(s.g, 3)}: for a square, invertible J they are equal, J̄ = J⁻¹ and p = J⁻ᵀg.</p>
-<p>J̄ weights the inverse by the mass matrix. For redundant arms it is the inverse that makes the null-space torques cause no hand acceleration (page 144).</p>`,
-`<p><b>Operational-space control</b> (page 144): choose the hand acceleration you want, then</p>
+<p>J̄ weights the inverse by the mass matrix. For redundant arms it is the inverse that makes the null-space torques cause no hand acceleration (page 145).</p>`,
+`<p><b>Operational-space control</b> (page 145): choose the hand acceleration you want, then</p>
 ${E(`τ = Jᵀ (Λ ẍ_des + μ + p)        ⇒   ẍ = ẍ_des`)}
 <p>The hand behaves like a unit point mass that you steer directly; all the coupling of the joints is cancelled.</p>
 <p><b>Safety.</b> In a collision along unit direction u the hand acts like a mass</p>

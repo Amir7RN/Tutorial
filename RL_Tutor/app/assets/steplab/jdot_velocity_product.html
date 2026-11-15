@@ -1,0 +1,369 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>J-dot and Velocity Products</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* 3-D 3R arm left; step chips, the step's numbers and the controls right */
+:root{
+  --bg:#f2f4f7; --panel:#ffffff; --ink:#1a2330; --muted:#5b6676; --line:#d4dae2; --hi:#eaf0ff;
+  --vel:#2a4fd6; --acc:#1a2330; --push:#8a5a12; --jd:#c62828; --cent:#d9661f; --cor:#0f8f9a; --lever:#7d8794;
+  --link:#3b4656; --mass:#8a5a12; --fade:#b7bfca; --ok:#1f8a4c;
+  --j1:#7a4fd0; --j2:#c0398a; --j3:#2e8b57;
+  --body:"Atkinson Hyperlegible",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --vel:#7d9bff; --acc:#e5eaf1; --push:#d9b45c; --jd:#ff6b6b; --cent:#f08a45; --cor:#3fc6d1; --lever:#8792a0;
+  --link:#b8c2cf; --mass:#d9b45c; --fade:#4a5463; --ok:#4fd08a;
+  --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11151b; --panel:#192029; --ink:#e5eaf1; --muted:#97a2b1; --line:#2b3441; --hi:#1f2a44;
+  --vel:#7d9bff; --acc:#e5eaf1; --push:#d9b45c; --jd:#ff6b6b; --cent:#f08a45; --cor:#3fc6d1; --lever:#8792a0;
+  --link:#b8c2cf; --mass:#d9b45c; --fade:#4a5463; --ok:#4fd08a;
+  --j1:#a98bf0; --j2:#e46ab0; --j3:#5cc98a; color-scheme:dark}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+[hidden]{display:none!important}
+.wrap{height:100%;display:flex;flex-direction:column;gap:8px;max-width:1500px;margin:0 auto;padding:10px 16px;box-sizing:border-box}
+.top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+h1{font-size:1.15rem;margin:0}
+.sub{color:var(--muted);margin:0;font-size:.88rem}
+.grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(380px,1fr);gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px}
+.view{position:relative;padding:6px;display:flex;flex-direction:column;min-height:0}
+#scene{flex:1;min-height:0;width:100%;display:block;touch-action:none;cursor:grab;border-radius:6px}
+.side{display:flex;flex-direction:column;gap:10px;min-width:0;overflow-y:auto}
+@media (max-width:900px){html,body{height:auto}.wrap{height:auto}.grid{grid-template-columns:minmax(0,1fr)}#scene{flex:none;aspect-ratio:1.1/1}.side{overflow:visible}}
+.h{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.8rem;color:var(--muted);padding:6px 4px 2px;min-height:1.4em}
+.sw{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.lbl{position:absolute;font-size:.76rem;font-weight:700;pointer-events:none;white-space:nowrap;transform:translate(-50%,-130%);
+  background:color-mix(in srgb,var(--panel) 85%,transparent);padding:1px 6px;border-radius:4px;font-family:var(--mono)}
+.steps{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font:inherit;font-size:.82rem;padding:4px 9px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--hi);border-color:var(--vel);font-weight:700}
+.chip:focus-visible,button:focus-visible{outline:2px solid var(--vel);outline-offset:2px}
+.nav{display:flex;gap:6px;margin-top:8px;align-items:center}
+.nav button{font:inherit;font-size:.84rem;padding:4px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.nav .mut{font-size:.82rem}
+.pick{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:2px 0 8px;font-size:.84rem}
+.exp p{margin:0 0 7px;font-size:.9rem}
+.exp .goal{border-left:3px solid var(--vel);padding:2px 0 2px 8px;margin-bottom:8px}
+.eq{font-family:var(--mono);font-size:.84rem;white-space:nowrap}
+.blk{font-family:var(--body);font-variant-numeric:tabular-nums;font-size:.88rem;background:var(--bg);border-radius:6px;padding:6px 8px;margin:4px 0 8px;overflow-x:auto;white-space:nowrap}
+table.t{border-collapse:collapse;font-family:var(--mono);font-size:.8rem;margin:4px 0 8px;width:100%}
+table.t td.n{font-family:var(--body)}
+table.t td,table.t th{border:1px solid var(--line);padding:3px 5px;text-align:right}
+table.t th{font-family:var(--body);font-weight:700;color:var(--muted);text-align:center}
+table.t tr.sel td{background:var(--hi)}
+.mat{display:inline-grid;vertical-align:middle;gap:0 10px;padding:2px 8px;border-left:1.5px solid var(--ink);border-right:1.5px solid var(--ink);border-radius:4px;font-family:var(--mono);font-size:.82rem;text-align:right}
+.mat .hl{font-weight:700;background:var(--hi);border-radius:3px}
+.ok{color:var(--ok);font-weight:700}
+.ctrls{display:grid;gap:5px}
+.ctrls label{display:grid;grid-template-columns:62px minmax(0,1fr) 62px;gap:8px;align-items:center;font-size:.86rem}
+.ctrls output{font-family:var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.ctrls .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input[type=range]{width:100%}
+.c1{color:var(--j1)} .c2{color:var(--j2)} .c3{color:var(--j3)} .cv{color:var(--vel)} .cj{color:var(--jd)} .cc{color:var(--cent)} .co{color:var(--cor)} .cp{color:var(--push)} .cl{color:var(--lever)} .mut{color:var(--muted)}
+</style></head><body>
+
+<div class="wrap">
+  <div class="top">
+    <h1>J̇ and the velocity-product term, on a 3R arm</h1>
+    <p class="sub">Three point masses at the link tips. Walk the six steps: velocity, acceleration, what J̇ is, the speed pairs, the torque, the Christoffel check. Drag to orbit, press play to watch the masses curve.</p>
+  </div>
+  <div class="grid">
+    <div class="card view" id="view">
+      <canvas id="scene" aria-label="3-D 3R arm with the vectors of the current step"></canvas>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="steps" id="steps"></div>
+        <div class="nav"><button id="prev" type="button">← back</button><button id="next" type="button">next →</button><span class="mut" id="where"></span></div>
+      </div>
+      <div class="card exp" id="exp"></div>
+      <div class="card ctrls">
+        <div class="h">Pose, speeds, accelerations</div>
+        <label for="t1">θ₁ <input id="t1" type="range" min="-180" max="180" step="1"><output id="t1o"></output></label>
+        <label for="t2">θ₂ <input id="t2" type="range" min="-180" max="180" step="1"><output id="t2o"></output></label>
+        <label for="t3">θ₃ <input id="t3" type="range" min="-180" max="180" step="1"><output id="t3o"></output></label>
+        <label for="d1">θ̇₁ <input id="d1" type="range" min="-3" max="3" step="0.1"><output id="d1o"></output></label>
+        <label for="d2">θ̇₂ <input id="d2" type="range" min="-3" max="3" step="0.1"><output id="d2o"></output></label>
+        <label for="d3">θ̇₃ <input id="d3" type="range" min="-3" max="3" step="0.1"><output id="d3o"></output></label>
+        <label for="a1">θ̈₁ <input id="a1" type="range" min="-3" max="3" step="0.1"><output id="a1o"></output></label>
+        <label for="a2">θ̈₂ <input id="a2" type="range" min="-3" max="3" step="0.1"><output id="a2o"></output></label>
+        <label for="a3">θ̈₃ <input id="a3" type="range" min="-3" max="3" step="0.1"><output id="a3o"></output></label>
+        <div class="row"><button class="chip" id="play" type="button" aria-pressed="false">▶ play (θ̈ held)</button>
+          <button class="chip" id="zero" type="button">θ̈ = 0</button><button class="chip" id="reset" type="button">reset</button>
+          <span class="mut" style="font-size:.8rem">L = 1 m each, m = 1 kg each</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+<script>
+(()=>{
+const L=[1,1,1],MS=[1,1,1],D2R=Math.PI/180;
+const INIT={th:[20,60,-50],td:[1,1.5,-1],tdd:[0,0,0]};
+const S={th:[...INIT.th],td:[...INIT.td],tdd:[...INIT.tdd],step:0,k:2,col:0,pair:[0,1],ji:0,play:false,trail:[]};
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f=(x,d=2)=>(Math.abs(x)<5*Math.pow(10,-d-1)?0:x).toFixed(d), vs=(v,d=2)=>'('+v.map(x=>f(x,d)).join(', ')+')';
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1]],sub=(a,b)=>[a[0]-b[0],a[1]-b[1]],sc=(a,s)=>[a[0]*s,a[1]*s],
+  perp=a=>[-a[1],a[0]],cr=(a,b)=>a[0]*b[1]-a[1]*b[0],dot=(a,b)=>a[0]*b[0]+a[1]*b[1],nrm=a=>Math.hypot(a[0],a[1]);
+const SUBN='₁₂₃',jn=i=>'joint '+(i+1),mn=k=>'m'+SUBN[k],jc=['c1','c2','c3'],jv=['--j1','--j2','--j3'];
+
+/* ---------- kinematics and dynamics, all in the plane (x, y), joints about ẑ ---------- */
+// P[0..2] are the joints, P[k+1] is mass k. Joint j moves mass k iff j <= k.
+function fk(th){const P=[[0,0]];let a=0;for(let i=0;i<3;i++){a+=th[i];P.push([P[i][0]+L[i]*Math.cos(a),P[i][1]+L[i]*Math.sin(a)])}return P}
+function velAt(P,td,n){let v=[0,0];for(let j=0;j<n;j++)v=add(v,sc(perp(sub(P[n],P[j])),td[j]));return v}
+const Jk=(P,k)=>[0,1,2].map(j=>j<=k?perp(sub(P[k+1],P[j])):[0,0]);       // columns of J_k (2×3)
+const comb=(cols,w)=>cols.reduce((s,c,j)=>add(s,sc(c,w[j])),[0,0]);
+function massM(th){const P=fk(th),M=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let k=0;k<3;k++){const J=Jk(P,k);for(let i=0;i<3;i++)for(let j=0;j<3;j++)M[i][j]+=MS[k]*dot(J[i],J[j])}return M}
+function model(){
+  const th=S.th.map(x=>x*D2R),td=S.td,tdd=S.tdd,P=fk(th),V=[0,1,2,3].map(n=>velAt(P,td,n));
+  const mass=[0,1,2].map(k=>{
+    const J=Jk(P,k),Jd=[0,1,2].map(j=>j<=k?perp(sub(V[k+1],V[j])):[0,0]);
+    const cols=[0,1,2].map(j=>sc(J[j],td[j])), v=comb(J,td), Jtdd=comb(J,tdd), Jdtd=comb(Jd,td);
+    const pairs=[];for(let i=0;i<=k;i++)for(let j=i;j<=k;j++){const co=(i===j?1:2)*td[i]*td[j];
+      pairs.push({i,j,co,vec:sc(sub(P[k+1],P[j]),-co),toward:j})}          // −coef · (p_k − p_max(i,j))
+    // finite-difference check of a = dv/dt along θ(t) = θ + tθ̇ + ½t²θ̈
+    const h=1e-5,vAt=s=>{const ths=th.map((x,i)=>x+s*td[i]+.5*s*s*tdd[i]),tds=td.map((x,i)=>x+s*tdd[i]),Q=fk(ths);return velAt(Q,tds,k+1)};
+    const afd=sc(sub(vAt(h),vAt(-h)),1/(2*h));
+    return {J,Jd,cols,v,Jtdd,Jdtd,a:add(Jtdd,Jdtd),afd,pairs,p:P[k+1]}});
+  const M=massM(th),Mtdd=[0,1,2].map(i=>M[i].reduce((s,x,j)=>s+x*tdd[j],0));
+  const tq=[0,1,2].map(i=>[0,1,2].map(k=>MS[k]*dot(mass[k].J[i],mass[k].Jdtd)));   // torque at joint i from mass k
+  const c=tq.map(r=>r.reduce((s,x)=>s+x,0));
+  // Christoffel symbols two ways
+  const Gp=[0,1,2].map(i=>[0,1,2].map(j=>[0,1,2].map(l=>{let s=0;const mx=Math.max(j,l);
+    for(let k=Math.max(i,mx);k<3;k++)s-=MS[k]*cr(sub(P[k+1],P[i]),sub(P[k+1],P[mx]));return s})));
+  const hh=1e-5,dM=[0,1,2].map(q=>{const a=th.slice(),b=th.slice();a[q]+=hh;b[q]-=hh;const Ma=massM(a),Mb=massM(b);
+    return Ma.map((r,i)=>r.map((x,j)=>(x-Mb[i][j])/(2*hh)))});
+  const Gc=[0,1,2].map(i=>[0,1,2].map(j=>[0,1,2].map(l=>.5*(dM[l][i][j]+dM[j][i][l]-dM[i][j][l]))));
+  const Md=[0,1,2].map(i=>[0,1,2].map(j=>dM.reduce((s,d,l)=>s+d[i][j]*td[l],0)));
+  const cL=[0,1,2].map(i=>Md[i].reduce((s,x,j)=>s+x*td[j],0)-.5*td.reduce((s,a,j)=>s+a*dM[i][j].reduce((t,x,l)=>t+x*td[l],0),0));
+  return {P,V,mass,M,Mtdd,tq,c,Gp,Gc,cL,th};
+}
+
+/* ---------- 3-D scene ---------- */
+const view=document.getElementById('view'),cv=document.getElementById('scene');
+const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+const scene=new THREE.Scene(),cam=new THREE.PerspectiveCamera(40,1.2,.05,100);
+scene.add(new THREE.AmbientLight(0xffffff,.6));const dl=new THREE.DirectionalLight(0xffffff,.75);dl.position.set(3,6,4);scene.add(dl);
+const W3=(p,y=0)=>new THREE.Vector3(p[0],y,-p[1]);
+const mat=c=>new THREE.MeshStandardMaterial({color:new THREE.Color(c),roughness:.55,metalness:.1});
+let grid=null;
+const linkM=mat('#3b4656');const links=[0,1,2].map(()=>{const m=new THREE.Mesh(new THREE.BoxGeometry(1,.05,.07),linkM);scene.add(m);return m});
+const jMats=[mat('#7a4fd0'),mat('#c0398a'),mat('#2e8b57')];
+const joints=jMats.map(m=>{const j=new THREE.Mesh(new THREE.CylinderGeometry(.065,.065,.15,24),m);scene.add(j);return j});
+const massMats=[0,1,2].map(()=>new THREE.MeshStandardMaterial({color:0x8a5a12,roughness:.4,transparent:true,opacity:1}));
+const masses=massMats.map(m=>{const s=new THREE.Mesh(new THREE.SphereGeometry(.085,24,16),m);scene.add(s);return s});
+const lines=[0,1,2,3,4].map(()=>{const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  const l=new THREE.Line(g,new THREE.LineDashedMaterial({color:0x7d8794,dashSize:.06,gapSize:.04}));scene.add(l);return l});
+function setLine(l,a,b,color){const p=l.geometry.attributes.position;p.setXYZ(0,a.x,a.y,a.z);p.setXYZ(1,b.x,b.y,b.z);p.needsUpdate=true;
+  l.geometry.computeBoundingSphere();l.computeLineDistances();l.material.color=new THREE.Color(color);l.visible=true}
+const NA=14,arrows=[...Array(NA)].map(()=>{const a=new THREE.ArrowHelper(new THREE.Vector3(1,0,0),new THREE.Vector3(),1,0xffffff,.1,.06);scene.add(a);return a});
+const TN=400,trailG=new THREE.BufferGeometry();trailG.setAttribute('position',new THREE.BufferAttribute(new Float32Array(TN*3),3));
+const trail=new THREE.Line(trailG,new THREE.LineBasicMaterial({color:0x8a5a12,transparent:true,opacity:.7}));scene.add(trail);
+const labels=[];for(let k=0;k<12;k++){const d=document.createElement('div');d.className='lbl';d.hidden=true;view.appendChild(d);labels.push(d)}
+let nA=0,nL=0,nLb=0;
+function arrow(o,v,s,color,y=.14){if(nA>=NA)return;const a=arrows[nA++],w=new THREE.Vector3(v[0],0,-v[1]).multiplyScalar(s),Ln=w.length();
+  if(Ln<1e-3){a.visible=false;return}a.visible=true;a.position.copy(W3(o,y));a.setDirection(w.clone().normalize());
+  a.setLength(Ln,Math.min(.12,Ln*.35),Math.min(.07,Ln*.25));a.setColor(new THREE.Color(color))}
+function dline(a,b,color){if(nL<lines.length)setLine(lines[nL++],W3(a,.1),W3(b,.1),color)}
+function label(p,html,color,y=.3){if(nLb>=labels.length)return;const d=labels[nLb++],q=W3(p,y).project(cam);if(q.z>1){d.hidden=true;return}
+  const r=cv.getBoundingClientRect(),vr=view.getBoundingClientRect();d.hidden=false;d.innerHTML=html;d.style.color=color||'';
+  d.style.left=(r.left-vr.left+(q.x+1)/2*r.width)+'px';d.style.top=(r.top-vr.top+(1-q.y)/2*r.height)+'px'}
+function colorize(){const c=n=>new THREE.Color(css(n));scene.background=c('--panel');
+  if(grid)scene.remove(grid);grid=new THREE.GridHelper(7,28,c('--line'),c('--line'));grid.position.set(.6,-.002,-.6);scene.add(grid);
+  linkM.color=c('--link');jMats.forEach((m,i)=>m.color=c(jv[i]));trail.material.color=c('--mass')}
+function placeLink(m,a,b){const P=W3(a),Q=W3(b);m.position.copy(P.clone().add(Q).multiplyScalar(.5));m.position.y=.04;m.scale.set(P.distanceTo(Q),1,1);m.rotation.set(0,Math.atan2(-(Q.z-P.z),Q.x-P.x),0)}
+const orb={az:-.25,el:1.1,r:6.2,tgt:new THREE.Vector3(.8,0,-.8)};
+function placeCam(){cam.position.set(orb.tgt.x+orb.r*Math.cos(orb.el)*Math.sin(orb.az),orb.tgt.y+orb.r*Math.sin(orb.el),orb.tgt.z+orb.r*Math.cos(orb.el)*Math.cos(orb.az));cam.lookAt(orb.tgt)}
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;orb.az-=(e.clientX-drag[0])*.008;orb.el=Math.max(.15,Math.min(1.5,orb.el+(e.clientY-drag[1])*.006));drag=[e.clientX,e.clientY];draw()});
+['pointerup','pointercancel'].forEach(t=>cv.addEventListener(t,()=>drag=null));
+cv.addEventListener('wheel',e=>{e.preventDefault();orb.r=Math.max(2.5,Math.min(13,orb.r*(1+Math.sign(e.deltaY)*.08)));draw()},{passive:false});
+
+/* ---------- HTML helpers ---------- */
+const E=s=>`<span class="eq">${s}</span>`;
+function mat2x3(cols,hl){let h=`<span class="mat" style="grid-template-columns:repeat(3,auto)">`;
+  for(let r=0;r<2;r++)for(let j=0;j<3;j++)h+=`<span class="${j===hl?'hl':''}">${f(cols[j][r])}</span>`;return h+'</span>'}
+const colv=(v,cls='')=>`<span class="mat ${cls}" style="grid-template-columns:auto">${v.map(x=>`<span>${f(x)}</span>`).join('')}</span>`;
+function mat3(A,d=3){let h=`<span class="mat" style="grid-template-columns:repeat(3,auto)">`;A.forEach(r=>r.forEach(x=>h+=`<span>${f(x,d)}</span>`));return h+'</span>'}
+const legend=items=>document.getElementById('legend').innerHTML=items.map(([c,t])=>`<span><span class="sw" style="background:var(${c})"></span>${t}</span>`).join('');
+function chips(items,cur,on){return `<span class="pick">${items.map((t,i)=>`<button class="chip" type="button" data-p="${i}" aria-pressed="${i===cur}">${t}</button>`).join('')}</span>`.replace(/data-p/g,'data-'+on)}
+const scale=(vecs,target=1.1)=>{const m=Math.max(1e-6,...vecs.map(nrm));return target/m};
+
+/* ---------- the six steps ---------- */
+const STEPS=[
+ {t:'1 · v = J θ̇'},{t:'2 · a = Jθ̈ + J̇θ̇'},{t:'3 · what J̇ is'},{t:'4 · J̇θ̇ in speed pairs'},{t:'5 · torque c = Σ m JᵀJ̇θ̇'},{t:'6 · = Christoffel = Lagrange'}];
+const pairName=(i,j)=>i===j?`θ̇${SUBN[i]}²`:`2θ̇${SUBN[i]}θ̇${SUBN[j]}`;
+
+function draw(){
+  const D=model();placeCam();cam.updateMatrixWorld();nA=0;nL=0;nLb=0;
+  for(let k=0;k<3;k++){placeLink(links[k],D.P[k],D.P[k+1]);joints[k].position.copy(W3(D.P[k],.05));masses[k].position.copy(W3(D.P[k+1],.06))}
+  const step=S.step,k=S.k,m=D.mass[k];
+  const usesMass=step<=3;
+  massMats.forEach((mm,i)=>{const on=!usesMass||i===k;mm.color=new THREE.Color(on?css('--mass'):css('--fade'));mm.opacity=on?1:.45});
+  // trail of the selected mass (or all masses' first in torque steps)
+  const tp=trailG.attributes.position;S.trail.forEach((p,i)=>tp.setXYZ(i,p[0],.06,-p[1]));trailG.setDrawRange(0,S.trail.length);tp.needsUpdate=true;trail.visible=S.trail.length>1;
+  let html='';
+  if(step===0){
+    const s=scale([...m.cols,m.v]);
+    for(let j=0;j<=k;j++){dline(D.P[j],m.p,css(jv[j]));arrow(m.p,m.cols[j],s,css(jv[j]),.12+.02*j)}
+    arrow(m.p,m.v,s,css('--vel'),.2);label(m.p,`v = ${vs(m.v)}`,css('--vel'),.45);
+    legend([['--j1','θ̇₁ × column 1'],['--j2','θ̇₂ × column 2'],['--j3','θ̇₃ × column 3'],['--vel','v = their sum'],['--lever','lever r from each joint']]);
+    html=`<p class="goal"><b>Goal of the whole lab:</b> find the torque the joints need when they are already turning, c(θ, θ̇), and see where J̇ comes from. <b>This step:</b> how fast does ${mn(k)} move?</p>
+    ${chips(['m₁','m₂','m₃'],k,'k')}
+    <p>Column j of J<sub>${k+1}</sub> is what joint j alone does to the mass: it swings it sideways to its lever r<sub>j</sub> = p − p<sub>j</sub>, so ${E('column j = ẑ × r<sub>j</sub> = (−r<sub>y</sub>, r<sub>x</sub>)')}. Joints after the mass do not move it, so their columns are 0.</p>
+    <div class="blk">J${SUBN[k]} = ${mat2x3(m.J)} θ̇ = ${colv(S.td)} → v = J${SUBN[k]}θ̇ = ${colv(m.v)}</div>
+    ${[0,1,2].filter(j=>j<=k).map(j=>`<p class="${jc[j]}" style="margin:0 0 3px">θ̇${SUBN[j]} × column ${j+1} = ${f(S.td[j],1)} × ${vs(m.J[j])} = ${vs(m.cols[j])}</p>`).join('')}
+    <p style="margin-top:6px">Remember this shape: <b>J depends on the pose θ</b> (through the levers). When the arm moves, the levers turn, so J changes. That change is J̇, the subject of the next steps.</p>`;
+  }
+  if(step===1){
+    const s=scale([m.Jtdd,m.Jdtd,m.a]);
+    arrow(m.p,m.Jtdd,s,css('--push'),.12);arrow(m.p,m.Jdtd,s,css('--jd'),.15);arrow(m.p,m.a,s,css('--acc'),.2);
+    label(m.p,`J̇θ̇ = ${vs(m.Jdtd)}`,css('--jd'),.45);
+    legend([['--push','J θ̈: joints speeding up'],['--jd','J̇ θ̇: levers turning (velocity product)'],['--acc','a = sum'],['--mass','path while playing']]);
+    const ok=nrm(sub(m.a,m.afd))<1e-4;
+    html=`<p class="goal"><b>This step:</b> differentiate v = J(θ)θ̇ once. Both factors change in time, so the product rule gives two parts.</p>
+    ${chips(['m₁','m₂','m₃'],k,'k')}
+    <div class="blk">a = d/dt (J θ̇) = J θ̈ + J̇ θ̇</div>
+    <p><b class="cp">J θ̈</b>: the same J as step 1, now fed with accelerations. It is the part the mass matrix M is built from.</p>
+    <p><b class="cj">J̇ θ̇</b>: the acceleration the mass has <b>even when θ̈ = 0</b>. Every joint keeps a constant speed, yet the mass moves on a curve, and a curve needs acceleration. This part becomes c.</p>
+    <div class="blk">J θ̈ = ${vs(m.Jtdd)}<br>J̇ θ̇ = ${vs(m.Jdtd)}<br>a&nbsp;&nbsp;&nbsp;&nbsp;= ${vs(m.a)}<br>check, dv/dt by finite difference = ${vs(m.afd)} <span class="ok">${ok?'✓ equal':''}</span></div>
+    <p class="mut">Try: press θ̈ = 0 then play. The brown path curves although no joint speeds up; the orange arrow is that curving. Raise one θ̈ and the brown arrow appears next to it.</p>`;
+  }
+  if(step===2){
+    const j=Math.min(S.col,k),rj=sub(m.p,D.P[j]),rd=sub(D.V[k+1],D.V[j]);
+    const s=scale([m.J[j],m.Jd[j],rd]);
+    dline(D.P[j],m.p,css(jv[j]));arrow(m.p,m.J[j],s,css(jv[j]),.12);arrow(m.p,rd,s,css('--vel'),.15);arrow(m.p,m.Jd[j],s,css('--jd'),.2);
+    label(add(D.P[j],sc(rj,.5)),`r${SUBN[j]} = ${vs(rj)}`,css(jv[j]),.25);label(m.p,`col ${j+1} of J̇ = ${vs(m.Jd[j])}`,css('--jd'),.45);
+    legend([[jv[j],`column ${j+1} of J = ẑ × r`],['--vel','ṙ: how fast the lever changes'],['--jd',`column ${j+1} of J̇ = ẑ × ṙ`]]);
+    const between=[...Array(3).keys()].filter(i=>i<=k);
+    html=`<p class="goal"><b>This step:</b> what is J̇, entry by entry? Differentiate one column of J.</p>
+    ${chips(['m₁','m₂','m₃'],k,'k')} ${chips(between.map(i=>'column '+(i+1)),j,'col')}
+    <p>Column ${j+1} = ẑ × r with r = p − p${SUBN[j]}, the lever from ${jn(j)} to ${mn(k)}. ẑ is fixed, so</p>
+    <div class="blk">d/dt (ẑ × r) = ẑ × ṙ,&nbsp;&nbsp; ṙ = v<sub>mass</sub> − v<sub>joint ${j+1}</sub></div>
+    <p><b>J̇ is how fast the levers swing and stretch.</b> ṙ has two sources. Joints up to and including ${jn(j)} carry the whole lever around rigidly: they only turn it. Joints between ${jn(j)} and the mass bend it: they change its direction and its length.</p>
+    <div class="blk">ṙ = ${vs(D.V[k+1])} − ${vs(D.V[j])} = ${vs(rd)}<br>column ${j+1} of J̇ = ẑ × ṙ = (−ṙ<sub>y</sub>, ṙ<sub>x</sub>) = ${vs(m.Jd[j])}</div>
+    <div class="blk">J${SUBN[k]} = ${mat2x3(m.J,j)}<br><br>J̇${SUBN[k]} = ${mat2x3(m.Jd,j)}</div>
+    <div class="blk">J̇θ̇ = Σ θ̇<sub>j</sub> (column j of J̇) = ${vs(m.Jdtd)}</div>
+    <p class="mut">J̇ is not a new kinematic object: it is ∂J/∂θ · θ̇, the Jacobian's sensitivity to pose times the speed of the pose. Set all θ̇ to zero and J̇ vanishes.</p>`;
+  }
+  if(step===3){
+    const sel=m.pairs.find(p=>p.i===S.pair[0]&&p.j===S.pair[1])||m.pairs[0];S.pair=[sel.i,sel.j];
+    const s=scale([...m.pairs.map(p=>p.vec),m.Jdtd]);
+    m.pairs.forEach(p=>{const on=p===sel;arrow(m.p,p.vec,s,on?css(p.i===p.j?'--cent':'--cor'):css('--fade'),on?.2:.12)});
+    arrow(m.p,m.Jdtd,s,css('--jd'),.26);dline(D.P[sel.j],m.p,css(sel.i===sel.j?'--cent':'--cor'));
+    label(m.p,`${pairName(sel.i,sel.j)} term = ${vs(sel.vec)}`,css(sel.i===sel.j?'--cent':'--cor'),.45);label(D.P[sel.j],`toward ${jn(sel.j)}`,css('--muted'),.3);
+    legend([['--cent','centripetal θ̇ᵢ²: toward joint i'],['--cor','Coriolis 2θ̇ᵢθ̇ⱼ: toward the outer joint j'],['--jd','J̇θ̇ = sum of all'],['--fade','other pairs']]);
+    const rows=m.pairs.map(p=>`<tr class="${p===sel?'sel':''}"><td style="text-align:left" class="n ${p.i===p.j?'cc':'co'}">${pairName(p.i,p.j)}</td><td>${f(p.co)}</td><td style="text-align:left" class="n">${p.i===p.j?'centripetal':'Coriolis'}, ${p.co<0?'away from':'toward'} ${jn(p.j)}</td><td>${vs(p.vec)}</td></tr>`).join('');
+    const sum=m.pairs.reduce((s,p)=>add(s,p.vec),[0,0]);
+    html=`<p class="goal"><b>This step:</b> expand J̇θ̇ so every term is a product of two joint speeds. That expansion is where the words centripetal and Coriolis come from.</p>
+    ${chips(['m₁','m₂','m₃'],k,'k')}
+    <p>Put step 3's ṙ in: ṙ = Σ<sub>i</sub> θ̇<sub>i</sub> ẑ × (p − p<sub>max(i, j)</sub>). Then ẑ × (ẑ × r) = −r in the plane, and</p>
+    <div class="blk">J̇θ̇ = Σ<sub>j</sub> θ̇<sub>j</sub> ẑ × ṙ<sub>j</sub> = − Σ<sub>i</sub> Σ<sub>j</sub> θ̇<sub>i</sub>θ̇<sub>j</sub> (p − p<sub>max(i, j)</sub>)</div>
+    <p><b class="cc">i = j</b>: θ̇<sub>i</sub>² times the lever from joint i, pointing at joint i. Plain circular motion about joint i: <b>centripetal</b>.<br>
+    <b class="co">i ≠ j</b>: (i, j) and (j, i) give the same vector, hence the <b>2</b>. It lies along the lever from the <b>outer</b> joint of the pair (toward it if θ̇<sub>i</sub>θ̇<sub>j</sub> &gt; 0, away if &lt; 0): the outer joint's lever is being carried around by the inner joint's spin. That cross term is <b>Coriolis</b>.</p>
+    <table class="t"><tr><th>pair</th><th>coef</th><th>kind</th><th>vector (m/s²)</th></tr>${rows}
+    <tr><td style="text-align:left"><b>sum</b></td><td></td><td></td><td><b>${vs(sum)}</b></td></tr></table>
+    <p>Sum = J̇θ̇ from step 3: ${vs(m.Jdtd)} <span class="ok">${nrm(sub(sum,m.Jdtd))<1e-9?'✓':''}</span>. Click a pair to see its arrow.</p>
+    <span class="pick">${m.pairs.map(p=>`<button class="chip" type="button" data-pr="${p.i},${p.j}" aria-pressed="${p===sel}">${pairName(p.i,p.j)}</button>`).join('')}</span>
+    <p class="mut">Same thing as page 134's (θ̇₁ + θ̇₂)² picture: each link spins at the sum of the joint speeds before it; squaring that sum gives squares (centripetal) and cross products (Coriolis).</p>`;
+  }
+  if(step===4){
+    const i=S.ji,F=D.mass.map((mm,kk)=>sc(mm.Jdtd,MS[kk]));const s=scale(F,1);
+    for(let kk=0;kk<3;kk++){const on=kk>=i;arrow(D.mass[kk].p,F[kk],s,on?css('--jd'):css('--fade'));if(on)dline(D.P[i],D.mass[kk].p,css(jv[i]));
+      label(D.mass[kk].p,on?`${f(D.tq[i][kk])} N·m`:'not moved',on?css('--jd'):css('--muted'),.4)}
+    massMats.forEach((mm,kk)=>{const on=kk>=i;mm.color=new THREE.Color(on?css('--mass'):css('--fade'));mm.opacity=on?1:.45});
+    label(D.P[i],`c${SUBN[i]} = ${f(D.c[i])} N·m`,css(jv[i]),.35);
+    legend([['--jd','force the arm must give each mass: m J̇θ̇'],[jv[i],`lever to ${jn(i)}`]]);
+    const rows=[0,1,2].map(kk=>kk<i?`<tr><td style="text-align:left">${mn(kk)}</td><td colspan=3 class="mut" style="text-align:left">${jn(i)} does not move it (column ${i+1} of J${SUBN[kk]} is 0)</td></tr>`
+      :`<tr><td style="text-align:left">${mn(kk)}</td><td>${vs(sub(D.mass[kk].p,D.P[i]))}</td><td>${vs(F[kk])}</td><td><b>${f(D.tq[i][kk])}</b></td></tr>`).join('');
+    html=`<p class="goal"><b>This step:</b> turn accelerations into joint torques. Newton on each mass, then project with Jᵀ (statics, τ = JᵀF).</p>
+    ${chips(['joint 1','joint 2','joint 3'],i,'ji')}
+    <div class="blk">F<sub>k</sub> = m<sub>k</sub> a<sub>k</sub> = m<sub>k</sub>(J<sub>k</sub>θ̈ + J̇<sub>k</sub>θ̇)<br>τ = Σ<sub>k</sub> J<sub>k</sub>ᵀF<sub>k</sub> = (Σ m<sub>k</sub>J<sub>k</sub>ᵀJ<sub>k</sub>) θ̈ + (Σ m<sub>k</sub>J<sub>k</sub>ᵀJ̇<sub>k</sub>) θ̇ = <b>M θ̈ + c</b></div>
+    <p>Row ${i+1} of J<sub>k</sub>ᵀ is column ${i+1} of J<sub>k</sub> = ẑ × r, so each mass costs ${jn(i)} the torque <b>lever × force</b>: ${E('r<sub>x</sub>F<sub>y</sub> − r<sub>y</sub>F<sub>x</sub>')}.</p>
+    <table class="t"><tr><th>mass</th><th>lever r from ${jn(i)}</th><th>F = m J̇θ̇ (N)</th><th>torque</th></tr>${rows}
+    <tr><td style="text-align:left" colspan=3><b>c${SUBN[i]}</b> (sum)</td><td><b>${f(D.c[i])}</b></td></tr></table>
+    <div class="blk">c = Σ m JᵀJ̇θ̇ = ${vs(D.c)} N·m<br>M θ̈ = ${vs(D.Mtdd)} N·m<br>τ = Mθ̈ + c = ${vs(add3(D.Mtdd,D.c))} N·m &nbsp;<span class="mut">(no gravity: the arm lies flat)</span></div>
+    <p class="mut">A force aimed straight at ${jn(i)} has no lever and costs it nothing. That is why a joint's own centripetal pull never loads itself.</p>`;
+  }
+  if(step===5){
+    const i=S.ji;
+    const cent=[0,1,2].map(j=>D.Gp[i][j][j]*S.td[j]*S.td[j]);
+    const cor=[];for(let j=0;j<3;j++)for(let l=j+1;l<3;l++)cor.push({j,l,v:2*D.Gp[i][j][l]*S.td[j]*S.td[l]});
+    const sc_=cent.reduce((a,b)=>a+b,0),so=cor.reduce((a,b)=>a+b.v,0);
+    let err=0;for(let a=0;a<3;a++)for(let b=0;b<3;b++)for(let c=0;c<3;c++)err=Math.max(err,Math.abs(D.Gp[a][b][c]-D.Gc[a][b][c]));
+    // draw per-mass forces split into centripetal and Coriolis parts
+    const Fc=[],Fo=[];D.mass.forEach((mm,kk)=>{let c=[0,0],o=[0,0];mm.pairs.forEach(p=>{if(p.i===p.j)c=add(c,p.vec);else o=add(o,p.vec)});Fc.push(sc(c,MS[kk]));Fo.push(sc(o,MS[kk]))});
+    const s=scale([...Fc,...Fo],1);
+    for(let kk=i;kk<3;kk++){arrow(D.mass[kk].p,Fc[kk],s,css('--cent'),.12);arrow(D.mass[kk].p,Fo[kk],s,css('--cor'),.18);dline(D.P[i],D.mass[kk].p,css(jv[i]))}
+    massMats.forEach((mm,kk)=>{const on=kk>=i;mm.color=new THREE.Color(on?css('--mass'):css('--fade'));mm.opacity=on?1:.45});
+    label(D.P[i],`c${SUBN[i]} = ${f(D.c[i])}`,css(jv[i]),.35);
+    legend([['--cent','centripetal part of each m J̇θ̇'],['--cor','Coriolis part'],[jv[i],`levers to ${jn(i)}`]]);
+    const G=D.Gp[i],Gc=D.Gc[i];
+    html=`<p class="goal"><b>This step:</b> show that steps 1–5 give exactly the textbook formulas: c = θ̇ᵀΓθ̇ with the Christoffel symbols of M, and Lagrange's Ṁθ̇ − ½∂(θ̇ᵀMθ̇)/∂θ.</p>
+    ${chips(['joint 1','joint 2','joint 3'],i,'ji')}
+    <p>Step 5's sum is quadratic in θ̇, so collect it as c<sub>${i+1}</sub> = Σ<sub>j,l</sub> Γ<sub>${i+1}jl</sub> θ̇<sub>j</sub>θ̇<sub>l</sub>, with each coefficient read off the levers:</p>
+    <div class="blk">Γ<sub>ijl</sub> = − Σ<sub>k</sub> m<sub>k</sub> (r<sub>i→k</sub> × r<sub>max(j,l)→k</sub>)<sub>z</sub></div>
+    <div class="blk">Γ${SUBN[i]} from levers = ${mat3(G)}<br><br>Γ${SUBN[i]} from ½(∂M<sub>ij</sub>/∂θ<sub>l</sub> + ∂M<sub>il</sub>/∂θ<sub>j</sub> − ∂M<sub>jl</sub>/∂θ<sub>i</sub>) = ${mat3(Gc)}<br><br>largest difference over all 27 entries: ${err.toExponential(1)} <span class="ok">${err<1e-5?'✓ the same':''}</span></div>
+    <p><b>Expand c${SUBN[i]}</b>: diagonal entries times θ̇<sub>j</sub>² are <b class="cc">centripetal</b>; off-diagonal entries appear twice (j, l and l, j) and give <b class="co">Coriolis</b> 2Γθ̇<sub>j</sub>θ̇<sub>l</sub>.</p>
+    <div class="blk">${cent.map((x,j)=>`<span class="cc">Γ${SUBN[i]}${SUBN[j]}${SUBN[j]}θ̇${SUBN[j]}² = ${f(G[j][j],3)}·${f(S.td[j]**2)} = ${f(x)}</span>`).join('<br>')}<br>
+    ${cor.map(o=>`<span class="co">2Γ${SUBN[i]}${SUBN[o.j]}${SUBN[o.l]}θ̇${SUBN[o.j]}θ̇${SUBN[o.l]} = 2·${f(G[o.j][o.l],3)}·${f(S.td[o.j])}·${f(S.td[o.l])} = ${f(o.v)}</span>`).join('<br>')}<br>
+    c${SUBN[i]} = <span class="cc">${f(sc_)}</span> + <span class="co">${f(so)}</span> = <b>${f(sc_+so)}</b> N·m</div>
+    <div class="blk">step 5, Σ m JᵀJ̇θ̇:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;c = ${vs(D.c,3)}<br>Lagrange, Ṁθ̇ − ½∂(θ̇ᵀMθ̇)/∂θ: c = ${vs(D.cL,3)} <span class="ok">${nrm3(sub3(D.c,D.cL))<1e-5?'✓':''}</span></div>
+    <p class="mut">Why they must agree: a quadratic form has only one set of coefficients symmetric in (j, l), and both Γ's are symmetric. The diagonal Γ<sub>iii</sub> is always 0: a joint's own spin pulls its masses straight at it.</p>`;
+  }
+  document.getElementById('exp').innerHTML=html;
+  renderer.render(scene,cam);
+  for(let i=nA;i<NA;i++)arrows[i].visible=false;for(let i=nL;i<lines.length;i++)lines[i].visible=false;for(let i=nLb;i<labels.length;i++)labels[i].hidden=true;
+  // re-place labels after render (projection uses the camera just set)
+  wire();nav();
+}
+const add3=(a,b)=>a.map((x,i)=>x+b[i]),sub3=(a,b)=>a.map((x,i)=>x-b[i]),nrm3=a=>Math.hypot(...a);
+
+/* ---------- step chips, pickers ---------- */
+const stepsEl=document.getElementById('steps');
+function nav(){stepsEl.innerHTML=STEPS.map((s,i)=>`<button class="chip" type="button" data-s="${i}" aria-pressed="${i===S.step}">${s.t}</button>`).join('');
+  stepsEl.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>{S.step=+b.dataset.s;draw()});
+  document.getElementById('where').textContent=`step ${S.step+1} of ${STEPS.length}`;
+  document.getElementById('prev').disabled=S.step===0;document.getElementById('next').disabled=S.step===STEPS.length-1}
+document.getElementById('prev').onclick=()=>{if(S.step>0){S.step--;draw()}};
+document.getElementById('next').onclick=()=>{if(S.step<STEPS.length-1){S.step++;draw()}};
+function wire(){const ex=document.getElementById('exp');
+  ex.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>{S.k=+b.dataset.k;S.trail=[];S.col=Math.min(S.col,S.k);draw()});
+  ex.querySelectorAll('[data-col]').forEach(b=>b.onclick=()=>{S.col=+b.dataset.col;draw()});
+  ex.querySelectorAll('[data-ji]').forEach(b=>b.onclick=()=>{S.ji=+b.dataset.ji;draw()});
+  ex.querySelectorAll('[data-pr]').forEach(b=>b.onclick=()=>{S.pair=b.dataset.pr.split(',').map(Number);draw()})}
+
+/* ---------- controls ---------- */
+const ids=[['t1','th',0,'°',0],['t2','th',1,'°',0],['t3','th',2,'°',0],['d1','td',0,'',1],['d2','td',1,'',1],['d3','td',2,'',1],['a1','tdd',0,'',1],['a2','tdd',1,'',1],['a3','tdd',2,'',1]];
+function sync(){ids.forEach(([id,key,i,u,d])=>{const el=document.getElementById(id);el.value=S[key][i];document.getElementById(id+'o').textContent=(+S[key][i]).toFixed(d)+u})}
+ids.forEach(([id,key,i])=>document.getElementById(id).addEventListener('input',e=>{stop();S[key][i]=+e.target.value;S.trail=[];sync();draw()}));
+const playB=document.getElementById('play');let last=0;
+function stop(){S.play=false;playB.setAttribute('aria-pressed','false');playB.textContent='▶ play (θ̈ held)'}
+playB.onclick=()=>{S.play=!S.play;playB.setAttribute('aria-pressed',String(S.play));playB.textContent=S.play?'❚❚ pause':'▶ play (θ̈ held)';if(S.play){S.trail=[];last=0;requestAnimationFrame(tick)}};
+document.getElementById('zero').onclick=()=>{S.tdd=[0,0,0];S.trail=[];sync();draw()};
+document.getElementById('reset').onclick=()=>{stop();S.th=[...INIT.th];S.td=[...INIT.td];S.tdd=[...INIT.tdd];S.trail=[];sync();draw()};
+const wrap=x=>((x+180)%360+360)%360-180;
+function tick(t){if(!S.play)return;const dt=last?Math.min(.05,(t-last)/1000)*.5:0;last=t;   // half speed
+  for(let i=0;i<3;i++){S.th[i]=wrap(S.th[i]+S.td[i]*dt/D2R);S.td[i]=Math.max(-3,Math.min(3,S.td[i]+S.tdd[i]*dt))}
+  const k=S.step<=3?S.k:2,P=fk(S.th.map(x=>x*D2R));S.trail.push(P[k+1]);if(S.trail.length>TN)S.trail.shift();
+  sync();draw();requestAnimationFrame(tick)}
+
+function size(){const w=cv.clientWidth,h=cv.clientHeight;if(!w)return;renderer.setPixelRatio(window.devicePixelRatio||1);renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix();draw()}
+colorize();sync();new ResizeObserver(size).observe(cv);
+const retheme=()=>{colorize();draw()};
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+window.LAB={S,model,draw};
+size();
+})();
+</script>
+</body></html>

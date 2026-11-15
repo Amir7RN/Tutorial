@@ -30,10 +30,10 @@ The join between the two halves is not decorative. An RL agent never learns a
 control law in the abstract; it learns one for a specific plant with a specific
 effective inertia, bandwidth and safety envelope. The first half is that plant.
 
-### Robot Mechanics block (pages 114–148)
+### Robot Mechanics block (pages 114–149)
 
 The control pages assumed `M(q)q̈ + c + g = τ` and a Jacobian someone handed
-you. Pages 114–148 derive them, following the twelve
+you. Pages 114–149 derive them, following the twelve
 [Modern Robotics](https://www.youtube.com/playlist?list=PLggLP4f-rq01z8VLqhDC94W2nWpWpZoMj)
 playlists (Lynch & Park, chapters 2–13) one by one; each page's badge names
 its playlist and links to it.
@@ -52,7 +52,7 @@ The numerics are in `ctrlcore/robokin.py` and `ctrlcore/robodyn.py`; checks
 null-space torques produce no hand acceleration, energy conservation, IK,
 force closure) are in `tests/test_robotics.py`.
 
-### Humanoid Balance block (pages 165–169)
+### Humanoid Balance block (pages 166–170)
 
 The G1 upper body as a balance machine, for a MuJoCo push-recovery project. A planar
 legs–torso–arms chain on a pinned ankle (`ctrlcore/upperbody.py`, three planes by one parameter
@@ -62,9 +62,9 @@ and three recovery laws (LQR, counterweight, momentum QP) measured against each 
 3-D simulator (`app/assets/steplab/ub.js`, `ub3d.js`, `g1_upper_body.html`,
 `upper_body_lagrange.html`, `upper_body_recovery.html`). `tests/test_upperbody.py` checks the
 model against the Newton–Euler arm, the identities, the JavaScript port under node, and the
-recoverable-push numbers quoted on page 168.
+recoverable-push numbers quoted on page 169.
 
-### C++ for Robotics block (pages 150–164)
+### C++ for Robotics block (pages 151–165)
 
 The chapter after Manipulation & Mobility. Its premise is that the gap is software
 *design*, not syntax: a class exists to protect an invariant, the header is the

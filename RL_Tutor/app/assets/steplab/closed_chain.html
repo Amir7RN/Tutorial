@@ -109,7 +109,7 @@ r && s.rates ? `${E(`d/dt: a θ̇ e⊥(θ) + b φ̇ e⊥(φ) − c ψ̇ e⊥(ψ)
 ` + SL.mat(s.rates.K, 4, 'K') + `
 rhs = ${vs(s.rates.rhs, 4)}
 [φ̇; ψ̇] = K⁻¹ rhs = ${vs(s.rates.x, 4)} rad/s`)}
-<p>This is the closed-chain version of A(q)q̇ = 0 (page 139): active rate in, passive rates out. The rocker tip moves at |v_B| = c|ψ̇| = ${f(s.c * Math.abs(s.rates.x[1]), 3)}.</p>` : '<p>(loop open: no velocities)</p>',
+<p>This is the closed-chain version of A(q)q̇ = 0 (page 140): active rate in, passive rates out. The rocker tip moves at |v_B| = c|ψ̇| = ${f(s.c * Math.abs(s.rates.x[1]), 3)}.</p>` : '<p>(loop open: no velocities)</p>',
 `${E(`sorted lengths: ${s.L.map(x => f(x, 1)).join(', ')}
 s + l = ${f(s.L[0] + s.L[3], 2)}   p + q = ${f(s.L[1] + s.L[2], 2)}   → ${s.grashof ? 'Grashof: the shortest link can rotate fully' : 'non-Grashof: triple rocker'}`)}
 ${ul(['Crank-rocker (shortest link is the crank, as here): motor turns continuously, rocker swings: windscreen wipers, pumps.', 'Double crank (shortest is ground), double rocker (shortest is the coupler).', 'Purple curve: the path of a point on the coupler. Four-bars are chosen for these curves (Watt’s straight-line linkage, walking machines).'])}`,

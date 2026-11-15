@@ -3,6 +3,7 @@ ROBOT MECHANICS, part 3 -- dynamics of open chains.
 Modern Robotics playlist 7 (chapter 8). The pages the interview was about.
 
     Lagrange             L = K - P, and the 2R equations in closed form
+    velocity products    a = J qdd + Jdot qd; Jdot, centripetal, Coriolis
     mass matrix          M(q): symmetric, positive definite, configuration
                          dependent; Christoffel symbols; Mdot - 2C skew
     Newton-Euler         one rigid body, then the O(n) recursion
@@ -25,6 +26,7 @@ from ctrlcore import robokin as rk
 from .. import theme
 from ..widgets import Card, MplCanvas, Stat, body, callout, math_label, stat_row
 from ..widgets.step_lab import StepLab
+from .cpp_course import Choice, Reveal
 from .base import Page
 from . import robo_dyn_ch8 as ch8
 from .robo_common import (
@@ -155,7 +157,7 @@ class LagrangePage(Page):
             "and accelerations all 0 → only gravity remains: the torque to "
             "hold still. (3) Move q₁ only → the printed M does not change, "
             "because M depends on the elbow alone. The stat compares this "
-            "closed-form answer with the Newton–Euler algorithm of page 135; "
+            "closed-form answer with the Newton–Euler algorithm of page 136; "
             "a value near zero means two very different methods agree."))
         self.add(lab)
         self._draw()
@@ -207,6 +209,204 @@ class LagrangePage(Page):
         bx.set_ylabel("N·m")
         cv.legend(bx, loc="best")
         cv.refresh()
+
+
+# ==========================================================================
+# Velocity products: J-dot, centripetal and Coriolis
+# ==========================================================================
+
+def _point_mass_c(th, td, L=(1.0, 1.0), m=(1.0, 1.0)):
+    """Planar point masses at the link tips: per-mass J̇θ̇, its speed-pair split, and c = Σ m JᵀJ̇θ̇."""
+    n = len(th)
+    P = [np.zeros(2)]
+    a = 0.0
+    for i in range(n):
+        a += th[i]
+        P.append(P[-1] + L[i] * np.array([math.cos(a), math.sin(a)]))
+    cross = lambda u, v: u[0] * v[1] - u[1] * v[0]
+    c = np.zeros(n)
+    out = []
+    for k in range(n):
+        p = P[k + 1]
+        pairs = {(i, j): -(1 if i == j else 2) * td[i] * td[j] * (p - P[j])
+                 for i in range(k + 1) for j in range(i, k + 1)}
+        acc = sum(pairs.values())
+        out.append((p, pairs, acc))
+        for i in range(k + 1):
+            c[i] += m[k] * cross(p - P[i], acc)
+    return P, out, c
+
+
+class VelocityProductPage(Page):
+    TITLE = "Velocity Products: J̇, Centripetal and Coriolis"
+    SUBTITLE = ("Why a robot whose joints turn at constant speed still needs torque. Differentiate "
+                "v = Jθ̇ once and the product rule hands you J̇θ̇; push it through Newton and Jᵀ and "
+                "it becomes c(θ, θ̇), the same numbers as the Christoffel formula.")
+    SECTION = SEC_DYN
+    NOTES = playlist_badge(7)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.add(start_here(
+            "Page 134 wrote τ = Mθ̈ + c + g and named c the <b>velocity-product</b> term. This page "
+            "derives c from scratch, with nothing but the Jacobian you already know, in three moves: "
+            "<b>move</b> (v = Jθ̇, then a = Jθ̈ + J̇θ̇), <b>push</b> (F = m a for every mass), "
+            "<b>feel</b> (τ = JᵀF). The θ̈ half becomes Mθ̈; the J̇θ̇ half becomes c. Along the way "
+            "J̇ gets a meaning (levers that swing), and centripetal and Coriolis fall out of one "
+            "expansion. The 3-D lab above runs every step with live numbers; read a card, then do "
+            "the matching lab step."))
+
+        d = Card("move, push, feel: where c comes from in one line")
+        d.add(body(
+            "Take point masses m<sub>k</sub> at positions p<sub>k</sub>(θ). Each has its own "
+            "Jacobian J<sub>k</sub>(θ), so v<sub>k</sub> = J<sub>k</sub>θ̇. Differentiate in time. "
+            "J<sub>k</sub> depends on θ, θ depends on t, so <b>both factors change</b>:"))
+        d.add(math_label(r"a_k=\frac{d}{dt}\left(J_k\dot\theta\right)=J_k\ddot\theta+\dot J_k\dot\theta", 16))
+        d.add(body("Newton on each mass, then statics (τ = JᵀF) for each, then add:"))
+        d.add(math_label(r"\tau=\sum_k J_k^T m_k a_k=\underbrace{\Big(\sum_k m_kJ_k^TJ_k\Big)}_{M(\theta)}\ddot\theta"
+                         r"+\underbrace{\sum_k m_kJ_k^T\dot J_k\dot\theta}_{c(\theta,\dot\theta)}", 16))
+        d.add(plain(
+            "That is the whole story. The <b>M</b> of page 136 is the θ̈ half. The <b>c</b> is the "
+            "other half: the acceleration every mass has <i>even when no joint speeds up</i>, times "
+            "its mass, felt through the same levers. Rigid links with rotational inertia add the "
+            "spinning part (the [ad<sub>𝒱</sub>]ᵀ term of page 167); point masses already show "
+            "everything centripetal and Coriolis mean."))
+        self.add(d)
+
+        j = Card("what J̇ means: levers that swing")
+        j.add(body(
+            "<b>Start with one link.</b> A mass on a rod of length L: x = L cos θ, so ẋ = (−L sin θ) "
+            "θ̇. The 'Jacobian' is J = −L sin θ. Differentiate again:"))
+        j.add(math_label(r"\ddot x=\underbrace{-L\sin\theta}_{J}\,\ddot\theta\;"
+                         r"\underbrace{-\,L\cos\theta\,\dot\theta}_{\dot J}\,\dot\theta", 16))
+        j.add(body(
+            "J̇ = (dJ/dθ)·θ̇: how fast the Jacobian changes because the pose changes. The leftover "
+            "−L cos θ θ̇² is the x part of the centripetal acceleration Lθ̇² pointing at the pivot. "
+            "<b>J̇θ̇ is the acceleration you get with θ̈ = 0.</b>"))
+        j.add(body(
+            "<b>For an arm, column by column.</b> Column j of J<sub>k</sub> is ẑ × r<sub>j</sub>, with "
+            "r<sub>j</sub> = p<sub>k</sub> − p<sub>j</sub> the lever from joint j to the mass "
+            "(the Kinematics pages' ω̂ × r). ẑ is fixed, so"))
+        j.add(math_label(r"\frac{d}{dt}(\hat z\times r_j)=\hat z\times\dot r_j,\qquad "
+                         r"\dot r_j=v_k-v_{\mathrm{joint}\,j}=\sum_i\dot\theta_i\,\hat z\times"
+                         r"\big(p_k-p_{\max(i,j)}\big)", 15))
+        j.add(plain(
+            "Column j of J̇ is <b>how fast lever j swings and stretches</b>. Joints up to and including j "
+            "carry the lever around rigidly (they only turn it); joints between j and the mass bend it "
+            "(they turn it and change its length). If nothing moves, nothing swings: θ̇ = 0 makes J̇ = 0. "
+            "J̇ is not a new object, only J's sensitivity to pose times the speed of the pose. "
+            "Lab step 3 shows one lever, its rate ṙ and the J̇ column, with the full J and J̇ matrices."))
+        self.add(j)
+
+        x = Card("expand J̇θ̇: every term is a product of two joint speeds")
+        x.add(body(
+            "Put ṙ<sub>j</sub> into J̇θ̇ = Σ<sub>j</sub> θ̇<sub>j</sub> ẑ × ṙ<sub>j</sub> and use "
+            "ẑ × (ẑ × r) = −r in the plane:"))
+        x.add(math_label(r"\dot J_k\dot\theta=-\sum_i\sum_j\dot\theta_i\dot\theta_j\,\big(p_k-p_{\max(i,j)}\big)"
+                         r"=-\sum_i\dot\theta_i^2\,r_{i\to k}\;-\;\sum_{i<j}2\,\dot\theta_i\dot\theta_j\,r_{j\to k}", 15))
+        x.add(body(_html_table(
+            ("term", "speed product", "direction", "name"),
+            [("i = j", "θ̇ᵢ²", "along the lever from joint i, pointing at it", "<b>centripetal</b>"),
+             ("i &lt; j", "2θ̇ᵢθ̇ⱼ", "along the lever from the <b>outer</b> joint j", "<b>Coriolis</b>")])))
+        x.add(plain(
+            "<b>Centripetal</b>: joint i alone would swing the mass on a circle about joint i, and a "
+            "circle needs θ̇ᵢ² × radius toward its centre. <b>Coriolis</b>: when two joints turn at "
+            "once, the inner one carries the outer one's lever around while that lever is itself "
+            "swinging. The cross term is that interaction. The <b>2</b> is bookkeeping: the double sum "
+            "meets (i, j) and (j, i), and they give the same vector."))
+        x.add(body(
+            "<b>Check against page 134.</b> For the 2R arm's tip, with link vectors a₁, a₂: "
+            "the three pairs give −θ̇₁²(a₁ + a₂) − 2θ̇₁θ̇₂a₂ − θ̇₂²a₂ = −θ̇₁²a₁ − (θ̇₁ + θ̇₂)²a₂, "
+            "page 134's two epicycles. Squaring the link rate (θ̇₁ + θ̇₂) is exactly where the "
+            "square terms and the cross term come from.", dim=True))
+        self.add(x)
+
+        t = Card("from J̇θ̇ to c, and why it equals the Christoffel and Lagrange formulas")
+        t.add(body(
+            "Force on mass k: F<sub>k</sub> = m<sub>k</sub>J̇<sub>k</sub>θ̇. Joint i feels it through "
+            "row i of J<sub>k</sub>ᵀ, which is ẑ × r<sub>i→k</sub>, so the torque is the planar "
+            "<b>lever × force</b>. Collect the speed products and each coefficient is a "
+            "Christoffel symbol, read straight off the levers:"))
+        t.add(math_label(r"c_i=\sum_{j,l}\Gamma_{ijl}\,\dot\theta_j\dot\theta_l,\qquad "
+                         r"\Gamma_{ijl}=-\sum_k m_k\,\big(r_{i\to k}\times r_{\max(j,l)\to k}\big)_z", 15))
+        t.add(body(
+            "Γ<sub>iii</sub> = 0 always: joint i's own spin pulls its masses straight at joint i, "
+            "and a force aimed at a joint has no lever there. <b>Why the textbook formula gives the "
+            "same numbers.</b> Lagrange's c is Ṁθ̇ − ½∂(θ̇ᵀMθ̇)/∂θ. With M = Σ mJᵀJ:"))
+        t.add(math_label(r"\dot M\dot\theta=\sum m\big(J^T\dot J+\dot J^TJ\big)\dot\theta,\qquad "
+                         r"\frac{\partial}{\partial\theta}\tfrac12\dot\theta^TM\dot\theta=\sum m\,\dot J^TJ\dot\theta", 15))
+        t.add(body(
+            "The second identity holds because ∂(Jθ̇)/∂θ<sub>i</sub> = Σ<sub>j</sub> "
+            "∂²p/∂θ<sub>i</sub>∂θ<sub>j</sub> θ̇<sub>j</sub> = d/dt(∂p/∂θ<sub>i</sub>) = column i of J̇ "
+            "(mixed partials commute). Subtract and the J̇ᵀJ parts cancel:"))
+        t.add(math_label(r"\dot M\dot\theta-\frac{\partial}{\partial\theta}\tfrac12\dot\theta^TM\dot\theta"
+                         r"=\sum_k m_kJ_k^T\dot J_k\dot\theta", 16))
+        t.add(plain(
+            "So Lagrange, Christoffel and 'mass × curving acceleration through the levers' are one "
+            "quantity written three ways. The Christoffel version computes it from how M changes "
+            "with pose, without ever naming J̇. Bonus: C = Σ mJᵀJ̇ is a valid c = Cθ̇ factorisation and "
+            "Ṁ − 2C = Σ m(J̇ᵀJ − JᵀJ̇) is skew-symmetric, the passivity property of page 136. Lab step 6 "
+            "prints Γ both ways (they agree to 1e-10) and Lagrange's c next to the lever sum."))
+        self.add(t)
+
+        P, out, c = _point_mass_c([0.0, math.pi / 2], [1.0, 1.0])
+        _, out1, c1 = _point_mass_c([0.0, math.pi / 2], [1.0, 0.0])
+        _, out0, c0 = _point_mass_c([0.0, 0.0], [1.0, 1.0])
+        tip = out[1]
+        pr = {k: v for k, v in tip[1].items()}
+        vec = lambda v: f"({v[0]:.0f}, {v[1]:.0f})"
+        lever = lambda r, F: r[0] * F[1] - r[1] * F[0]
+        r1 = tip[0] - P[0]
+        k = Card("worked by hand: 2R arm, L = 1 m, m = 1 kg at each tip (compute first, then open)")
+        k.add(body("θ = (0°, 90°): link 1 points along x, link 2 straight up, so a₁ = (1, 0), a₂ = (0, 1) "
+                   "and the tip sits at (1, 1). Set the same pose in the lab with θ₃ = 0 and look at m₂."))
+        k.add(Reveal("", [
+            ("Only joint 1 turns, θ̇ = (1, 0). J̇θ̇ at the tip, and c?",
+             f"Only the (1, 1) pair: −θ̇₁²(p − p₀) = {vec(out1[1][2])}, aimed at joint 1. Joint 1's lever "
+             f"is that same line, so it costs joint 1 nothing. Joint 2's lever is a₂ = (0, 1): "
+             f"lever × force = 0·(−1) − 1·(−1) = 1. Mass 1 adds nothing: its pull points at joint 1, "
+             f"and it sits on joint 2's axis. c = ({c1[0]:.0f}, {c1[1]:.0f}) N·m: joint 2 must "
+             f"hold the elbow against the swing."),
+            ("Both turn, θ̇ = (1, 1). Split the tip's J̇θ̇ into the three speed pairs.",
+             f"θ̇₁²: −1·(a₁ + a₂) = {vec(pr[(0, 0)])} (centripetal, at joint 1). "
+             f"2θ̇₁θ̇₂: −2·a₂ = {vec(pr[(0, 1)])} (Coriolis, along link 2 toward joint 2). "
+             f"θ̇₂²: −1·a₂ = {vec(pr[(1, 1)])} (centripetal, at joint 2). "
+             f"Sum {vec(tip[2])} = −θ̇₁²a₁ − (θ̇₁ + θ̇₂)²a₂ = −(1, 0) − 4(0, 1). ✓"),
+            ("Now c₁ and c₂, and which part of c₁ is Coriolis?",
+             f"Joint 1, lever (1, 1): centripetal θ̇₁² pair gives {lever(r1, pr[(0, 0)]):.0f} (it points at "
+             f"joint 1), θ̇₂² pair gives {lever(r1, pr[(1, 1)]):.0f}, Coriolis pair gives "
+             f"{lever(r1, pr[(0, 1)]):.0f}. c₁ = {c[0]:.0f} N·m. Joint 2, lever (0, 1): c₂ = {c[1]:.0f} N·m. "
+             "Compare page 134's closed form with h = m₂L₁L₂ = 1: c₁ = −h sin θ₂(2θ̇₁θ̇₂ + θ̇₂²) = −3, "
+             "c₂ = h sin θ₂ θ̇₁² = 1. ✓ The −2 is the skater: the elbow is folding m₂'s reach while "
+             "joint 1 spins, and joint 1 must brake to keep θ̇₁ constant."),
+            ("Arm straight, θ = (0, 0), θ̇ = (1, 1). Is J̇θ̇ zero? Is c?",
+             f"J̇θ̇ at the tip = {vec(out0[1][2])} m/s², not zero: the tip still curves. But every pair "
+             f"points along the arm, straight through both joints, so no lever: c = "
+             f"({c0[0]:.0f}, {c0[1]:.0f}). J̇θ̇ ≠ 0 does not mean c ≠ 0: c is J̇θ̇ seen through Jᵀ."),
+        ]))
+        self.add(k)
+
+        self.add(Choice(
+            "Quick check", "Every joint speed is doubled, θ̈ = 0, same pose. What happens to J̇, J̇θ̇ and c?",
+            [("J̇ ×2, J̇θ̇ ×2, c ×2", False, "J̇ doubles, but J̇θ̇ multiplies it by θ̇ again."),
+             ("J̇ ×2, J̇θ̇ ×4, c ×4", True,
+              "J̇ = (∂J/∂θ)θ̇ is linear in θ̇; J̇θ̇ and therefore c = Σ mJᵀJ̇θ̇ are quadratic."),
+             ("J̇ unchanged, J̇θ̇ ×2, c ×2", False, "J̇ is J's rate of change, so it scales with how fast the pose moves."),
+             ("all ×4", False, "J̇ is linear in θ̇: only the product J̇θ̇ is a speed squared.")]))
+
+        self.add(interview(
+            "<b>“What is J̇θ̇ and where does it show up?”</b> It is the hand (or link) acceleration at "
+            "zero joint acceleration, from a = Jθ̈ + J̇θ̇. Projected through Jᵀ with the masses it is "
+            "the Coriolis and centripetal vector c. It reappears in task-space control: to get a hand "
+            "acceleration ẍ<sub>d</sub> you command θ̈ = J⁺(ẍ<sub>d</sub> − J̇θ̇), and in operational "
+            "space control inside the hand's velocity-product force, Λ(JM⁻¹c − J̇θ̇)."))
+        self.finish()
+
+
+def _html_table(head, rows):
+    h = "".join(f"<th style='padding:3px 8px;text-align:left'>{x}</th>" for x in head)
+    r = "".join("<tr>" + "".join(f"<td style='padding:3px 8px'>{x}</td>" for x in row) + "</tr>" for row in rows)
+    return f"<table cellspacing=0 border=1 style='border-collapse:collapse'><tr>{h}</tr>{r}</table>"
 
 
 # ==========================================================================

@@ -111,6 +111,7 @@ STEP_LABS = {
     "ClosedChainPage": ("closed_chain.html", "a four-bar: close the loop, count the freedom"),
     # dynamics
     "LagrangePage": ("lagrange.html", "Lagrange on the 2R arm: energy in, torques out"),
+    "VelocityProductPage": ("jdot_velocity_product.html", "J̇ and the velocity-product term on a 3R arm"),
     "MassMatrixPage": ("mass_matrix.html", "the mass matrix: circles, ellipses and energy"),
     "NewtonEulerPage": ("newton_euler.html", "recursive Newton–Euler, one pass at a time"),
     "InverseDynamicsPage": ("inverse_dynamics.html", "a quintic move: torque term by term"),

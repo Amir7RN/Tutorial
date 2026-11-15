@@ -12,7 +12,7 @@ const sol = P => { const k = JSON.stringify(P); if (!SOL || SOL.k !== k) SOL = {
 const fmtv = v => '(' + v.map(x => SL.f(x, 3)).join(', ') + ')';
 SL.app({
   title: 'Time-optimal time scaling, in numbers (videos 9.4, parts 1–3)',
-  sub: 'The 2R arm of page 141 (L = 1, 0.8 m; m = 2, 1.5 kg) on a fixed path θ(s). Every symbol of the three videos — m(s), c(s), g(s), L_i, U_i, the motion cone, the velocity limit curve, the switch points — computed live at the (s, ṡ) you pick.',
+  sub: 'The 2R arm of page 142 (L = 1, 0.8 m; m = 2, 1.5 kg) on a fixed path θ(s). Every symbol of the three videos — m(s), c(s), g(s), L_i, U_i, the motion cone, the velocity limit curve, the switch points — computed live at the (s, ṡ) you pick.',
   view: '2d',
   legend: [['--bad', 'velocity limit curve'], ['--c', 'max acceleration U'], ['--b', 'max braking L'], ['--a', 'time-optimal ṡ(s)'], ['--e', 'probe state / cone'], ['--d', 'tangent-search guesses']],
   controls: [

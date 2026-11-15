@@ -55,7 +55,7 @@
           <li>One screw axis 𝒮<sub>j</sub> per joint, read off the robot at home. Used in 3 and 4.</li>
           <li>For each body: home pose M<sub>i</sub>, then T<sub>si</sub>(q) = e<sup>[𝒮<sub>0</sub>]q<sub>0</sub></sup>⋯e<sup>[𝒮<sub>i</sub>]q<sub>i</sub></sup>M<sub>i</sub>.</li>
           <li>For each body: J<sub>s,i</sub> from the moved axes, then J<sub>b,i</sub> = [Ad<sub>T<sub>is</sub></sub>] J<sub>s,i</sub> using T<sub>si</sub> from 3.</li>
-          <li>M = Σ<sub>i</sub> J<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> J<sub>b,i</sub>: four terms (page 165).</li>
+          <li>M = Σ<sub>i</sub> J<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> J<sub>b,i</sub>: four terms (page 166).</li>
           <li>g = −Σ<sub>i</sub> J<sub>b,i</sub>ᵀ 𝓕<sub>g,i</sub>: the weights, four terms.</li>
           <li>c = Σ<sub>i</sub> J<sub>b,i</sub>ᵀ 𝓕<sub>vel,i</sub>: the velocity products, four terms.</li>
           <li>τ = M q̈ + c + g.</li>
@@ -208,7 +208,7 @@ const STEPS = [
         draw: (X, o) => { o.triad(X.k.c[i], Rof(X.T[i])); o.arrow(X.k.c[i], X.k.v[i], '#1f8a4c', .25); }, coms: [i] };
     } },
 
-  { t: 'Mass matrix: four terms', txt: `Body i has spatial inertia <span class="kb">𝒢<sub>i</sub> = diag(I<sub>i</sub>, m<sub>i</sub>, m<sub>i</sub>)</span> in {i}, and kinetic energy ½ 𝒱<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> 𝒱<sub>b,i</sub> = ½ q̇ᵀ (J<sub>b,i</sub>ᵀ𝒢<sub>i</sub>J<sub>b,i</sub>) q̇. Add the four bodies: <span class="kb">M(q) = Σ<sub>i</sub> J<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> J<sub>b,i</sub></span>. The sub-steps add the four terms one at a time, as on page 165.`,
+  { t: 'Mass matrix: four terms', txt: `Body i has spatial inertia <span class="kb">𝒢<sub>i</sub> = diag(I<sub>i</sub>, m<sub>i</sub>, m<sub>i</sub>)</span> in {i}, and kinetic energy ½ 𝒱<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> 𝒱<sub>b,i</sub> = ½ q̇ᵀ (J<sub>b,i</sub>ᵀ𝒢<sub>i</sub>J<sub>b,i</sub>) q̇. Add the four bodies: <span class="kb">M(q) = Σ<sub>i</sub> J<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> J<sub>b,i</sub></span>. The sub-steps add the four terms one at a time, as on page 166.`,
     n: () => 5, sub: (s, X) => {
       const run = X.Mk.slice(0, Math.min(s, 3) + 1).reduce(add, zeros(n, n));
       if (s < 4) { const i = s;
@@ -258,7 +258,7 @@ const STEPS = [
       return { h: 'τ at this state',
         html: mt('M(q)', tbl(X.M, TN, TN, 2)) + mt('c, g, c + g (N·m)', tbl([0, 1, 2, 3].map(j => [X.c[j], X.g[j], cg[j]]), TN, ['c', 'g', 'c + g'], 2)) +
           `<p><b>Keep these rates (q̈ = 0):</b> τ = c + g = ${vecT(cg, 1)} N·m.<br><b>Motors off (τ = 0):</b> q̈ = −M⁻¹(c + g) = ${qdd ? vecT(qdd, 2) : '—'} rad/s².<br>` +
-          `<b>The ankle:</b> τ<sub>0</sub> = ${f(cg[0], 1)} N·m against a foot limit of ±${f(UB.tauAnkleMax(m), 1)} N·m: ${Math.abs(cg[0]) <= UB.tauAnkleMax(m) ? '<span class="ok">the foot can supply it</span>' : '<b style="color:var(--bad)">the foot cannot; without help from the upper body it tips</b>'}. Pages 167 and 168 use the off-diagonal M<sub>0j</sub>, c and g in this row to help.</p>`,
+          `<b>The ankle:</b> τ<sub>0</sub> = ${f(cg[0], 1)} N·m against a foot limit of ±${f(UB.tauAnkleMax(m), 1)} N·m: ${Math.abs(cg[0]) <= UB.tauAnkleMax(m) ? '<span class="ok">the foot can supply it</span>' : '<b style="color:var(--bad)">the foot cannot; without help from the upper body it tips</b>'}. Pages 168 and 169 use the off-diagonal M<sub>0j</sub>, c and g in this row to help.</p>`,
         draw: (X, o) => [0, 1, 2, 3].forEach(j => o.label(X.k.p[j], `τ<sub>${j}</sub> = ${f(cg[j], 1)} N·m`, css('--a'), .05)) }; } },
 ];
 

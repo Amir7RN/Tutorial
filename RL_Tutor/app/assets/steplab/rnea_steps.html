@@ -135,7 +135,7 @@ bwdStep(2), bwdStep(1), bwdStep(0),
 ${ul(['<b>No differentiation</b>: only matrix–vector products, link by link.',
       '<b>Recursive</b>: link i’s twist and acceleration reuse link i−1’s; link i’s wrench reuses link i+1’s. Work grows like n, not n³.',
       'Set θ̇ = θ̈ = 0 and F_tip = 0 (“Gravity only”): τ = g(θ), the holding torques.',
-      'Set g = 0, θ̇ = 0 and θ̈ = e_j: τ is column j of M(θ). Forward dynamics (page 137) calls this n + 1 times.',
+      'Set g = 0, θ̇ = 0 and θ̈ = e_j: τ is column j of M(θ). Forward dynamics (page 138) calls this n + 1 times.',
       'Used at 1 kHz in computed-torque control. For simulation we need the forward dynamics instead.'])}`];
     return head + rows[S];
   },

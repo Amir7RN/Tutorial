@@ -219,6 +219,7 @@ from .robo_dyn import (
     MassMatrixPage,
     NewtonEulerPage,
     TaskDynamicsPage,
+    VelocityProductPage,
 )
 from .robo_ctrl import (
     ForceControlPage,
@@ -470,6 +471,7 @@ PAGE_CLASSES = [
     ClosedChainPage,       # 132 four-bar, Stewart, actuator singularities
     # ---- Dynamics (playlist 7) --------------------------------------------
     LagrangePage,          # 133 L = K - P, the 2R equations
+    VelocityProductPage,   # Jdot, centripetal and Coriolis, from a = J qdd + Jdot qd
     MassMatrixPage,        # 134 M SPD, Christoffel, Mdot - 2C skew
     NewtonEulerPage,       # 135 the O(n) recursion, traced
     InverseDynamicsPage,   # 136 torque from a trajectory, term by term
@@ -493,13 +495,13 @@ PAGE_CLASSES = [
     # project (a multi-rate controller scheduler) carried through all of them.
     # Every exercise is compiled with g++ and graded (ctrlcore/cpp_course.py).
     # ======================================================================
-    *CPP_PAGES,            # 150-164 roadmap, memory map, containers, stages 0-7, project v0-v5, drill
+    *CPP_PAGES,            # 151-165 roadmap, memory map, containers, stages 0-7, project v0-v5, drill
     # ======================================================================
     # HUMANOID BALANCE -- the G1 upper body as a balance machine, for the
     # MuJoCo push-recovery project. Planar dynamics derived by hand, momentum,
     # the recovery law, and the path to MuJoCo and C++ (ctrlcore/upperbody.py).
     # ======================================================================
-    *BALANCE_PAGES,        # 165-169 machine, derivation, momentum, recovery law, project
+    *BALANCE_PAGES,        # 166-170 machine, derivation, momentum, recovery law, project
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

@@ -170,7 +170,7 @@ ${E(SL.mat(s.Md, 3, 'Ṁ') + '\n' + SL.mat(s.C, 3, 'C') + '\n' + SL.mat(s.S, 3, 
 ${E(`½ẋᵀΛẋ = ½θ̇ᵀMθ̇,  θ̇ = J⁻¹ẋ   ⇒   Λ(θ) = J⁻ᵀ M J⁻¹`)}
 ${s.Lam ? E(SL.mat(s.J, 3, 'J') + `\ndet J = ${f(s.detJ, 3)}\n` + SL.mat(s.Lam, 3, 'Λ') + `\nΛ⁻¹ = J M⁻¹ Jᵀ`) : '<p class="cbad">det J ≈ 0: the arm is singular and Λ does not exist (it is infinitely heavy along the arm).</p>'}
 ${s.Lam ? `<p>Hand force F = ${vs(u, 2)} N gives ẍ = Λ⁻¹F = ${vs(MR.mv(s.Lam_i, u), 3)} m/s². Angle between F and ẍ: <b>${f(ang(u, MR.mv(s.Lam_i, u)), 1)}°</b>.</p>` : ''}
-${ul(['The apparent mass depends on direction: λ(Λ) = ' + (s.Lam ? MR.eigSym(s.Lam).vals.map(x => f(x, 2)).join(', ') + ' kg' : '—') + '.', 'Force and acceleration line up only along the principal axes.', 'And it all changes with the configuration. A robot hand never feels like a point mass. Page 138 builds the full task-space equation on this.'])}`];
+${ul(['The apparent mass depends on direction: λ(Λ) = ' + (s.Lam ? MR.eigSym(s.Lam).vals.map(x => f(x, 2)).join(', ') + ' kg' : '—') + '.', 'Force and acceleration line up only along the principal axes.', 'And it all changes with the configuration. A robot hand never feels like a point mass. Page 139 builds the full task-space equation on this.'])}`];
     return head + rows[S];
   },
   stats() { const s = st(); return `<span><b>λ(M)</b>${f(s.E.vals[0], 3)}, ${f(s.E.vals[1], 3)}</span><span><b>det M</b>${f(MR.det(s.M), 3)}</span><span><b>det J</b>${f(s.detJ, 3)}</span>`; },

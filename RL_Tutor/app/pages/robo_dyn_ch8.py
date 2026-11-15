@@ -1,5 +1,5 @@
 """
-Chapter 8 lecture videos (Podcast/captions/chapter8), as cards for pages 133-135.
+Chapter 8 lecture videos (Podcast/captions/chapter8), as cards for pages 133-136.
 
     8.1 part 1   forward vs inverse dynamics; Lagrange on the point-mass 2R
     8.1 part 2   centripetal and Coriolis terms, physically; Christoffel form
@@ -41,7 +41,7 @@ def fwd_inv_card() -> Card:
         ("", "Lagrangian", "Newton–Euler"),
         [("starts from", "kinetic and potential energy of the whole robot", "f = ma for each link"),
          ("tool", "derivatives of L = K − P", "twists, wrenches, adjoints (chapters 3–5)"),
-         ("best for", "seeing the structure; small arms by hand", "an efficient recursive algorithm (page 135)")])))
+         ("best for", "seeing the structure; small arms by hand", "an efficient recursive algorithm (page 136)")])))
     c.add(math_label(r"\mathcal{L}(\theta,\dot\theta)=\mathcal{K}(\theta,\dot\theta)-\mathcal{P}(\theta),\qquad "
                      r"\tau_i=\frac{d}{dt}\frac{\partial\mathcal{L}}{\partial\dot\theta_i}-\frac{\partial\mathcal{L}}{\partial\theta_i}", 16))
     c.add(plain(
@@ -201,7 +201,7 @@ def mass_matrix_video_card() -> Card:
         "Summary of the video: the equations of motion are f = ma, where the 'ma' depends on "
         "joint accelerations <b>and</b> velocities, plus forces to balance gravity, plus forces "
         "to create the wrench at the hand. Next, the same equations from f = ma for one rigid "
-        "body: the Newton–Euler formulation (page 135). Page 138 builds the full task-space "
+        "body: the Newton–Euler formulation (page 136). Page 139 builds the full task-space "
         "equation F = Λẍ + μ + p on Λ."))
     return c
 
@@ -286,14 +286,14 @@ def link_vs_task_inertia_card() -> Card:
         "the same Λ. <b>Meaning</b>: the mass the hand feels when you push it. At this pose a "
         "push along x meets 1.52 kg, along y 2.69 kg: same arm, different heft per direction. "
         "That is why Λ is the centrepiece of operational-space control (Khatib): command the "
-        "hand as a free-floating object with direction-dependent mass (page 138)."))
+        "hand as a free-floating object with direction-dependent mass (page 139)."))
     c.add(plain(
         "G_k is per <b>link</b>, about that link's centre of mass, not per joint. J⁻¹ exists "
         "only for a square, non-singular J; use (JM⁻¹Jᵀ)⁻¹ otherwise."))
     return c
 
 
-# ---------------------------------------------------------------- page 135
+# ---------------------------------------------------------------- page 136
 def rigid_body_card() -> Card:
     c = Card("video 8.2, part 1 — the dynamics of one rigid body, from point masses")
     c.add(video_tag(
@@ -357,7 +357,7 @@ def spatial_inertia_card() -> Card:
     return c
 
 
-# ---------------------------------------------------------------- page 135
+# ---------------------------------------------------------------- page 136
 def rnea_video_card() -> Card:
     c = Card("video 8.3 — Newton–Euler inverse dynamics for an open chain")
     c.add(video_tag(
@@ -398,12 +398,12 @@ def rnea_video_card() -> Card:
         "parent's), back from the tip (each link's wrench builds on its child's). "
         "<b>No differentiation</b> anywhere, and the work grows linearly with the number of "
         "links, so it runs at 1 kHz in real controllers. For simulation you need the forward "
-        "dynamics instead (page 137). The step lab below runs every line with live numbers on "
+        "dynamics instead (page 138). The step lab below runs every line with live numbers on "
         "a 3R arm, one link per step, and checks the result against the planar formulas."))
     return c
 
 
-# ---------------------------------------------------------------- page 137
+# ---------------------------------------------------------------- page 138
 def forward_dyn_video_card() -> Card:
     c = Card("video 8.5 — forward dynamics of open chains")
     c.add(video_tag(
@@ -431,7 +431,7 @@ def forward_dyn_video_card() -> Card:
     return c
 
 
-# ---------------------------------------------------------------- page 138
+# ---------------------------------------------------------------- page 139
 def task_space_video_card() -> Card:
     c = Card("video 8.6 — dynamics in the task space")
     c.add(video_tag(
@@ -451,7 +451,7 @@ def task_space_video_card() -> Card:
     return c
 
 
-# ---------------------------------------------------------------- page 139
+# ---------------------------------------------------------------- page 140
 def constrained_video_card() -> Card:
     c = Card("video 8.7 — constrained dynamics")
     c.add(video_tag(
@@ -513,7 +513,7 @@ def qp_vs_newton_euler_card() -> Card:
     c.add(plain(
         "Quadratic cost, linear constraints (friction cone 𝒦_μ linearised to a pyramid): a "
         "convex QP, one global minimum, solved fast. The first constraint is the equation of "
-        "motion; M and h come from Newton–Euler (n + 1 calls, page 137, or CRBA). So the "
+        "motion; M and h come from Newton–Euler (n + 1 calls, page 138, or CRBA). So the "
         "chain is: RNEA builds the model, the QP chooses the motion and forces, and the τ "
         "it returns is what the motors get."))
     c.add(body(

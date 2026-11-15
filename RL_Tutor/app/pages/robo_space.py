@@ -79,7 +79,7 @@ class RoboRoadmapPage(Page):
             "order. <b>Where is the hand?</b> (kinematics, pages 115–123). "
             "<b>How fast and how hard can the hand move when the motors "
             "turn?</b> (the Jacobian, pages 124–132). <b>What motor torques "
-            "does a given motion need?</b> (dynamics, pages 133–139). The "
+            "does a given motion need?</b> (dynamics, pages 133–140). The "
             "last pages use those three answers to plan and control the arm. "
             "You need no earlier page of the tutor: only that a matrix times "
             "a vector is a weighted sum of columns, and that a derivative is "
@@ -563,7 +563,7 @@ class ConstraintsPage(Page):
             "flat: picking joint angles at random piles the hand up near the "
             "inner and outer edges (arm nearly folded or straight), so "
             "'random in joints' is not 'random in task space' — it matters "
-            "for sampling planners on page 142."))
+            "for sampling planners on page 143."))
         self.add(w)
         self._draw()
         self.wslim = JointLimitWorkspaceCard()

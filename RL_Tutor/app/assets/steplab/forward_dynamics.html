@@ -98,7 +98,7 @@ SL.app({
   },
   math(S) {
     const q = sim.q, qd = sim.qd, tau = tauOf(), h = MR.hVec(arm, q, qd), g = MR.gravityVec(arm, q), M = MR.massMatrix(arm, q), rhs = MR.sub(tau, h), a = MR.solve(M, rhs), dt = SL.v.dt / 1000;
-    const head = `<p class="cg">Arm of page 135 (no payload). State now: q = ${vs(q, 3)}, q̇ = ${vs(qd, 3)}, τ = ${vs(tau, 2)}, t = ${f(sim.t, 2)} s. Integrator: ${NAMES[METHOD]}, dt = ${SL.v.dt} ms.</p>`;
+    const head = `<p class="cg">Arm of page 136 (no payload). State now: q = ${vs(q, 3)}, q̇ = ${vs(qd, 3)}, τ = ${vs(tau, 2)}, t = ${f(sim.t, 2)} s. Integrator: ${NAMES[METHOD]}, dt = ${SL.v.dt} ms.</p>`;
     const dm = MR.det(M);
     const rows = [
 `<p>Same equation as inverse dynamics, solved for the other unknown:</p>

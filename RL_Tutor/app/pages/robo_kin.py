@@ -821,7 +821,7 @@ class NullSpacePage(Page):
             "projection' means θ̇₀ = 'walk downhill on a cost H', e.g. H = "
             "how close you are to the joint limits. A weighted inverse "
             "measures 'smallest' differently; with W = M it means least "
-            "kinetic energy, which page 138 uses."))
+            "kinetic energy, which page 139 uses."))
         self.add(m)
 
         lab = Card("self-motion: the hand stays put, the elbow swings")

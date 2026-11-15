@@ -54,7 +54,7 @@ SL.app({
     ['The question', 'A controller wants the arm to go from A to B in T seconds. What torque must each motor give at every instant? That is inverse dynamics: motion in, torque out.'],
     ['Time scaling s(t)', 'First decide how fast to move along the path: s goes from 0 to 1. The quintic starts and ends with zero speed and zero acceleration, so the motors are not jerked.'],
     ['Joint position, speed and acceleration', 'Straight line in joint space: q = q_A + s(q_B − q_A). Differentiate: q̇ = ṡ Δq and q̈ = s̈ Δq. Now the motion is known at every instant.'],
-    ['One call: τ = M(q)q̈ + c(q, q̇) + g(q)', 'Feed (q, q̇, q̈) at this instant to the dynamics (Newton–Euler, page 135). Out come the three parts of the torque for each joint.'],
+    ['One call: τ = M(q)q̈ + c(q, q̇) + g(q)', 'Feed (q, q̇, q̈) at this instant to the dynamics (Newton–Euler, page 136). Out come the three parts of the torque for each joint.'],
     ['The whole move', 'Do it at every instant. Early: accelerating (M q̈ pushes). Late: braking (M q̈ pulls). Gravity changes slowly with the pose; c peaks where the speed peaks.'],
     ['Faster costs 1/T²', 'Run the same path in half the time: speeds double, accelerations quadruple. Inertial and velocity torques grow like 1/T², gravity does not change at all.'],
     ['Peak, RMS and the motor limit', 'Peak torque must stay under the motor limit; RMS torque decides how hot the motor gets. Find the shortest T this motor can do.'],
@@ -117,7 +117,7 @@ SL.app({
   },
   math(S) {
     const s = st(), n = s.now, T = s.T, j = s.j;
-    const head = `<p class="cg">Arm of page 135 with ${f(s.pay, 1)} kg payload at the tip. A = (−1.20, 1.60) rad, B = (0.90, 0.40) rad, T = ${f(T, 1)} s, now t = ${f(s.t, 2)} s.</p>`;
+    const head = `<p class="cg">Arm of page 136 with ${f(s.pay, 1)} kg payload at the tip. A = (−1.20, 1.60) rad, B = (0.90, 0.40) rad, T = ${f(T, 1)} s, now t = ${f(s.t, 2)} s.</p>`;
     const pk = j => Math.max(...s.S.map(x => Math.abs(x.tau[j]))), rms = j => Math.sqrt(s.S.reduce((a, x) => a + x.tau[j] ** 2, 0) / s.S.length);
     const rows = [
 `<p><b>Inverse dynamics</b> answers: for this motion q(t), what τ(t)?</p>
@@ -141,7 +141,7 @@ M q̈ = ${vs(n.Mq, 3)}
 c    = ${vs(n.c, 3)}      (velocity products, page 133)
 g    = ${vs(n.g, 3)}      (holding torque)
 τ    = ${vs(n.tau, 3)} N·m`)}
-<p>On a robot this is RNEA (page 135): O(n), no matrix needed. Here it is split into parts so you can see who asks for what.</p>`,
+<p>On a robot this is RNEA (page 136): O(n), no matrix needed. Here it is split into parts so you can see who asks for what.</p>`,
 `<p>${j ? 'Elbow' : 'Shoulder'}, whole move (choose the joint with the slider):</p>
 ${ul([`<b>M q̈</b> follows s̈: positive while speeding up, negative while braking. Peak ${f(Math.max(...s.S.map(x => Math.abs(x.Mq[j]))), 2)} N·m.`,
       `<b>c</b> follows ṡ², so it peaks mid-move: ${f(Math.max(...s.S.map(x => Math.abs(x.c[j]))), 2)} N·m.`,
@@ -157,7 +157,7 @@ ${ul([`Half the time → 4× the inertial and velocity torques.`, `Slow moves ar
 ${E(`peak |τ|: shoulder ${f(pk(0), 2)}, elbow ${f(pk(1), 2)} N·m   (limit ${s.tmax} N·m)
 RMS τ  : shoulder ${f(rms(0), 2)}, elbow ${f(rms(1), 2)} N·m   (heating ∝ current² ∝ τ²)`)}
 ${(() => { const ok = s.peaks.find(p => Math.max(p[1], p[2]) <= s.tmax); return ok ? `<p>Shortest duration within the limit (on a 0.2 s grid): <b>T ≈ ${f(ok[0], 1)} s</b>. Faster than that and some instant asks for more than the motor has: the plan must be slowed down (time scaling, playlist 8).</p>` : '<p class="cbad">Even the slowest move tried exceeds this limit: gravity alone is too much. A bigger motor or gearbox is needed.</p>'; })()}`,
-`<p><b>Feedforward + feedback</b> (page 143):</p>
+`<p><b>Feedforward + feedback</b> (page 144):</p>
 ${E('τ = τ_ID(q_d, q̇_d, q̈_d) + K_p e + K_d ė')}
 <p><b>Detection.</b> Add an unmodelled mass with the slider. The real arm needs τ_real; the model predicts τ_ID:</p>
 ${E(`τ_real − τ_ID = ${vs(MR.sub(s.nowR.tau, n.tau), 3)} N·m   (now)

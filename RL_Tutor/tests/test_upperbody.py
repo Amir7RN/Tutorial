@@ -29,7 +29,7 @@ def close(a, b, atol=1e-8):
 
 
 class EquationsOfMotion(unittest.TestCase):
-    """The Jacobian derivation agrees with the Newton-Euler recursion of page 135."""
+    """The Jacobian derivation agrees with the Newton-Euler recursion of page 136."""
 
     def setUp(self):
         self.m = ub.PLANES["sagittal"]
@@ -292,7 +292,7 @@ console.log(JSON.stringify({M: k.M, g: k.g, c: k.cvec, A: k.A, bias: k.bias, A_O
 
 
 class Recovery(unittest.TestCase):
-    """The numbers page 168 quotes: the ankle alone falls at 75 N, the upper body stands at 80 N (slow)."""
+    """The numbers page 169 quotes: the ankle alone falls at 75 N, the upper body stands at 80 N (slow)."""
 
     def test_the_upper_body_extends_the_recoverable_push(self):
         m = ub.PLANES["sagittal"]

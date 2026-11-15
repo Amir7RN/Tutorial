@@ -553,7 +553,7 @@ def counterweight_step(model: Model, q, qd, gains: Gains, active=None, q_home=No
         x_c,des  = -(kappa_p q_0 + kappa_d qd_0)             where the COM should be (m, from the ankle)
         x_up,des = (m x_c,des - m_legs x_legs) / m_up         what that asks of the upper body's own COM
         F        = k_x (x_up,des - x_up) - b_x xdot_up         a horizontal spring-damper on that point
-        tau_u    = J_up^T F  +  (c + g)_u  +  N (posture PD)   page 144: J^T force, compensation, null space
+        tau_u    = J_up^T F  +  (c + g)_u  +  N (posture PD)   page 145: J^T force, compensation, null space
     clipped to the motor limits. J_up is one row of the linear part of the
     momentum matrix (divided by m_up): the COM Jacobian of the upper body.
     """

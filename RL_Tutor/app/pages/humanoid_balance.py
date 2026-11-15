@@ -3,7 +3,7 @@ HUMANOID BALANCE -- the upper body of a G1 as a balance machine.
 
 A chapter built for one project: a Unitree G1 in MuJoCo is pushed, and the
 waist and arms are used to absorb the push. It spends the dynamics block
-(pages 133-139) on that machine: derive the equations of motion of the
+(pages 133-140) on that machine: derive the equations of motion of the
 legs-torso-arms chain in one plane, lock joints to move between planes, read
 the momentum those Jacobians carry, and build the law that turns a push into
 joint torques. The numerics are in ctrlcore/upperbody.py; the labs
@@ -67,7 +67,7 @@ class UpperBodyMachinePage(BalancePage):
             "The project: a G1 standing in MuJoCo is pushed at the shoulder. The feet stay where they are, "
             "so the ankle can only push on the ground within the foot. Everything else has to come from the "
             "waist and the arms. This chapter builds that machine in the smallest form that still has the "
-            "physics: a <b>planar chain</b> of legs, torso and arms pinned at the ankle. Pages 133 to 139 "
+            "physics: a <b>planar chain</b> of legs, torso and arms pinned at the ankle. Pages 133 to 140 "
             "gave you M, c and g for an arm; here you derive them for this chain yourself, then read the "
             "momentum they carry, then write the law. The real robot is a tree with a floating base; the "
             "plane is where the ideas are learnt and the numbers are checked."))
@@ -111,7 +111,7 @@ class UpperBodyMachinePage(BalancePage):
                 ("Why can both arms be one link?",
                  "In a planar model they are given the same angle, so their masses and inertias simply add. "
                  "The moment one arm does something the other does not (the real robot can), the model "
-                 "needs a tree, which is what MuJoCo gives you on page 169."),
+                 "needs a tree, which is what MuJoCo gives you on page 170."),
                 ("What is M<sub>01</sub> physically?",
                  "The torque the ankle feels when the waist alone accelerates by 1 rad/s²: every mass above "
                  "the waist, times its arm to the ankle, times its arm to the waist, times the cosine between "
@@ -143,7 +143,7 @@ class UpperBodyMachinePage(BalancePage):
 
 class UpperBodyDerivePage(BalancePage):
     TITLE = "Sagittal Plane: From Twists to the Equations of Motion"
-    SUBTITLE = ("Page 165 gave the mass matrix. Here the same simplified G1 goes from screw axes and body "
+    SUBTITLE = ("Page 166 gave the mass matrix. Here the same simplified G1 goes from screw axes and body "
                 "Jacobians to τ = M(q)q̈ + c(q,q̇) + g(q), in the Kinematics notation, one step at a time.")
     NOTES = "G1 · derive"
 
@@ -153,7 +153,7 @@ class UpperBodyDerivePage(BalancePage):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(start_here(
-            "<b>Where we are.</b> Page 165 built M(q), how much torque each joint needs per unit q̈. That is "
+            "<b>Where we are.</b> Page 166 built M(q), how much torque each joint needs per unit q̈. That is "
             "one of three terms. A robot standing still with q̈ = 0 still needs torque to carry its weight, "
             "g(q). A robot whose joints are turning needs torque just to keep them turning, c(q, q̇). This "
             "page derives all three on the simplified G1 with the tools of the Kinematics pages: frame {s}, "
@@ -267,7 +267,7 @@ class UpperBodyMomentumPage(BalancePage):
                          r"h_c=\begin{bmatrix}p_x\\p_y\\H_c\end{bmatrix}=A(q)\,\dot q,\quad "
                          r"A=\sum_i\begin{bmatrix}m_iJ_i\\ I_iJ_{\omega i}+m_i(c_i-x_c)\times J_i\end{bmatrix}", 15))
         e.add(body(
-            "Compare A with M = Σ J<sub>b,i</sub>ᵀ𝒢<sub>i</sub>J<sub>b,i</sub> (page 166): "
+            "Compare A with M = Σ J<sub>b,i</sub>ᵀ𝒢<sub>i</sub>J<sub>b,i</sub> (page 167): "
             "<b>the momentum matrix is the mass matrix with the outer Jᵀ stripped off</b>. Same Jacobians, same "
             "masses and inertias; M lands in joint space, A lands in physical momentum. A about the COM is "
             "the <i>centroidal momentum matrix</i> of the humanoid literature. At q = 0 the H row of A<sub>O</sub> "
@@ -300,14 +300,14 @@ class UpperBodyMomentumPage(BalancePage):
         sim.add(self.sim_btn)
         sim.add(self.sim_out)
         self.sim_btn.clicked.connect(self._simulate)
-        sim.add(body("The same run, animated, with every slider live, is the lab on page 168.", dim=True))
+        sim.add(body("The same run, animated, with every slider live, is the lab on page 169.", dim=True))
         self.add(sim)
         self.add(plain(
             "<b>What the arms can and cannot do.</b> They cannot change H<sub>O</sub> at all. They can "
             "(1) take forward momentum so that the legs lose it, which stops the lean from growing for a "
             "moment, and (2) move the COM, which changes the sign of gravity's moment. Both are bounded: "
             "the arms reach their range and the torso its stop, and then the momentum comes back. The ankle "
-            "torque and gravity must do the rest within that window. Page 168 measures the window."))
+            "torque and gravity must do the rest within that window. Page 169 measures the window."))
         self.add(interview(
             "<b>\"How does swinging the arms help a humanoid balance?\"</b> Angular momentum about the stance "
             "point is conserved by internal torques, so accelerating the arms in the direction of the fall "
@@ -371,7 +371,7 @@ class UpperBodyRecoveryPage(BalancePage):
         self.add(start_here(
             "The controller's job: at every tick, from (q, q̇), produce torques for the waist and the arms. "
             "The ankle is not a command: it is a spring-damper saturated at m g × (half foot), the most the "
-            "sole can do. Everything on this page was simulated with the model of page 166 and is tested. "
+            "sole can do. Everything on this page was simulated with the model of page 167 and is tested. "
             "The honest result first: with a 10 cm foot the ankle alone survives a 70 N × 0.1 s push and "
             "falls at 75 N; with the upper body under a linear law it survives 80 N and falls at 85 N. "
             "The upper body buys about 15 percent of push, and halves the lean on the pushes the ankle could "
@@ -386,7 +386,7 @@ class UpperBodyRecoveryPage(BalancePage):
                       "forward with the fall for a moment, then return while the ankle and gravity finish."))
         laws.add(body("<b>2 · The counterweight (looks right, fails).</b> Put the whole-body COM behind the "
                       "ankle in proportion to the lean, through a virtual spring on the upper body's COM and "
-                      "page 144's Jᵀ:"))
+                      "page 145's Jᵀ:"))
         laws.add(math_label(r"x_{c,\mathrm{des}}=-(\kappa_p q_0+\kappa_d\dot q_0),\quad "
                             r"F=k_x(x_{\mathrm{up,des}}-x_{\mathrm{up}})-b_x\dot x_{\mathrm{up}},\quad "
                             r"\tau_u=J_{\mathrm{up}}^TF+(c+g)_u+N\,\tau_{\mathrm{posture}}", 14))
@@ -504,7 +504,7 @@ class UpperBodyProjectPage(BalancePage):
             "Do not learn C++ and the dynamics at the same time. Phase 1 is Python and MuJoCo: the planar "
             "model is your oracle, and every number MuJoCo gives you is compared with it before you trust the "
             "next one. Phase 2 ports the working controller to C++, where the only new thing is the language "
-            "and the structure you learnt in pages 150 to 164 is the design."))
+            "and the structure you learnt in pages 151 to 165 is the design."))
         ph = Card("phase 1 · Python + MuJoCo, in checkable steps")
         ph.add(_table(["step", "do", "check against the plane"],
                       [["1", "Load unitree_g1 from mujoco_menagerie, reset to the standing keyframe, weld the "
@@ -513,12 +513,12 @@ class UpperBodyProjectPage(BalancePage):
                              "166 (one leg and one arm per side: halve the planar arm masses)"],
                        ["3", "qfrc_bias with qvel = 0", "the gravity vector g; a forward lean gives a negative ankle entry"],
                        ["4", "mj_subtreeVel; subtree_angmom and subtree_com of the pelvis", "H about the COM equals "
-                             "A q̇ from page 167, at the same joint rates"],
+                             "A q̇ from page 168, at the same joint rates"],
                        ["5", "Linearise by finite differences of mj_step (mjd_transitionFD does it for you), "
                              "design K with the same Bryson weights", "the gains have the same signs as the planar K: "
                              "torso and arms go forward with the fall"],
                        ["6", "Apply the push with xfrc_applied; log lean, link momenta, torques", "the plots of "
-                             "page 168: momentum moves to the arms, then returns; find the push at which it falls"],
+                             "page 169: momentum moves to the arms, then returns; find the push at which it falls"],
                        ["7", "Free the base (feet on the ground through contact), keep the legs' joints under a stiff "
                              "PD", "the ankle saturation now happens by itself: the heel lifts"]]))
         self.add(ph)
@@ -528,17 +528,17 @@ class UpperBodyProjectPage(BalancePage):
                       "<code>mujoco</code> is not installed here, so this was not run. Treat it as a map, "
                       "not a result.", dim=True))
         self.add(code)
-        cpp = Card("phase 2 · the C++ port, in the words of pages 150 to 164")
+        cpp = Card("phase 2 · the C++ port, in the words of pages 151 to 165")
         cpp.add(body(
             "<b>One class per invariant.</b> <code>PlanarModel</code> owns the link parameters and promises "
-            "that M is symmetric positive definite for every q (that is a unit test, page 156). "
+            "that M is symmetric positive definite for every q (that is a unit test, page 157). "
             "<code>BalanceController</code> owns K, the limits and the ankle model, and promises that every "
             "torque it returns is inside the limits. <code>Scheduler</code> runs the controller at 1 kHz and "
-            "the logger at 50 Hz with a triple buffer between them (page 163).<br><br>"
+            "the logger at 50 Hz with a triple buffer between them (page 164).<br><br>"
             "<b>Fixed-size Eigen</b> for everything: <code>Eigen::Matrix&lt;double,4,4&gt;</code> for M, "
             "<code>Matrix&lt;double,3,8&gt;</code> for K. No allocation in <code>update()</code>; design K in "
-            "<code>configure()</code> (page 160).<br><br>"
-            "<b>The port is the test.</b> Compile the C++ model, feed it the posture of page 166, and compare "
+            "<code>configure()</code> (page 161).<br><br>"
+            "<b>The port is the test.</b> Compile the C++ model, feed it the posture of page 167, and compare "
             "M, c, g and A with ctrlcore/upperbody.py to 1e-9, exactly as ub.js is compared today. Only then "
             "port the controller. The structure to copy is tests/test_upperbody.py's JavaScriptPort test."))
         self.add(cpp)
@@ -551,7 +551,7 @@ class UpperBodyProjectPage(BalancePage):
              "indices or the units are wrong, and nothing after it means anything."),
             ("What will you measure to say the upper body helped?",
              "The largest push impulse that does not end in a fall, with and without the upper body, at the "
-             "same foot. One number per configuration, like the table on page 168."),
+             "same foot. One number per configuration, like the table on page 169."),
             ("Where does the project touch your beam-walking paper?",
              "The frontal-plane chain is the mediolateral problem, and the law on momentum about the stance "
              "foot is the same quantity your exoskeleton regulated. The G1 just has to do it with its own "

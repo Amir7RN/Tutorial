@@ -1132,7 +1132,7 @@ auto e = A * x;            // NOT a vector: a lazy expression that refers to A a
 Vec6 v = A * x;            // evaluate now -- write the type
 
 // pitfall 3: solve, never invert
-Vec6 qdd = M.ldlt().solve(tau - h);         // M is SPD (page 135)""", "Eigen: the three mistakes everyone makes"),
+Vec6 qdd = M.ldlt().solve(tau - h);         // M is SPD (page 136)""", "Eigen: the three mistakes everyone makes"),
             snippet("""
 // ros2_control's controller, reduced to its shape
 class MyController : public controller_interface::ControllerInterface {
@@ -1292,7 +1292,7 @@ class CppInterviewPage(CppPage):
         self.add(callout(
             "Answer every design question in the same order: <b>what is the invariant, who owns "
             "what, what runs in real time, and how do I test it.</b> It is the robotics equivalent of "
-            "\"spaces, kinematics, dynamics, control\" on page 149.", "key", label="START HERE"))
+            "\"spaces, kinematics, dynamics, control\" on page 150.", "key", label="START HERE"))
         self.add(Reveal("Ownership and lifetime", [
             ("unique_ptr vs shared_ptr vs raw pointer: when do you use each?",
              "unique_ptr for single ownership, which is the default for heap objects. shared_ptr only when "

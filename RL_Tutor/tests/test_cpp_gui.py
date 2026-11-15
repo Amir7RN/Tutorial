@@ -162,8 +162,8 @@ class Pages(unittest.TestCase):
         for name in ("cpp_memory.html", "cpp_build.html", "cpp_rt.html", "cpp_address_space.html", "cpp_containers.html"):
             src = open(os.path.join(STEPLAB_DIR, name), encoding="utf-8").read()
             self.assertFalse(re.findall(r'<script src="http', src), name)
-        self.assertEqual([c.NUM for c in CPP_PAGES], list(range(150, 150 + len(CPP_PAGES))))
-        # the chapter is contiguous; Humanoid Balance (165-169) follows it
+        self.assertEqual([c.NUM for c in CPP_PAGES], list(range(151, 151 + len(CPP_PAGES))))
+        # the chapter is contiguous; Humanoid Balance (166-170) follows it
         self.assertIs(LESSON_CLASSES[CPP_PAGES[-1].NUM - 1], CPP_PAGES[-1])
         used = []
         for cls in CPP_PAGES:
