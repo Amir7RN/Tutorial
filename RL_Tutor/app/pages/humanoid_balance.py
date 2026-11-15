@@ -158,7 +158,11 @@ class UpperBodyDerivePage(BalancePage):
             "g(q). A robot whose joints are turning needs torque just to keep them turning, c(q, q̇). This "
             "page derives all three on the simplified G1 with the tools of the Kinematics pages: frame {s}, "
             "screw axes 𝒮, the product of exponentials, the body Jacobian J<sub>b</sub> and the twist 𝒱<sub>b</sub>. "
-            "Do it on paper first; the lab computes every intermediate number at the posture you set."))
+            "<b>The plan in one line:</b> treat each of the four bodies as a frame at its centre of mass; "
+            "for each one find its pose by the product of exponentials (step 3) and its body Jacobian "
+            "J<sub>b,i</sub> (step 4: 3 rows, one column per joint). That gives four Jacobians, one per body, not one per joint. "
+            "M, g and c are then each a sum of four terms, one per body. "
+            "Do it on paper first; the lab splits every step into sub-steps and computes each number at the posture you set."))
         e = Card("the recipe, in the Kinematics notation")
         e.add(math_label(r"\mathcal{S}_j=(\hat\omega,\,-\hat\omega\times q_j),\qquad "
                          r"T_{si}(q)=e^{[\mathcal{S}_0]q_0}\cdots e^{[\mathcal{S}_i]q_i}M_i", 15))
