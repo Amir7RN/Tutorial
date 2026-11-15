@@ -32,6 +32,11 @@
   .shw{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.84rem;margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
   .shw label{display:flex;align-items:center;gap:5px;cursor:pointer}
   .shw input{accent-color:var(--a)}
+  #steps{margin:0 0 8px}
+  .bd td.z{color:var(--grey)}
+  .bd td.hi{background:color-mix(in srgb,var(--b) 18%,transparent);font-weight:700}
+  .bd .mt{display:inline-block;vertical-align:top;margin:0 14px 6px 0}
+  .bd .mt p{margin:0 0 2px;font-size:.8rem;color:var(--muted)}
 </style>
 </head><body>
 <div class="wrap">
@@ -69,6 +74,7 @@
       <div class="card"><p class="h">joints in this plane</p><div class="jc" id="ctl"></div></div>
       <div class="card"><p class="h" id="mxh">mass matrix M(q), kg·m²</p><div class="mx" id="mx"></div>
         <p class="note" id="mxnote" style="margin:8px 0 0"></p></div>
+      <div class="card"><p class="h" id="sth">build M link by link: M = Σ J<sub>k</sub>ᵀ 𝓜<sub>k</sub> J<sub>k</sub></p><div class="sel" id="steps"></div><div class="bd" id="st"></div></div>
       <div class="card"><p class="h" id="bdh">how the selected entry is computed</p><div class="bd" id="bd"></div></div>
       <div class="card"><p class="h">what this plane is</p><div class="note" id="note"></div></div>
       <div class="card"><p class="h">the G1 joints behind it (mujoco_menagerie names)</p><div class="kv" id="g1"></div></div>
@@ -95,7 +101,7 @@ const G1 = {
   frontal: [['ankle roll', 'left_ankle_roll_joint, right_ankle_roll_joint'], ['waist roll', 'waist_roll_joint'], ['shoulder roll', 'left_shoulder_roll_joint, right_shoulder_roll_joint']],
   transverse: [['feet on the floor', 'no joint: the sole and friction'], ['waist yaw', 'waist_yaw_joint'], ['shoulder yaw', 'left_shoulder_yaw_joint, right_shoulder_yaw_joint']],
 };
-const S = { sel: null, show: { links: false, kg: false, com: false }, plane: 'sagittal', q: { sagittal: [0.1, 0.15, -0.6, -0.5], frontal: [0.08, 0.1, 0.8], transverse: [0.1, 0.3, 0.5] }, locks: { sagittal: [false, false, false, false], frontal: [false, false, false], transverse: [false, false, false] } };
+const S = { sel: null, step: null, show: { links: false, kg: false, com: false }, plane: 'sagittal', q: { sagittal: [0.1, 0.15, -0.6, -0.5], frontal: [0.08, 0.1, 0.8], transverse: [0.1, 0.3, 0.5] }, locks: { sagittal: [false, false, false, false], frontal: [false, false, false], transverse: [false, false, false] } };
 const view = document.getElementById('view'), cv = document.getElementById('cv');
 const stage = UB3D.stage(cv, view, { orbit: { az: 0, el: .1, r: 3.2, tgt: new THREE.Vector3(0, .7, 0) } });
 const fig = UB3D.figure(stage.scene);
@@ -139,8 +145,9 @@ function matrix(core) {
     }
   }
   mx.innerHTML = h;
-  mx.querySelectorAll('.cell').forEach(b => b.onclick = () => { const i = +b.dataset.i, j = +b.dataset.j; S.sel = S.sel && S.sel[0] === i && S.sel[1] === j ? null : [i, j]; draw(); });
+  mx.querySelectorAll('.cell').forEach(b => b.onclick = () => { const i = +b.dataset.i, j = +b.dataset.j; S.step = null; S.sel = S.sel && S.sel[0] === i && S.sel[1] === j ? null : [i, j]; draw(); });
   breakdown(core);
+  steps(core);
   const k = fr.length;
   document.getElementById('mxh').textContent = `mass matrix M(q), kg·m² — ${n}×${n}` + (k < n ? `, ${k}×${k} after the locks` : '');
   document.getElementById('mxnote').innerHTML = k < n
@@ -191,8 +198,41 @@ function breakdown(core) {
     if (!diag) setLine(armLines[4 + k], fig.jointW(S.plane, core, m.links, j), ck);
   }
 }
-/* which markers and numbers are on: the selected entry's counted masses, plus whatever the toggles add */
-const counted = k => !!S.sel && k >= Math.max(S.sel[0], S.sel[1]);
+/* M built one link at a time: link k adds J_kᵀ 𝓜_k J_k, with J_k its 3×n COM Jacobian (ω, vx, vy)
+   and 𝓜_k = diag(I_k, m_k, m_k) its spatial inertia at the COM */
+function tbl(A, rl, cl, cls = () => '', d = 3) {
+  return `<table><tr><th></th>${cl.map(c => `<th>${c}</th>`).join('')}</tr>` +
+    A.map((r, i) => `<tr><th>${rl[i]}</th>${r.map((v, j) => `<td class="${cls(i, j, v)}">${f(v, d)}</td>`).join('')}</tr>`).join('') + '</table>';
+}
+function contrib(m, core, k) {
+  const n = m.links.length, l = m.links[k], J = [m.links.map((_, j) => j <= k ? 1 : 0), core.Jx[k].slice(), core.Jy[k].slice()], D = [l.I, l.m, l.m];
+  return { J, D, C: Array.from({ length: n }, (_, a) => Array.from({ length: n }, (_, b) => J.reduce((s, row, r) => s + row[a] * D[r] * row[b], 0))) };
+}
+function steps(core) {
+  const m = model(), n = m.links.length, el = document.getElementById('steps'), st = document.getElementById('st');
+  el.innerHTML = m.links.map((l, k) => `<button type="button" data-k="${k}" aria-pressed="${S.step === k}">${k + 1} · ${l.name}</button>`).join('');
+  el.querySelectorAll('button').forEach(b => b.onclick = () => { const k = +b.dataset.k; S.step = S.step === k ? null : k; if (S.step !== null) S.sel = null; draw(); });
+  if (S.step === null) {
+    st.innerHTML = `<p>Each link adds its own ${n}×${n} matrix. Link k moves with velocity <span class="m">[ω<sub>k</sub>; v<sub>k</sub>] = J<sub>k</sub> q̇</span> at its centre of mass, so its kinetic energy is <span class="m">½ q̇ᵀ (J<sub>k</sub>ᵀ 𝓜<sub>k</sub> J<sub>k</sub>) q̇</span> with <span class="m">𝓜<sub>k</sub> = diag(I<sub>k</sub>, m<sub>k</sub>, m<sub>k</sub>)</span>. Add the ${n} links and you have M. Press a step.</p>`;
+    return;
+  }
+  const k = S.step, l = m.links[k], qn = m.links.map((_, j) => `q̇<sub>${j}</sub>`), tn = m.links.map((_, j) => `${j}`);
+  const { J, D, C } = contrib(m, core, k);
+  const run = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i <= k; i++) contrib(m, core, i).C.forEach((r, a) => r.forEach((v, b) => run[a][b] += v));
+  const z = (i, j, v) => Math.abs(v) < 5e-4 ? 'z' : '';
+  const err = Math.max(...run.map((r, a) => Math.max(...r.map((v, b) => Math.abs(v - core.M[a][b])))));
+  st.innerHTML = `<p><b>Step ${k + 1} of ${n}: ${l.name}</b> (m = ${l.m} kg, I = ${l.I} kg·m²). Joints 0…${k} move this link; joints above it do not, so their columns of J are zero.</p>
+    <div class="mt"><p>J<sub>${k}</sub>: COM Jacobian</p>${tbl(J, ['ω', 'v<sub>x</sub>', 'v<sub>y</sub>'], qn, z)}</div>
+    <div class="mt"><p>𝓜<sub>${k}</sub></p>${tbl([[D[0], 0, 0], [0, D[1], 0], [0, 0, D[2]]], ['', '', ''], ['', '', ''], z)}</div>
+    <p>Row ω: every joint from the ankle up to joint ${k} turns this link by its own rate. Rows v: column j is the arm from joint j to this COM, turned 90° (the dashed lines on the robot). These rows are in world axes. The body-frame Jacobian rotates them by Rᵀ, and m·RRᵀ = m, so J<sub>k</sub>ᵀ𝓜<sub>k</sub>J<sub>k</sub> comes out the same.</p>
+    <div class="mt"><p>J<sub>${k}</sub>ᵀ 𝓜<sub>${k}</sub> J<sub>${k}</sub>: what this link adds</p>${tbl(C, tn, tn, z)}</div>
+    <div class="mt"><p>running sum, links 0…${k}</p>${tbl(run, tn, tn, (i, j, v) => (i <= k && j <= k && Math.abs(C[i][j]) >= 5e-4 ? 'hi' : z(i, j, v)))}</div>
+    <p>Entry (a, b) of the contribution is <span class="m">I<sub>${k}</sub> + m<sub>${k}</sub> (arm<sub>a</sub>·arm<sub>b</sub>)</span> for a, b ≤ ${k}: the term this link puts in the per-entry table below.
+    ${k === n - 1 ? `<b>After the last link the running sum is M(q)</b> (largest difference from the matrix above: ${err.toExponential(1)}).` : `Highlighted: the entries this step changed. Next: step ${k + 2}.`}</p>`;
+}
+/* which markers and numbers are on: the selected entry's counted masses (or the link of the current step), plus whatever the toggles add */
+const counted = k => S.step !== null ? k === S.step : !!S.sel && k >= Math.max(S.sel[0], S.sel[1]);
 function draw() {
   const m = model(), q = S.q[S.plane], core = UB.core(m, q, new Array(q.length).fill(0));
   fig.pose(S.plane, q, S.locks[S.plane]);
@@ -200,7 +240,8 @@ function draw() {
   m.links.forEach((l, k) => fig.comLinks[k].visible = S.show.links || counted(k));
   fig.com.visible = S.show.com;
   fig.comDrop.visible = S.show.com && S.plane !== 'transverse';
-  matrix(core);
+  matrix(core);   // clears the arm lines, then draws the selected entry's
+  if (S.step !== null) for (let j = 0; j <= S.step; j++) setLine(armLines[j], fig.jointW(S.plane, core, m.links, j), fig.comW(S.plane, core, m.links, S.step));
   stage.draw();
   labels.forEach(l => l.hidden = true);
   m.links.forEach((l, k) => { if (S.show.kg || counted(k)) stage.label(labels[k], fig.comLinks[k].position.clone().add(new THREE.Vector3(0, k % 2 ? -.07 : .07, 0)), `${l.m} kg`, css('--b')); });
@@ -208,7 +249,7 @@ function draw() {
 }
 ['links', 'kg', 'com'].forEach(k => { const c = document.getElementById('sh' + k[0].toUpperCase() + k.slice(1)); c.onchange = () => { S.show[k] = c.checked; draw(); }; });
 document.querySelectorAll('#planes button[data-p]').forEach(b => b.onclick = () => {
-  document.querySelectorAll('#planes button[data-p]').forEach(x => x.setAttribute('aria-pressed', x === b)); S.plane = b.dataset.p; S.sel = null;
+  document.querySelectorAll('#planes button[data-p]').forEach(x => x.setAttribute('aria-pressed', x === b)); S.plane = b.dataset.p; S.sel = null; S.step = null;
   stage.view(S.plane === 'sagittal' ? 'side' : S.plane === 'frontal' ? 'front' : 'top'); controls(); draw();
 });
 document.getElementById('vside').onclick = () => { stage.view('side'); draw(); };
