@@ -1,147 +1,243 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sagittal equations of motion, by hand</title>
+<title>Sagittal equations of motion</title>
 <link rel="stylesheet" href="steplab.css">
 <style>
-  .grid{grid-template-columns:minmax(0,1.1fr) minmax(400px,1fr)}
-  .view{min-height:470px}
-  #cv{width:100%;height:100%;display:block}
-  .jc label{display:grid;grid-template-columns:120px minmax(0,1fr) 64px;gap:8px;align-items:center;font-size:.83rem;margin:2px 0}
-  .jc output{font-family:var(--mono);text-align:right;font-size:.8rem}
+  .grid{grid-template-columns:minmax(0,1.25fr) minmax(400px,1fr)}
+  .view{min-height:500px;cursor:grab}
+  .view canvas{position:absolute;left:4px;top:4px}
+  .jc{display:grid;grid-template-columns:1fr 1fr;gap:2px 14px}
+  .jc label{display:grid;grid-template-columns:96px minmax(0,1fr) 62px;gap:6px;align-items:center;font-size:.82rem;margin:1px 0}
+  .jc output{font-family:var(--mono);text-align:right;font-size:.78rem}
   .jc input[type=range]{width:100%;accent-color:var(--a)}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px}
-  .math{font-size:.9rem}
-  .math .eq{white-space:pre-wrap}
-  .pick{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:var(--muted);margin:4px 0}
+  .pick{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.82rem;color:var(--muted);margin:2px 0 8px}
   .pick button{padding:3px 8px;font-size:.8rem}
   .kb{font-weight:700;color:var(--a)}
+  .step .t b{display:inline;font-size:inherit}
+  .num{font-size:.86rem;line-height:1.5}
+  .num p{margin:4px 0 8px}
+  .num table{border-collapse:collapse;font-family:var(--mono);font-size:.76rem}
+  .num td,.num th{border-bottom:1px solid var(--line);padding:3px 6px;text-align:right;white-space:nowrap}
+  .num th{color:var(--muted);font-family:var(--body);font-weight:700}
+  .num td:first-child,.num th:first-child{text-align:left}
+  .num td.z{color:var(--grey)}
+  .num tr.sum td{font-weight:700;border-top:2px solid var(--line)}
+  .num .mt{display:inline-block;vertical-align:top;margin:0 14px 8px 0}
+  .num .mt > p{margin:0 0 2px;font-size:.8rem;color:var(--muted)}
+  .num .tw{overflow-x:auto}
+  .num .ok{color:var(--c);font-weight:700}
+  .sw{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
+  .key{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.8rem;color:var(--muted);margin-top:6px}
 </style>
 </head><body>
 <div class="wrap">
-  <div class="top"><h1>Sagittal plane: the equations of motion, by hand</h1>
-    <p>The same recipe as pages 133 and 134, on the legs–torso–arms chain. Every number on the right is computed at the posture on the left; set the sliders, then do the step on paper and compare.</p></div>
+  <div class="top"><h1>Sagittal plane: from twists to τ = M q̈ + c + g</h1>
+    <p>The simplified G1 in 3-D: four rigid bodies on a pinned ankle. Each step uses the Kinematics notation (frame {s}, screw axes 𝒮, product of exponentials, body Jacobian J<sub>b</sub>, twist 𝒱<sub>b</sub>) and shows only that step's vectors on the robot. Page 165 gave M. This page adds the two terms that are still missing, g and c. Drag to orbit, wheel to zoom.</p></div>
+  <div class="sel"><button id="vside">side</button><button id="viso">3-D</button><button id="vfront">front</button></div>
   <div class="grid">
     <div class="left">
       <div class="card view" id="view"><canvas id="cv"></canvas></div>
-      <div class="card"><div class="two jc" id="ctl"></div>
-        <div class="pick" id="pick"></div></div>
+      <div class="card"><div class="jc" id="ctl"></div><div class="key" id="key"></div></div>
     </div>
     <div class="side">
       <div class="card"><p class="h">steps</p><div class="steps" id="steps"></div>
         <div class="nav"><button id="prev">◀ back</button><button class="primary" id="next">next ▶</button></div></div>
-      <div class="card"><p class="h">the numbers at this posture</p><div class="math" id="math"></div></div>
+      <div class="card"><p class="h" id="numh">the numbers</p><div class="pick" id="pick"></div><div class="num" id="num"></div></div>
     </div>
   </div>
 </div>
-<script src="ub.js"></script>
+<script src="three.min.js"></script><script src="ub.js"></script><script src="ub3d.js"></script>
 <script>
 (() => {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const f = (x, d = 3) => (Math.abs(x) < 5e-4 ? 0 : x).toFixed(d);
 const D = 180 / Math.PI;
-const m = UB.planes.sagittal, L = m.links, n = 4;
-const names = ['legs', 'torso', 'upper arms', 'forearms'], jn = ['ankle', 'waist', 'shoulder', 'elbow'];
-const S = { q: [0.15, -0.2, -0.9, -0.6], qd: [0.6, -0.5, 2.0, 1.0], st: 0, i: 2, j: 1, lock: 3 };
-const mat = (A, d = 3, name) => { const s = A.map(r => r.map(x => f(x, d))); const w = Math.max(...s.flat().map(x => x.length)); return s.map((r, i) => (name && i === Math.floor((A.length - 1) / 2) ? name + ' = ' : ' '.repeat(name ? name.length + 3 : 0)) + '[ ' + r.map(x => x.padStart(w)).join('  ') + ' ]').join('\n'); };
-const vec = (v, d = 3) => '[ ' + v.map(x => f(x, d)).join(', ') + ' ]';
-const EQ = s => `<span class="eq">${s}</span>`;
+const m = UB.planes.sagittal, L = m.links, n = 4, G0 = m.g;
+const names = ['legs + pelvis', 'torso + head', 'upper arms (×2)', 'forearms + hands (×2)'], jn = ['ankle', 'waist', 'shoulder', 'elbow'];
+const S = { q: [0.15, -0.2, -0.9, -0.6], qd: [0.6, -0.5, 2.0, 1.0], st: 0, k: 3 };
 
+/* ---------- planar screw algebra in the G1 frame: x forward, y left (every pitch axis), z up ----------
+   A planar twist is 𝒱 = (ω_y, v_x, v_z); positive ω_y tips the top of a link forward.
+   ub.js stores points as (x, up), which is (x, z) here. */
+const sw = d => [d[1], -d[0]];                       // ŷ × d: velocity of a point at offset d, per rad/s about y
+const Rm = p => [[Math.cos(p), Math.sin(p)], [-Math.sin(p), Math.cos(p)]];   // rotation about y by φ, acting on (x, z)
+const RT = R => [[R[0][0], R[1][0]], [R[0][1], R[1][1]]];
+const m2v = (A, v) => [A[0][0] * v[0] + A[0][1] * v[1], A[1][0] * v[0] + A[1][1] * v[1]];
+const mm = (A, B) => A.map(r => B[0].map((_, j) => r.reduce((s, v, k) => s + v * B[k][j], 0)));
+const mv = (A, x) => A.map(r => r.reduce((s, v, k) => s + v * x[k], 0));
+const tr = A => A[0].map((_, j) => A.map(r => r[j]));
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+const zeros = (r, c) => Array.from({ length: r }, () => new Array(c).fill(0));
+const add = (A, B) => A.map((r, i) => r.map((v, j) => v + B[i][j]));
+
+function model(q, qd) {
+  const k = UB.core(m, q, qd), out = { k, Js: [], Jb: [], Ad: [], R: [], Vb: [], G: [] };
+  for (let i = 0; i < n; i++) {
+    const R = Rm(k.phi[i]), Rt = RT(R), c = k.c[i];
+    const Js = zeros(3, n);
+    for (let j = 0; j <= i; j++) { const v = sw([-k.p[j][0], -k.p[j][1]]); Js[0][j] = 1; Js[1][j] = v[0]; Js[2][j] = v[1]; }
+    const a = m2v(Rt, sw(c));
+    const Ad = [[1, 0, 0], [a[0], Rt[0][0], Rt[0][1]], [a[1], Rt[1][0], Rt[1][1]]];   // [Ad_{T_ks}]
+    const Jb = mm(Ad, Js);
+    out.R.push(R); out.Js.push(Js); out.Ad.push(Ad); out.Jb.push(Jb); out.Vb.push(mv(Jb, qd));
+    out.G.push([[L[i].I, 0, 0], [0, L[i].m, 0], [0, 0, L[i].m]]);
+  }
+  out.Mk = out.Jb.map((J, i) => mm(mm(tr(J), out.G[i]), J));
+  out.M = out.Mk.reduce(add, zeros(n, n));
+  // gravity: the weight as a body wrench at each COM, 𝓕 = (moment, force) = (0, Rᵀ(0, −m g))
+  out.Fg = L.map((l, i) => [0, ...m2v(RT(out.R[i]), [0, -l.m * G0])]);
+  out.gk = out.Jb.map((J, i) => mv(tr(J), out.Fg[i]).map(x => -x));
+  out.g = out.gk.reduce((s, v) => s.map((x, j) => x + v[j]), new Array(n).fill(0));
+  // velocity products at q̈ = 0: 𝒱̇_b = (0, Rᵀa − ω ŷ×v_b), −[ad_𝒱]ᵀ𝒢𝒱 = (0, m ω ŷ×v_b)
+  out.Vdot = []; out.Ad1 = []; out.Fv = []; out.ck = [];
+  for (let i = 0; i < n; i++) {
+    const Vb = out.Vb[i], w = Vb[0], vb = [Vb[1], Vb[2]], s = sw(vb), ab = m2v(RT(out.R[i]), k.a[i]);
+    const Vd = [0, ab[0] - w * s[0], ab[1] - w * s[1]];
+    const GVd = mv(out.G[i], Vd), adT = [0, L[i].m * w * s[0], L[i].m * w * s[1]];
+    const F = GVd.map((x, j) => x + adT[j]);
+    out.Vdot.push(Vd); out.Ad1.push({ GVd, adT }); out.Fv.push(F); out.ck.push(mv(tr(out.Jb[i]), F));
+  }
+  out.c = out.ck.reduce((s, v) => s.map((x, j) => x + v[j]), new Array(n).fill(0));
+  return out;
+}
+
+/* ---------- small renderers ---------- */
+const z = v => Math.abs(v) < 5e-4 ? 'z' : '';
+const tbl = (A, rl, cl, d = 3) => `<table><tr><th></th>${cl.map(c => `<th>${c}</th>`).join('')}</tr>` +
+  A.map((r, i) => `<tr><th>${rl[i]}</th>${r.map(v => `<td class="${z(v)}">${f(v, d)}</td>`).join('')}</tr>`).join('') + '</table>';
+const vecT = (v, d = 3) => '(' + v.map(x => f(x, d)).join(', ') + ')';
+const mt = (cap, html) => `<div class="mt"><p>${cap}</p>${html}</div>`;
+const qn = [0, 1, 2, 3].map(j => `q̇<sub>${j}</sub>`), tn = ['0', '1', '2', '3'], twr = ['ω<sub>y</sub>', 'v<sub>x</sub>', 'v<sub>z</sub>'];
+
+/* ---------- the steps ---------- */
 const STEPS = [
-  ['The chain and its coordinates', `Four links on a pinned ankle. <span class="kb">q<sub>i</sub></span> is the joint angle relative to the link below, positive when the top of the link moves forward (the G1's own sign). The absolute pitch of link i is <span class="kb">φ<sub>i</sub> = Σ<sub>j≤i</sub> (q<sub>j</sub> + off<sub>j</sub>)</span>, with off = π at the shoulder so that the arms hang at q = 0. Both arms move together, so they are one link of twice the mass.`],
-  ['Positions of the joints and the centres of mass', `The direction of link i is <span class="kb">u<sub>i</sub> = (sin φ<sub>i</sub>, cos φ<sub>i</sub>)</span>: straight up at φ = 0, tipping forward as φ grows. Then <span class="kb">p<sub>i+1</sub> = p<sub>i</sub> + L<sub>i</sub> u<sub>i</sub></span> and <span class="kb">c<sub>i</sub> = p<sub>i</sub> + r<sub>i</sub> u<sub>i</sub></span>. Nothing else is needed: every later step is made of these points.`],
-  ['The velocity of each centre of mass: a Jacobian', `Turn joint j by a small angle and every point above it swings about p<sub>j</sub>. A point at offset <span class="kb">d = c<sub>i</sub> − p<sub>j</sub></span> moves by <span class="kb">(d<sub>y</sub>, −d<sub>x</sub>)</span> per radian (perpendicular to d, forward sense). That vector is column j of the COM Jacobian J<sub>i</sub>, and it is zero for j &gt; i: a joint cannot move what is below it. So <span class="kb">v<sub>i</sub> = J<sub>i</sub> q̇</span>. Pick (i, j) below to see the arm and the swing.`],
-  ['Kinetic energy, and the mass matrix falls out', `<span class="kb">K = Σ<sub>i</sub> ½ m<sub>i</sub> v<sub>i</sub>·v<sub>i</sub> + ½ I<sub>i</sub> ω<sub>i</sub>²</span>, with ω<sub>i</sub> = Σ<sub>j≤i</sub> q̇<sub>j</sub>. Substitute v<sub>i</sub> = J<sub>i</sub> q̇ and collect: <span class="kb">K = ½ q̇ᵀ M q̇</span> with <span class="kb">M = Σ<sub>i</sub> m<sub>i</sub> J<sub>i</sub>ᵀJ<sub>i</sub> + I<sub>i</sub> J<sub>ωi</sub>ᵀJ<sub>ωi</sub></span>. Entry (a, b) is Σ over the links both joints move of m (swing<sub>a</sub>·swing<sub>b</sub>) + I: exactly page 134's "mass × arm × arm × cosine".`],
-  ['Potential energy, and gravity', `<span class="kb">P = Σ m<sub>i</sub> g c<sub>i,y</sub></span>. Its gradient is the torque needed to hold the posture: <span class="kb">g<sub>j</sub> = ∂P/∂q<sub>j</sub> = −g Σ<sub>i≥j</sub> m<sub>i</sub> (c<sub>i</sub> − p<sub>j</sub>)<sub>x</sub></span>, because raising joint j by dq lifts each mass above it by −d<sub>x</sub> dq. Only the <i>horizontal</i> distance to each mass makes a lever for gravity, and a forward lean needs a backward (negative) torque.`],
-  ['The velocity-product term, without Christoffel symbols', `Hold q̈ = 0 and let the joints spin: the COMs still accelerate (centripetal and Coriolis). Differentiate v<sub>i</sub> once more: <span class="kb">a<sub>i</sub><sup>vel</sup> = Σ<sub>j≤i</sub> q̇<sub>j</sub> swing(v<sub>i</sub> − ṗ<sub>j</sub>)</span>, where ṗ<sub>j</sub> is the velocity of joint point j. Then <span class="kb">c = Σ<sub>i</sub> m<sub>i</sub> J<sub>i</sub>ᵀ a<sub>i</sub><sup>vel</sup></span>. Page 134 reaches the same vector through ∂M/∂q; this way is what a program computes, and it is what ub.js and ctrlcore/upperbody.py do.`],
-  ['The equation of motion', `<span class="kb">τ = M(q) q̈ + c(q, q̇) + g(q)</span>. Read it at this posture: with q̈ = 0 the motors must supply c + g to keep the joints moving at exactly these rates; with q̇ = 0 as well, only g. The ankle entry τ<sub>0</sub> is special: there is no motor there, only a foot. Whatever the equation asks of τ<sub>0</sub> beyond m g × (foot length) is a fall.`],
-  ['Lock a joint: delete a column', `Freezing joint k means q̇<sub>k</sub> = q̈<sub>k</sub> = 0. In every sum the k-th swing vector is still there (the mass still rides along) but it is multiplied by nothing. Keep the free columns with a selection matrix S: <span class="kb">Sᵀ M S q̈<sub>free</sub> + Sᵀ(c + g) = Sᵀ τ</span>. The diagonal entries of the free joints do not change; the locked joint's row becomes a constraint torque the structure provides.`],
-  ['Preview: the same Jacobians give the momentum', `Angular momentum about the ankle: <span class="kb">H<sub>O</sub> = Σ<sub>i</sub> I<sub>i</sub> ω<sub>i</sub> + m<sub>i</sub> (c<sub>i</sub> × v<sub>i</sub>)</span>, which is linear in q̇: <span class="kb">H<sub>O</sub> = A<sub>O</sub>(q) q̇</span>. Compare row A<sub>O</sub> with row 0 of M: at q = 0 they are identical, because "the ankle's share of the inertia" and "the momentum about the ankle per unit joint rate" are the same sum. Page 167 builds everything on this.`],
+  ['The simplified model in 3-D', `Four rigid bodies on a pinned ankle: <b>legs + pelvis</b>, <b>torso + head</b>, <b>upper arms</b>, <b>forearms + hands</b>. Each arm link counts both arms, at twice the mass. Joints: ankle, waist, shoulder, elbow pitch, all about the same axis ŷ (the robot's left, G1 axis 0 1 0). Frame {s} sits at the ankle: x forward, y left, z up. Each body i has a mass m<sub>i</sub>, a pitch inertia I<sub>i</sub> about its own centre of mass, a length L<sub>i</sub> and a COM r<sub>i</sub> along it.`],
+  ['Screw axes at home', `Put every joint at zero (the robot shown at home). A revolute joint with axis ω̂ through point q<sub>j</sub> has <span class="kb">𝒮<sub>j</sub> = (ω̂, −ω̂ × q<sub>j</sub>)</span>. Here ω̂ = ŷ for every joint and q<sub>j</sub> = (0, 0, h<sub>j</sub>), so <span class="kb">𝒮<sub>j</sub> = (0,1,0, −h<sub>j</sub>,0,0)</span>. In the plane only three entries can be nonzero, so we keep the planar twist <span class="kb">𝒱 = (ω<sub>y</sub>, v<sub>x</sub>, v<sub>z</sub>)</span> and 𝒮<sub>j</sub> = (1, −h<sub>j</sub>, 0). The COM frame {i} of body i sits at its centre of mass, at home pose M<sub>i</sub>.`],
+  ['Forward kinematics: product of exponentials', `<span class="kb">T<sub>si</sub>(q) = e<sup>[𝒮<sub>0</sub>]q<sub>0</sub></sup> ⋯ e<sup>[𝒮<sub>i</sub>]q<sub>i</sub></sup> M<sub>i</sub></span>: only joints 0…i carry body i. In the plane every factor is a rotation about ŷ, so the orientation is <span class="kb">R<sub>i</sub> = R<sub>y</sub>(φ<sub>i</sub>)</span> with φ<sub>i</sub> = q<sub>0</sub> + … + q<sub>i</sub> (+ π at the shoulder, so the arms hang at q = 0), and the position is the COM c<sub>i</sub>. On the robot: the COM frames {i}, with x<sub>i</sub> in red and z<sub>i</sub> in blue.`],
+  ['Space Jacobian of body i', `Column j of <span class="kb">J<sub>s,i</sub></span> is joint j's screw axis <i>at the current posture</i>, 𝒮<sub>j</sub>(q) = [Ad<sub>e<sup>[𝒮<sub>0</sub>]q<sub>0</sub></sup>⋯</sub>] 𝒮<sub>j</sub>, for j ≤ i, and zero for j &gt; i: a joint above body i does not move it. For a pitch joint through p<sub>j</sub>: 𝒮<sub>j</sub>(q) = (1, −p<sub>j,z</sub>, p<sub>j,x</sub>). Pick a body: the joints that move it light up.`],
+  ['Body Jacobian and the twist at the COM', `<span class="kb">J<sub>b,i</sub> = [Ad<sub>T<sub>is</sub></sub>] J<sub>s,i</sub></span> expresses the same columns in the COM frame {i}. Column j is (1, R<sub>i</sub>ᵀ (ŷ × (c<sub>i</sub> − p<sub>j</sub>))): the arm from joint j to the COM (dashed), turned 90°, seen from {i}. The twist of body i is <span class="kb">𝒱<sub>b,i</sub> = J<sub>b,i</sub> q̇</span>. On the robot: the arms and the COM velocity v (green arrow).`],
+  ['Kinetic energy and M (page 165)', `Body i has spatial inertia <span class="kb">𝒢<sub>i</sub> = diag(I<sub>i</sub>, m<sub>i</sub>, m<sub>i</sub>)</span> in {i}, and kinetic energy ½ 𝒱<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> 𝒱<sub>b,i</sub>. Sum over the bodies and substitute 𝒱<sub>b,i</sub> = J<sub>b,i</sub> q̇: <span class="kb">K = ½ q̇ᵀ M q̇,  M(q) = Σ J<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> J<sub>b,i</sub></span>. This is the matrix page 165 built link by link. It answers one question: how much torque per unit q̈.`],
+  ['The second ingredient: gravity g(q)', `M alone cannot hold the robot still: with q̇ = q̈ = 0 the motors still have to carry the weight. The weight of body i is a wrench at its COM, <span class="kb">𝓕<sub>g,i</sub> = (0, R<sub>i</sub>ᵀ(0, −m<sub>i</sub>g))</span> in {i}. A wrench maps to joint torques through the transpose Jacobian (τ = Jᵀ𝓕, the statics page), so <span class="kb">g(q) = −Σ J<sub>b,i</sub>ᵀ 𝓕<sub>g,i</sub></span>. Entry j works out to −g Σ<sub>i≥j</sub> m<sub>i</sub>(c<sub>i</sub> − p<sub>j</sub>)<sub>x</sub>: only the horizontal lever counts. On the robot: the weights, and the whole-body COM dropped to the floor (g<sub>0</sub> = −m g x<sub>c</sub>).`],
+  ['The third ingredient: velocity products c(q, q̇)', `Spin the joints at q̇ with q̈ = 0 and the bodies still accelerate (centripetal and Coriolis). The Newton–Euler equation of body i in its COM frame, <span class="kb">𝓕<sub>i</sub> = 𝒢<sub>i</sub> d𝒱<sub>b,i</sub>/dt − [ad<sub>𝒱<sub>b,i</sub></sub>]ᵀ 𝒢<sub>i</sub> 𝒱<sub>b,i</sub></span>, with d𝒱<sub>b,i</sub>/dt = J̇<sub>b,i</sub> q̇ (q̈ = 0), gives the wrench needed to keep it on that path. Then <span class="kb">c = Σ J<sub>b,i</sub>ᵀ 𝓕<sub>i</sub></span>. In the plane −[ad]ᵀ𝒢𝒱 = (0, m ω ŷ × v<sub>b</sub>), and the two terms together are m R<sub>i</sub>ᵀ a<sub>i</sub>. On the robot: the COM accelerations a<sub>i</sub> at q̈ = 0 (purple).`],
+  ['The equation of motion', `<span class="kb">τ = M(q) q̈ + c(q, q̇) + g(q)</span>. Read it two ways at this state. Keep the rates exactly as they are (q̈ = 0): the motors must give c + g. Switch the motors off (τ = 0): the robot accelerates at q̈ = −M⁻¹(c + g). The ankle row τ<sub>0</sub> has no motor, only a foot. Whatever the equation asks of τ<sub>0</sub> beyond m g × (half the foot) is a fall, unless the waist and arms change c, g or q̈ in that row.`],
 ];
+
+/* ---------- 3-D ---------- */
+const view = document.getElementById('view'), cv = document.getElementById('cv');
+const stage = UB3D.stage(cv, view, { orbit: { az: 0, el: .08, r: 3.2, tgt: new THREE.Vector3(0, .7, 0) } });
+const fig = UB3D.figure(stage.scene, { torso: '#4a6286', arm: '#57806a', leg: '#5d6776' });
+const W = p => new THREE.Vector3(p[0], p[1], 0);          // planar (x, z) -> world
+const tmp = [];
+const clear = () => { tmp.forEach(o => stage.scene.remove(o)); tmp.length = 0; };
+const keep = o => { o.renderOrder = 12; (o.material ? [o.material] : []).concat(o.line ? [o.line.material, o.cone.material] : []).forEach(mt => { mt.depthTest = false; mt.transparent = true; }); stage.scene.add(o); tmp.push(o); return o; };
+function arrow(at, vec, col, scale = 1) {
+  const v = new THREE.Vector3(vec[0] * scale, vec[1] * scale, 0), l = v.length(); if (l < 1e-3) return;
+  keep(new THREE.ArrowHelper(v.clone().normalize(), W(at), l, new THREE.Color(col), Math.min(.06, l * .35), Math.min(.035, l * .2)));
+}
+function dash(a, b, col) {
+  const g = new THREE.BufferGeometry().setFromPoints([W(a), W(b)]);
+  const l = keep(new THREE.Line(g, new THREE.LineDashedMaterial({ color: new THREE.Color(col), dashSize: .03, gapSize: .025 }))); l.computeLineDistances();
+}
+function triad(at, R) { arrow(at, [R[0][0], R[1][0]], '#d64545', .13); arrow(at, [R[0][1], R[1][1]], '#2a4fd6', .13); }   // x_i = R(1,0), z_i = R(0,1)
+const labels = Array.from({ length: 12 }, () => { const d = document.createElement('div'); d.className = 'lbl'; d.hidden = true; view.appendChild(d); return d; });
+let li = 0; const pending = [];
+const label = (p, html, col, dy = .06) => pending.push([W(p).add(new THREE.Vector3(0, dy, 0)), html, col]);
+
+/* ---------- controls ---------- */
 const ctl = document.getElementById('ctl');
-ctl.innerHTML = [0, 1, 2, 3].map(i => `<label><span>q<sub>${i}</sub> ${jn[i]}</span> <input type="range" data-k="q" data-i="${i}" min="${i === 0 ? -0.6 : L[i].lo}" max="${i === 0 ? 0.6 : L[i].hi}" step="0.01" value="${S.q[i]}"><output>${f(S.q[i] * D, 0)}°</output></label>`).join('') +
-  [0, 1, 2, 3].map(i => `<label><span>q̇<sub>${i}</sub> ${jn[i]}</span> <input type="range" data-k="qd" data-i="${i}" min="-4" max="4" step="0.1" value="${S.qd[i]}"><output>${f(S.qd[i], 1)} rad/s</output></label>`).join('');
+ctl.innerHTML = [0, 1, 2, 3].map(i => `<label><span>q<sub>${i}</sub> ${jn[i]}</span><input type="range" data-k="q" data-i="${i}" min="${i === 0 ? -0.6 : L[i].lo}" max="${i === 0 ? 0.6 : L[i].hi}" step="0.01" value="${S.q[i]}"><output>${f(S.q[i] * D, 0)}°</output></label>` +
+  `<label><span>q̇<sub>${i}</sub></span><input type="range" data-k="qd" data-i="${i}" min="-4" max="4" step="0.1" value="${S.qd[i]}"><output>${f(S.qd[i], 1)} rad/s</output></label>`).join('');
 ctl.querySelectorAll('input').forEach(r => r.oninput = () => { S[r.dataset.k][+r.dataset.i] = +r.value; r.nextElementSibling.textContent = r.dataset.k === 'q' ? f(+r.value * D, 0) + '°' : f(+r.value, 1) + ' rad/s'; draw(); });
 const stepsEl = document.getElementById('steps');
-function renderSteps() {
-  stepsEl.innerHTML = STEPS.map((s, i) => `<button class="step" aria-current="${i === S.st}"><span class="n">${i + 1}</span><span><b>${s[0]}</b><span class="t">${s[1]}</span></span></button>`).join('');
-  stepsEl.querySelectorAll('.step').forEach((b, i) => b.onclick = () => { S.st = i; draw(); });
-}
 document.getElementById('prev').onclick = () => { S.st = Math.max(0, S.st - 1); draw(); };
 document.getElementById('next').onclick = () => { S.st = Math.min(STEPS.length - 1, S.st + 1); draw(); };
-document.addEventListener('keydown', e => { if (e.key === 'ArrowRight') document.getElementById('next').click(); if (e.key === 'ArrowLeft') document.getElementById('prev').click(); });
+document.addEventListener('keydown', e => { if (e.target.tagName === 'INPUT') return; if (e.key === 'ArrowRight') document.getElementById('next').click(); if (e.key === 'ArrowLeft') document.getElementById('prev').click(); });
+document.getElementById('vside').onclick = () => { stage.view('side'); draw(); };
+document.getElementById('viso').onclick = () => { stage.view('iso'); draw(); };
+document.getElementById('vfront').onclick = () => { stage.view('front'); draw(); };
+const KEYS = {
+  2: [['#d64545', 'x<sub>i</sub> of the COM frame'], ['#2a4fd6', 'z<sub>i</sub> of the COM frame']],
+  4: [['#7a4fd0', 'arm from joint j to the COM'], ['#1f8a4c', 'COM velocity v<sub>i</sub>']],
+  5: [['#1f8a4c', 'COM velocity v<sub>i</sub>']],
+  6: [['#c23b3b', 'weight m<sub>i</sub>g, and the whole-body COM']],
+  7: [['#7a4fd0', 'COM acceleration with q̈ = 0']],
+};
+const usesK = st => st === 3 || st === 4 || st === 5 || st === 7;
 
-function pick() {
-  const el = document.getElementById('pick');
-  if (S.st === 2) el.innerHTML = 'swing of COM <b>i</b> about joint <b>j</b>: ' + [0, 1, 2, 3].map(i => `<button data-i="${i}" aria-pressed="${S.i === i}">i = ${names[i]}</button>`).join('') + ' &nbsp; ' + [0, 1, 2, 3].map(j => `<button data-j="${j}" aria-pressed="${S.j === j}">j = ${jn[j]}</button>`).join('');
-  else if (S.st === 7) el.innerHTML = 'lock: ' + [1, 2, 3].map(k => `<button data-l="${k}" aria-pressed="${S.lock === k}">${jn[k]}</button>`).join('');
-  else el.innerHTML = '';
-  el.querySelectorAll('button').forEach(b => b.onclick = () => { if (b.dataset.i) S.i = +b.dataset.i; if (b.dataset.j) S.j = +b.dataset.j; if (b.dataset.l) S.lock = +b.dataset.l; draw(); });
-}
-/* ---------- drawing ---------- */
-const cv = document.getElementById('cv');
 function draw() {
-  renderSteps(); pick();
-  const k = UB.core(m, S.q, S.qd, { about: [0, 0] }), kc = UB.core(m, S.q, S.qd);
-  const r = cv.getBoundingClientRect(), W = Math.round(r.width), H = Math.round(r.height);
-  if (cv.width !== W * devicePixelRatio) { cv.width = W * devicePixelRatio; cv.height = H * devicePixelRatio; }
-  const c = cv.getContext('2d'); c.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  c.fillStyle = css('--inset'); c.fillRect(0, 0, W, H);
-  const sc = Math.min(W / 2.2, H / 1.75), ox = W / 2, oy = H - 40;
-  const X = p => ox + p[0] * sc, Y = p => oy - p[1] * sc;
-  // floor + foot
-  c.strokeStyle = css('--line'); c.lineWidth = 1; c.beginPath(); c.moveTo(0, oy); c.lineTo(W, oy); c.stroke();
-  c.fillStyle = css('--grey'); c.fillRect(X([-.07, 0]), oy - 3, .2 * sc, 5);
-  // links
-  const cols = [css('--grey'), css('--a'), css('--c'), css('--c')];
-  for (let i = 0; i < n; i++) {
-    c.strokeStyle = cols[i]; c.lineWidth = i < 2 ? 9 : 6; c.lineCap = 'round'; c.beginPath(); c.moveTo(X(k.p[i]), Y(k.p[i])); c.lineTo(X(k.p[i + 1]), Y(k.p[i + 1])); c.stroke();
-  }
-  // joints and COMs
-  for (let i = 0; i < n; i++) { c.fillStyle = css('--panel'); c.strokeStyle = css('--ink'); c.lineWidth = 1.5; c.beginPath(); c.arc(X(k.p[i]), Y(k.p[i]), 5, 0, 7); c.fill(); c.stroke(); }
-  for (let i = 0; i < n; i++) { c.fillStyle = css('--b'); c.beginPath(); c.arc(X(k.c[i]), Y(k.c[i]), 4 + 2 * Math.cbrt(L[i].m), 0, 7); c.fill(); }
-  c.fillStyle = css('--bad'); c.beginPath(); c.arc(X(kc.xc), Y(kc.xc), 7, 0, 7); c.fill();
-  c.setLineDash([4, 4]); c.strokeStyle = css('--bad'); c.beginPath(); c.moveTo(X(kc.xc), Y(kc.xc)); c.lineTo(X(kc.xc), oy); c.stroke(); c.setLineDash([]);
-  const arrow = (a, v, col, w = 2, scale = 1) => { const bx = a[0] + v[0] * scale, by = a[1] + v[1] * scale; const A = [X(a), Y(a)], B = [X([bx, by]), Y([bx, by])]; const L2 = Math.hypot(B[0] - A[0], B[1] - A[1]); if (L2 < 2) return; c.strokeStyle = col; c.fillStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(...A); c.lineTo(...B); c.stroke(); const ang = Math.atan2(B[1] - A[1], B[0] - A[0]); c.beginPath(); c.moveTo(...B); c.lineTo(B[0] - 9 * Math.cos(ang - .4), B[1] - 9 * Math.sin(ang - .4)); c.lineTo(B[0] - 9 * Math.cos(ang + .4), B[1] - 9 * Math.sin(ang + .4)); c.closePath(); c.fill(); };
-  const text = (p, s, col, dx = 8, dy = -8) => { c.fillStyle = col; c.font = '12px ' + css('--mono'); c.fillText(s, X(p) + dx, Y(p) + dy); };
-  // per step overlays
-  if (S.st === 0) { for (let i = 0; i < n; i++) text(k.p[i], `p${i} ${jn[i]}  q${i} = ${f(S.q[i] * D, 0)}°`, css('--ink')); text(k.p[n], 'p4 (hand)', css('--ink')); }
-  if (S.st === 1) { for (let i = 0; i < n; i++) { text(k.c[i], `c${i} = (${f(k.c[i][0], 2)}, ${f(k.c[i][1], 2)})`, css('--b')); } for (let i = 1; i <= n; i++) text(k.p[i], `p${i} = (${f(k.p[i][0], 2)}, ${f(k.p[i][1], 2)})`, css('--ink'), 8, 14); }
-  if (S.st === 2) {
-    const i = S.i, j = S.j;
-    if (j <= i) { const d = [k.c[i][0] - k.p[j][0], k.c[i][1] - k.p[j][1]]; c.setLineDash([5, 4]); c.strokeStyle = css('--d'); c.lineWidth = 2; c.beginPath(); c.moveTo(X(k.p[j]), Y(k.p[j])); c.lineTo(X(k.c[i]), Y(k.c[i])); c.stroke(); c.setLineDash([]);
-      arrow(k.c[i], [d[1], -d[0]], css('--e'), 2.5, .5); text(k.c[i], `swing = (${f(d[1], 2)}, ${f(-d[0], 2)}) per rad`, css('--e'), 10, 18); text(k.p[j], `d from ${jn[j]}`, css('--d'), -70, -8); }
-    else text(k.c[i], `${jn[j]} cannot move the ${names[i]}: column is zero`, css('--grey'), 10, 18);
-    arrow(k.c[i], k.v[i], css('--f'), 2.5, .25); text(k.c[i], `v${i} = ${vec(k.v[i], 2)} m/s`, css('--f'), 10, -12);
-  }
-  if (S.st === 3) for (let i = 0; i < n; i++) { arrow(k.c[i], k.v[i], css('--f'), 2, .25); text(k.c[i], `½m v² + ½Iω² = ${f(.5 * L[i].m * (k.v[i][0] ** 2 + k.v[i][1] ** 2) + .5 * L[i].I * k.w[i] ** 2, 2)} J`, css('--f'), 10, -10); }
-  if (S.st === 4) for (let i = 0; i < n; i++) { arrow(k.c[i], [0, -1], css('--d'), 2, .12 * Math.cbrt(L[i].m)); text(k.c[i], `m g = ${f(L[i].m * m.g, 0)} N, lever to ankle ${f(k.c[i][0], 3)} m`, css('--d'), 10, 16); }
-  if (S.st === 5) for (let i = 0; i < n; i++) { arrow(k.c[i], k.a[i], css('--b'), 2, .04); text(k.c[i], `a${i}(q̈=0) = ${vec(k.a[i], 1)} m/s²`, css('--b'), 10, -10); }
-  if (S.st === 7) { const kk = S.lock; c.strokeStyle = css('--grey'); c.lineWidth = 3; c.beginPath(); c.arc(X(k.p[kk]), Y(k.p[kk]), 11, 0, 7); c.stroke(); text(k.p[kk], 'locked', css('--grey'), 14, 4); }
-  if (S.st === 8) { for (let i = 0; i < n; i++) { arrow(k.c[i], k.v[i], css('--f'), 2, .25); text(k.c[i], `H${i} = ${f(k.link_H[i], 2)}`, css('--f'), 10, -10); } }
-  math(k, kc);
+  const st = S.st, home = st === 1, q = home ? [0, 0, 0, 0] : S.q, X = model(q, S.qd), k = X.k, K = S.k;
+  stepsEl.innerHTML = STEPS.map((s, i) => `<button class="step" aria-current="${i === st}"><span class="n">${i + 1}</span><span><b>${s[0]}</b><span class="t">${s[1]}</span></span></button>`).join('');
+  stepsEl.querySelectorAll('.step').forEach((b, i) => b.onclick = () => { S.st = i; draw(); });
+  const pk = document.getElementById('pick');
+  pk.innerHTML = usesK(st) ? 'body i: ' + names.map((nm, i) => `<button data-i="${i}" aria-pressed="${K === i}">${i} · ${nm}</button>`).join('') : '';
+  pk.querySelectorAll('button').forEach(b => b.onclick = () => { S.k = +b.dataset.i; draw(); });
+  document.getElementById('key').innerHTML = (KEYS[st] || []).map(([c, t]) => `<span><i class="sw" style="background:${c}"></i>${t}</span>`).join('');
+
+  // robot + only this step's overlays
+  fig.pose('sagittal', q, []);
+  fig.markCom('sagittal', k, L);
+  fig.comLinks.forEach((s, i) => s.visible = st === 0 || st === 2 || st === 5 || st === 6 || (usesK(st) && i === K));
+  fig.com.visible = fig.comDrop.visible = st === 6;
+  clear(); pending.length = 0;
+  if (st === 0) L.forEach((l, i) => label(k.c[i], `${i} · ${l.m} kg`, css('--b'), i % 2 ? -.07 : .07));
+  if (st === 1) for (let j = 0; j < n; j++) label(k.p[j], `𝒮<sub>${j}</sub> = ${vecT([1, -k.p[j][1], k.p[j][0]], 2)}`, css('--e'), .05);
+  if (st === 2) for (let i = 0; i < n; i++) { triad(k.c[i], X.R[i]); label(k.c[i], `{${i}}`, css('--ink'), .07); }
+  if (st === 3) for (let j = 0; j <= K; j++) label(k.p[j], `𝒮<sub>${j}</sub>(q) = ${vecT(X.Js[K].map(r => r[j]), 2)}`, css('--e'), .05);
+  if (st === 4) { triad(k.c[K], X.R[K]); for (let j = 0; j <= K; j++) dash(k.p[j], k.c[K], '#7a4fd0'); arrow(k.c[K], k.v[K], '#1f8a4c', .25); label(k.c[K], `𝒱<sub>b,${K}</sub> = ${vecT(X.Vb[K], 2)}`, '#1f8a4c', .1); }
+  if (st === 5) for (let i = 0; i < n; i++) { const Ki = .5 * dot(X.Vb[i], mv(X.G[i], X.Vb[i])); arrow(k.c[i], k.v[i], '#1f8a4c', .25); label(k.c[i], `K<sub>${i}</sub> = ${f(Ki, 2)} J`, '#1f8a4c', i % 2 ? -.07 : .07); }
+  if (st === 6) { for (let i = 0; i < n; i++) { arrow(k.c[i], [0, -1], '#c23b3b', .03 * Math.cbrt(L[i].m * G0)); label(k.c[i], `${f(L[i].m * G0, 0)} N`, '#c23b3b', i % 2 ? -.07 : .07); } label(k.xc, `x<sub>c</sub> = ${f(k.xc[0], 3)} m`, css('--bad'), -.09); }
+  if (st === 7) { for (let i = 0; i < n; i++) arrow(k.c[i], k.a[i], i === K ? '#7a4fd0' : '#b9a6e8', .08); label(k.c[K], `a<sub>${K}</sub> = ${vecT(k.a[K], 1)} m/s²`, '#7a4fd0', .1); }
+  if (st === 8) { const tq = X.c.map((v, i) => v + X.g[i]); for (let j = 0; j < n; j++) label(k.p[j], `τ<sub>${j}</sub> = ${f(tq[j], 1)} N·m`, css('--a'), .05); }
+  stage.draw();
+  labels.forEach(l => l.hidden = true);
+  pending.slice(0, labels.length).forEach(([p, h, c], i) => stage.label(labels[i], p, h, c));
+  numbers(st, X, K);
 }
-function math(k, kc) {
-  const el = document.getElementById('math'), st = S.st;
-  const swing = (i, j) => [k.Jx[i][j], k.Jy[i][j]];
-  let h = '';
-  if (st === 0) h = `<p>${[0, 1, 2, 3].map(i => `L<sub>${i}</sub> = ${L[i].L} m, r<sub>${i}</sub> = ${L[i].r} m, m<sub>${i}</sub> = ${L[i].m} kg, I<sub>${i}</sub> = ${L[i].I} kg·m²`).join('<br>')}</p>` +
-    EQ(`φ = cumsum(q + off) = ${vec(k.phi)} rad\n  off = [0, 0, π, 0]`);
-  if (st === 1) h = EQ([0, 1, 2, 3].map(i => `u${i} = (sin φ${i}, cos φ${i}) = (${f(Math.sin(k.phi[i]))}, ${f(Math.cos(k.phi[i]))})\np${i + 1} = p${i} + L${i} u${i} = (${f(k.p[i + 1][0])}, ${f(k.p[i + 1][1])})\nc${i} = p${i} + r${i} u${i} = (${f(k.c[i][0])}, ${f(k.c[i][1])})`).join('\n'));
-  if (st === 2) { const i = S.i, j = S.j; const d = [k.c[i][0] - k.p[j][0], k.c[i][1] - k.p[j][1]];
-    h = EQ(`J${i} (2 × 4), column j = ∂c${i}/∂q_j:\n${mat([k.Jx[i], k.Jy[i]])}\n\nchosen: i = ${names[i]}, j = ${jn[j]}` + (j <= i ? `\nd = c${i} − p${j} = (${f(d[0])}, ${f(d[1])})\nswing = (d_y, −d_x) = (${f(d[1])}, ${f(-d[0])})` : `\nj > i: zero column`) + `\n\nv${i} = J${i} q̇ = ${vec(k.v[i])} m/s   (|v| = ${f(Math.hypot(...k.v[i]))})`); }
-  if (st === 3) { const K = L.map((l, i) => .5 * l.m * (k.v[i][0] ** 2 + k.v[i][1] ** 2) + .5 * l.I * k.w[i] ** 2); const qMq = .5 * S.qd.reduce((s, v, i) => s + v * k.M[i].reduce((t, w, j) => t + w * S.qd[j], 0), 0);
-    h = EQ(`ω = cumsum(q̇) = ${vec(k.w, 2)} rad/s\nK by link = ${vec(K, 3)} J,  Σ = ${f(K.reduce((a, b) => a + b))} J\n½ q̇ᵀ M q̇ = ${f(qMq)} J   (the same number)\n\n${mat(k.M, 3, 'M')}\n\nM[0][1] by hand: Σ over torso, arms of m (swing_0 · swing_1) + I\n  = ${[1, 2, 3].map(i => `${L[i].m}×(${f(swing(i, 0)[0], 2)}·${f(swing(i, 1)[0], 2)} + ${f(swing(i, 0)[1], 2)}·${f(swing(i, 1)[1], 2)}) + ${L[i].I}`).join('\n  + ')}\n  = ${f(k.M[0][1])}`); }
-  if (st === 4) { const P = L.map((l, i) => l.m * m.g * k.c[i][1]); h = EQ(`P by link = ${vec(P, 2)} J,  Σ = ${f(P.reduce((a, b) => a + b), 2)} J\n\ng_j = −g Σ_{i≥j} m_i (c_i − p_j)_x\n${[0, 1, 2, 3].map(j => `g${j} = −9.81 × (${L.map((l, i) => i >= j ? `${l.m}×${f(k.c[i][0] - k.p[j][0], 3)}` : null).filter(Boolean).join(' + ')}) = ${f(k.g[j], 2)} N·m`).join('\n')}\n\ngravity moment about the ankle = m_tot g x_c = ${f(UB.mtot(m) * m.g * kc.xc[0], 2)} N·m = −g0`); }
-  if (st === 5) h = EQ(`a_i with q̈ = 0:\n${[0, 1, 2, 3].map(i => `a${i} = ${vec(k.a[i], 2)} m/s²`).join('\n')}\n\nc_j = Σ_{i≥j} m_i (J_i column j · a_i)\nc = ${vec(k.cvec, 2)} N·m\n\n(check: with q̇ = 0 every a_i is 0 and c vanishes; double every q̇ and c quadruples)`);
-  if (st === 6) h = EQ(`τ = M q̈ + c + g\n\n${mat(k.M, 2, 'M')}\n\nc = ${vec(k.cvec, 2)}\ng = ${vec(k.g, 2)}\n\nto keep exactly these rates (q̈ = 0):  τ = c + g = ${vec(k.cvec.map((v, i) => v + k.g[i]), 2)} N·m\nto hold still (q̇ = 0 too):            τ = g\n\nankle row: the foot can supply at most m g × foot = ${f(UB.tauAnkleMax(m), 1)} N·m`);
-  if (st === 7) { const free = [0, 1, 2, 3].filter(j => j !== S.lock); const qd0 = S.qd.map((v, j) => j === S.lock ? 0 : v); const Lk = UB.locked(m, S.q, qd0, free);
-    h = EQ(`locked: ${jn[S.lock]}   free columns: ${free.join(', ')}\n\n${mat(Lk.M, 3, 'SᵀMS')}\n\nSᵀc = ${vec(Lk.c, 2)}   (with q̇_${S.lock} = 0)\nSᵀg = ${vec(Lk.g, 2)}\n\ndiagonal entries kept: ${free.map(j => `M[${j}][${j}] = ${f(k.M[j][j])}`).join(', ')}`); }
-  if (st === 8) h = EQ(`H_O by link = ${vec(k.link_H, 3)},  Σ = ${f(k.H_O, 3)} N·m·s\n\n${mat(k.A_O, 3, 'A_O')}\nA_O q̇ = ${vec(mv(k.A_O, S.qd), 3)}   (rows: p_x, p_y, H_O)\n\nrow 0 of M at this q: ${vec(k.M[0], 3)}\nrow H of A_O:         ${vec(k.A_O[2], 3)}\n(equal when q = 0; set every slider to 0 to see it)`);
-  el.innerHTML = h;
+
+/* ---------- the numbers for each step ---------- */
+function numbers(st, X, K) {
+  const k = X.k, el = document.getElementById('num'), h = document.getElementById('numh');
+  h.textContent = st === 1 ? 'the numbers (at home, q = 0)' : 'the numbers at this posture';
+  let s = '';
+  if (st === 0) s = `<div class="tw"><table><tr><th>i</th><th>body</th><th>m (kg)</th><th>I (kg·m²)</th><th>L (m)</th><th>r (m)</th><th>joint</th></tr>` +
+    L.map((l, i) => `<tr><td>${i}</td><td>${names[i]}</td><td>${l.m}</td><td>${l.I}</td><td>${l.L}</td><td>${l.r}</td><td>${jn[i]} pitch</td></tr>`).join('') +
+    `<tr class="sum"><td></td><td>total</td><td>${UB.mtot(m)}</td><td colspan="4"></td></tr></table></div><p>L is joint to next joint; r is joint to the body's COM, along the body. The two arm bodies point down from the shoulder (offset π). These are the same numbers as page 165.</p>`;
+  if (st === 1) s = `<div class="tw"><table><tr><th>joint j</th><th>q<sub>j</sub> = (x, y, z) at home</th><th>𝒮<sub>j</sub> (6-vector)</th><th>planar (ω<sub>y</sub>, v<sub>x</sub>, v<sub>z</sub>)</th></tr>` +
+    [0, 1, 2, 3].map(j => { const h0 = k.p[j][1]; return `<tr><td>${j} ${jn[j]}</td><td>(0, 0, ${f(h0, 2)})</td><td>(0, 1, 0, ${f(-h0, 2)}, 0, 0)</td><td>${vecT([1, -h0, 0], 2)}</td></tr>`; }).join('') + `</table></div>` +
+    `<p>Home COM frames M<sub>i</sub> (orientation, position):</p><div class="tw"><table><tr><th>body i</th><th>R at home</th><th>c<sub>i</sub> = (x, z)</th></tr>` +
+    [0, 1, 2, 3].map(i => `<tr><td>${i} ${names[i]}</td><td>${i >= 2 ? 'R<sub>y</sub>(π): hangs down' : 'I'}</td><td>${vecT(k.c[i], 3)}</td></tr>`).join('') + `</table></div>` +
+    `<p>The axes depend on where the joints sit at home and on nothing else.</p>`;
+  if (st === 2) s = `<div class="tw"><table><tr><th>body i</th><th>φ<sub>i</sub> = Σ q (+off)</th><th>R<sub>i</sub> = R<sub>y</sub>(φ<sub>i</sub>)</th><th>c<sub>i</sub> = (x, z)</th></tr>` +
+    [0, 1, 2, 3].map(i => `<tr><td>${i} ${names[i]}</td><td>${f(k.phi[i] * D, 1)}°</td><td>[${f(X.R[i][0][0], 2)} ${f(X.R[i][0][1], 2)}; ${f(X.R[i][1][0], 2)} ${f(X.R[i][1][1], 2)}]</td><td>${vecT(k.c[i], 3)}</td></tr>`).join('') + `</table></div>` +
+    `<p>T<sub>si</sub> = [R<sub>i</sub> c<sub>i</sub>; 0 1]. In the plane, multiplying the exponentials adds the angles: φ<sub>i</sub> = q<sub>0</sub> + … + q<sub>i</sub>, and π is added at the shoulder.</p>`;
+  if (st === 3) s = mt(`J<sub>s,${K}</sub>: columns = 𝒮<sub>j</sub>(q), j ≤ ${K}`, tbl(X.Js[K], twr, qn)) +
+    `<p>Joint positions now: ${[0, 1, 2, 3].slice(0, K + 1).map(j => `p<sub>${j}</sub> = ${vecT(k.p[j], 3)}`).join(', ')}. Column j = (1, −p<sub>j,z</sub>, p<sub>j,x</sub>). It is the velocity of the point at {s}'s origin, as if that point were rigidly attached to the joint's rotation. Columns ${K + 1 < n ? `${K + 1}…3` : '—'} are zero: those joints sit above body ${K}.</p>`;
+  if (st === 4) s = mt(`[Ad<sub>T<sub>${K}s</sub></sub>]`, tbl(X.Ad[K], twr, twr)) + mt(`J<sub>b,${K}</sub> = [Ad] J<sub>s,${K}</sub>`, tbl(X.Jb[K], twr, qn)) +
+    mt(`𝒱<sub>b,${K}</sub> = J<sub>b,${K}</sub> q̇`, tbl(X.Vb[K].map(v => [v]), twr, [''])) +
+    `<p>[Ad<sub>T<sub>is</sub></sub>] = [1 0; R<sub>i</sub>ᵀ(ŷ × c<sub>i</sub>) R<sub>i</sub>ᵀ]. It moves the reference point from {s}'s origin to the COM, then rotates into {i}. ω<sub>y</sub> = ${f(X.Vb[K][0], 2)} rad/s = q̇<sub>0</sub> + … + q̇<sub>${K}</sub>. |v| = ${f(Math.hypot(X.Vb[K][1], X.Vb[K][2]), 3)} m/s. The body frame rotates the velocity but does not change its length.</p>`;
+  if (st === 5) { const Ks = X.Vb.map((V, i) => .5 * dot(V, mv(X.G[i], V))), qMq = .5 * dot(S.qd, mv(X.M, S.qd));
+    s = mt(`𝒢<sub>${K}</sub>`, tbl(X.G[K], twr, twr)) + mt(`J<sub>b,${K}</sub>ᵀ 𝒢<sub>${K}</sub> J<sub>b,${K}</sub>`, tbl(X.Mk[K], tn, tn)) + mt('M(q) = Σ J<sub>b,i</sub>ᵀ 𝒢<sub>i</sub> J<sub>b,i</sub>', tbl(X.M, tn, tn)) +
+      `<p>K by body = ${vecT(Ks, 3)} J, Σ = ${f(Ks.reduce((a, b) => a + b), 3)} J. ½ q̇ᵀ M q̇ = ${f(qMq, 3)} J <span class="ok">(the same)</span>. Page 165 shows these four matrices adding up, one body at a time.</p>`; }
+  if (st === 6) s = `<div class="tw"><table><tr><th>body i</th><th>𝓕<sub>g,i</sub> in {i}</th><th>−J<sub>b,i</sub>ᵀ𝓕<sub>g,i</sub> (N·m)</th></tr>` +
+    [0, 1, 2, 3].map(i => `<tr><td>${i} ${names[i]}</td><td>${vecT(X.Fg[i], 1)}</td><td>${vecT(X.gk[i], 2)}</td></tr>`).join('') +
+    `<tr class="sum"><td>g(q) = Σ</td><td></td><td>${vecT(X.g, 2)}</td></tr></table></div>` +
+    `<p>Check g<sub>0</sub>: −m<sub>tot</sub> g x<sub>c</sub> = −${UB.mtot(m)} × ${G0} × ${f(k.xc[0], 4)} = ${f(-UB.mtot(m) * G0 * k.xc[0], 2)} N·m <span class="ok">(the same)</span>. A forward lean (x<sub>c</sub> &gt; 0) needs a backward ankle torque. The foot can give at most m g × foot = ${f(UB.tauAnkleMax(m), 1)} N·m. g depends on q only: change q̇ and it does not move.</p>`;
+  if (st === 7) { const A = X.Ad1[K];
+    s = `<div class="tw"><table><tr><th>body ${K}</th><th>(ω<sub>y</sub>, v<sub>x</sub>, v<sub>z</sub>)</th></tr>` +
+      [[`𝒱<sub>b,${K}</sub>`, X.Vb[K]], [`d𝒱<sub>b,${K}</sub>/dt = J̇<sub>b</sub>q̇`, X.Vdot[K]], [`𝒢 d𝒱/dt`, A.GVd], [`−[ad<sub>𝒱</sub>]ᵀ𝒢𝒱`, A.adT], [`𝓕<sub>${K}</sub> (sum)`, X.Fv[K]], [`J<sub>b,${K}</sub>ᵀ𝓕<sub>${K}</sub> (N·m)`, X.ck[K]]]
+        .map(([a, v]) => `<tr><td>${a}</td><td>${vecT(v, 3)}</td></tr>`).join('') + `</table></div>` +
+      `<div class="tw"><table><tr><th>body i</th><th>J<sub>b,i</sub>ᵀ𝓕<sub>i</sub> (N·m)</th></tr>` + [0, 1, 2, 3].map(i => `<tr><td>${i} ${names[i]}</td><td>${vecT(X.ck[i], 2)}</td></tr>`).join('') +
+      `<tr class="sum"><td>c(q, q̇) = Σ</td><td>${vecT(X.c, 2)}</td></tr></table></div>` +
+      `<p>Moment row: I ω̇ = 0, because ω̇ = Σ q̈ = 0, and ω × Iω = 0 in the plane. Set every q̇ to 0 and c vanishes. Double them all and c quadruples, because every term is q̇ × q̇. ub.js gets the same c from the world-frame accelerations: ${vecT(k.cvec, 2)}.</p>`; }
+  if (st === 8) { const cg = X.c.map((v, i) => v + X.g[i]); let qdd = null; try { qdd = UB.solve(X.M, cg.map(x => -x)); } catch (e) {}
+    s = mt('M(q)', tbl(X.M, tn, tn, 2)) + mt('c, g, c + g (N·m)', tbl([0, 1, 2, 3].map(j => [X.c[j], X.g[j], cg[j]]), tn, ['c', 'g', 'c + g'], 2)) +
+      `<p><b>Keep these rates (q̈ = 0):</b> τ = c + g = ${vecT(cg, 1)} N·m.<br><b>Motors off (τ = 0):</b> q̈ = −M⁻¹(c + g) = ${qdd ? vecT(qdd, 2) : '—'} rad/s².<br>` +
+      `<b>The ankle:</b> τ<sub>0</sub> = ${f(cg[0], 1)} N·m against a foot limit of ±${f(UB.tauAnkleMax(m), 1)} N·m: ${Math.abs(cg[0]) <= UB.tauAnkleMax(m) ? '<span class="ok">the foot can supply it</span>' : '<b style="color:var(--bad)">the foot cannot; without help from the upper body it tips</b>'}.</p>` +
+      `<p>Pages 167 and 168 use this ankle row: the waist and arm torques act on it only through the off-diagonal M<sub>0j</sub> and through c and g.</p>`; }
+  el.innerHTML = s;
 }
-const mv = (A, x) => A.map(r => r.reduce((s, v, k) => s + v * x[k], 0));
 draw();
-new ResizeObserver(() => draw()).observe(document.getElementById('view'));
+new ResizeObserver(() => draw()).observe(view);
 })();
 </script>
 </body></html>

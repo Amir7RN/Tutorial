@@ -12,7 +12,7 @@ upper_body_recovery.html) run the same model in the browser (ub.js), and
 tests/test_upperbody.py checks every claim made here, in both languages.
 
     165  the G1 upper body as a machine: joints, planes, locks
-    166  sagittal plane: derive the equations of motion yourself
+    166  sagittal plane: from twists to the equations of motion
     167  momentum: why the arms can save a fall
     168  the recovery law: from a push to joint torques
     169  from this model to MuJoCo and C++
@@ -142,10 +142,9 @@ class UpperBodyMachinePage(BalancePage):
 # ==========================================================================
 
 class UpperBodyDerivePage(BalancePage):
-    TITLE = "Sagittal Plane: Derive the Equations of Motion Yourself"
-    SUBTITLE = ("Positions, one Jacobian per centre of mass, kinetic energy, potential energy, and the "
-                "velocity products: the same five moves as page 133, on your own machine, with every "
-                "number checkable.")
+    TITLE = "Sagittal Plane: From Twists to the Equations of Motion"
+    SUBTITLE = ("Page 165 gave the mass matrix. Here the same simplified G1 goes from screw axes and body "
+                "Jacobians to τ = M(q)q̈ + c(q,q̇) + g(q), in the Kinematics notation, one step at a time.")
     NOTES = "G1 · derive"
 
     Q = np.array([0.15, -0.2, -0.9, -0.6])
@@ -154,48 +153,65 @@ class UpperBodyDerivePage(BalancePage):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(start_here(
-            "Do this page with paper. The lab on the left computes every intermediate quantity at the "
-            "posture you set; your job is to get the same number first. The derivation never touches "
-            "Christoffel symbols: velocities come from Jacobians, M from the kinetic energy, g from the "
-            "potential energy, and the velocity-product term from the accelerations the COMs have when "
-            "the joints are only spinning. That is also exactly what the code computes, in Python and "
-            "in the browser, and the two are tested against each other and against page 135's recursion."))
-        e = Card("the recipe, in five lines")
-        e.add(math_label(r"\phi_i=\sum_{j\le i}(q_j+\mathrm{off}_j),\quad u_i=(\sin\phi_i,\cos\phi_i),\quad "
-                         r"p_{i+1}=p_i+L_iu_i,\quad c_i=p_i+r_iu_i", 14))
-        e.add(math_label(r"\frac{\partial c_i}{\partial q_j}=\big((c_i-p_j)_y,\,-(c_i-p_j)_x\big)\ (j\le i),"
-                         r"\qquad v_i=J_i\dot q,\qquad \omega_i=\sum_{j\le i}\dot q_j", 14))
-        e.add(math_label(r"K=\tfrac12\dot q^TM\dot q,\qquad M=\sum_i m_iJ_i^TJ_i+I_iJ_{\omega i}^TJ_{\omega i}", 15))
-        e.add(math_label(r"P=\sum_i m_i g\,c_{i,y},\qquad g_j=\frac{\partial P}{\partial q_j}"
-                         r"=-g\sum_{i\ge j}m_i\,(c_i-p_j)_x", 15))
-        e.add(math_label(r"c=\sum_i m_iJ_i^T a_i^{\mathrm{vel}},\quad a_i^{\mathrm{vel}}=\sum_{j\le i}\dot q_j\,"
-                         r"\mathrm{swing}(v_i-\dot p_j)\qquad\Rightarrow\qquad \tau=M(q)\ddot q+c(q,\dot q)+g(q)", 15))
+            "<b>Where we are.</b> Page 165 built M(q), how much torque each joint needs per unit q̈. That is "
+            "one of three terms. A robot standing still with q̈ = 0 still needs torque to carry its weight, "
+            "g(q). A robot whose joints are turning needs torque just to keep them turning, c(q, q̇). This "
+            "page derives all three on the simplified G1 with the tools of the Kinematics pages: frame {s}, "
+            "screw axes 𝒮, the product of exponentials, the body Jacobian J<sub>b</sub> and the twist 𝒱<sub>b</sub>. "
+            "Do it on paper first; the lab computes every intermediate number at the posture you set."))
+        e = Card("the recipe, in the Kinematics notation")
+        e.add(math_label(r"\mathcal{S}_j=(\hat\omega,\,-\hat\omega\times q_j),\qquad "
+                         r"T_{si}(q)=e^{[\mathcal{S}_0]q_0}\cdots e^{[\mathcal{S}_i]q_i}M_i", 15))
+        e.add(math_label(r"J_{b,i}=[\mathrm{Ad}_{T_{is}}]\,J_{s,i},\qquad "
+                         r"\mathcal{V}_{b,i}=J_{b,i}\,\dot q,\qquad "
+                         r"\mathcal{G}_i=\mathrm{diag}(I_i,\,m_i,\,m_i)", 15))
+        e.add(math_label(r"M(q)=\sum_i J_{b,i}^T\mathcal{G}_iJ_{b,i},\qquad "
+                         r"g(q)=-\sum_i J_{b,i}^T\mathcal{F}_{g,i}", 15))
+        e.add(math_label(r"c(q,\dot q)=\sum_i J_{b,i}^T\big(\mathcal{G}_i\dot{\mathcal{V}}_{b,i}"
+                         r"-[\mathrm{ad}_{\mathcal{V}_{b,i}}]^T\mathcal{G}_i\mathcal{V}_{b,i}\big)\big|_{\ddot q=0}"
+                         r"\quad\Rightarrow\quad\tau=M(q)\ddot q+c(q,\dot q)+g(q)", 15))
         e.add(body(
-            "<b>Conventions</b> (the G1's own): x forward, y up, every angle positive when the top of the "
-            "link moves forward. A forward lean is a positive ankle angle; a positive shoulder pitch swings "
-            "the hanging arm backward. The rest offset is π at the shoulder so that q = 0 is standing "
-            "straight with the arms down. <b>swing(d) = (d<sub>y</sub>, −d<sub>x</sub>)</b> is the velocity "
-            "of a point at offset d from a pivot turning at 1 rad/s in the forward sense.", dim=True))
+            "<b>Frame and signs</b> (the G1's own): {s} at the ankle, x forward, y left, z up. Every joint "
+            "turns about ŷ, positive when the top of the link moves forward. In the plane a twist has "
+            "three entries that can be nonzero, so <b>𝒱 = (ω<sub>y</sub>, v<sub>x</sub>, v<sub>z</sub>)</b> "
+            "and a pitch joint at height h has 𝒮 = (1, −h, 0), the planar part of (0,1,0, −h,0,0). "
+            "Body i's COM frame {i} sits at its centre of mass and turns with it. The upper-arm and "
+            "forearm frames are flipped by π at home, so the arms hang at q = 0.", dim=True))
+        e.add(body(
+            "<b>Why these three, and why in this order.</b> M multiplies q̈, g depends on q only, and c "
+            "is quadratic in q̇. Each one is a sum over the four bodies of J<sub>b,i</sub>ᵀ times a wrench "
+            "on body i: the inertial wrench 𝒢𝒱̇, the weight, and the velocity-product wrench. That is the "
+            "statics rule τ = Jᵀ𝓕 applied to every body, with Newton–Euler giving each wrench.", dim=True))
         self.add(e)
-        self.lab("upper_body_lagrange.html", "Lab · the derivation, one step at a time, with live numbers", 1000)
+        self.lab("upper_body_lagrange.html", "Lab · the simplified G1 in 3-D: screw axes → J_b → M, g, c → τ", 1060)
 
         w = ub.worked(ub.PLANES["sagittal"], self.Q, self.QD)
         m = ub.PLANES["sagittal"]
+        p2, c3, p1 = w["p"][2], w["c"][3], w["p"][1]
+        ph = w["phi"][3]
+        d = c3 - p1
+        sw = np.array([d[1], -d[0]])                                   # ŷ × (c₃ − p₁), in (x, z)
+        Rt = np.array([[math.cos(ph), -math.sin(ph)], [math.sin(ph), math.cos(ph)]])
+        jb = Rt @ sw
         k = Card("worked numbers at one posture (compute first, then open)")
         k.add(body(f"q = {np.round(np.degrees(self.Q), 1).tolist()} degrees, "
                    f"q̇ = {self.QD.tolist()} rad/s. Set the sliders to these and the lab agrees to three decimals."))
         k.add(Reveal("", [
-            ("Where is the shoulder (p₂), and the hand (p₄)?",
-             f"p₂ = ({w['p'][2][0]:.3f}, {w['p'][2][1]:.3f}) m, p₄ = ({w['p'][4][0]:.3f}, {w['p'][4][1]:.3f}) m. "
-             "Two cumulative sums of q + off, then sines and cosines."),
-            ("Column 1 (waist) of the forearm's Jacobian J₃?",
-             f"d = c₃ − p₁ = ({(w['c'][3] - w['p'][1])[0]:.3f}, {(w['c'][3] - w['p'][1])[1]:.3f}), so the column is "
-             f"(d_y, −d_x) = ({w['Jv'][3][0][1]:.3f}, {w['Jv'][3][1][1]:.3f}). Perpendicular to d, forward sense."),
+            ("Screw axis of the shoulder at home, and at this posture?",
+             f"Home: the shoulder is at (0, 0, {m.links[0].L + m.links[1].L:.2f}), so 𝒮₂ = (1, "
+             f"−{m.links[0].L + m.links[1].L:.2f}, 0). Now it sits at p₂ = ({p2[0]:.3f}, {p2[1]:.3f}), "
+             f"so column 2 of J<sub>s</sub> is (1, −p<sub>z</sub>, p<sub>x</sub>) = "
+             f"(1, {-p2[1]:.3f}, {p2[0]:.3f})."),
+            ("Column 1 (waist) of the forearm's body Jacobian J<sub>b,3</sub>?",
+             f"Arm d = c₃ − p₁ = ({d[0]:.3f}, {d[1]:.3f}); ŷ × d = (d<sub>z</sub>, −d<sub>x</sub>) = "
+             f"({sw[0]:.3f}, {sw[1]:.3f}); rotate into {{3}} with R₃ᵀ, φ₃ = {math.degrees(ph):.1f}°: "
+             f"column = (1, {jb[0]:.3f}, {jb[1]:.3f})."),
             ("M₀₀ and M₀₁?",
-             f"M₀₀ = {w['M'][0, 0]:.3f}, M₀₁ = {w['M'][0, 1]:.3f} kg·m². M₀₀ sums every link's m|swing₀|² + I; "
-             f"M₀₁ sums, over torso and arms only, m (swing₀·swing₁) + I. Full matrix:<br>{mat_html(w['M'])}"),
+             f"M₀₀ = {w['M'][0, 0]:.3f}, M₀₁ = {w['M'][0, 1]:.3f} kg·m². Each body adds "
+             f"J<sub>b,i</sub>ᵀ𝒢<sub>i</sub>J<sub>b,i</sub>; entry (0, 1) of that is I<sub>i</sub> + m<sub>i</sub> "
+             f"(arm₀·arm₁) for the torso and arms. Full matrix:<br>{mat_html(w['M'])}"),
             ("The gravity vector g?",
-             f"g = {np.round(w['g'], 2).tolist()} N·m. g₀ = −{m.m_tot:.0f} × 9.81 × x_c = "
+             f"g = {np.round(w['g'], 2).tolist()} N·m. g₀ = −{m.m_tot:.0f} × 9.81 × x<sub>c</sub> = "
              f"−{w['gravity_moment']:.2f} N·m: a forward lean needs a backward ankle torque, and the foot can "
              f"give at most ±{m.tau_ankle_max():.1f} N·m."),
             ("The velocity-product vector c?",
@@ -206,7 +222,7 @@ class UpperBodyDerivePage(BalancePage):
         self.add(plain(
             "<b>What each term means for balance.</b> M₀₀ is how hard the whole body is to tip about the "
             "ankle. The off-diagonal M₀ⱼ is how much joint j can shove the ankle without any motor there: "
-            "the only handle the upper body has. g₀ is gravity's torque about the ankle, m g x<sub>c</sub>, "
+            "the only handle the upper body has. g₀ is gravity's torque about the ankle, −m g x<sub>c</sub>, "
             "and the foot can resist it only up to m g × (half the foot). The moment the lean puts "
             "x<sub>c</sub> beyond the toes, the ankle row cannot be satisfied and the equation says "
             "<i>fall</i>, unless the upper body changes x<sub>c</sub> or the momentum."))
@@ -247,12 +263,12 @@ class UpperBodyMomentumPage(BalancePage):
                          r"h_c=\begin{bmatrix}p_x\\p_y\\H_c\end{bmatrix}=A(q)\,\dot q,\quad "
                          r"A=\sum_i\begin{bmatrix}m_iJ_i\\ I_iJ_{\omega i}+m_i(c_i-x_c)\times J_i\end{bmatrix}", 15))
         e.add(body(
-            "Compare A with M = Σ m<sub>i</sub>J<sub>i</sub>ᵀJ<sub>i</sub> + I<sub>i</sub>J<sub>ωi</sub>ᵀJ<sub>ωi</sub>: "
+            "Compare A with M = Σ J<sub>b,i</sub>ᵀ𝒢<sub>i</sub>J<sub>b,i</sub> (page 166): "
             "<b>the momentum matrix is the mass matrix with the outer Jᵀ stripped off</b>. Same Jacobians, same "
             "masses and inertias; M lands in joint space, A lands in physical momentum. A about the COM is "
             "the <i>centroidal momentum matrix</i> of the humanoid literature. At q = 0 the H row of A<sub>O</sub> "
             "equals row 0 of M: the ankle's share of the inertia is the momentum about the ankle per unit "
-            "joint rate. (Step 9 of the lab on page 166 prints both.)"))
+            "joint rate."))
         self.add(e)
         m = ub.PLANES["sagittal"]
         qd = np.array([0.0, 0.0, -3.0, 0.0])
