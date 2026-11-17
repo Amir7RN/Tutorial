@@ -369,6 +369,20 @@ class Pages(unittest.TestCase):
             self.assertTrue(page.NO_RECAP)
             page.deleteLater()
 
+    def test_lqr_lab_script_parses(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        src = (STEPLAB / "lqr_torque_flow.html").read_text(encoding="utf-8")
+        js = src.split("<script>")[1].split("</script>")[0]
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+            f.write("new Function(" + json.dumps(js) + ");")
+        try:
+            r = subprocess.run([node, f.name], capture_output=True, text=True)
+        finally:
+            os.unlink(f.name)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
     def test_lqr_page_story_matches_the_simulation(self):
         from app.pages.humanoid_balance import LQR_STORY as st, lqr_numbers
         n = lqr_numbers()

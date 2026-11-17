@@ -13,6 +13,8 @@
   .pick{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:2px 0 6px;font-size:.82rem;color:var(--muted)}
   .pick button{font-size:.78rem;padding:2px 9px;font-weight:400}
   .goal{border-left:3px solid var(--a);padding:2px 0 2px 8px;margin:0 0 8px}
+  .do{border:1px dashed var(--c);border-radius:8px;padding:5px 9px;margin:8px 0 0;font-size:.86rem}
+  .do b{color:var(--c)}
   .math b{color:var(--ink)}
   table.t{width:100%}
   table.t td:first-child,table.t th:first-child{text-align:left;font-family:var(--body)}
@@ -132,7 +134,7 @@ function phases() {
   if (ip > 0) out.push([ip, `The waist torque flips to ${sg(r.tau[ip][1], 1)} N·m: it now brakes the torso's backward swing, and the reaction on the legs is backward. This is what the counterweight law of page 169 never does.`]);
   let pk = 0; for (let i = 0; i < n; i++) if (Math.abs(r.q[i][0]) > Math.abs(r.q[pk][0])) pk = i;
   out.push([pk, `Peak lean ${f(r.q[pk][0] * D, 1)}° (everything locked: ${f(S.lock.peak_lean_deg, 1)}°${S.lock.fell ? ', and it falls' : ''}). The COM is at ${f(UB.core(m, r.q[pk], r.qd[pk]).xc[0], 3)} m, inside the ${f(m.foot, 2)} m foot.`]);
-  if (ie >= 0 && ie !== is) out.push([ie, 'The ankle leaves saturation: the waist's brake has nearly stopped the lean.']);
+  if (ie >= 0 && ie !== is) out.push([ie, `The ankle leaves saturation: the waist's brake has nearly stopped the lean.`]);
   out.push([n - 1, r.fell ? 'It fell.' : 'The slow return: the posture terms of K bring the torso home while the ankle spring finishes the lean.']);
   S.ph = out.sort((a, b) => a[0] - b[0]);
 }
@@ -274,7 +276,7 @@ const STEPS = [
     <table class="t"><tr><th>state</th><th>now</th><th>unit</th><th>what it is</th></tr>
     ${a.x.map((v, j) => `<tr><td style="color:var(${JC[j % 4]})">${XN[j]}</td><td>${f(v, 3)}</td><td>${XU[j]}</td><td style="font-family:var(--body);text-align:left">${['legs on the foot, + forward', 'torso relative to legs', 'arms relative to torso, + swings back', 'forearm relative to upper arm', 'how fast the lean grows', 'torso swing rate', 'arm swing rate', 'forearm swing rate'][j]}</td></tr>`).join('')}</table>
     <p><b>Three inputs, not four.</b> The ankle is in x but not in u. Its torque is whatever the foot gives: a spring-damper, τ₀ = −300 q₀ − 30 q̇₀, clipped at ±${f(lim()[0], 1)} N·m (m g × half the foot). The controller cannot command it, only exploit it.</p>
-    <p>Scrub the timeline below the robot. Before 0.20 s every number is 0; the controller sees the push only through what it does to x.</p>`;
+    <p><b>The whole pipeline.</b> Steps 2 to 6 run once, offline: the model f, then A and B, then the prices Q and R, then the Riccati equation for P and K. Steps 7 to 10 are what happens every millisecond on the robot: read x, compute u = −Kx (24 multiply-adds), clip, and let the physics move every link.</p>`;
   }],
   ['2 · the machine f', () => {
     const a = at(S.i), M = a.k.M;
@@ -294,7 +296,7 @@ const STEPS = [
     <p>Done by hand it is exact, because at x = 0 everything multiplying ∂M/∂q is zero and c is quadratic in q̇:</p>
     <span class="eq">A = [ 0          I        ]
     [ −M⁻¹(G + Kₐ)   −M⁻¹Dₐ ],   G = ∂g/∂q,  Kₐ = diag(300,0,0,0),  Dₐ = diag(30,0,0,0)</span>
-    <p><b>Column ${XS[c]}:</b> ${c === 0 ? `lean the whole robot forward 1 rad with the motors off. The legs accelerate back (q̈₀ ${sg(lo[0][0], 1)}): the ankle spring's 300 N·m/rad beats gravity's 219.5 (= m g × 0.66 m of COM travel per radian). The torso, which no motor holds, folds forward (q̈₁ ${sg(lo[1][0], 1)}).`
+    <p><b>Column ${XS[c]}:</b> ${c === 0 ? `lean the whole robot forward 1 rad with the motors off. The legs accelerate back (q̈₀ ${sg(lo[0][0], 1)}): the ankle spring's 300 N·m/rad beats gravity's 219.5 (= m g × 0.66 m of COM travel per radian), so a rigid robot is stable on the spring for small leans. Not for large ones: the spring saturates at 33.4 / 300 = 0.111 rad, and gravity's moment reaches the foot limit at 0.152 rad (8.7°). The torso, which no motor holds, folds forward (q̈₁ ${sg(lo[1][0], 1)}).`
       : c === 1 ? `bend the torso forward 1 rad on its own. The torso keeps falling forward (q̈₁ ${sg(lo[1][1], 1)}): with u = 0 it is an inverted pendulum on the waist, the unstable pole at +8.2 /s. Its reaction tips the legs back (q̈₀ ${sg(lo[0][1], 1)}).`
       : c < 4 ? `move the ${JN[c]} 1 rad. With no motor it swings back like a hanging pendulum (q̈${'₀₁₂₃'[c]} ${sg(lo[c][c], 1)}), and the reaction is felt along the chain.`
       : c === 4 ? `a lean rate of 1 rad/s. Only the ankle damper reacts (30 N·m·s/rad), and M⁻¹ spreads it through the chain.`
@@ -325,7 +327,7 @@ const STEPS = [
     const row = K[j - 1];
     return `<p class="goal"><b>Goal:</b> get the gains, and read each one as "N·m per unit of a measured number".</p>
     <span class="eq">AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0,     K = R⁻¹ Bᵀ P,     u = −K x</span>
-    <p>P is the price of starting at x: the whole future cost is xᵀPx. K is how fast that price falls per N·m of each motor. <b>Click a row</b> to pick a joint.</p>
+    <p>P is the price of starting at x: the cheapest possible future cost is xᵀPx. K = R⁻¹BᵀP reads as a chain: B turns a torque into motion, P prices that motion, R⁻¹ turns the price back into a torque worth spending. <b>Click a row</b> to pick a joint.</p>
     ${mat(K, { rn: ACT.map(a => JN[a]), cn: XS, d: 1, click: true, id: 'Km', on: (r) => r === j - 1 })}
     <p><b>The ${JN[j]} row, in words</b> (u = −K x, so the torque has the opposite sign of each gain times the state):</p>
     <ul>${row.map((v, c) => [c, v]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4).map(([c, v]) => {
@@ -376,6 +378,19 @@ const STEPS = [
   }],
 ];
 
+const DO = [
+  'drag the timeline to 0.25 s, then to 0.40 s. Which state grows first after the push: an angle or a rate?',
+  'drag the timeline from 0 to 0.5 s and watch M change. Why are its entries almost constant?',
+  'click the q₀ column, then the q₁ column. Which one has a positive entry on its own row, and what does that mean for a torso with no motor?',
+  'pick waist, then shoulder, then elbow. Which one moves the lean (q̈₀) most per N·m, and in which direction?',
+  'set lean_max to 0.05 and press redesign; note the peak lean on the timeline. Then defaults, posture_max to 0.2, redesign. Which helped?',
+  'click the waist row. Add the q₀ and q₁ gains in your head: what single angle is the waist really holding?',
+  'pick waist and drag the timeline from 0.20 to 0.45 s. Find the moment the sum changes sign, and which bar caused it.',
+  'keep "ankle" picked and compare t = 0.25 s with t = 0.40 s. Which bar changed sign, and why does that save the robot?',
+  'drag through the push. The total H changes only through the ankle, gravity and the push; watch the waist torque move H between legs and torso.',
+  'press play with slow ×¼, then click each phase time and say what happens before reading it.',
+];
+
 /* ---------------- controls ---------------- */
 function controls() {
   const el = document.getElementById('ctl');
@@ -403,7 +418,7 @@ function render() {
   document.getElementById('busy').innerHTML = S.busy ? '<span class="busy">solving the Riccati equation…</span>' : '';
   const exp = document.getElementById('exp');
   if (!S.res || !S.K) { exp.innerHTML = '<p>Designing K…</p>'; drawTL(); stage.draw(); return; }
-  exp.innerHTML = STEPS[S.step][1]();
+  exp.innerHTML = STEPS[S.step][1]() + (DO[S.step] ? `<p class="do"><b>Do this:</b> ${DO[S.step]}</p>` : '');
   exp.querySelectorAll('[data-jp]').forEach(b => b.onclick = () => { S.joint = +b.dataset.jp; render(); });
   exp.querySelectorAll('[data-tg]').forEach(b => b.onclick = () => { S.tgt = +b.dataset.tg; render(); });
   exp.querySelectorAll('[data-ti]').forEach(b => b.onclick = () => { S.i = +b.dataset.ti; S.playing = false; render(); });
