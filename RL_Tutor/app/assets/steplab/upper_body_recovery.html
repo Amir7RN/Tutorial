@@ -57,7 +57,7 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const f = (x, d = 2) => (Math.abs(x) < 5e-4 ? 0 : x).toFixed(d);
 const D = 180 / Math.PI;
 const LAWNOTE = {
-  lqr: `<b>u = −K x</b> on the machine linearised about standing, ankle spring included, Bryson weights (page 19). It finds the hip-and-arm strategy on its own: the torso and arms go <i>forward</i> with the fall for a moment, taking momentum from the legs, then come back while the ankle and gravity finish the job. Clipped to the motor limits.`,
+  lqr: `<b>u = −K x</b> on the machine linearised about standing, ankle spring included, Bryson weights (page 19). It finds a hip strategy on its own: while the push is on, the waist throws the torso <i>back</i> behind vertical (the legs pay with a faster lean), then reverses and brakes it, and that reaction holds the legs back while the ankle is saturated. Page 170 opens it step by step. Clipped to the motor limits.`,
   counterweight: `Puts the whole-body COM <b>behind</b> the ankle in proportion to the lean (<span class="m">x<sub>c,des</sub> = −κ<sub>p</sub>q<sub>0</sub> − κ<sub>d</sub>q̇<sub>0</sub></span>), by a virtual spring on the upper body's own COM through <span class="m">Jᵀ</span> (page 145). It looks right and it is wrong: moving 17 kg backward kicks the legs forward (conservation of H about the ankle), so the lean grows before gravity can help.`,
   momentum: `Resolved momentum control with a tiny QP: a desired momentum rate (DCM task), the ankle row as a constraint, torque limits as a box. The formula every humanoid paper writes. It fails here for a plain reason: a momentum <i>rate</i> cannot be sustained, and the torso runs into its stop with the COM in front of the foot.`,
 };

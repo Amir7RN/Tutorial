@@ -1,0 +1,435 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LQR Torque Flow</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.25fr) minmax(400px,1fr)}
+  .view{min-height:380px;cursor:grab}
+  .view canvas{position:absolute;left:4px;top:4px}
+  #tl{width:100%;height:230px;display:block;cursor:crosshair}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .chips button{font-size:.78rem;font-weight:400;padding:3px 8px;border-radius:99px}
+  .chips button[aria-current="true"]{background:var(--hi);border-color:var(--a);font-weight:700}
+  .pick{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:2px 0 6px;font-size:.82rem;color:var(--muted)}
+  .pick button{font-size:.78rem;padding:2px 9px;font-weight:400}
+  .goal{border-left:3px solid var(--a);padding:2px 0 2px 8px;margin:0 0 8px}
+  .math b{color:var(--ink)}
+  table.t{width:100%}
+  table.t td:first-child,table.t th:first-child{text-align:left;font-family:var(--body)}
+  table.hm td{cursor:pointer}
+  table.hm td.on{outline:2px solid var(--a);outline-offset:-2px}
+  .bars{display:grid;grid-template-columns:118px minmax(0,1fr) 64px;gap:2px 8px;align-items:center;font-size:.8rem;margin:4px 0 8px}
+  .bars .nm{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .bars .tr{position:relative;height:13px;background:var(--inset);border-radius:3px}
+  .bars .tr::after{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;border-left:1px solid var(--grey)}
+  .bars .br{position:absolute;top:1px;bottom:1px;border-radius:2px}
+  .bars .v{font-family:var(--mono);text-align:right}
+  .bars .sum{font-weight:700;color:var(--ink)}
+  .tl-legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.78rem;color:var(--muted);padding:2px 4px}
+  .ctl{grid-template-columns:150px 1fr 70px}
+  .busy{color:var(--b);font-weight:700}
+  .ph{display:grid;grid-template-columns:64px minmax(0,1fr);gap:2px 8px;font-size:.84rem;margin:4px 0}
+  .ph button{font-size:.76rem;padding:1px 6px;font-weight:400;font-family:var(--mono)}
+  .ph div{padding-top:2px}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1>LQR, opened up: from eight measured numbers to a torque at each joint</h1>
+    <p>The simplified G1 in the sagittal plane, pushed 70 N for 0.1 s at the shoulder. Scrub the timeline, step through the design, and follow one torque from the sensors to the motion.</p></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card view" id="view"><canvas id="cv"></canvas></div>
+      <div class="card">
+        <div class="btns" style="margin-bottom:6px">
+          <button class="primary" id="play">play ▶</button><button id="slow" aria-pressed="false">slow ×¼</button>
+          <button id="vside">side</button><button id="viso">3-D</button>
+          <span style="flex:1"></span><span class="m" id="tnow"></span>
+        </div>
+        <canvas id="tl"></canvas>
+        <div class="tl-legend" id="tlleg"></div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card"><p class="h">step</p><div class="chips" id="chips"></div>
+        <div class="nav"><button id="prev">◀ back</button><button id="next">next ▶</button><span class="m" id="busy"></span></div></div>
+      <div class="card math" id="exp"></div>
+      <div class="card"><p class="h">the push and Bryson's prices</p>
+        <div class="controls" id="ctl" style="grid-template-columns:1fr"></div>
+        <div class="btns" style="margin-top:6px"><button id="redesign">redesign K and rerun</button><button id="dflt">defaults</button></div>
+        <p class="note" style="font-size:.8rem;color:var(--muted);margin:6px 0 0">Redesign solves the Riccati equation again (about two seconds). The push alone only reruns the simulation.</p></div>
+    </div>
+  </div>
+</div>
+<script src="three.min.js"></script><script src="ub.js"></script><script src="g1mesh.js"></script><script src="ub3d.js"></script>
+<script>
+(() => {
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f = (x, d = 2) => { const v = Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x; return v.toFixed(d); };
+const sg = (x, d = 1) => (x >= 0 ? '+' : '−') + f(Math.abs(x), d);
+const D = 180 / Math.PI;
+const m = UB.planes.sagittal, N = 4, ACT = [1, 2, 3];
+const JN = ['ankle', 'waist', 'shoulder', 'elbow'], LN = ['legs', 'torso', 'upper arms', 'forearms'];
+const JC = ['--d', '--a', '--b', '--c'];
+const XN = ['q₀ lean', 'q₁ waist', 'q₂ shoulder', 'q₃ elbow', 'q̇₀ lean rate', 'q̇₁ waist rate', 'q̇₂ shoulder rate', 'q̇₃ elbow rate'];
+const XS = ['q₀', 'q₁', 'q₂', 'q₃', 'q̇₀', 'q̇₁', 'q̇₂', 'q̇₃'];
+const XU = ['rad', 'rad', 'rad', 'rad', 'rad/s', 'rad/s', 'rad/s', 'rad/s'];
+const DEF = { lean_max: 0.1, posture_max: 0.5, lean_rate_max: 1.0, posture_rate_max: 5.0, tscale: 1 };
+const S = { step: 0, i: 0, force: 70, P: Object.assign({}, DEF), joint: 1, tgt: 0, cell: [0, 0], acol: 0,
+  res: null, K: null, A: null, B: null, playing: false, slow: false, busy: true, ph: null };
+const gains = () => UB.gains({ lean_max: S.P.lean_max, posture_max: S.P.posture_max, lean_rate_max: S.P.lean_rate_max,
+  posture_rate_max: S.P.posture_rate_max, tau_max: [0, 88 * S.P.tscale, 50 * S.P.tscale, 50 * S.P.tscale] });
+const push = () => UB.push({ force: S.force, t0: 0.2, duration: 0.1, point: 2 });
+const lim = () => gains().tau_max.map((v, j) => j ? v : UB.tauAnkleMax(m));
+
+/* ---------------- small linear algebra ---------------- */
+function inv(A) {
+  const n = A.length, M = A.map((r, i) => [...r, ...r.map((_, j) => +(i === j))]);
+  for (let c = 0; c < n; c++) {
+    let p = c; for (let r = c + 1; r < n; r++) if (Math.abs(M[r][c]) > Math.abs(M[p][c])) p = r;
+    [M[c], M[p]] = [M[p], M[c]];
+    const d = M[c][c]; M[c] = M[c].map(v => v / d);
+    for (let r = 0; r < n; r++) if (r !== c) { const k = M[r][c]; M[r] = M[r].map((v, j) => v - k * M[c][j]); }
+  }
+  return M.map(r => r.slice(n));
+}
+const mv = (A, x) => A.map(r => r.reduce((s, v, k) => s + v * x[k], 0));
+
+/* ---------------- design and simulate ---------------- */
+function design() {
+  S.busy = true; S.playing = false; render();
+  setTimeout(() => {
+    const r = UB.lqrGain(m, gains(), ACT);
+    S.K = r.K; S.A = r.A; S.B = r.B;
+    simulate(); S.busy = false; render();
+  }, 40);
+}
+function simulate() {
+  S.res = UB.simulate(m, gains(), push(), ACT, { T: 1.6, sample: 5 });
+  S.lock = UB.simulate(m, gains(), push(), [], { T: 1.6, sample: 5 });
+  S.i = Math.min(S.i, S.res.t.length - 1);
+  phases();
+}
+/* everything at sample i */
+function at(i) {
+  const r = S.res, q = r.q[i], qd = r.qd[i], t = r.t[i], k = UB.core(m, q, qd), x = [...q, ...qd];
+  const contr = S.K.map(row => row.map((v, j) => -v * x[j])), u = contr.map(c => c.reduce((a, b) => a + b, 0));
+  const p = push(), inPush = p.force && t >= p.t0 && t < p.t0 + p.duration;
+  const fp = inPush ? UB.pointJacobian(m, q, 2)[0].map(v => v * p.force) : [0, 0, 0, 0];
+  const tau = r.tau[i], stop = UB.stopTorque(m, q, qd), Mi = inv(k.M);
+  const rhs = tau.map((v, j) => v + stop[j] + fp[j] - k.cvec[j] - k.g[j]);
+  return { t, q, qd, x, k, contr, u, tau, fp, inPush, stop, Mi, qdd: mv(Mi, rhs), pushMoment: fp[0] };
+}
+function phases() {
+  const r = S.res, L = lim(), out = [];
+  const T = r.t, n = T.length, idx = t => T.findIndex(v => v >= t - 1e-9);
+  out.push([idx(0.2), 'The push starts. 70 N at the shoulder is 76 N·m about the ankle; the sensors see nothing yet, so u = 0.']);
+  let iw = -1; for (let i = idx(0.2) + 1; i < n; i++) if (Math.abs(r.tau[i][1]) > 1) { iw = i; break; }
+  if (iw > 0) out.push([iw, `The waist reacts first: τ<sub>waist</sub> = ${f(r.tau[iw][1], 1)} N·m. The push bends the torso forward at the waist before the legs move, so the first torque comes mostly from the q̇₁ column of K.`]);
+  const im = idx(0.25); if (im > 0) out.push([im, `Mid-push. The waist pulls the torso back harder than holding it would need; the reaction drives the legs forward. The lean grows <i>faster</i> than with everything locked: this is the price.`]);
+  let is = -1, ie = -1; for (let i = 0; i < n; i++) if (Math.abs(r.tau[i][0]) >= L[0] - 1e-6) { if (is < 0) is = i; ie = i; }
+  if (is >= 0) out.push([is, `The ankle saturates at ${f(-L[0], 1)} N·m: the centre of pressure is at the toes. From here the ankle is a constant, and only gravity and the upper body can change the outcome.`]);
+  let ip = -1; for (let i = idx(0.2) + 1; i < n; i++) if (r.tau[i][1] > 0.5 && r.t[i] > 0.25) { ip = i; break; }
+  if (ip > 0) out.push([ip, `The waist torque flips to ${sg(r.tau[ip][1], 1)} N·m: it now brakes the torso's backward swing, and the reaction on the legs is backward. This is what the counterweight law of page 169 never does.`]);
+  let pk = 0; for (let i = 0; i < n; i++) if (Math.abs(r.q[i][0]) > Math.abs(r.q[pk][0])) pk = i;
+  out.push([pk, `Peak lean ${f(r.q[pk][0] * D, 1)}° (everything locked: ${f(S.lock.peak_lean_deg, 1)}°${S.lock.fell ? ', and it falls' : ''}). The COM is at ${f(UB.core(m, r.q[pk], r.qd[pk]).xc[0], 3)} m, inside the ${f(m.foot, 2)} m foot.`]);
+  if (ie >= 0 && ie !== is) out.push([ie, 'The ankle leaves saturation: the waist's brake has nearly stopped the lean.']);
+  out.push([n - 1, r.fell ? 'It fell.' : 'The slow return: the posture terms of K bring the torso home while the ankle spring finishes the lean.']);
+  S.ph = out.sort((a, b) => a[0] - b[0]);
+}
+
+/* ---------------- 3-D ---------------- */
+const view = document.getElementById('view'), cv = document.getElementById('cv');
+const stage = UB3D.stage(cv, view, { orbit: { az: 0, el: .1, r: 2.15, tgt: new THREE.Vector3(0.05, .66, 0) } });
+const fig = UB3D.figure(stage.scene);
+const foot = new THREE.Mesh(new THREE.BoxGeometry(2 * m.foot, .004, .34), new THREE.MeshBasicMaterial({ color: 0x1f8a4c, transparent: true, opacity: .25, depthTest: false }));
+foot.position.set(0, .003, 0); stage.scene.add(foot);
+const pushArrow = new THREE.ArrowHelper(new THREE.Vector3(1, 0, 0), new THREE.Vector3(), .5, 0xd9661f, .12, .07); pushArrow.visible = false; stage.scene.add(pushArrow);
+class ArcCurve extends THREE.Curve { constructor(fn) { super(); this.fn = fn; } getPoint(t, o = new THREE.Vector3()) { return o.copy(this.fn(t)); } }
+function Arc() {
+  const g = new THREE.Group(), mat = new THREE.MeshBasicMaterial({ transparent: true, depthTest: false });
+  const cone = new THREE.Mesh(new THREE.ConeGeometry(.022, .06, 12), mat); cone.renderOrder = 30; g.add(cone); stage.scene.add(g);
+  let tube = null;
+  return {
+    hide() { g.visible = false; },
+    set(pos, val, scale, color, r = .12, op = 1, zoff = .26) {
+      if (tube) { g.remove(tube); tube.geometry.dispose(); tube = null; }
+      const span = Math.min(5.0, Math.abs(val) / scale * 4.0);
+      if (!(span > .06)) { g.visible = false; return; }
+      g.visible = true; mat.color.set(color); mat.opacity = op;
+      const s = Math.sign(val), a0 = Math.PI / 2 + s * span / 2, a1 = Math.PI / 2 - s * span / 2;     // positive pitch: clockwise seen from +z
+      const P = a => new THREE.Vector3(pos.x + r * Math.cos(a), pos.y + r * Math.sin(a), pos.z + zoff);
+      tube = new THREE.Mesh(new THREE.TubeGeometry(new ArcCurve(t => P(a0 + (a1 - a0) * t)), 40, .009, 6, false), mat); tube.renderOrder = 30; g.add(tube);
+      cone.position.copy(P(a1));
+      const d = s > 0 ? new THREE.Vector3(Math.sin(a1), -Math.cos(a1), 0) : new THREE.Vector3(-Math.sin(a1), Math.cos(a1), 0);
+      cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+    },
+  };
+}
+const arcT = [0, 1, 2, 3].map(() => Arc()), arcR = [0, 1, 2, 3].map(() => Arc()), arcA = [0, 1, 2, 3].map(() => Arc());
+const labels = Array.from({ length: 6 }, () => { const d = document.createElement('div'); d.className = 'lbl'; d.hidden = true; view.appendChild(d); return d; });
+
+function draw3d() {
+  if (!S.res) { stage.draw(); return; }
+  const a = at(S.i), k = a.k, L = lim();
+  fig.pose('sagittal', a.q, []);
+  fig.markCom('sagittal', k, m.links);
+  const jw = [0, 1, 2, 3].map(j => fig.jointW('sagittal', k, m.links, j));
+  pushArrow.visible = a.inPush;
+  if (a.inPush) { const sh = jw[2]; pushArrow.position.copy(sh.clone().sub(new THREE.Vector3(.55, 0, 0))); pushArrow.setLength(.5, .12, .07); }
+  arcT.forEach(x => x.hide()); arcR.forEach(x => x.hide()); arcA.forEach(x => x.hide());
+  const lab = [];
+  const st = S.step;
+  if (st === 2 || st === 3) {
+    // one column of A (a unit state) or of B (a unit torque): the accelerations it causes at every joint
+    const col = st === 2 ? S.A.map(r => r[S.acol]).slice(4) : S.B.map(r => r[S.joint - 1]).slice(4);
+    const sc = Math.max(...col.map(Math.abs)) || 1;
+    col.forEach((v, j) => { arcA[j].set(jw[j], v, sc, css('--f'), .15); lab.push([jw[j], `q̈${'₀₁₂₃'[j]} ${sg(v, 2)}`, css('--f')]); });
+    if (st === 3) { arcT[S.joint].set(jw[S.joint], 1, 1.4, css(JC[S.joint]), .09); arcR[S.joint].set(jw[S.joint], -1, 1.4, css('--grey'), .21, .6); }
+  } else if (st >= 4 && st !== 8) {
+    // the torques now: on the child link (solid) and the reaction on the parent link (grey, outer)
+    a.tau.forEach((v, j) => {
+      arcT[j].set(jw[j], v, L[j], css(JC[j]), .1);
+      if (j > 0 && st >= 6) arcR[j].set(jw[j], -v, L[j], css('--grey'), .2, .55);
+      lab.push([jw[j], `${JN[j]} ${sg(v, 1)}`, css(JC[j])]);
+    });
+  } else if (st === 8) {
+    a.k.link_H.forEach((h, j) => { const c = fig.comW('sagittal', k, m.links, j); arcA[j].set(c, h, 3, css(JC[j]), .07 + .02 * j); lab.push([c, `H ${sg(h, 2)}`, css(JC[j])]); });
+  } else {
+    a.q.forEach((v, j) => lab.push([jw[j], `${XS[j]} ${sg(v * D, 1)}°`, css(JC[j])]));
+  }
+  stage.draw();
+  labels.forEach((d, i) => { if (lab[i]) stage.label(d, lab[i][0].clone().add(new THREE.Vector3(.16, .02, .25)), lab[i][1], lab[i][2]); else d.hidden = true; });
+  labels[5].hidden = true;
+  stage.label(labels[5], new THREE.Vector3(.3, 1.22, 0), S.res.fell && S.i === S.res.t.length - 1 ? 'FELL' : `x<sub>c</sub> ${f(k.xc[0], 3)} m`, css('--bad'));
+}
+
+/* ---------------- timeline ---------------- */
+const tl = document.getElementById('tl');
+function drawTL() {
+  const r = tl.getBoundingClientRect(), W = Math.round(r.width), H = Math.round(r.height);
+  if (tl.width !== W * devicePixelRatio) { tl.width = W * devicePixelRatio; tl.height = H * devicePixelRatio; }
+  const c = tl.getContext('2d'); c.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
+  if (!S.res) return;
+  const R = S.res, T = 1.6, x0 = 42, x1 = W - 8, X = t => x0 + t / T * (x1 - x0), L = lim();
+  const panel = (y0, hh, title, ser, ymin, ymax, unit, extra) => {
+    const y1 = y0 + hh, Y = v => y1 - (Math.max(ymin, Math.min(ymax, v)) - ymin) / (ymax - ymin) * hh;
+    c.strokeStyle = css('--line'); c.lineWidth = 1; c.strokeRect(x0, y0, x1 - x0, hh);
+    c.fillStyle = 'rgba(217,102,31,.14)'; c.fillRect(X(.2), y0, X(.3) - X(.2), hh);
+    c.fillStyle = css('--muted'); c.font = '11px ' + css('--body'); c.fillText(title, x0 + 6, y0 + 12);
+    c.textAlign = 'right'; c.fillText(f(ymax, 0) + unit, x0 - 3, y0 + 10); c.fillText(f(ymin, 0) + unit, x0 - 3, y1); c.textAlign = 'left';
+    c.strokeStyle = css('--grey'); c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.stroke(); c.setLineDash([]);
+    if (extra) extra(Y);
+    ser.forEach(s => { c.strokeStyle = s.col; c.lineWidth = s.w || 1.5; c.setLineDash(s.dash || []); c.beginPath(); R.t.forEach((t, k) => { const v = s.get(k); if (v == null) return; k ? c.lineTo(X(t), Y(v)) : c.moveTo(X(t), Y(v)); }); c.stroke(); c.setLineDash([]); });
+  };
+  const hh = (H - 14) / 2;
+  panel(2, hh, 'angles (°): solid = LQR, dashed = everything locked', [
+    { col: css('--grey'), w: 1.4, dash: [5, 3], get: k => S.lock.q[k] ? S.lock.q[k][0] * D : null },
+    ...[0, 1, 2, 3].map(j => ({ col: css(JC[j]), w: j ? 1.4 : 2.4, get: k => R.q[k][j] * D }))], -16, 16, '');
+  panel(10 + hh, hh, 'torques (N·m), ankle limit dotted', [0, 1, 2, 3].map(j => ({ col: css(JC[j]), w: j ? 1.4 : 2.2, get: k => R.tau[k][j] })), -45, 45, '',
+    Y => { c.strokeStyle = css('--bad'); c.setLineDash([2, 3]); [L[0], -L[0]].forEach(v => { c.beginPath(); c.moveTo(x0, Y(v)); c.lineTo(x1, Y(v)); c.stroke(); }); c.setLineDash([]); });
+  // phase ticks and the cursor
+  (S.ph || []).forEach(([i]) => { c.fillStyle = css('--muted'); c.beginPath(); c.arc(X(R.t[i]), H - 3, 2.5, 0, 7); c.fill(); });
+  c.strokeStyle = css('--ink'); c.lineWidth = 1.5; c.beginPath(); c.moveTo(X(R.t[S.i]), 2); c.lineTo(X(R.t[S.i]), H - 6); c.stroke();
+  document.getElementById('tnow').textContent = `t = ${f(R.t[S.i], 3)} s`;
+}
+function scrub(e) {
+  if (!S.res) return;
+  const r = tl.getBoundingClientRect(), x0 = 42, x1 = r.width - 8, t = Math.max(0, Math.min(1.6, (e.clientX - r.left - x0) / (x1 - x0) * 1.6));
+  let best = 0; S.res.t.forEach((v, k) => { if (Math.abs(v - t) < Math.abs(S.res.t[best] - t)) best = k; });
+  S.i = best; S.playing = false; render();
+}
+let drag = false;
+tl.addEventListener('pointerdown', e => { drag = true; tl.setPointerCapture(e.pointerId); scrub(e); });
+tl.addEventListener('pointermove', e => { if (drag) scrub(e); });
+['pointerup', 'pointercancel'].forEach(t => tl.addEventListener(t, () => drag = false));
+document.getElementById('tlleg').innerHTML = JN.map((n, j) => `<span><span class="sw" style="background:var(${JC[j]})"></span>${n}</span>`).join('') +
+  `<span><span class="sw" style="background:rgba(217,102,31,.5)"></span>push</span><span>• phase marks (step 10) · drag to scrub</span>`;
+
+/* ---------------- helpers for the explanations ---------------- */
+const mat = (A, opt = {}) => {
+  const mx = opt.max || Math.max(...A.flat().map(Math.abs)) || 1, d = opt.d == null ? 2 : opt.d;
+  const rows = A.map((r, i) => `<tr>${opt.rn ? `<td>${opt.rn[i]}</td>` : ''}${r.map((v, j) => {
+    const a = Math.min(1, Math.abs(v) / mx) * .45, col = v >= 0 ? `rgba(42,79,214,${a})` : `rgba(194,59,59,${a})`;
+    const on = opt.on && opt.on(i, j) ? ' class="on"' : '';
+    return `<td${on} data-i="${i}" data-j="${j}" style="background:${col}">${f(v, d)}</td>`; }).join('')}</tr>`).join('');
+  return `<table class="t ${opt.click ? 'hm' : ''}" ${opt.id ? `id="${opt.id}"` : ''}>${opt.cn ? `<tr>${opt.rn ? '<th></th>' : ''}${opt.cn.map(x => `<th>${x}</th>`).join('')}</tr>` : ''}${rows}</table>`;
+};
+const bars = (items, sumLabel, sumVal, scale) => {
+  const mx = scale || Math.max(...items.map(x => Math.abs(x[1])), Math.abs(sumVal || 0)) || 1;
+  const row = (nm, v, col, cls = '') => {
+    const w = Math.min(50, Math.abs(v) / mx * 50), l = v >= 0 ? 50 : 50 - w;
+    return `<span class="nm ${cls}">${nm}</span><span class="tr"><span class="br" style="left:${l}%;width:${w}%;background:${col}"></span></span><span class="v ${cls}">${sg(v, Math.abs(v) < 10 ? 2 : 1)}</span>`;
+  };
+  return `<div class="bars">${items.map(x => row(x[0], x[1], x[2])).join('')}${sumLabel ? row(sumLabel, sumVal, css('--ink'), 'sum') : ''}</div>`;
+};
+const pickJoint = (cur, list, attr = 'jp') => `<div class="pick">${list.map(j => `<button data-${attr}="${j}" aria-pressed="${j === cur}">${JN[j]}</button>`).join('')}</div>`;
+
+/* ---------------- the steps ---------------- */
+const STEPS = [
+  ['1 · the state', () => {
+    const a = at(S.i);
+    return `<p class="goal"><b>Goal:</b> know exactly what the controller reads. Eight numbers, every millisecond: four joint angles and four joint rates.</p>
+    <span class="eq">x = (q₀, q₁, q₂, q₃, q̇₀, q̇₁, q̇₂, q̇₃),   u = (τ_waist, τ_shoulder, τ_elbow)</span>
+    <table class="t"><tr><th>state</th><th>now</th><th>unit</th><th>what it is</th></tr>
+    ${a.x.map((v, j) => `<tr><td style="color:var(${JC[j % 4]})">${XN[j]}</td><td>${f(v, 3)}</td><td>${XU[j]}</td><td style="font-family:var(--body);text-align:left">${['legs on the foot, + forward', 'torso relative to legs', 'arms relative to torso, + swings back', 'forearm relative to upper arm', 'how fast the lean grows', 'torso swing rate', 'arm swing rate', 'forearm swing rate'][j]}</td></tr>`).join('')}</table>
+    <p><b>Three inputs, not four.</b> The ankle is in x but not in u. Its torque is whatever the foot gives: a spring-damper, τ₀ = −300 q₀ − 30 q̇₀, clipped at ±${f(lim()[0], 1)} N·m (m g × half the foot). The controller cannot command it, only exploit it.</p>
+    <p>Scrub the timeline below the robot. Before 0.20 s every number is 0; the controller sees the push only through what it does to x.</p>`;
+  }],
+  ['2 · the machine f', () => {
+    const a = at(S.i), M = a.k.M;
+    return `<p class="goal"><b>Goal:</b> write the robot as ẋ = f(x, u), the thing LQR will approximate.</p>
+    <span class="eq">ẋ = f(x, u) = ( q̇ ,  M(q)⁻¹ (τ − c(q,q̇) − g(q)) ),   τ = (τ₀(q₀,q̇₀), u₁, u₂, u₃)</span>
+    <p>The top half says angles change at the rates. The bottom half is page 167's equation of motion solved for q̈. The ankle spring sits <b>inside</b> f, so the design knows the foot pushes back.</p>
+    <p><b>At t = ${f(a.t, 3)} s</b> the mass matrix and gravity vector are</p>
+    ${mat(M, { rn: JN, cn: JN, d: 3 })}
+    <p>g = (${a.k.g.map(v => f(v, 2)).join(', ')}) N·m. At standing, g = 0 and c = 0: x = 0, u = 0 is an equilibrium. That is the point we linearise about.</p>`;
+  }],
+  ['3 · linearise: A', () => {
+    const A = S.A, lo = A.slice(4), c = S.acol;
+    return `<p class="goal"><b>Goal:</b> replace f by ẋ ≈ A x + B u near standing, and read what each entry of A says.</p>
+    <span class="eq">A[:, i] = ( f(εeᵢ, 0) − f(−εeᵢ, 0) ) / 2ε        (page 19, ε = 10⁻⁵)</span>
+    <p>The top four rows of A are [0  I]. The bottom four are what a unit of each state does to the four accelerations. <b>Click a column</b>; the robot shows those accelerations as teal arcs.</p>
+    ${mat(lo, { rn: ['q̈₀', 'q̈₁', 'q̈₂', 'q̈₃'], cn: XS, d: 1, click: true, id: 'Am', on: (i, j) => j === c })}
+    <p>Done by hand it is exact, because at x = 0 everything multiplying ∂M/∂q is zero and c is quadratic in q̇:</p>
+    <span class="eq">A = [ 0          I        ]
+    [ −M⁻¹(G + Kₐ)   −M⁻¹Dₐ ],   G = ∂g/∂q,  Kₐ = diag(300,0,0,0),  Dₐ = diag(30,0,0,0)</span>
+    <p><b>Column ${XS[c]}:</b> ${c === 0 ? `lean the whole robot forward 1 rad with the motors off. The legs accelerate back (q̈₀ ${sg(lo[0][0], 1)}): the ankle spring's 300 N·m/rad beats gravity's 219.5 (= m g × 0.66 m of COM travel per radian). The torso, which no motor holds, folds forward (q̈₁ ${sg(lo[1][0], 1)}).`
+      : c === 1 ? `bend the torso forward 1 rad on its own. The torso keeps falling forward (q̈₁ ${sg(lo[1][1], 1)}): with u = 0 it is an inverted pendulum on the waist, the unstable pole at +8.2 /s. Its reaction tips the legs back (q̈₀ ${sg(lo[0][1], 1)}).`
+      : c < 4 ? `move the ${JN[c]} 1 rad. With no motor it swings back like a hanging pendulum (q̈${'₀₁₂₃'[c]} ${sg(lo[c][c], 1)}), and the reaction is felt along the chain.`
+      : c === 4 ? `a lean rate of 1 rad/s. Only the ankle damper reacts (30 N·m·s/rad), and M⁻¹ spreads it through the chain.`
+      : `a rate at the ${JN[c - 4]}. Nothing in the passive machine resists it at standing, so the column is zero: only the controller can damp this joint.`}</p>`;
+  }],
+  ['4 · B: one N·m at one joint', () => {
+    const j = S.joint, col = S.B.map(r => r[j - 1]).slice(4);
+    return `<p class="goal"><b>Goal:</b> see how a motor torque reaches <i>every</i> joint, not only its own.</p>
+    ${pickJoint(j, ACT)}
+    <span class="eq">B = [ 0 ; M⁻¹ S ],   column ${JN[j]} = M⁻¹ e${'₀₁₂₃'[j]} = (${col.map(v => f(v, 3)).join(', ')}) rad/s² per N·m</span>
+    <p>A motor sits between two links. 1 N·m at the ${JN[j]} turns the ${LN[j]} one way (coloured arc) and the ${LN[j - 1]} the other way (grey arc): action and reaction. In joint coordinates that is one generalised force e${'₀₁₂₃'[j]}, and M⁻¹ turns it into accelerations of all four joints at once (teal arcs).</p>
+    ${bars(col.map((v, r) => [`q̈${'₀₁₂₃'[r]} ${JN[r]}`, v, css(JC[r])]))}
+    <p>${j === 1 ? `Read the first entry: <b>+1 N·m at the waist accelerates the lean by ${f(col[0], 3)} rad/s²</b>. Turning the torso forward pushes the legs back. This number is the only door from the upper body to the lean, and the whole LQR is built on its sign.` : j === 2 ? `+1 N·m at the shoulder swings the arms back (q̈₂ ${sg(col[2], 2)}) and its reaction tips the torso and the legs forward (q̈₀ ${sg(col[0], 3)}).` : `The forearm is light: 1 N·m gives it ${f(col[3], 1)} rad/s², but its effect on the lean is small (${sg(col[0], 3)}).`}</p>`;
+  }],
+  ['5 · Bryson: the price list', () => {
+    const g = gains(), q = [g.lean_max, g.posture_max, g.posture_max, g.posture_max], v = [g.lean_rate_max, g.posture_rate_max, g.posture_rate_max, g.posture_rate_max];
+    return `<p class="goal"><b>Goal:</b> say what "good" means as numbers. LQR minimises</p>
+    <span class="eq">J = ∫ ( xᵀ Q x + uᵀ R u ) dt</span>
+    <p><b>Bryson's rule:</b> divide each variable by the biggest value you would accept, then square. Each term is 1 when its variable reaches its limit.</p>
+    <table class="t"><tr><th>term</th><th>largest acceptable</th><th>weight</th></tr>
+    ${[...q, ...v].map((x, j) => `<tr><td style="color:var(${JC[j % 4]})">${XN[j]}</td><td>${f(x, 2)} ${XU[j]}</td><td>${f(1 / x / x, 3)}</td></tr>`).join('')}
+    ${ACT.map(j => `<tr><td style="color:var(${JC[j]})">τ ${JN[j]}</td><td>${f(g.tau_max[j], 0)} N·m</td><td>${(1 / g.tau_max[j] / g.tau_max[j]).toExponential(2)}</td></tr>`).join('')}</table>
+    <p>Read it as a trade: a 0.1 rad lean costs as much as 0.5 rad of torso bend, and as much as the full 88 N·m at the waist. The lean is the expensive one; the posture is cheap to spend, which is what lets LQR use the upper body at all. The 0.1 rad is not arbitrary: the ankle spring saturates at ${f(lim()[0] / 300, 3)} rad.</p>
+    <p><b>Try it, and be surprised.</b> Press <b>redesign</b> after each change. lean_max 0.05 rad asks for less lean, and the peak lean gets <i>worse</i> (about 7.3° instead of 6.2°): the waist kicks harder and earlier, and the kick goes into the legs. posture_max 0.2 rad lets the torso move less, and the peak lean gets <i>better</i> (about 5.7°). The reason: K is optimal for the linear model, and the linear model has no foot limit. The real ankle saturates at 0.30 s. Bryson's rule gives a sensible start; the final prices are tuned in simulation.</p>`;
+  }],
+  ['6 · Riccati → K', () => {
+    const K = S.K, j = S.joint;
+    const row = K[j - 1];
+    return `<p class="goal"><b>Goal:</b> get the gains, and read each one as "N·m per unit of a measured number".</p>
+    <span class="eq">AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0,     K = R⁻¹ Bᵀ P,     u = −K x</span>
+    <p>P is the price of starting at x: the whole future cost is xᵀPx. K is how fast that price falls per N·m of each motor. <b>Click a row</b> to pick a joint.</p>
+    ${mat(K, { rn: ACT.map(a => JN[a]), cn: XS, d: 1, click: true, id: 'Km', on: (r) => r === j - 1 })}
+    <p><b>The ${JN[j]} row, in words</b> (u = −K x, so the torque has the opposite sign of each gain times the state):</p>
+    <ul>${row.map((v, c) => [c, v]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4).map(([c, v]) => {
+      const unit = c < 4 ? 0.1 : 1.0, uu = c < 4 ? '0.1 rad' : '1 rad/s';
+      return `<li>${uu} of <span style="color:var(${JC[c % 4]})">${XN[c]}</span> → ${sg(-v * unit, 1)} N·m at the ${JN[j]}</li>`; }).join('')}</ul>
+    <p>${j === 1 ? `Look at the first two gains: ${f(row[0], 0)} on q₀ and ${f(row[1], 0)} on q₁, almost equal. So the waist torque is close to −${f(row[0], 0)} × (q₀ + q₁), and q₀ + q₁ is the torso's angle <i>to the vertical</i>. <b>The waist is a stiff spring holding the torso upright in the world</b>, not relative to the legs, plus a large damper on the lean rate (${f(row[4], 0)}). When the legs lean forward, holding the torso vertical means bending it back relative to them: a negative waist torque, and (step 4) a forward reaction on the legs. During the push the lean-rate damper wins over the spring, and it throws the torso about 7° <i>behind</i> vertical by 0.40 s; then the spring brings it back.` : `This row is about a third of the waist's. Its signs: a forward lean (gain ${f(row[0], 0)}) gives a ${row[0] < 0 ? 'positive' : 'negative'} ${JN[j]} torque, and its own angle (gain ${f(row[j], 0)}) pulls it home. With these prices the waist does most of the work.`}</p>`;
+  }],
+  ['7 · u = −Kx, term by term', () => {
+    const a = at(S.i), j = S.joint, L = lim(), c = a.contr[j - 1], u = a.u[j - 1], clipped = Math.max(-L[j], Math.min(L[j], u));
+    return `<p class="goal"><b>Goal:</b> watch one joint's torque being added up from the eight measurements, at the instant on the timeline.</p>
+    ${pickJoint(j, ACT)}
+    <span class="eq">τ_${JN[j]} = −Σᵢ K[${JN[j]}, i] · xᵢ        t = ${f(a.t, 3)} s</span>
+    ${bars(c.map((v, i) => [`−K·${XS[i]}`, v, css(JC[i % 4])]), 'sum', u)}
+    <p>${Math.abs(u - clipped) > 1e-6 ? `The sum ${f(u, 1)} N·m is beyond the motor: <b>clipped to ${f(clipped, 1)}</b>.` : `Inside the ±${f(L[j], 0)} N·m limit: no clipping, τ = ${f(u, 1)} N·m.`}</p>
+    <p>All three now: ${ACT.map(k => `<span style="color:var(${JC[k]})">${JN[k]} ${sg(a.tau[k], 1)}</span>`).join(', ')}, and the ankle (not commanded) ${sg(a.tau[0], 1)} N·m.
+    Move to t = 0.25 s: the lean-rate bar dominates the waist. Move to 0.40 s: the lean angle and the waist angle bars fight, and the waist has flipped sign.</p>`;
+  }],
+  ['8 · where the torque goes', () => {
+    const a = at(S.i), r = S.tgt, Mi = a.Mi;
+    const items = [
+      ...[0, 1, 2, 3].map(j => [`τ ${JN[j]}`, Mi[r][j] * a.tau[j], css(JC[j])]),
+      ['gravity −g', mv([Mi[r]], a.k.g.map(v => -v))[0], css('--grey')],
+      ['push', mv([Mi[r]], a.fp)[0], css('--b')],
+      ['velocity −c', mv([Mi[r]], a.k.cvec.map(v => -v))[0], css('--e')],
+    ];
+    const stops = mv([Mi[r]], a.stop)[0]; if (Math.abs(stops) > 1e-6) items.push(['joint stop', stops, css('--bad')]);
+    return `<p class="goal"><b>Goal:</b> follow the torques into the motion. Every torque moves every joint, through one row of M⁻¹.</p>
+    ${pickJoint(r, [0, 1, 2, 3], 'tg')}
+    <span class="eq">q̈ = M(q)⁻¹ ( τ − c − g + Jᵀ F_push ),   q̈${'₀₁₂₃'[r]} = Σⱼ (M⁻¹)${'₀₁₂₃'[r]}ⱼ · (each force)ⱼ</span>
+    ${bars(items, `q̈${'₀₁₂₃'[r]} total`, a.qdd[r])}
+    <p>Units: rad/s². On the robot the coloured arcs are each motor's torque on its <i>outer</i> link and the grey arcs the equal and opposite torque on the link below.</p>
+    <p>${r === 0 ? `This is the lean, the thing to save. At t = 0.25 s the waist term is large and <b>positive</b>: holding the torso back against the push shoves the legs forward, a cost paid while the ankle can still pay. From about 0.32 s it turns <b>negative</b>: the waist brakes the torso and the reaction pulls the legs back just as the ankle saturates. Gravity's term grows with the lean; the upper body's other effect is to keep x<sub>c</sub>, and so that term, small. Notice the push term itself is <i>negative</i> on the lean: on a limp chain a shove at the shoulder mostly folds the torso forward, and its reaction tips the legs back. It is the waist resisting that fold that passes the push down to the legs.` : `Pick the lean (ankle) to see the term that matters for balance.`}</p>`;
+  }],
+  ['9 · the momentum ledger', () => {
+    const a = at(S.i), k = a.k, mg = UB.mtot(m) * m.g;
+    const dH = a.tau[0] + mg * k.xc[0] + a.pushMoment;
+    return `<p class="goal"><b>Goal:</b> check the bookkeeping from page 168: internal torques never change the total, they move it.</p>
+    <span class="eq">dH_O/dt = τ_ankle + m g x_c + (push moment)
+       = ${f(a.tau[0], 1)} + ${f(mg * k.xc[0], 1)} + ${f(a.pushMoment, 1)} = ${f(dH, 1)} N·m</span>
+    <p>No waist, shoulder or elbow torque in that sum. Each link's share of H about the ankle (arcs at the link COMs):</p>
+    ${bars(k.link_H.map((h, j) => [LN[j], h, css(JC[j])]), 'total H_O', k.H_O)}
+    <p>So the upper body helps in exactly two ways: it <b>moves H between links</b> (the waist torque takes it from the torso and hands it to the legs, or back), and it <b>moves x<sub>c</sub></b>, which changes gravity's term. The LQR keeps x<sub>c</sub> under ${f(Math.max(...S.res.xc.map(v => v[0])), 3)} m in this run; with everything locked it reaches ${f(Math.max(...S.lock.xc.map(v => v[0])), 3)} m.</p>`;
+  }],
+  ['10 · the push, phase by phase', () => {
+    return `<p class="goal"><b>Goal:</b> put it together in time. Click a time to jump there; press play to watch.</p>
+    <div>${(S.ph || []).map(([i, txt]) => `<div class="ph"><button data-ti="${i}">${f(S.res.t[i], 3)} s</button><div>${txt}</div></div>`).join('')}</div>
+    <p style="margin-top:6px">The pattern: <b>pay early, collect late.</b> While the push is on and the ankle still has torque in hand, the waist puts the torso behind the ankle and accepts a faster-growing lean. When the ankle runs out, the waist reverses and its reaction brakes the legs. Nobody wrote that rule; it is what −Kx computes from A, B, Q and R.</p>`;
+  }],
+];
+
+/* ---------------- controls ---------------- */
+function controls() {
+  const el = document.getElementById('ctl');
+  const C = [['force', 'push force', 0, 120, 5, v => v + ' N', S, 'force'],
+    ['lm', 'lean_max', 0.03, 0.3, 0.01, v => f(v, 2) + ' rad', S.P, 'lean_max'],
+    ['pm', 'posture_max', 0.1, 1.5, 0.05, v => f(v, 2) + ' rad', S.P, 'posture_max'],
+    ['lr', 'lean_rate_max', 0.3, 3, 0.1, v => f(v, 1) + ' rad/s', S.P, 'lean_rate_max'],
+    ['pr', 'posture_rate_max', 1, 10, 0.5, v => f(v, 1) + ' rad/s', S.P, 'posture_rate_max'],
+    ['ts', 'torque limits ×', 0.25, 2, 0.05, v => f(v, 2), S.P, 'tscale']];
+  el.innerHTML = C.map(([id, nm, lo, hi, st, fm, o, key]) => `<label class="ctl"><span>${nm}</span><input id="c_${id}" type="range" min="${lo}" max="${hi}" step="${st}" value="${o[key]}"><output>${fm(o[key])}</output></label>`).join('');
+  C.forEach(([id, , , , , fm, o, key]) => {
+    const i = document.getElementById('c_' + id);
+    i.oninput = () => { o[key] = +i.value; i.nextElementSibling.textContent = fm(+i.value); };
+    if (id === 'force') i.onchange = () => { if (S.busy) return; simulate(); render(); };
+  });
+}
+document.getElementById('redesign').onclick = design;
+document.getElementById('dflt').onclick = () => { S.P = Object.assign({}, DEF); S.force = 70; controls(); design(); };
+
+/* ---------------- render ---------------- */
+function render() {
+  const chips = document.getElementById('chips');
+  chips.innerHTML = STEPS.map((s, i) => `<button data-s="${i}" aria-current="${i === S.step}">${s[0]}</button>`).join('');
+  chips.querySelectorAll('button').forEach(b => b.onclick = () => { S.step = +b.dataset.s; render(); });
+  document.getElementById('busy').innerHTML = S.busy ? '<span class="busy">solving the Riccati equation…</span>' : '';
+  const exp = document.getElementById('exp');
+  if (!S.res || !S.K) { exp.innerHTML = '<p>Designing K…</p>'; drawTL(); stage.draw(); return; }
+  exp.innerHTML = STEPS[S.step][1]();
+  exp.querySelectorAll('[data-jp]').forEach(b => b.onclick = () => { S.joint = +b.dataset.jp; render(); });
+  exp.querySelectorAll('[data-tg]').forEach(b => b.onclick = () => { S.tgt = +b.dataset.tg; render(); });
+  exp.querySelectorAll('[data-ti]').forEach(b => b.onclick = () => { S.i = +b.dataset.ti; S.playing = false; render(); });
+  exp.querySelectorAll('#Am td[data-j]').forEach(td => td.onclick = () => { S.acol = +td.dataset.j; render(); });
+  exp.querySelectorAll('#Km td[data-i]').forEach(td => td.onclick = () => { S.joint = +td.dataset.i + 1; render(); });
+  drawTL(); draw3d();
+}
+document.getElementById('prev').onclick = () => { S.step = Math.max(0, S.step - 1); render(); };
+document.getElementById('next').onclick = () => { S.step = Math.min(STEPS.length - 1, S.step + 1); render(); };
+let last = 0, acc = 0;
+function frame(ts) {
+  if (!S.playing || !S.res) return;
+  const dt = Math.min(.05, (ts - last) / 1000 || .016); last = ts; acc += dt * (S.slow ? .25 : 1);
+  while (acc >= .005 && S.i < S.res.t.length - 1) { S.i++; acc -= .005; }
+  if (S.i >= S.res.t.length - 1) S.playing = false;
+  render();
+  if (S.playing) requestAnimationFrame(frame);
+}
+document.getElementById('play').onclick = () => { if (!S.res) return; if (S.i >= S.res.t.length - 1) S.i = 0; S.playing = !S.playing; last = 0; acc = 0; if (S.playing) requestAnimationFrame(frame); };
+document.getElementById('slow').onclick = e => { S.slow = !S.slow; e.target.setAttribute('aria-pressed', S.slow); };
+document.getElementById('vside').onclick = () => { stage.view('side'); draw3d(); };
+document.getElementById('viso').onclick = () => { stage.view('iso'); draw3d(); };
+new ResizeObserver(() => { drawTL(); draw3d(); }).observe(view);
+window.LAB = { S, at, design, render };
+controls(); render(); design();
+S.i = 50;
+})();
+</script>
+</body></html>

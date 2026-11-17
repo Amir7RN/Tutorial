@@ -180,7 +180,8 @@ REVIEW = {
 167: ((166,133,134,136), 'Positions from cumulative angles, one Jacobian per centre of mass, M from the kinetic energy, g from the potential energy, c from the COM accelerations at qdd = 0. The ankle row of tau = M qdd + c + g is bounded by m g times half the foot.'),
 168: ((167,124,126), 'dH_O/dt = tau_ankle + m g x_c + push moment: internal torques cannot change the angular momentum about the ankle, only move it between links and shift the COM. H_O = A_O(q) qd with A the mass matrix without its outer J^T. Mass moving high above the pivot counts more than spin.'),
 169: ((168,19,145,24), 'A state-feedback law (LQR with the ankle spring in the model) extends the recoverable push by about 15 percent and halves the lean; a COM counterweight law and a momentum-rate QP both fail, because moving mass back kicks the legs forward and a rate cannot be sustained past a joint stop.'),
-170: ((169,166,161,164,136), 'Phase 1: Python and MuJoCo, checking M, g and the momentum of the real G1 against the planar oracle before each next step. Phase 2: port the working controller to C++ as classes with invariants, fixed-size Eigen, no allocation in update, and the same numeric comparison test.'),
+170: ((169,167,168,19), 'LQR on the G1: x = (q, qdot), the ankle spring inside f, A = [0 I; -M^-1(G+K_a) -M^-1 D_a] and B = [0; M^-1 S] at standing, Bryson prices, K = R^-1 B^T P. The waist row is about -300 (q0 + q1): a spring holding the torso upright in the world. A waist torque reaches the lean only through (M^-1)_01 and through x_c; the law bends the torso back early and brakes it when the ankle saturates.'),
+171: ((170,166,161,164,136), 'Phase 1: Python and MuJoCo, checking M, g and the momentum of the real G1 against the planar oracle before each next step. Phase 2: port the working controller to C++ as classes with invariants, fixed-size Eigen, no allocation in update, and the same numeric comparison test.'),
 }
 
 VOCABULARY = {

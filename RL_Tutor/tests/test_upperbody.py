@@ -358,7 +358,8 @@ class Pages(unittest.TestCase):
         self.assertEqual(nums, list(range(nums[0], nums[0] + len(BALANCE_PAGES))))
         self.assertEqual(nums[0], max(c.NUM for c in LESSON_CLASSES if c not in BALANCE_PAGES) + 1)
         self.assertEqual(theme.group_of(BALANCE_PAGES[0].SECTION), "Humanoid Balance")
-        for name in ("g1_upper_body.html", "upper_body_lagrange.html", "upper_body_recovery.html"):
+        for name in ("g1_upper_body.html", "upper_body_lagrange.html", "upper_body_recovery.html",
+                     "lqr_torque_flow.html"):
             src = open(STEPLAB / name, encoding="utf-8").read()
             for s in re.findall(r'<script src="([^"]+)"', src):
                 self.assertFalse(s.startswith("http"), name)
@@ -367,6 +368,42 @@ class Pages(unittest.TestCase):
             page = cls()
             self.assertTrue(page.NO_RECAP)
             page.deleteLater()
+
+    def test_lqr_page_story_matches_the_simulation(self):
+        from app.pages.humanoid_balance import LQR_STORY as st, lqr_numbers
+        n = lqr_numbers()
+        m, g, K = n["m"], n["g"], n["K"]
+        # P solves the Riccati equation and gives the same K
+        A, B, Q, R, P = n["A"], n["B"], n["Q"], n["R"], n["P"]
+        res_care = A.T @ P + P @ A - P @ B @ np.linalg.inv(R) @ B.T @ P + Q
+        self.assertLess(np.abs(res_care).max(), 1e-6 * np.abs(P).max())
+        np.testing.assert_allclose(np.linalg.inv(R) @ B.T @ P, K, atol=1e-6)
+        # the analytic A at standing equals the finite-difference one
+        Mi, G = n["Minv"], n["G"]
+        np.testing.assert_allclose(A[4:, :4], -Mi @ (G + np.diag([g.ankle_k, 0, 0, 0])), atol=1e-3)
+        np.testing.assert_allclose(B[4:], Mi[:, 1:], atol=1e-6)
+        r = ub.simulate(m, g, ub.Push(force=70), active=[1, 2, 3], T=1.2, sample=1)
+        lk = ub.simulate(m, g, ub.Push(force=70), active=[], T=1.2, sample=1)
+        self.assertAlmostEqual(r["peak_lean_deg"], st["peak"], delta=0.05)
+        self.assertAlmostEqual(lk["peak_lean_deg"], st["locked_peak"], delta=0.05)
+        t = np.array(r["t"]); tau = np.array(r["tau"]); q = np.array(r["q"]); qd = np.array(r["qd"])
+        self.assertAlmostEqual(t[np.argmax(np.abs(q[:, 0]))], st["t_peak"], delta=0.01)
+        sat = t[np.abs(tau[:, 0]) >= m.tau_ankle_max() - 1e-6]
+        self.assertAlmostEqual(sat[0], st["sat"][0], delta=0.01)
+        self.assertAlmostEqual(sat[-1], st["sat"][1], delta=0.01)
+        self.assertAlmostEqual(t[(t > 0.25) & (tau[:, 1] > 0)][0], st["flip"], delta=0.01)
+        i = 250
+        x = np.concatenate([q[i], qd[i]])
+        np.testing.assert_allclose(-K[0] * x, st["waist_terms_025"], atol=0.06)
+        self.assertAlmostEqual(tau[i, 1], st["waist_025"], delta=0.06)
+        for i, want in ((250, st["qdd0_025"]), (400, st["qdd0_040"])):
+            k = m.core(q[i], qd[i])
+            Mi = np.linalg.inv(k.M)
+            fp = m.point_jacobian(q[i], 2)[0] * 70 if 200 <= i < 300 else np.zeros(4)
+            parts = list(Mi[0] * tau[i]) + [Mi[0] @ -k.g, Mi[0] @ fp]
+            total = Mi[0] @ (tau[i] + fp - k.g - k.cvec)
+            np.testing.assert_allclose(parts + [total], want, atol=0.01)
+        self.assertAlmostEqual(np.degrees(q[400, 0] + q[400, 1]), st["torso_back"], delta=0.1)
 
     def test_momentum_page_simulation_button(self):
         from app.pages.humanoid_balance import UpperBodyMomentumPage

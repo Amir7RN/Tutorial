@@ -102,12 +102,13 @@ C++ FOR ROBOTICS
            hand-off + mutation-graded tests, interview drill
 
 HUMANOID BALANCE
-   165     the G1 upper body as a machine: joints, planes, locks (3D lab)
-   166     sagittal plane: derive the equations of motion yourself (step lab)
-   167     momentum about the ankle, the momentum matrix, why the arms help
-   168     the recovery law: LQR vs counterweight vs momentum QP, measured
+   166     the G1 upper body as a machine: joints, planes, locks (3D lab)
+   167     sagittal plane: derive the equations of motion yourself (step lab)
+   168     momentum about the ankle, the momentum matrix, why the arms help
+   169     the recovery law: LQR vs counterweight vs momentum QP, measured
            (a live push-recovery lab)
-   169     from this model to MuJoCo and C++: the project plan
+   170     LQR opened up: A, B, Bryson, Riccati, K, and where each torque goes
+   171     from this model to MuJoCo and C++: the project plan
 
 The mechanics block is appended rather than inserted so that every earlier
 page keeps its number. It derives the plant the control half assumed: where
@@ -501,7 +502,7 @@ PAGE_CLASSES = [
     # MuJoCo push-recovery project. Planar dynamics derived by hand, momentum,
     # the recovery law, and the path to MuJoCo and C++ (ctrlcore/upperbody.py).
     # ======================================================================
-    *BALANCE_PAGES,        # 166-170 machine, derivation, momentum, recovery law, project
+    *BALANCE_PAGES,        # 166-171 machine, derivation, momentum, recovery law, LQR, project
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read
