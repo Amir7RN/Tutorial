@@ -172,11 +172,17 @@ UB3D.stage = function (canvas, view, opts = {}) {
     cam.position.set(orbit.tgt.x + orbit.r * Math.cos(orbit.el) * Math.sin(orbit.az), orbit.tgt.y + orbit.r * Math.sin(orbit.el), orbit.tgt.z + orbit.r * Math.cos(orbit.el) * Math.cos(orbit.az));
     cam.lookAt(orbit.tgt);
   }
+  // resize only when the size really changed: with a fractional devicePixelRatio (Windows at 125 or
+  // 175 percent) canvas.width never equals w * dpr, and resizing on every draw clears the canvas (flicker)
+  let last = '';
   function resize() {
     const r = canvas.getBoundingClientRect(), w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
-    if (canvas.width !== w * devicePixelRatio || canvas.height !== h * devicePixelRatio) { renderer.setPixelRatio(devicePixelRatio); renderer.setSize(w, h, false); }
+    const key = w + 'x' + h + '@' + devicePixelRatio;
+    if (key !== last) { last = key; renderer.setPixelRatio(devicePixelRatio); renderer.setSize(w, h, false); }
     cam.aspect = w / h; cam.updateProjectionMatrix();
   }
+  canvas.addEventListener('webglcontextlost', e => e.preventDefault());
+  canvas.addEventListener('webglcontextrestored', () => { last = ''; setTimeout(() => S.draw(), 0); });
   let drag = null;
   canvas.addEventListener('pointerdown', e => { drag = [e.clientX, e.clientY]; canvas.setPointerCapture(e.pointerId); });
   canvas.addEventListener('pointermove', e => { if (!drag) return; orbit.az -= (e.clientX - drag[0]) * .008; orbit.el = Math.max(-.2, Math.min(1.5, orbit.el + (e.clientY - drag[1]) * .006)); drag = [e.clientX, e.clientY]; S.draw(); });

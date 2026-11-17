@@ -280,8 +280,12 @@ UB.lqrGain = function (model, g, active) {
   const Q = zeros(2 * nf, 2 * nf); [...qmax, ...vmax].forEach((v, i) => Q[i][i] = 1 / (v * v));
   const R = zeros(active.length, active.length); active.forEach((j, i) => R[i][i] = 1 / (g.tau_max[j] * g.tau_max[j]));
   // the iteration's error is O(dt): two step sizes and a Richardson step take it below 0.1 %
-  const K = active.length ? sub(scl(UB.care(A, B, Q, R, 1e-4).K, 2), UB.care(A, B, Q, R, 2e-4).K) : zeros(0, 2 * nf);
-  const out = { K, free, A, B };
+  let K = zeros(0, 2 * nf), P = null;
+  if (active.length) {
+    const c1 = UB.care(A, B, Q, R, 1e-4), c2 = UB.care(A, B, Q, R, 2e-4);
+    K = sub(scl(c1.K, 2), c2.K); P = sub(scl(c1.P, 2), c2.P);
+  }
+  const out = { K, P, free, A, B, Q, R };
   lqrCache.set(key, out);
   return out;
 };

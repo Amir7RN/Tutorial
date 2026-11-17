@@ -101,7 +101,7 @@ function design() {
   S.busy = true; S.playing = false; render();
   setTimeout(() => {
     const r = UB.lqrGain(m, gains(), ACT);
-    S.K = r.K; S.A = r.A; S.B = r.B;
+    S.K = r.K; S.A = r.A; S.B = r.B; S.Pm = r.P; S.Q = r.Q; S.R = r.R;
     simulate(); S.busy = false; render();
   }, 40);
 }
@@ -180,21 +180,21 @@ function draw3d() {
   if (a.inPush) { const sh = jw[2]; pushArrow.position.copy(sh.clone().sub(new THREE.Vector3(.55, 0, 0))); pushArrow.setLength(.5, .12, .07); }
   arcT.forEach(x => x.hide()); arcR.forEach(x => x.hide()); arcA.forEach(x => x.hide());
   const lab = [];
-  const st = S.step;
-  if (st === 2 || st === 3) {
+  const kind = STEPS[S.step][1];
+  if (kind === 'acol' || kind === 'bcol') {
     // one column of A (a unit state) or of B (a unit torque): the accelerations it causes at every joint
-    const col = st === 2 ? S.A.map(r => r[S.acol]).slice(4) : S.B.map(r => r[S.joint - 1]).slice(4);
+    const col = kind === 'acol' ? S.A.map(r => r[S.acol]).slice(4) : S.B.map(r => r[S.joint - 1]).slice(4);
     const sc = Math.max(...col.map(Math.abs)) || 1;
     col.forEach((v, j) => { arcA[j].set(jw[j], v, sc, css('--f'), .15); lab.push([jw[j], `q̈${'₀₁₂₃'[j]} ${sg(v, 2)}`, css('--f')]); });
-    if (st === 3) { arcT[S.joint].set(jw[S.joint], 1, 1.4, css(JC[S.joint]), .09); arcR[S.joint].set(jw[S.joint], -1, 1.4, css('--grey'), .21, .6); }
-  } else if (st >= 4 && st !== 8) {
+    if (kind === 'bcol') { arcT[S.joint].set(jw[S.joint], 1, 1.4, css(JC[S.joint]), .09); arcR[S.joint].set(jw[S.joint], -1, 1.4, css('--grey'), .21, .6); }
+  } else if (kind === 'torque' || kind === 'torqueR') {
     // the torques now: on the child link (solid) and the reaction on the parent link (grey, outer)
     a.tau.forEach((v, j) => {
       arcT[j].set(jw[j], v, L[j], css(JC[j]), .1);
-      if (j > 0 && st >= 6) arcR[j].set(jw[j], -v, L[j], css('--grey'), .2, .55);
+      if (j > 0 && kind === 'torqueR') arcR[j].set(jw[j], -v, L[j], css('--grey'), .2, .55);
       lab.push([jw[j], `${JN[j]} ${sg(v, 1)}`, css(JC[j])]);
     });
-  } else if (st === 8) {
+  } else if (kind === 'H') {
     a.k.link_H.forEach((h, j) => { const c = fig.comW('sagittal', k, m.links, j); arcA[j].set(c, h, 3, css(JC[j]), .07 + .02 * j); lab.push([c, `H ${sg(h, 2)}`, css(JC[j])]); });
   } else {
     a.q.forEach((v, j) => lab.push([jw[j], `${XS[j]} ${sg(v * D, 1)}°`, css(JC[j])]));
@@ -209,7 +209,8 @@ function draw3d() {
 const tl = document.getElementById('tl');
 function drawTL() {
   const r = tl.getBoundingClientRect(), W = Math.round(r.width), H = Math.round(r.height);
-  if (tl.width !== W * devicePixelRatio) { tl.width = W * devicePixelRatio; tl.height = H * devicePixelRatio; }
+  const tw = Math.round(W * devicePixelRatio), th = Math.round(H * devicePixelRatio);
+  if (tl.width !== tw || tl.height !== th) { tl.width = tw; tl.height = th; }
   const c = tl.getContext('2d'); c.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
   c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
   if (!S.res) return;
@@ -246,7 +247,7 @@ tl.addEventListener('pointerdown', e => { drag = true; tl.setPointerCapture(e.po
 tl.addEventListener('pointermove', e => { if (drag) scrub(e); });
 ['pointerup', 'pointercancel'].forEach(t => tl.addEventListener(t, () => drag = false));
 document.getElementById('tlleg').innerHTML = JN.map((n, j) => `<span><span class="sw" style="background:var(${JC[j]})"></span>${n}</span>`).join('') +
-  `<span><span class="sw" style="background:rgba(217,102,31,.5)"></span>push</span><span>• phase marks (step 10) · drag to scrub</span>`;
+  `<span><span class="sw" style="background:rgba(217,102,31,.5)"></span>push</span><span>• phase marks (step 13) · drag to scrub</span>`;
 
 /* ---------------- helpers for the explanations ---------------- */
 const mat = (A, opt = {}) => {
@@ -268,128 +269,220 @@ const bars = (items, sumLabel, sumVal, scale) => {
 const pickJoint = (cur, list, attr = 'jp') => `<div class="pick">${list.map(j => `<button data-${attr}="${j}" aria-pressed="${j === cur}">${JN[j]}</button>`).join('')}</div>`;
 
 /* ---------------- the steps ---------------- */
+/* the model f(x, u) exactly as the design sees it: all joints free, the ankle a spring-damper, no push */
+function fEval(x, u) {
+  const q = x.slice(0, 4), qd = x.slice(4), g = gains();
+  const tau = [-g.ankle_k * q[0] - g.ankle_b * qd[0], ...u];
+  const k = UB.core(m, q, qd, { momentum: false });
+  return [...qd, ...mv(inv(k.M), tau.map((v, i) => v - k.cvec[i] - k.g[i]))];
+}
+const box = (t, c = '--a') => `<span style="display:inline-block;border:1.5px solid var(${c});border-radius:7px;padding:3px 8px;margin:2px 0;font-size:.82rem">${t}</span>`;
+const arrow = ' <b style="color:var(--muted)">→</b> ';
+const QD = '₀₁₂₃';
+const COLREAD = c => {
+  const lo = S.A.slice(4);
+  return c === 0 ? `Lean the whole robot forward with the motors off. The legs accelerate <i>back</i> (${sg(lo[0][0], 1)}): the ankle spring's 300 N·m/rad beats gravity's 219.5. The torso, which no motor holds, folds forward (${sg(lo[1][0], 1)}).`
+    : c === 1 ? `Bend the torso forward on its own. It keeps falling forward (${sg(lo[1][1], 1)} on its own row): with no waist motor it is an upside-down pendulum. Its reaction tips the legs back (${sg(lo[0][1], 1)}).`
+    : c < 4 ? `Swing the ${JN[c]} on its own. A hanging arm swings back like a pendulum (${sg(lo[c][c], 1)} on its own row), and the reaction is felt up and down the chain.`
+    : c === 4 ? `Give the lean a speed. Only the ankle damper (30 N·m·s/rad) answers, and the mass matrix spreads that answer to every joint.`
+    : `Give the ${JN[c - 4]} a speed. At standing nothing in the passive robot resists it, so this whole column is zero. Only the controller can damp this joint.`;
+};
 const STEPS = [
-  ['1 · the state', () => {
+  ['0 · what LQR does', 'angles', () => `
+    <p class="goal"><b>The problem in plain words.</b> The robot is pushed. Every millisecond the controller must decide three torques (waist, shoulder, elbow) from what the sensors read right now.</p>
+    <p><b>LQR's answer has a fixed shape:</b> each torque is a weighted sum of the measured numbers, <span class="m">u = −K x</span>. K is a table of 3 × 8 weights, worked out once before the robot moves. It is a P-D controller where every motor listens to every joint, with weights chosen by a computer instead of by hand.</p>
+    <p><b>To compute K, LQR needs exactly two things from you:</b></p>
+    <ol><li>a <b>model</b> in a special form: a straight-line (linear) rule for how the state changes, <span class="m">ẋ = A x + B u</span>;</li>
+    <li><b>prices</b>: how bad is an error in each state (Q), and how expensive is each torque (R).</li></ol>
+    <p>Then one equation, the Riccati equation, turns model + prices into K.</p>
+    <p>${box('physics M q̈ + c + g = τ')}${arrow}${box('ẋ = f(x, u)')}${arrow}${box('straight-line model A, B')}${arrow}${box('prices Q, R', '--b')}${arrow}${box('Riccati → P', '--d')}${arrow}${box('K', '--c')}</p>
+    <p>${box('sensors x', '--c')}${arrow}${box('u = −K x, clip', '--c')}${arrow}${box('motors', '--c')}${arrow}${box('robot moves', '--c')}</p>
+    <p>Steps 1–9 build K (offline, once). Steps 10–13 use it (on the robot, every millisecond).</p>`],
+  ['1 · the state x', 'angles', () => {
     const a = at(S.i);
-    return `<p class="goal"><b>Goal:</b> know exactly what the controller reads. Eight numbers, every millisecond: four joint angles and four joint rates.</p>
-    <span class="eq">x = (q₀, q₁, q₂, q₃, q̇₀, q̇₁, q̇₂, q̇₃),   u = (τ_waist, τ_shoulder, τ_elbow)</span>
-    <table class="t"><tr><th>state</th><th>now</th><th>unit</th><th>what it is</th></tr>
-    ${a.x.map((v, j) => `<tr><td style="color:var(${JC[j % 4]})">${XN[j]}</td><td>${f(v, 3)}</td><td>${XU[j]}</td><td style="font-family:var(--body);text-align:left">${['legs on the foot, + forward', 'torso relative to legs', 'arms relative to torso, + swings back', 'forearm relative to upper arm', 'how fast the lean grows', 'torso swing rate', 'arm swing rate', 'forearm swing rate'][j]}</td></tr>`).join('')}</table>
-    <p><b>Three inputs, not four.</b> The ankle is in x but not in u. Its torque is whatever the foot gives: a spring-damper, τ₀ = −300 q₀ − 30 q̇₀, clipped at ±${f(lim()[0], 1)} N·m (m g × half the foot). The controller cannot command it, only exploit it.</p>
-    <p><b>The whole pipeline.</b> Steps 2 to 6 run once, offline: the model f, then A and B, then the prices Q and R, then the Riccati equation for P and K. Steps 7 to 10 are what happens every millisecond on the robot: read x, compute u = −Kx (24 multiply-adds), clip, and let the physics move every link.</p>`;
+    return `<p class="goal"><b>Goal:</b> know exactly what the controller reads. Eight numbers: four joint angles and four joint speeds.</p>
+    <span class="eq">x = (q₀, q₁, q₂, q₃, q̇₀, q̇₁, q̇₂, q̇₃)        u = (τ_waist, τ_shoulder, τ_elbow)</span>
+    <table class="t"><tr><th>state</th><th>now</th><th>unit</th><th style="text-align:left">what it is</th></tr>
+    ${a.x.map((v, j) => `<tr><td style="color:var(${JC[j % 4]})">${XN[j]}</td><td>${f(v, 3)}</td><td>${XU[j]}</td><td style="font-family:var(--body);text-align:left">${['legs on the foot, + forward', 'torso relative to legs', 'arms relative to torso, + swings back', 'forearm relative to upper arm', 'how fast the lean grows', 'torso swing speed', 'arm swing speed', 'forearm swing speed'][j]}</td></tr>`).join('')}</table>
+    <p><b>Why the speeds too?</b> A 3° lean that is growing and a 3° lean that is coming back need opposite torques. Angles alone cannot tell them apart. Angles plus speeds are enough to predict what happens next; that is what "state" means.</p>`;
   }],
-  ['2 · the machine f', () => {
-    const a = at(S.i), M = a.k.M;
-    return `<p class="goal"><b>Goal:</b> write the robot as ẋ = f(x, u), the thing LQR will approximate.</p>
-    <span class="eq">ẋ = f(x, u) = ( q̇ ,  M(q)⁻¹ (τ − c(q,q̇) − g(q)) ),   τ = (τ₀(q₀,q̇₀), u₁, u₂, u₃)</span>
-    <p>The top half says angles change at the rates. The bottom half is page 167's equation of motion solved for q̈. The ankle spring sits <b>inside</b> f, so the design knows the foot pushes back.</p>
-    <p><b>At t = ${f(a.t, 3)} s</b> the mass matrix and gravity vector are</p>
-    ${mat(M, { rn: JN, cn: JN, d: 3 })}
-    <p>g = (${a.k.g.map(v => f(v, 2)).join(', ')}) N·m. At standing, g = 0 and c = 0: x = 0, u = 0 is an equilibrium. That is the point we linearise about.</p>`;
+  ['2 · the physics as ẋ = f(x, u)', 'angles', () => {
+    const a = at(S.i), u = a.tau.slice(1), fx = fEval(a.x, u);
+    return `<p class="goal"><b>Goal:</b> rewrite the robot's physics in the one form every controller-design tool (LQR, Kalman filter, MPC) expects: <i>how fast is each state number changing, given the state and the torques?</i></p>
+    <p><b>① Start from page 167.</b> The equation of motion is <span class="m">M(q) q̈ + c(q, q̇) + g(q) = τ</span>. It has q̈, a second derivative. LQR works only with first derivatives.</p>
+    <p><b>② Solve it for the accelerations:</b> <span class="m">q̈ = M⁻¹ (τ − c − g)</span>.</p>
+    <p><b>③ Stack two facts into one list of 8.</b> "Each angle changes at its speed" (bookkeeping) on top, "each speed changes at its acceleration" (the physics) below:</p>
+    <span class="eq">ẋ = f(x, u) = [ q̇                    ]   ← top 4: just copy the speeds
+                [ M⁻¹ (τ − c − g)      ]   ← bottom 4: page 167's physics</span>
+    <p><b>④ The torques τ.</b> τ has four entries but only three are ours: τ = (τ₀, u₁, u₂, u₃). τ₀ is the ankle, decided by the foot, not by the controller (next step explains why).</p>
+    <p><b>f is just a function.</b> Feed it the 8 numbers and the 3 torques at t = ${f(a.t, 3)} s; it returns how fast each of the 8 is changing:</p>
+    <table class="t"><tr><th>x</th><th>now</th><th>ẋ = f(x,u)</th><th style="text-align:left">read as</th></tr>
+    ${a.x.map((v, j) => `<tr><td style="color:var(${JC[j % 4]})">${XS[j]}</td><td>${f(v, 3)}</td><td>${f(fx[j], 2)}</td><td style="font-family:var(--body);text-align:left">${j < 4 ? `copied from ${XS[j + 4]}` : `q̈${QD[j - 4]} from the physics (rad/s²)`}</td></tr>`).join('')}</table>
+    <p>Notice what is <b>not</b> in f: the push. LQR is designed without knowing pushes exist. It only ever sees their effect on x.${a.inPush ? ' <i>Right now the push is on, so the real ẋ is different from f.</i>' : ''}</p>`;
   }],
-  ['3 · linearise: A', () => {
-    const A = S.A, lo = A.slice(4), c = S.acol;
-    return `<p class="goal"><b>Goal:</b> replace f by ẋ ≈ A x + B u near standing, and read what each entry of A says.</p>
-    <span class="eq">A[:, i] = ( f(εeᵢ, 0) − f(−εeᵢ, 0) ) / 2ε        (page 19, ε = 10⁻⁵)</span>
-    <p>The top four rows of A are [0  I]. The bottom four are what a unit of each state does to the four accelerations. <b>Click a column</b>; the robot shows those accelerations as teal arcs.</p>
-    ${mat(lo, { rn: ['q̈₀', 'q̈₁', 'q̈₂', 'q̈₃'], cn: XS, d: 1, click: true, id: 'Am', on: (i, j) => j === c })}
-    <p>Done by hand it is exact, because at x = 0 everything multiplying ∂M/∂q is zero and c is quadratic in q̇:</p>
-    <span class="eq">A = [ 0          I        ]
-    [ −M⁻¹(G + Kₐ)   −M⁻¹Dₐ ],   G = ∂g/∂q,  Kₐ = diag(300,0,0,0),  Dₐ = diag(30,0,0,0)</span>
-    <p><b>Column ${XS[c]}:</b> ${c === 0 ? `lean the whole robot forward 1 rad with the motors off. The legs accelerate back (q̈₀ ${sg(lo[0][0], 1)}): the ankle spring's 300 N·m/rad beats gravity's 219.5 (= m g × 0.66 m of COM travel per radian), so a rigid robot is stable on the spring for small leans. Not for large ones: the spring saturates at 33.4 / 300 = 0.111 rad, and gravity's moment reaches the foot limit at 0.152 rad (8.7°). The torso, which no motor holds, folds forward (q̈₁ ${sg(lo[1][0], 1)}).`
-      : c === 1 ? `bend the torso forward 1 rad on its own. The torso keeps falling forward (q̈₁ ${sg(lo[1][1], 1)}): with u = 0 it is an inverted pendulum on the waist, the unstable pole at +8.2 /s. Its reaction tips the legs back (q̈₀ ${sg(lo[0][1], 1)}).`
-      : c < 4 ? `move the ${JN[c]} 1 rad. With no motor it swings back like a hanging pendulum (q̈${'₀₁₂₃'[c]} ${sg(lo[c][c], 1)}), and the reaction is felt along the chain.`
-      : c === 4 ? `a lean rate of 1 rad/s. Only the ankle damper reacts (30 N·m·s/rad), and M⁻¹ spreads it through the chain.`
-      : `a rate at the ${JN[c - 4]}. Nothing in the passive machine resists it at standing, so the column is zero: only the controller can damp this joint.`}</p>`;
+  ['3 · why the ankle is a spring', 'torque', () => `
+    <p class="goal"><b>Your question: was the ankle spring a design choice?</b> Yes. It is a modelling choice of this page, for two reasons.</p>
+    <p><b>① The floor decides, not the motor.</b> The real G1 has an ankle motor. But the sole can only push up between heel and toe, so the ankle torque can never exceed m g × (ankle-to-toe distance) = 34 × 9.81 × 0.10 = <b>${f(lim()[0], 1)} N·m</b>, however strong the motor. Ask for more and the heel lifts.</p>
+    <p><b>② We want to measure the upper body.</b> So the ankle runs its own simple, fixed loop: hold the angle at 0 with a P-D law, τ₀ = −300 q₀ − 30 q̇₀. A P-D law holding an angle behaves exactly like a spring (300 N·m/rad) and a damper (30 N·m·s/rad); that is why it appears as one. Its only job: keep standing stable for small leans. 300 is chosen bigger than gravity's 219.5 N·m/rad (step 4 shows why that matters).</p>
+    <p><b>What you could do instead:</b> put τ₀ into u. Then u has 4 entries, B gets a 4th column, K a 4th row, and LQR designs the ankle too. But LQR cannot know about the ${f(lim()[0], 1)} N·m wall; it would ask for more than the foot can give. Handling limits like that is what MPC and QP controllers add on top.</p>
+    <p>On the robot: the purple arc at the ankle is the spring's torque now. Drag the timeline: it hits −${f(lim()[0], 1)} at 0.30 s and stays there (dotted line in the torque plot).</p>`],
+  ['4 · why a straight-line model', 'angles', () => `
+    <p class="goal"><b>Goal:</b> see why LQR needs a linear model, and what it costs.</p>
+    <p>f is curved: M, c and g contain sines and cosines of the angles, and the ankle spring stops at the foot limit. LQR's math works only when ẋ is a straight-line function of x and u: <span class="m">ẋ ≈ A x + B u</span>. Near standing (small angles, small speeds) the curve and its tangent line almost coincide, so we replace f by its tangent at x = 0. That is all "linearise" means.</p>
+    <canvas id="lin" style="width:100%;height:220px;display:block"></canvas>
+    <p style="font-size:.84rem;color:var(--muted)">Torques about the ankle for a rigid robot leaned by q₀. <b style="color:var(--bad)">Red</b>: gravity tipping it forward, 219.5 sin q₀ (dashed: its straight line 219.5 q₀). <b style="color:var(--d)">Purple</b>: the ankle spring pushing back, −300 q₀ but stopped at ±${f(lim()[0], 1)} (dashed: the straight line). Shaded: where the straight lines are honest.</p>
+    <p>Inside the band, the spring beats gravity and the robot stands. Past <b>0.111 rad (6.4°)</b> the real spring stops growing but the straight line keeps going: <b>the linear model believes in an ankle that does not exist.</b> Past 8.7° gravity wins outright. Remember this: it explains the surprise in step 7.</p>`, () => drawLin()],
+  ['5 · finding A by nudging', 'acol', () => {
+    const c = S.acol, eps = c < 4 ? 0.01 : 0.01, z = new Array(8).fill(0), u0 = [0, 0, 0];
+    const xp = z.slice(), xm = z.slice(); xp[c] = eps; xm[c] = -eps;
+    const fp = fEval(xp, u0), fm = fEval(xm, u0), col = fp.map((v, i) => (v - fm[i]) / (2 * eps));
+    return `<p class="goal"><b>Goal:</b> get A, the straight-line model of how the state affects itself, by experiment on f.</p>
+    <p><b>The recipe (page 19):</b> start standing still (x = 0, u = 0). Nudge <i>one</i> state number a little up, call f; nudge it down, call f; the difference divided by the nudge is how strongly ẋ depends on that number. Each nudge gives one <b>column</b> of A.</p>
+    <span class="eq">column i of A = ( f(x = +ε in slot i) − f(x = −ε in slot i) ) / 2ε</span>
+    <div class="pick">nudge: ${XS.map((n, i) => `<button data-ac="${i}" aria-pressed="${i === c}">${n}</button>`).join('')}</div>
+    <table class="t"><tr><th>ẋ entry</th><th>f(+${eps})</th><th>f(−${eps})</th><th>÷ 2ε → column ${XS[c]}</th></tr>
+    ${fp.map((v, i) => `<tr${i < 4 ? ' style="color:var(--muted)"' : ''}><td>${i < 4 ? 'rate of ' + XS[i] : 'q̈' + QD[i - 4]}</td><td>${f(v, 4)}</td><td>${f(fm[i], 4)}</td><td><b>${f(col[i], 2)}</b></td></tr>`).join('')}</table>
+    <p><b>Why the table you saw was 4 × 8.</b> A is 8 × 8 (8 entries of ẋ, 8 nudges). But its top 4 rows are boring: nudging a speed moves the matching angle's rate by exactly 1, nudging an angle moves it by 0. So A = [ 0  I ; <i>4 × 8 block</i> ], and only the bottom block, the accelerations, carries physics. Here it is, the column you nudged outlined:</p>
+    ${mat(S.A.slice(4), { rn: ['q̈₀', 'q̈₁', 'q̈₂', 'q̈₃'], cn: XS, d: 1, click: true, id: 'Am', on: (i, j) => j === c })}
+    <p><b>Reading column ${XS[c]}:</b> ${COLREAD(c)} The teal arcs on the robot show these accelerations.</p>`;
   }],
-  ['4 · B: one N·m at one joint', () => {
-    const j = S.joint, col = S.B.map(r => r[j - 1]).slice(4);
-    return `<p class="goal"><b>Goal:</b> see how a motor torque reaches <i>every</i> joint, not only its own.</p>
+  ['6 · finding B by nudging', 'bcol', () => {
+    const j = S.joint, z = new Array(8).fill(0), up = [0, 0, 0], um = [0, 0, 0]; up[j - 1] = 1; um[j - 1] = -1;
+    const fp = fEval(z, up), fm = fEval(z, um), col = fp.map((v, i) => (v - fm[i]) / 2);
+    return `<p class="goal"><b>Goal:</b> get B, how each motor's torque changes the state, by the same experiment.</p>
+    <p>Stand still, give <i>one</i> motor +1 N·m, call f; give it −1 N·m, call f; difference ÷ 2. One column per motor, so B is 8 × 3. Its top 4 rows are 0 (a torque does not change an angle directly, only through acceleration).</p>
     ${pickJoint(j, ACT)}
-    <span class="eq">B = [ 0 ; M⁻¹ S ],   column ${JN[j]} = M⁻¹ e${'₀₁₂₃'[j]} = (${col.map(v => f(v, 3)).join(', ')}) rad/s² per N·m</span>
-    <p>A motor sits between two links. 1 N·m at the ${JN[j]} turns the ${LN[j]} one way (coloured arc) and the ${LN[j - 1]} the other way (grey arc): action and reaction. In joint coordinates that is one generalised force e${'₀₁₂₃'[j]}, and M⁻¹ turns it into accelerations of all four joints at once (teal arcs).</p>
-    ${bars(col.map((v, r) => [`q̈${'₀₁₂₃'[r]} ${JN[r]}`, v, css(JC[r])]))}
-    <p>${j === 1 ? `Read the first entry: <b>+1 N·m at the waist accelerates the lean by ${f(col[0], 3)} rad/s²</b>. Turning the torso forward pushes the legs back. This number is the only door from the upper body to the lean, and the whole LQR is built on its sign.` : j === 2 ? `+1 N·m at the shoulder swings the arms back (q̈₂ ${sg(col[2], 2)}) and its reaction tips the torso and the legs forward (q̈₀ ${sg(col[0], 3)}).` : `The forearm is light: 1 N·m gives it ${f(col[3], 1)} rad/s², but its effect on the lean is small (${sg(col[0], 3)}).`}</p>`;
+    <table class="t"><tr><th>q̈ of</th><th>+1 N·m</th><th>−1 N·m</th><th>column ${JN[j]}</th></tr>
+    ${[4, 5, 6, 7].map(i => `<tr><td style="color:var(${JC[i - 4]})">${JN[i - 4]}</td><td>${f(fp[i], 3)}</td><td>${f(fm[i], 3)}</td><td><b>${f(col[i], 3)}</b></td></tr>`).join('')}</table>
+    <p><b>Why one motor moves every joint.</b> A motor sits between two links: it turns the ${LN[j]} one way (coloured arc) and the ${LN[j - 1]} the other way (grey arc), action and reaction. The mass matrix then spreads that pair to all four joints (teal arcs). By hand, column = M⁻¹ e${QD[j]}.</p>
+    <p>${j === 1 ? `<b>The number that decides everything:</b> +1 N·m at the waist gives the lean <b>${f(col[4], 3)} rad/s²</b>. Turn the torso forward and the legs go back; turn it back and the legs go forward. Apart from moving the centre of mass, this is the upper body's only way to touch the lean.` : j === 2 ? `+1 N·m at the shoulder swings the arms back (${sg(col[6], 2)}) and tips the torso and legs forward (${sg(col[4], 3)} on the lean).` : `The forearm is light: 1 N·m spins it hard (${f(col[7], 1)}) but barely touches the lean (${sg(col[4], 3)}).`}</p>`;
   }],
-  ['5 · Bryson: the price list', () => {
-    const g = gains(), q = [g.lean_max, g.posture_max, g.posture_max, g.posture_max], v = [g.lean_rate_max, g.posture_rate_max, g.posture_rate_max, g.posture_rate_max];
-    return `<p class="goal"><b>Goal:</b> say what "good" means as numbers. LQR minimises</p>
-    <span class="eq">J = ∫ ( xᵀ Q x + uᵀ R u ) dt</span>
-    <p><b>Bryson's rule:</b> divide each variable by the biggest value you would accept, then square. Each term is 1 when its variable reaches its limit.</p>
-    <table class="t"><tr><th>term</th><th>largest acceptable</th><th>weight</th></tr>
-    ${[...q, ...v].map((x, j) => `<tr><td style="color:var(${JC[j % 4]})">${XN[j]}</td><td>${f(x, 2)} ${XU[j]}</td><td>${f(1 / x / x, 3)}</td></tr>`).join('')}
-    ${ACT.map(j => `<tr><td style="color:var(${JC[j]})">τ ${JN[j]}</td><td>${f(g.tau_max[j], 0)} N·m</td><td>${(1 / g.tau_max[j] / g.tau_max[j]).toExponential(2)}</td></tr>`).join('')}</table>
-    <p>Read it as a trade: a 0.1 rad lean costs as much as 0.5 rad of torso bend, and as much as the full 88 N·m at the waist. The lean is the expensive one; the posture is cheap to spend, which is what lets LQR use the upper body at all. The 0.1 rad is not arbitrary: the ankle spring saturates at ${f(lim()[0] / 300, 3)} rad.</p>
-    <p><b>Try it, and be surprised.</b> Press <b>redesign</b> after each change. lean_max 0.05 rad asks for less lean, and the peak lean gets <i>worse</i> (about 7.3° instead of 6.2°): the waist kicks harder and earlier, and the kick goes into the legs. posture_max 0.2 rad lets the torso move less, and the peak lean gets <i>better</i> (about 5.7°). The reason: K is optimal for the linear model, and the linear model has no foot limit. The real ankle saturates at 0.30 s. Bryson's rule gives a sensible start; the final prices are tuned in simulation.</p>`;
+  ['7 · prices: Q for errors, R for torque', 'torque', () => {
+    const g = gains(), a = at(S.i), xmax = [g.lean_max, g.posture_max, g.posture_max, g.posture_max, g.lean_rate_max, g.posture_rate_max, g.posture_rate_max, g.posture_rate_max];
+    const qc = a.x.map((v, i) => v * v / xmax[i] / xmax[i]), rc = ACT.map((j, i) => a.tau[j] * a.tau[j] / g.tau_max[j] / g.tau_max[j]);
+    return `<p class="goal"><b>Goal:</b> tell LQR what "good" means. Two price lists, two letters:</p>
+    <p><b>Q prices the state</b> (8 × 8, only the diagonal used here): how bad is it that a joint is off target or moving. <b>R prices the torque</b> (3 × 3): how expensive is it to use each motor. LQR picks K to make the total bill as small as possible:</p>
+    <span class="eq">bill = ∫ ( xᵀQx  +  uᵀRu ) dt   =  ∫ ( Σ Qᵢᵢ xᵢ²  +  Σ Rⱼⱼ uⱼ² ) dt</span>
+    <p><b>Bryson's rule</b> sets the prices for you: write down the largest value you would accept for each, and use 1 / (that)². Then each term costs exactly 1 when its variable reaches its limit.</p>
+    <table class="t"><tr><th></th><th>largest OK</th><th>price</th></tr>
+    ${xmax.map((v, i) => `<tr><td style="color:var(${JC[i % 4]})">Q · ${XN[i]}</td><td>${f(v, 2)} ${XU[i]}</td><td>${f(1 / v / v, 3)}</td></tr>`).join('')}
+    ${ACT.map(j => `<tr><td style="color:var(${JC[j]})">R · τ ${JN[j]}</td><td>${f(g.tau_max[j], 0)} N·m</td><td>${(1 / g.tau_max[j] / g.tau_max[j]).toExponential(2)}</td></tr>`).join('')}</table>
+    <p><b>The bill right now</b> (t = ${f(a.t, 3)} s), one bar per term; drag the timeline to watch which term is expensive:</p>
+    ${bars([...qc.map((v, i) => ['Q · ' + XS[i], v, css(JC[i % 4])]), ...rc.map((v, i) => ['R · τ ' + JN[ACT[i]], v, css(JC[ACT[i]])])], 'bill rate', qc.reduce((s, v) => s + v, 0) + rc.reduce((s, v) => s + v, 0))}
+    <p><b>Try it, and be surprised.</b> lean_max 0.05 (ask for less lean) and redesign: the peak lean gets <i>worse</i>, about 7.3° instead of 6.2°. posture_max 0.2 (let the torso move less): it gets <i>better</i>, about 5.7°. Step 4 is why: the straight-line model has no foot limit, so "optimal" is optimal for a robot that does not exist. Bryson gives a start; the final prices are tuned in simulation.</p>`;
   }],
-  ['6 · Riccati → K', () => {
-    const K = S.K, j = S.joint;
-    const row = K[j - 1];
-    return `<p class="goal"><b>Goal:</b> get the gains, and read each one as "N·m per unit of a measured number".</p>
-    <span class="eq">AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0,     K = R⁻¹ Bᵀ P,     u = −K x</span>
-    <p>P is the price of starting at x: the cheapest possible future cost is xᵀPx. K = R⁻¹BᵀP reads as a chain: B turns a torque into motion, P prices that motion, R⁻¹ turns the price back into a torque worth spending. <b>Click a row</b> to pick a joint.</p>
+  ['8 · Riccati: the price of the future', 'angles', () => {
+    const P = S.Pm, a = at(S.i), x = a.x, V = x.reduce((s, xi, i) => s + xi * P[i].reduce((t, p, j) => t + p * x[j], 0), 0);
+    const A = S.A, B = S.B, Ri = S.R.map((r, i) => r.map((v, j) => i === j ? 1 / v : 0)), n = 8;
+    const mm = (X, Y) => X.map(r => Y[0].map((_, j) => r.reduce((s, v, k) => s + v * Y[k][j], 0))), tr = X => X[0].map((_, j) => X.map(r => r[j]));
+    const PB = mm(P, B), PA = mm(P, A), PBRB = mm(mm(PB, Ri), tr(PB)), Res = mm(tr(A), P).map((r, i) => r.map((v, j) => v + PA[i][j] - PBRB[i][j] + S.Q[i][j]));
+    const res = Math.max(...Res.flat().map(Math.abs)) / Math.max(...P.flat().map(Math.abs));
+    return `<p class="goal"><b>Goal:</b> understand what the Riccati equation does, without the algebra first.</p>
+    <p><b>① Imagine you knew the future bill.</b> For every state x, suppose you knew the smallest bill still to pay if you control perfectly from there on. Call it V(x). For a straight-line model with squared prices, V is always a squared form: <span class="m">V(x) = xᵀ P x</span>, with P an 8 × 8 table. P is the "price of the future".</p>
+    <p><b>② Then the best torque is obvious:</b> push the state downhill on V as fast as is worth paying for. That gives <span class="m">u = −R⁻¹BᵀP x</span>, so <span class="m">K = R⁻¹BᵀP</span>. B: what a torque does to the state. P: what that change is worth. R⁻¹: how much torque that is worth buying.</p>
+    <p><b>③ P must be self-consistent.</b> While you follow the best torque, the future bill must fall exactly as fast as you are paying it: dV/dt = −(xᵀQx + uᵀRu). Put ẋ = Ax + Bu and u = −Kx into that, ask it to hold for <i>every</i> x, and out comes one matrix equation:</p>
+    <span class="eq">AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0          (continuous algebraic Riccati equation)</span>
+    <p>Solving it means finding the P that makes this zero. The lab does it by stepping the equation from "no future" until P stops changing (the two seconds of "solving…"). Check: biggest leftover here = ${res.toExponential(1)} of P's size.</p>
+    <p><b>The price of the future right now</b> (t = ${f(a.t, 3)} s): V = xᵀPx = <b>${f(V, 3)}</b>. Drag the timeline: it jumps during the push and falls back to 0 as the robot recovers. The ${f(P[0][0], 1)} in the corner of P means a 0.1 rad lean alone is worth ${f(P[0][0] * .01, 2)}.</p>
+    ${mat(P, { rn: XS, cn: XS, d: 2 })}
+    <p><b>Same Riccati as the Kalman filter?</b> Same shape, mirrored:</p>
+    <table class="t"><tr><th></th><th style="text-align:left">LQR (control)</th><th style="text-align:left">Kalman filter (estimation)</th></tr>
+    <tr><td>equation</td><td class="m" style="text-align:left">AᵀP + PA − PBR⁻¹BᵀP + Q = 0</td><td class="m" style="text-align:left">AΣ + ΣAᵀ − ΣCᵀR⁻¹CΣ + Q = 0</td></tr>
+    <tr><td>unknown</td><td style="text-align:left;font-family:var(--body)">P: price of the future</td><td style="text-align:left;font-family:var(--body)">Σ: uncertainty of the estimate</td></tr>
+    <tr><td>Q, R</td><td style="text-align:left;font-family:var(--body)">prices you choose</td><td style="text-align:left;font-family:var(--body)">noise sizes you measure</td></tr>
+    <tr><td>direction</td><td style="text-align:left;font-family:var(--body)">backward from the future</td><td style="text-align:left;font-family:var(--body)">forward from the past</td></tr>
+    <tr><td>gives</td><td style="text-align:left;font-family:var(--body)">K = R⁻¹BᵀP</td><td style="text-align:left;font-family:var(--body)">L = ΣCᵀR⁻¹</td></tr></table>
+    <p>Swap A ↔ Aᵀ and B ↔ Cᵀ and one becomes the other ("duality"); the same solver serves both. Both answer the same kind of question: the best linear rule when errors cost the square of their size.</p>`;
+  }],
+  ['9 · K: the 24 weights', 'torque', () => {
+    const K = S.K, j = S.joint, row = K[j - 1];
+    return `<p class="goal"><b>Goal:</b> read K. Each entry is "N·m of this motor per unit of that measurement".</p>
+    <span class="eq">K = R⁻¹ Bᵀ P   (3 × 8),        u = −K x</span>
+    <p><b>Click a row</b> to pick a joint.</p>
     ${mat(K, { rn: ACT.map(a => JN[a]), cn: XS, d: 1, click: true, id: 'Km', on: (r) => r === j - 1 })}
-    <p><b>The ${JN[j]} row, in words</b> (u = −K x, so the torque has the opposite sign of each gain times the state):</p>
+    <p><b>The ${JN[j]} row, biggest weights first</b> (the minus sign in u = −Kx flips each one):</p>
     <ul>${row.map((v, c) => [c, v]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4).map(([c, v]) => {
       const unit = c < 4 ? 0.1 : 1.0, uu = c < 4 ? '0.1 rad' : '1 rad/s';
       return `<li>${uu} of <span style="color:var(${JC[c % 4]})">${XN[c]}</span> → ${sg(-v * unit, 1)} N·m at the ${JN[j]}</li>`; }).join('')}</ul>
-    <p>${j === 1 ? `Look at the first two gains: ${f(row[0], 0)} on q₀ and ${f(row[1], 0)} on q₁, almost equal. So the waist torque is close to −${f(row[0], 0)} × (q₀ + q₁), and q₀ + q₁ is the torso's angle <i>to the vertical</i>. <b>The waist is a stiff spring holding the torso upright in the world</b>, not relative to the legs, plus a large damper on the lean rate (${f(row[4], 0)}). When the legs lean forward, holding the torso vertical means bending it back relative to them: a negative waist torque, and (step 4) a forward reaction on the legs. During the push the lean-rate damper wins over the spring, and it throws the torso about 7° <i>behind</i> vertical by 0.40 s; then the spring brings it back.` : `This row is about a third of the waist's. Its signs: a forward lean (gain ${f(row[0], 0)}) gives a ${row[0] < 0 ? 'positive' : 'negative'} ${JN[j]} torque, and its own angle (gain ${f(row[j], 0)}) pulls it home. With these prices the waist does most of the work.`}</p>`;
+    <p>${j === 1 ? `The gains on q₀ (${f(row[0], 0)}) and q₁ (${f(row[1], 0)}) are almost equal, so the waist torque is about −${f(row[0], 0)} × (q₀ + q₁). And q₀ + q₁ is the torso's angle <i>to the vertical</i>. <b>The waist is a stiff spring holding the torso upright in the world</b>, plus a big damper on the lean speed (${f(row[4], 0)}). When the legs lean forward, keeping the torso upright means bending it back relative to them: a negative waist torque, which (step 6) pushes the legs forward.` : `This row is about a third of the waist's. A forward lean gives a ${row[0] < 0 ? 'positive' : 'negative'} ${JN[j]} torque, and the joint's own angle (${f(row[j], 0)}) pulls it home. With these prices the waist does most of the work.`}</p>`;
   }],
-  ['7 · u = −Kx, term by term', () => {
+  ['10 · u = −Kx, term by term', 'torqueR', () => {
     const a = at(S.i), j = S.joint, L = lim(), c = a.contr[j - 1], u = a.u[j - 1], clipped = Math.max(-L[j], Math.min(L[j], u));
-    return `<p class="goal"><b>Goal:</b> watch one joint's torque being added up from the eight measurements, at the instant on the timeline.</p>
+    return `<p class="goal"><b>Now on the robot, every millisecond.</b> Watch one joint's torque being added up from the eight measurements at the instant on the timeline.</p>
     ${pickJoint(j, ACT)}
-    <span class="eq">τ_${JN[j]} = −Σᵢ K[${JN[j]}, i] · xᵢ        t = ${f(a.t, 3)} s</span>
+    <span class="eq">τ_${JN[j]} = −( K₁·q₀ + K₂·q₁ + … + K₈·q̇₃ )        t = ${f(a.t, 3)} s</span>
     ${bars(c.map((v, i) => [`−K·${XS[i]}`, v, css(JC[i % 4])]), 'sum', u)}
-    <p>${Math.abs(u - clipped) > 1e-6 ? `The sum ${f(u, 1)} N·m is beyond the motor: <b>clipped to ${f(clipped, 1)}</b>.` : `Inside the ±${f(L[j], 0)} N·m limit: no clipping, τ = ${f(u, 1)} N·m.`}</p>
-    <p>All three now: ${ACT.map(k => `<span style="color:var(${JC[k]})">${JN[k]} ${sg(a.tau[k], 1)}</span>`).join(', ')}, and the ankle (not commanded) ${sg(a.tau[0], 1)} N·m.
-    Move to t = 0.25 s: the lean-rate bar dominates the waist. Move to 0.40 s: the lean angle and the waist angle bars fight, and the waist has flipped sign.</p>`;
+    <p>${Math.abs(u - clipped) > 1e-6 ? `The sum ${f(u, 1)} N·m is beyond the motor: <b>clipped to ${f(clipped, 1)}</b>.` : `Inside the ±${f(L[j], 0)} N·m limit: no clipping, τ = ${f(u, 1)} N·m.`}
+    All three now: ${ACT.map(k => `<span style="color:var(${JC[k]})">${JN[k]} ${sg(a.tau[k], 1)}</span>`).join(', ')}; the ankle spring ${sg(a.tau[0], 1)} N·m.</p>`;
   }],
-  ['8 · where the torque goes', () => {
+  ['11 · where the torque goes', 'torqueR', () => {
     const a = at(S.i), r = S.tgt, Mi = a.Mi;
     const items = [
       ...[0, 1, 2, 3].map(j => [`τ ${JN[j]}`, Mi[r][j] * a.tau[j], css(JC[j])]),
-      ['gravity −g', mv([Mi[r]], a.k.g.map(v => -v))[0], css('--grey')],
+      ['gravity', mv([Mi[r]], a.k.g.map(v => -v))[0], css('--grey')],
       ['push', mv([Mi[r]], a.fp)[0], css('--b')],
-      ['velocity −c', mv([Mi[r]], a.k.cvec.map(v => -v))[0], css('--e')],
+      ['speed terms −c', mv([Mi[r]], a.k.cvec.map(v => -v))[0], css('--e')],
     ];
     const stops = mv([Mi[r]], a.stop)[0]; if (Math.abs(stops) > 1e-6) items.push(['joint stop', stops, css('--bad')]);
-    return `<p class="goal"><b>Goal:</b> follow the torques into the motion. Every torque moves every joint, through one row of M⁻¹.</p>
+    return `<p class="goal"><b>Goal:</b> follow the torques into the motion. Every force reaches every joint, through one row of M⁻¹.</p>
     ${pickJoint(r, [0, 1, 2, 3], 'tg')}
-    <span class="eq">q̈ = M(q)⁻¹ ( τ − c − g + Jᵀ F_push ),   q̈${'₀₁₂₃'[r]} = Σⱼ (M⁻¹)${'₀₁₂₃'[r]}ⱼ · (each force)ⱼ</span>
-    ${bars(items, `q̈${'₀₁₂₃'[r]} total`, a.qdd[r])}
-    <p>Units: rad/s². On the robot the coloured arcs are each motor's torque on its <i>outer</i> link and the grey arcs the equal and opposite torque on the link below.</p>
-    <p>${r === 0 ? `This is the lean, the thing to save. At t = 0.25 s the waist term is large and <b>positive</b>: holding the torso back against the push shoves the legs forward, a cost paid while the ankle can still pay. From about 0.32 s it turns <b>negative</b>: the waist brakes the torso and the reaction pulls the legs back just as the ankle saturates. Gravity's term grows with the lean; the upper body's other effect is to keep x<sub>c</sub>, and so that term, small. Notice the push term itself is <i>negative</i> on the lean: on a limp chain a shove at the shoulder mostly folds the torso forward, and its reaction tips the legs back. It is the waist resisting that fold that passes the push down to the legs.` : `Pick the lean (ankle) to see the term that matters for balance.`}</p>`;
+    <span class="eq">q̈${QD[r]} = Σ (M⁻¹)${QD[r]}ⱼ × (each force)ⱼ        rad/s²</span>
+    ${bars(items, `q̈${QD[r]} total`, a.qdd[r])}
+    <p>On the robot: coloured arcs are each motor's torque on its outer link, grey arcs the equal and opposite torque on the link below.</p>
+    <p>${r === 0 ? `This is the lean, the thing to save. At 0.25 s the waist bar is big and <b>positive</b>: holding the torso back against the push shoves the legs forward. From about 0.32 s it is <b>negative</b>: the waist brakes the torso and the reaction pulls the legs back, just when the ankle has run out. The push bar is negative: on a loose chain a shove at the shoulder mostly folds the torso and tips the legs back; it is the waist resisting the fold that passes the push down.` : `Pick the ankle (the lean) to see the row that matters for balance.`}</p>`;
   }],
-  ['9 · the momentum ledger', () => {
-    const a = at(S.i), k = a.k, mg = UB.mtot(m) * m.g;
-    const dH = a.tau[0] + mg * k.xc[0] + a.pushMoment;
-    return `<p class="goal"><b>Goal:</b> check the bookkeeping from page 168: internal torques never change the total, they move it.</p>
-    <span class="eq">dH_O/dt = τ_ankle + m g x_c + (push moment)
-       = ${f(a.tau[0], 1)} + ${f(mg * k.xc[0], 1)} + ${f(a.pushMoment, 1)} = ${f(dH, 1)} N·m</span>
-    <p>No waist, shoulder or elbow torque in that sum. Each link's share of H about the ankle (arcs at the link COMs):</p>
-    ${bars(k.link_H.map((h, j) => [LN[j], h, css(JC[j])]), 'total H_O', k.H_O)}
-    <p>So the upper body helps in exactly two ways: it <b>moves H between links</b> (the waist torque takes it from the torso and hands it to the legs, or back), and it <b>moves x<sub>c</sub></b>, which changes gravity's term. The LQR keeps x<sub>c</sub> under ${f(Math.max(...S.res.xc.map(v => v[0])), 3)} m in this run; with everything locked it reaches ${f(Math.max(...S.lock.xc.map(v => v[0])), 3)} m.</p>`;
+  ['12 · the momentum ledger', 'H', () => {
+    const a = at(S.i), k = a.k, mg = UB.mtot(m) * m.g, dH = a.tau[0] + mg * k.xc[0] + a.pushMoment;
+    return `<p class="goal"><b>Goal:</b> check page 168's bookkeeping: internal torques never change the total spin about the ankle, they only move it.</p>
+    <span class="eq">dH/dt = τ_ankle + m g x_c + push = ${f(a.tau[0], 1)} + ${f(mg * k.xc[0], 1)} + ${f(a.pushMoment, 1)} = ${f(dH, 1)} N·m</span>
+    <p>No waist, shoulder or elbow term. Each link's share of H (arcs at the link centres):</p>
+    ${bars(k.link_H.map((h, j) => [LN[j], h, css(JC[j])]), 'total H', k.H_O)}
+    <p>So the upper body helps in exactly two ways: it <b>moves H between links</b>, and it <b>moves x<sub>c</sub></b>, which changes gravity's term. In this run x<sub>c</sub> stays under ${f(Math.max(...S.res.xc.map(v => v[0])), 3)} m; with everything locked it reaches ${f(Math.max(...S.lock.xc.map(v => v[0])), 3)} m.</p>`;
   }],
-  ['10 · the push, phase by phase', () => {
-    return `<p class="goal"><b>Goal:</b> put it together in time. Click a time to jump there; press play to watch.</p>
+  ['13 · the push, phase by phase', 'torqueR', () => `
+    <p class="goal"><b>Goal:</b> put it together in time. Click a time to jump there; press play to watch.</p>
     <div>${(S.ph || []).map(([i, txt]) => `<div class="ph"><button data-ti="${i}">${f(S.res.t[i], 3)} s</button><div>${txt}</div></div>`).join('')}</div>
-    <p style="margin-top:6px">The pattern: <b>pay early, collect late.</b> While the push is on and the ankle still has torque in hand, the waist puts the torso behind the ankle and accepts a faster-growing lean. When the ankle runs out, the waist reverses and its reaction brakes the legs. Nobody wrote that rule; it is what −Kx computes from A, B, Q and R.</p>`;
-  }],
+    <p style="margin-top:6px"><b>Pay early, collect late.</b> While the push is on and the ankle still has torque in hand, the waist puts the torso behind the ankle and accepts a faster-growing lean. When the ankle runs out, the waist reverses and its reaction brakes the legs. Nobody wrote that rule: it is what −Kx computes from A, B, Q and R.</p>`],
 ];
 
 const DO = [
-  'drag the timeline to 0.25 s, then to 0.40 s. Which state grows first after the push: an angle or a rate?',
-  'drag the timeline from 0 to 0.5 s and watch M change. Why are its entries almost constant?',
-  'click the q₀ column, then the q₁ column. Which one has a positive entry on its own row, and what does that mean for a torso with no motor?',
+  'say in one sentence what K is, and the two things LQR needs from you to compute it.',
+  'drag the timeline to 0.25 s, then to 0.40 s. Which numbers change first after the push: angles or speeds?',
+  'drag to 0.25 s (push on) and to 0.40 s. Which rows of the ẋ column are just copies, and which come from physics?',
+  'drag the timeline to 0.30 s and watch the ankle torque hit the wall at −33.4 N·m and stay there.',
+  'in the plot, find where the purple curve leaves its dashed line. What lean is that, and what does the linear model believe beyond it?',
+  'nudge q₀, then q₁. Which one has a positive number on its own row (it runs away from standing), and what does that mean for a torso with no motor?',
   'pick waist, then shoulder, then elbow. Which one moves the lean (q̈₀) most per N·m, and in which direction?',
-  'set lean_max to 0.05 and press redesign; note the peak lean on the timeline. Then defaults, posture_max to 0.2, redesign. Which helped?',
+  'set lean_max to 0.05 and press redesign, note the peak lean on the timeline. Then defaults, posture_max 0.2, redesign. Which helped, and why (step 4)?',
+  'drag the timeline from 0.2 to 1.6 s and watch V = xᵀPx: when is the future most expensive?',
   'click the waist row. Add the q₀ and q₁ gains in your head: what single angle is the waist really holding?',
-  'pick waist and drag the timeline from 0.20 to 0.45 s. Find the moment the sum changes sign, and which bar caused it.',
-  'keep "ankle" picked and compare t = 0.25 s with t = 0.40 s. Which bar changed sign, and why does that save the robot?',
-  'drag through the push. The total H changes only through the ankle, gravity and the push; watch the waist torque move H between legs and torso.',
+  'pick waist and drag from 0.20 to 0.45 s. Find the moment the sum changes sign, and which bar caused it.',
+  'keep the ankle picked and compare 0.25 s with 0.40 s. Which bar changed sign, and why does that save the robot?',
+  'drag through the push. The total changes only through the ankle, gravity and the push; watch the waist move H between legs and torso.',
   'press play with slow ×¼, then click each phase time and say what happens before reading it.',
 ];
+
+/* the step-4 plot: the curves the linear model replaces by straight lines */
+function drawLin() {
+  const cvs = document.getElementById('lin'); if (!cvs) return;
+  const r = cvs.getBoundingClientRect(), W = Math.round(r.width), H = Math.round(r.height), pr = devicePixelRatio;
+  cvs.width = Math.round(W * pr); cvs.height = Math.round(H * pr);
+  const c = cvs.getContext('2d'); c.setTransform(pr, 0, 0, pr, 0, 0);
+  c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
+  const x0 = 40, x1 = W - 8, y0 = 6, y1 = H - 22, qm = 20 / D, tm = 80, L0 = lim()[0];
+  const X = q => x0 + (q + qm) / (2 * qm) * (x1 - x0), Y = t => y0 + (tm - Math.max(-tm, Math.min(tm, t))) / (2 * tm) * (y1 - y0);
+  const qs = L0 / 300;
+  c.fillStyle = 'rgba(31,138,76,.12)'; c.fillRect(X(-qs), y0, X(qs) - X(-qs), y1 - y0);
+  c.strokeStyle = css('--line'); c.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  c.strokeStyle = css('--grey'); c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.moveTo(X(0), y0); c.lineTo(X(0), y1); c.stroke(); c.setLineDash([]);
+  const line = (fn, col, dash) => { c.strokeStyle = col; c.lineWidth = 2; c.setLineDash(dash || []); c.beginPath(); for (let i = 0; i <= 200; i++) { const q = -qm + 2 * qm * i / 200; i ? c.lineTo(X(q), Y(fn(q))) : c.moveTo(X(q), Y(fn(q))); } c.stroke(); c.setLineDash([]); };
+  line(q => 219.5 * Math.sin(q), css('--bad')); line(q => 219.5 * q, css('--bad'), [5, 4]);
+  line(q => -Math.max(-L0, Math.min(L0, 300 * q)), css('--d')); line(q => -300 * q, css('--d'), [5, 4]);
+  c.fillStyle = css('--muted'); c.font = '11px ' + css('--body'); c.textAlign = 'center';
+  [-20, -10, 0, 10, 20].forEach(d => c.fillText(d + '°', X(d / D), H - 8));
+  c.textAlign = 'right'; c.fillText('+80', x0 - 3, y0 + 10); c.fillText('−80', x0 - 3, y1); c.fillText('N·m', x0 - 3, Y(0) + 4); c.textAlign = 'left';
+  c.fillText('lean q₀ →', x1 - 60, H - 8);
+}
 
 /* ---------------- controls ---------------- */
 function controls() {
@@ -418,7 +511,9 @@ function render() {
   document.getElementById('busy').innerHTML = S.busy ? '<span class="busy">solving the Riccati equation…</span>' : '';
   const exp = document.getElementById('exp');
   if (!S.res || !S.K) { exp.innerHTML = '<p>Designing K…</p>'; drawTL(); stage.draw(); return; }
-  exp.innerHTML = STEPS[S.step][1]() + (DO[S.step] ? `<p class="do"><b>Do this:</b> ${DO[S.step]}</p>` : '');
+  exp.innerHTML = STEPS[S.step][2]() + (DO[S.step] ? `<p class="do"><b>Do this:</b> ${DO[S.step]}</p>` : '');
+  if (STEPS[S.step][3]) STEPS[S.step][3]();
+  exp.querySelectorAll('[data-ac]').forEach(b => b.onclick = () => { S.acol = +b.dataset.ac; render(); });
   exp.querySelectorAll('[data-jp]').forEach(b => b.onclick = () => { S.joint = +b.dataset.jp; render(); });
   exp.querySelectorAll('[data-tg]').forEach(b => b.onclick = () => { S.tgt = +b.dataset.tg; render(); });
   exp.querySelectorAll('[data-ti]').forEach(b => b.onclick = () => { S.i = +b.dataset.ti; S.playing = false; render(); });
@@ -428,13 +523,14 @@ function render() {
 }
 document.getElementById('prev').onclick = () => { S.step = Math.max(0, S.step - 1); render(); };
 document.getElementById('next').onclick = () => { S.step = Math.min(STEPS.length - 1, S.step + 1); render(); };
-let last = 0, acc = 0;
+let last = 0, acc = 0, lastExp = 0;
 function frame(ts) {
   if (!S.playing || !S.res) return;
   const dt = Math.min(.05, (ts - last) / 1000 || .016); last = ts; acc += dt * (S.slow ? .25 : 1);
   while (acc >= .005 && S.i < S.res.t.length - 1) { S.i++; acc -= .005; }
   if (S.i >= S.res.t.length - 1) S.playing = false;
-  render();
+  // the 3-D view and the timeline every frame; the text panel (tables, bars) only a few times a second
+  if (!S.playing || ts - lastExp > 150) { lastExp = ts; render(); } else { drawTL(); draw3d(); }
   if (S.playing) requestAnimationFrame(frame);
 }
 document.getElementById('play').onclick = () => { if (!S.res) return; if (S.i >= S.res.t.length - 1) S.i = 0; S.playing = !S.playing; last = 0; acc = 0; if (S.playing) requestAnimationFrame(frame); };
