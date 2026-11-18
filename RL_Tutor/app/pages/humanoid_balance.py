@@ -21,6 +21,7 @@ tests/test_upperbody.py checks every claim made here, in both languages.
 
 from __future__ import annotations
 
+import html
 import math
 
 import numpy as np
@@ -481,6 +482,81 @@ LQR_STORY = dict(peak=6.2, t_peak=0.52, locked_peak=7.9, sat=(0.30, 0.50), flip=
                  qdd0_040=(-5.95, -3.54, 0.11, 0.07, 5.49, 0.0, -3.84), torso_back=-7.3)
 
 
+RICCATI_CODE = r'''
+import numpy as np
+from scipy.linalg import solve_continuous_are
+
+# LQR: A, B from step 5-6 of the lab, Q, R from step 7
+P = solve_continuous_are(A, B, Q, R)          # A'P + PA - P B R^-1 B'P + Q = 0
+K = np.linalg.solve(R, B.T @ P)               # u = -K x
+
+# Kalman filter: same solver, mirrored inputs (A -> A', B -> C')
+S = solve_continuous_are(A.T, C.T, Qn, Rn)    # A S + S A' - S C' Rn^-1 C S + Qn = 0
+L = S @ C.T @ np.linalg.inv(Rn)               # x_hat' = A x_hat + B u + L (y - C x_hat)
+'''
+
+
+def riccati_scalar(a, b, q, r):
+    """One-number Riccati 2ap - p^2 b^2/r + q = 0: the positive root, the gain, the closed-loop pole."""
+    root = math.sqrt(a * a + q * b * b / r)
+    p = r * (a + root) / (b * b)
+    return p, b * p / r, a - b * b * p / r
+
+
+def riccati_card() -> Card:
+    """The Riccati equation on its own: what it is, why LQR and the Kalman filter both need it."""
+    a = max(np.real(lqr_numbers()["open"]))
+    p, k, pole = riccati_scalar(a, 1.0, 1.0, 0.01)
+    c = Card("the Riccati equation: what it is, and how it solves both LQR and the Kalman filter")
+    c.add(body(
+        "<b>What it is.</b> An equation in which the unknown appears <i>multiplied by itself</i>: the matrix "
+        "version of the school quadratic a x² + b x + c = 0. Jacopo Riccati studied the one-number version "
+        "around 1720. Here the unknown is a whole symmetric matrix, P (LQR) or Σ (Kalman), and the "
+        "\"squared\" term is P·(…)·P."))
+    c.add(body(
+        "<b>Why it keeps showing up.</b> Whenever the model is linear and the thing you measure is a square "
+        "(squared errors and torques in LQR, Gaussian noise in Kalman), the answer is a square too: cost-to-go "
+        "xᵀPx, or an uncertainty ellipse with covariance Σ. Asking \"which choice is best?\" means finding the "
+        "bottom of a bowl, and that step creates the P·(…)·P term. Linear + squares in, Riccati out."))
+    c.add(body("<b>Read it as a balance of three terms.</b> Same anatomy in both:"))
+    c.add(_table(
+        ["term", "LQR (P = cost still to come)", "Kalman (Σ = how unsure the estimate is)"],
+        [["AᵀP + PA  /  AΣ + ΣAᵀ", "the robot drifts on its own; an unstable A makes errors, and so the cost, grow",
+          "the state drifts on its own; an unstable A makes old knowledge go stale"],
+         ["+ Q", "new penalty points arrive every second the state is off", "new process noise (pushes, model error) arrives every second"],
+         ["− PBR⁻¹BᵀP  /  − ΣCᵀR⁻¹CΣ", "what you can do about it: motors (B) remove cost, cheaper when R is small",
+          "what you can learn: sensors (C) remove uncertainty, more when their noise R is small"],
+         ["= 0", "steady state: cost added = cost the motors remove", "steady state: uncertainty added = uncertainty the sensors remove"],
+         ["gain", "K = R⁻¹BᵀP, used as u = −K x", "L = ΣCᵀR⁻¹, used as x̂̇ = A x̂ + B u + L (y − C x̂)"],
+         ["time", "runs backward: at the end nothing is left to pay, P(T) = 0, step back to now",
+          "runs forward: start with the initial uncertainty Σ(0), step toward now"],
+         ["you choose", "Q, R = what you care about (design)", "Q, R = how noisy things are (measured)"]]))
+    c.add(math_label(r"-\dot P = A^TP + PA - PBR^{-1}B^TP + Q,\qquad \dot\Sigma = A\Sigma + \Sigma A^T - \Sigma C^TR^{-1}C\Sigma + Q", 14))
+    c.add(body(
+        "Those are the <i>differential</i> versions: LQR's run backward from the end, Kalman's forward from the "
+        "start. Run either long enough and it stops changing; set the derivative to 0 and you get the "
+        "<i>algebraic</i> Riccati equation the lab solves. Swap A ↔ Aᵀ and B ↔ Cᵀ and one turns into the other "
+        "(<b>duality</b>): steering a state with motors and pinning it down with sensors are the same math."))
+    c.add(body(
+        f"<b>By hand, one number.</b> Take the robot's own runaway rate, a = {a:.3f} /s (the torso tipping over the "
+        f"waist, step 5), with b = 1, q = 1, r = 0.01. LQR: 2 a p − p² b²/r + q = 0 is a quadratic in p; its "
+        f"positive root is p = r (a + √(a² + q b²/r)) / b² = <b>{p:.4f}</b>, so k = b p / r = <b>{k:.2f}</b>, and "
+        f"ẋ = (a − b k) x = <b>{pole:.2f}</b> x: the runaway {a:.2f} becomes a decay {pole:.2f}. Kalman with "
+        f"the same numbers (c = 1, process noise 1, sensor noise 0.01): 2 a σ − σ² c²/r + q = 0, the same "
+        f"quadratic, σ = {p:.4f}, L = {k:.2f}, and the estimation error decays at {pole:.2f}. Same equation, "
+        "same answer, two meanings. The negative root is thrown away: a cost or an uncertainty cannot be "
+        "negative."))
+    c.add(body(
+        "<b>How it is solved for matrices.</b> (1) March the differential version until it settles (the lab does "
+        "this in the browser). (2) Take the stable eigenvectors of the Hamiltonian matrix "
+        "[A, −BR⁻¹Bᵀ; −Q, −Aᵀ] and read P off them (what this page's Python does, and what SciPy does). A digital "
+        "controller uses the discrete-time twin (DARE), which is also the form of the textbook Kalman filter's "
+        "update."))
+    c.add(body("<b>In Python</b> (SciPy has both solvers built in):"))
+    c.add(body(f"<pre style='font-family:Consolas,monospace;font-size:12px'>{html.escape(RICCATI_CODE.strip())}</pre>"))
+    return c
+
+
 class UpperBodyLQRPage(BalancePage):
     TITLE = "LQR, Opened Up: How −Kx Becomes a Torque at Each Joint"
     SUBTITLE = ("Page 169 said: linearise, choose Q and R by Bryson's rule, apply τ = −Kx. Here every one of "
@@ -493,13 +569,14 @@ class UpperBodyLQRPage(BalancePage):
         st = LQR_STORY
         self.add(start_here(
             "<b>Work this page in the lab, one step at a time.</b> The controller of page 169 is one line, "
-            "τ<sub>u</sub> = −K x. The lab opens it in ten steps on the simplified G1 of page 167, with the 70 N "
+            "τ<sub>u</sub> = −K x. The lab opens it in fourteen steps on the simplified G1 of page 167, with the 70 N "
             "push of page 169 replayed underneath: what the controller reads, the machine, A, B, Bryson's prices, "
             "K, each joint's torque term by term, where that torque goes, the momentum ledger, and the push in time. "
             "In each step, do what the step asks (click a column, pick a joint, drag the timeline) before pressing "
             f"next. The result to explain by the end: peak lean {st['peak']:.1f}° with the upper body, "
             f"{st['locked_peak']:.1f}° with everything locked."))
         self.lab("lqr_torque_flow.html", "Lab · LQR opened up: state → A, B → Q, R → K → each joint's torque → the motion", 1180)
+        self.add(riccati_card())
 
         self.add(two_col(
             Reveal("Say it out loud", [

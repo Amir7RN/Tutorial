@@ -327,19 +327,33 @@ const STEPS = [
     <p><b>What you could do instead:</b> put τ₀ into u. Then u has 4 entries, B gets a 4th column, K a 4th row, and LQR designs the ankle too. But LQR cannot know about the ${f(lim()[0], 1)} N·m wall; it would ask for more than the foot can give. Handling limits like that is what MPC and QP controllers add on top.</p>
     <p>On the robot: the purple arc at the ankle is the spring's torque now. Drag the timeline: it hits −${f(lim()[0], 1)} at 0.30 s and stays there (dotted line in the torque plot).</p>`],
   ['4 · why a straight-line model', 'angles', () => `
-    <p class="goal"><b>Goal:</b> see why LQR needs a linear model, and what it costs.</p>
-    <p>f is curved: M, c and g contain sines and cosines of the angles, and the ankle spring stops at the foot limit. LQR's math works only when ẋ is a straight-line function of x and u: <span class="m">ẋ ≈ A x + B u</span>. Near standing (small angles, small speeds) the curve and its tangent line almost coincide, so we replace f by its tangent at x = 0. That is all "linearise" means.</p>
-    <canvas id="lin" style="width:100%;height:220px;display:block"></canvas>
-    <p style="font-size:.84rem;color:var(--muted)">Torques about the ankle for a rigid robot leaned by q₀. <b style="color:var(--bad)">Red</b>: gravity tipping it forward, 219.5 sin q₀ (dashed: its straight line 219.5 q₀). <b style="color:var(--d)">Purple</b>: the ankle spring pushing back, −300 q₀ but stopped at ±${f(lim()[0], 1)} (dashed: the straight line). Shaded: where the straight lines are honest.</p>
-    <p>Inside the band, the spring beats gravity and the robot stands. Past <b>0.111 rad (6.4°)</b> the real spring stops growing but the straight line keeps going: <b>the linear model believes in an ankle that does not exist.</b> Past 8.7° gravity wins outright. Remember this: it explains the surprise in step 7.</p>`, () => drawLin()],
+    <p class="goal"><b>Goal:</b> see what "linearise" means on one simple case, before doing it to the whole robot in step 5.</p>
+    <p><b>The simple case.</b> Lock every joint, so the robot is one stiff stick standing on the ankle, and lean it forward by an angle q₀. Two torques act about the ankle. The plot shows both, for every lean from −20° to +20°.</p>
+    <canvas id="lin" style="width:100%;height:240px;display:block"></canvas>
+    <p style="font-size:.84rem;color:var(--muted)"><b>How to read it.</b> Left–right: the lean q₀ in degrees (right = leaning forward). Up–down: torque about the ankle in N·m (up = tips the robot forward, down = pushes it back). Solid line = the real torque. Dashed line = the straight line that has the same slope at 0°, which is all a linear model keeps.</p>
+    <ul>
+    <li><b style="color:var(--bad)">Red, gravity: 219.5 sin q₀.</b> Lean forward and gravity tips you further forward (up); lean back and it tips you further back (down). The line goes <b>up to the right: positive slope = it makes the lean worse.</b> Alone, gravity makes a stick fall.</li>
+    <li><b style="color:var(--d)">Purple, the ankle: −300 q₀.</b> Lean forward and the ankle pushes back (down). <b>Negative slope = it fights the lean</b>, like a spring. But the foot can give at most ${f(lim()[0], 1)} N·m (step 3), so beyond that the real purple line goes <b>flat</b>: that is what <b>clamped</b> (or saturated) means. Asking for more gives no more.</li>
+    <li><b style="color:var(--a)">Blue, the sum: what the stick really feels.</b> Slope −300 + 219.5 = −80.5: still negative, so near 0° the stick returns to standing.</li>
+    </ul>
+    <p><b>What linearising does.</b> Each curve is replaced by its dashed line: sin q₀ becomes q₀, and the clamp is forgotten. The dashed blue line is the whole linear model of this stick: <span class="m">torque ≈ −80.5 · q₀</span>. One number, the slope at standing. For the full robot, A is just a table of such slopes (step 5).</p>
+    <p><b>Where it stops being honest.</b> In the green band the solid and dashed lines agree. Past <b>0.111 rad (6.4°)</b> the real purple line goes flat while the dashed one keeps falling: <b>the linear model believes in an ankle that does not exist.</b> The real blue line turns upward, and past 8.7° it is above zero: gravity wins and the stick falls. LQR never sees this, because it only gets the dashed lines. Remember it: it explains the surprise in step 7.</p>`, () => drawLin()],
   ['5 · finding A by nudging', 'acol', () => {
     const c = S.acol, eps = c < 4 ? 0.01 : 0.01, z = new Array(8).fill(0), u0 = [0, 0, 0];
     const xp = z.slice(), xm = z.slice(); xp[c] = eps; xm[c] = -eps;
     const fp = fEval(xp, u0), fm = fEval(xm, u0), col = fp.map((v, i) => (v - fm[i]) / (2 * eps));
-    return `<p class="goal"><b>Goal:</b> get A, the straight-line model of how the state affects itself, by experiment on f.</p>
-    <p><b>The recipe (page 19):</b> start standing still (x = 0, u = 0). Nudge <i>one</i> state number a little up, call f; nudge it down, call f; the difference divided by the nudge is how strongly ẋ depends on that number. Each nudge gives one <b>column</b> of A.</p>
-    <span class="eq">column i of A = ( f(x = +ε in slot i) − f(x = −ε in slot i) ) / 2ε</span>
+    const g0 = gains(), q = xp.slice(0, 4), qd = xp.slice(4), kk = UB.core(m, q, qd, { momentum: false });
+    const tau = [-g0.ankle_k * q[0] - g0.ankle_b * qd[0], 0, 0, 0], rhs = tau.map((v, i) => v - kk.cvec[i] - kk.g[i]);
+    return `<p class="goal"><b>Goal:</b> get A: the slopes of step 4, for all 8 state numbers at once.</p>
+    <p><b>First, what f(…) is.</b> f is not a measurement and no time passes inside it. It is the formula of step 2: hand it the 8 state numbers and the 3 motor torques, and it answers "at this instant, how fast is each one changing?". The answer for the speeds is an acceleration, which page 167's physics gives instantly from where the links are and how fast they move, the same way F = m a gives a car's acceleration without waiting.</p>
+    <p><b>The nudge experiment.</b> Put the robot standing still: all angles 0, all speeds 0, all motors 0. Change <i>one</i> of the 8 numbers to +0.01 and leave the other 7 at 0. Ask f. Then the same with −0.01. Example: nudging q̇₀ means "standing upright, nothing moving except the legs, which are rotating forward at 0.01 rad/s, right now". The only thing that notices a speed at standing is the ankle damper: it answers −30 × 0.01 = −0.3 N·m, and f turns that into accelerations.</p>
+    <p><b>Why divide by 2ε, not by a time.</b> We are not computing an acceleration from a change of speed over time. f already returns accelerations. We are computing a <b>slope</b>: how much the acceleration changes per unit of the thing we nudged, exactly like the slope −80.5 in step 4. Rise = f(+ε) − f(−ε), run = (+ε) − (−ε) = 2ε. For a speed nudge the unit is (rad/s²) per (rad/s).</p>
+    <span class="eq">column i of A = ( f(slot i = +ε) − f(slot i = −ε) ) / 2ε          ε = ${eps}</span>
     <div class="pick">nudge: ${XS.map((n, i) => `<button data-ac="${i}" aria-pressed="${i === c}">${n}</button>`).join('')}</div>
+    <p><b>Inside one call, f(${XS[c]} = +${eps}):</b> the four joint torques, minus speed terms c and gravity terms g, then times M⁻¹ (step 2, ②):</p>
+    <table class="t"><tr><th>joint</th><th>τ</th><th>c</th><th>g</th><th>τ − c − g</th><th>q̈ = M⁻¹(τ − c − g)</th></tr>
+    ${[0, 1, 2, 3].map(i => `<tr><td style="color:var(${JC[i]})">${JN[i]}</td><td>${f(tau[i], 4)}</td><td>${f(kk.cvec[i], 4)}</td><td>${f(kk.g[i], 4)}</td><td>${f(rhs[i], 4)}</td><td><b>${f(fp[4 + i], 4)}</b></td></tr>`).join('')}</table>
+    <p style="font-size:.84rem;color:var(--muted)">τ at the ankle is the spring-damper −300 q₀ − 30 q̇₀; the three motors are 0. c is about 0 because the speeds are tiny (it grows with speed²). Now both calls side by side, and the slope:</p>
     <table class="t"><tr><th>ẋ entry</th><th>f(+${eps})</th><th>f(−${eps})</th><th>÷ 2ε → column ${XS[c]}</th></tr>
     ${fp.map((v, i) => `<tr${i < 4 ? ' style="color:var(--muted)"' : ''}><td>${i < 4 ? 'rate of ' + XS[i] : 'q̈' + QD[i - 4]}</td><td>${f(v, 4)}</td><td>${f(fm[i], 4)}</td><td><b>${f(col[i], 2)}</b></td></tr>`).join('')}</table>
     <p><b>Why the table you saw was 4 × 8.</b> A is 8 × 8 (8 entries of ẋ, 8 nudges). But its top 4 rows are boring: nudging a speed moves the matching angle's rate by exactly 1, nudging an angle moves it by 0. So A = [ 0  I ; <i>4 × 8 block</i> ], and only the bottom block, the accelerations, carries physics. Here it is, the column you nudged outlined:</p>
@@ -350,7 +364,9 @@ const STEPS = [
     const j = S.joint, z = new Array(8).fill(0), up = [0, 0, 0], um = [0, 0, 0]; up[j - 1] = 1; um[j - 1] = -1;
     const fp = fEval(z, up), fm = fEval(z, um), col = fp.map((v, i) => (v - fm[i]) / 2);
     return `<p class="goal"><b>Goal:</b> get B, how each motor's torque changes the state, by the same experiment.</p>
-    <p>Stand still, give <i>one</i> motor +1 N·m, call f; give it −1 N·m, call f; difference ÷ 2. One column per motor, so B is 8 × 3. Its top 4 rows are 0 (a torque does not change an angle directly, only through acceleration).</p>
+    <p><b>Same recipe, now nudging a torque instead of a state number.</b> Robot standing still (x = 0). Ask f: "if the ${JN[j]} motor pushed +1 N·m right now, what are the accelerations?". Then with −1 N·m. Difference ÷ 2 (the run from −1 to +1 is 2 N·m) = one column of B, in (rad/s²) per N·m. One column per motor, so B is 8 × 3.</p>
+    <p><b>Inside f here.</b> Standing still means c = 0 and g = 0 (gravity is balanced exactly upright), and the ankle spring gives 0. So τ − c − g = (0, ±1 at the ${JN[j]}, 0, 0), and q̈ = M⁻¹ times that = ± column ${JN[j]} of M⁻¹. That is why B can be read straight off M⁻¹, and why ±1 is fine: f is exactly a straight line in the torque.</p>
+    <p>The top 4 rows of B are 0: a torque changes speeds (through acceleration), never an angle directly.</p>
     ${pickJoint(j, ACT)}
     <table class="t"><tr><th>q̈ of</th><th>+1 N·m</th><th>−1 N·m</th><th>column ${JN[j]}</th></tr>
     ${[4, 5, 6, 7].map(i => `<tr><td style="color:var(${JC[i - 4]})">${JN[i - 4]}</td><td>${f(fp[i], 3)}</td><td>${f(fm[i], 3)}</td><td><b>${f(col[i], 3)}</b></td></tr>`).join('')}</table>
@@ -360,35 +376,48 @@ const STEPS = [
   ['7 · prices: Q for errors, R for torque', 'torque', () => {
     const g = gains(), a = at(S.i), xmax = [g.lean_max, g.posture_max, g.posture_max, g.posture_max, g.lean_rate_max, g.posture_rate_max, g.posture_rate_max, g.posture_rate_max];
     const qc = a.x.map((v, i) => v * v / xmax[i] / xmax[i]), rc = ACT.map((j, i) => a.tau[j] * a.tau[j] / g.tau_max[j] / g.tau_max[j]);
-    return `<p class="goal"><b>Goal:</b> tell LQR what "good" means. Two price lists, two letters:</p>
-    <p><b>Q prices the state</b> (8 × 8, only the diagonal used here): how bad is it that a joint is off target or moving. <b>R prices the torque</b> (3 × 3): how expensive is it to use each motor. LQR picks K to make the total bill as small as possible:</p>
-    <span class="eq">bill = ∫ ( xᵀQx  +  uᵀRu ) dt   =  ∫ ( Σ Qᵢᵢ xᵢ²  +  Σ Rⱼⱼ uⱼ² ) dt</span>
-    <p><b>Bryson's rule</b> sets the prices for you: write down the largest value you would accept for each, and use 1 / (that)². Then each term costs exactly 1 when its variable reaches its limit.</p>
+    return `<p class="goal"><b>Goal:</b> tell LQR what "good" means. <b>Yes, Q and R are your design choice</b>: A and B come from physics, Q and R come from you. They are the only knobs LQR has.</p>
+    <p><b>The idea: a penalty score for a whole run.</b> A controller can be gentle (small torques, the robot wobbles a lot) or aggressive (big torques, the robot barely moves). Which is better? LQR needs that answer as one number to make small. So at every instant you add up penalty points, and over the whole run you sum them. That total J is called the <b>cost</b>; lower is better. Points come from two kinds of things you dislike:</p>
+    <ul><li><b>Q: penalty for the robot being wrong.</b> Each state number away from 0 (a lean, a bent torso, a speed) costs Qᵢᵢ × (its value)². Q is 8 × 8; here only its diagonal is used, one weight per state number.</li>
+    <li><b>R: penalty for using the motors.</b> Each torque costs Rⱼⱼ × (torque)². R is 3 × 3, one weight per motor. It stands for battery, heat, and staying away from the motor's limit.</li></ul>
+    <span class="eq">J = ∫ ( xᵀQx  +  uᵀRu ) dt   =  ∫ ( Σ Qᵢᵢ xᵢ²  +  Σ Rⱼⱼ uⱼ² ) dt      (sum of penalty points over the run)</span>
+    <p>LQR picks the K that makes J as small as possible. Raise a Q weight: you care more about that error, the controller fights it harder. Raise an R weight: that motor becomes "expensive", the controller uses it more gently. Squares are used because a double error should hurt four times, and because squares are what make the math solvable in one equation (step 8).</p>
+    <p><b>Bryson's rule</b> is a starting point for choosing them: write down the largest value you would accept for each, and use 1 / (that)². Then each term scores exactly 1 point per second when its variable reaches its limit, so all terms are compared on the same scale.</p>
     <table class="t"><tr><th></th><th>largest OK</th><th>price</th></tr>
     ${xmax.map((v, i) => `<tr><td style="color:var(${JC[i % 4]})">Q · ${XN[i]}</td><td>${f(v, 2)} ${XU[i]}</td><td>${f(1 / v / v, 3)}</td></tr>`).join('')}
     ${ACT.map(j => `<tr><td style="color:var(${JC[j]})">R · τ ${JN[j]}</td><td>${f(g.tau_max[j], 0)} N·m</td><td>${(1 / g.tau_max[j] / g.tau_max[j]).toExponential(2)}</td></tr>`).join('')}</table>
-    <p><b>The bill right now</b> (t = ${f(a.t, 3)} s), one bar per term; drag the timeline to watch which term is expensive:</p>
-    ${bars([...qc.map((v, i) => ['Q · ' + XS[i], v, css(JC[i % 4])]), ...rc.map((v, i) => ['R · τ ' + JN[ACT[i]], v, css(JC[ACT[i]])])], 'bill rate', qc.reduce((s, v) => s + v, 0) + rc.reduce((s, v) => s + v, 0))}
+    <p><b>Penalty points per second right now</b> (t = ${f(a.t, 3)} s), one bar per term; drag the timeline to watch which term is expensive:</p>
+    ${bars([...qc.map((v, i) => ['Q · ' + XS[i], v, css(JC[i % 4])]), ...rc.map((v, i) => ['R · τ ' + JN[ACT[i]], v, css(JC[ACT[i]])])], 'points / s',qc.reduce((s, v) => s + v, 0) + rc.reduce((s, v) => s + v, 0))}
     <p><b>Try it, and be surprised.</b> lean_max 0.05 (ask for less lean) and redesign: the peak lean gets <i>worse</i>, about 7.3° instead of 6.2°. posture_max 0.2 (let the torso move less): it gets <i>better</i>, about 5.7°. Step 4 is why: the straight-line model has no foot limit, so "optimal" is optimal for a robot that does not exist. Bryson gives a start; the final prices are tuned in simulation.</p>`;
   }],
-  ['8 · Riccati: the price of the future', 'angles', () => {
+  ['8 · Riccati: the cost still to come', 'angles', () => {
     const P = S.Pm, a = at(S.i), x = a.x, V = x.reduce((s, xi, i) => s + xi * P[i].reduce((t, p, j) => t + p * x[j], 0), 0);
     const A = S.A, B = S.B, Ri = S.R.map((r, i) => r.map((v, j) => i === j ? 1 / v : 0)), n = 8;
     const mm = (X, Y) => X.map(r => Y[0].map((_, j) => r.reduce((s, v, k) => s + v * Y[k][j], 0))), tr = X => X[0].map((_, j) => X.map(r => r[j]));
     const PB = mm(P, B), PA = mm(P, A), PBRB = mm(mm(PB, Ri), tr(PB)), Res = mm(tr(A), P).map((r, i) => r.map((v, j) => v + PA[i][j] - PBRB[i][j] + S.Q[i][j]));
     const res = Math.max(...Res.flat().map(Math.abs)) / Math.max(...P.flat().map(Math.abs));
     return `<p class="goal"><b>Goal:</b> understand what the Riccati equation does, without the algebra first.</p>
-    <p><b>① Imagine you knew the future bill.</b> For every state x, suppose you knew the smallest bill still to pay if you control perfectly from there on. Call it V(x). For a straight-line model with squared prices, V is always a squared form: <span class="m">V(x) = xᵀ P x</span>, with P an 8 × 8 table. P is the "price of the future".</p>
-    <p><b>② Then the best torque is obvious:</b> push the state downhill on V as fast as is worth paying for. That gives <span class="m">u = −R⁻¹BᵀP x</span>, so <span class="m">K = R⁻¹BᵀP</span>. B: what a torque does to the state. P: what that change is worth. R⁻¹: how much torque that is worth buying.</p>
-    <p><b>③ P must be self-consistent.</b> While you follow the best torque, the future bill must fall exactly as fast as you are paying it: dV/dt = −(xᵀQx + uᵀRu). Put ẋ = Ax + Bu and u = −Kx into that, ask it to hold for <i>every</i> x, and out comes one matrix equation:</p>
-    <span class="eq">AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0          (continuous algebraic Riccati equation)</span>
+    <p><b>① The cost still to come.</b> Step 7's J adds penalty points over a whole run. Now stop the run at some instant, with the robot in state x. How many points are <i>still to come</i> from here on, if the best possible controller takes over? Call that number V(x), the <b>cost-to-go</b>. Standing still: V = 0, nothing left to fix. Leaning 5° and falling fast: V is big, much correcting and torque still ahead. For a linear model with squared penalties V always comes out squared in x, like the penalties themselves: <span class="m">V(x) = xᵀ P x</span> (for one number: V = p x²). <b>P is that 8 × 8 table of weights.</b> Finding P is the whole job; K follows from it.</p>
+    <p><b>② Why knowing P gives K.</b> At this instant you choose u. Over a tiny time dt two things happen:</p>
+    <ul><li>you pay points now: <span class="m">(xᵀQx + uᵀRu) dt</span>;</li>
+    <li>the state moves by ẋ dt = (Ax + Bu) dt (A and B from steps 5–6), so the cost still to come changes by <span class="m">(dV/dx)·ẋ dt = 2xᵀP(Ax + Bu) dt</span>.</li></ul>
+    <p>The best u makes the sum smallest. Only two pieces contain u: <span class="m">uᵀRu + 2xᵀPBu</span>. One motor, one number: <span class="m">r u² + 2 (p b x) u</span>, a bowl in u, lowest where its slope is zero: 2 r u + 2 p b x = 0, so <span class="m">u = −(p b / r) x</span>. With matrices the same line reads:</p>
+    <span class="eq">2 R u + 2 BᵀP x = 0    ⇒    u = −R⁻¹ BᵀP x    ⇒    K = R⁻¹ BᵀP</span>
+    <p>Read it right to left: <b>P x</b> = which way the cost-to-go rises steepest from here; <b>Bᵀ</b> = how much each motor can move the state that way (step 6's columns); <b>R⁻¹</b> = cheap motor, push harder; expensive motor, push less.</p>
+    <p><b>③ The equation that pins P down.</b> V is <i>exactly</i> the points still to come, so with the best u the points you pay now must equal the points that disappear from what is left: pay-now + change-of-V = 0. Write it out, put in u = −R⁻¹BᵀPx:</p>
+    <span class="eq">xᵀQx + uᵀRu + 2xᵀP(Ax + Bu) = 0
+xᵀQx + xᵀPBR⁻¹BᵀPx + xᵀ(AᵀP + PA)x − 2xᵀPBR⁻¹BᵀPx = 0
+xᵀ( AᵀP + PA − P B R⁻¹ Bᵀ P + Q ) x = 0      for every x</span>
+    <p>That holds for every x only if the bracket is zero:</p>
+    <span class="eq">AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0     (algebraic Riccati equation)</span>
+    <p>One-number version: <span class="m">2ap − p²b²/r + q = 0</span>, a quadratic in p: the "−PBR⁻¹BᵀP" term is what makes it a Riccati equation rather than a linear one. The card under the lab works it by hand.</p>
     <p>Solving it means finding the P that makes this zero. The lab does it by stepping the equation from "no future" until P stops changing (the two seconds of "solving…"). Check: biggest leftover here = ${res.toExponential(1)} of P's size.</p>
-    <p><b>The price of the future right now</b> (t = ${f(a.t, 3)} s): V = xᵀPx = <b>${f(V, 3)}</b>. Drag the timeline: it jumps during the push and falls back to 0 as the robot recovers. The ${f(P[0][0], 1)} in the corner of P means a 0.1 rad lean alone is worth ${f(P[0][0] * .01, 2)}.</p>
+    <p><b>The cost still to come right now</b> (t = ${f(a.t, 3)} s): V = xᵀPx = <b>${f(V, 3)}</b> points. Drag the timeline: it jumps during the push and falls back to 0 as the robot recovers. The ${f(P[0][0], 1)} in the corner of P means a 0.1 rad lean alone, nothing else wrong, still costs ${f(P[0][0] * .01, 2)} points to fix.</p>
     ${mat(P, { rn: XS, cn: XS, d: 2 })}
     <p><b>Same Riccati as the Kalman filter?</b> Same shape, mirrored:</p>
     <table class="t"><tr><th></th><th style="text-align:left">LQR (control)</th><th style="text-align:left">Kalman filter (estimation)</th></tr>
     <tr><td>equation</td><td class="m" style="text-align:left">AᵀP + PA − PBR⁻¹BᵀP + Q = 0</td><td class="m" style="text-align:left">AΣ + ΣAᵀ − ΣCᵀR⁻¹CΣ + Q = 0</td></tr>
-    <tr><td>unknown</td><td style="text-align:left;font-family:var(--body)">P: price of the future</td><td style="text-align:left;font-family:var(--body)">Σ: uncertainty of the estimate</td></tr>
+    <tr><td>unknown</td><td style="text-align:left;font-family:var(--body)">P: cost still to come</td><td style="text-align:left;font-family:var(--body)">Σ: uncertainty of the estimate</td></tr>
     <tr><td>Q, R</td><td style="text-align:left;font-family:var(--body)">prices you choose</td><td style="text-align:left;font-family:var(--body)">noise sizes you measure</td></tr>
     <tr><td>direction</td><td style="text-align:left;font-family:var(--body)">backward from the future</td><td style="text-align:left;font-family:var(--body)">forward from the past</td></tr>
     <tr><td>gives</td><td style="text-align:left;font-family:var(--body)">K = R⁻¹BᵀP</td><td style="text-align:left;font-family:var(--body)">L = ΣCᵀR⁻¹</td></tr></table>
@@ -450,11 +479,11 @@ const DO = [
   'drag the timeline to 0.25 s, then to 0.40 s. Which numbers change first after the push: angles or speeds?',
   'drag to 0.25 s (push on) and to 0.40 s. Which rows of the ẋ column are just copies, and which come from physics?',
   'drag the timeline to 0.30 s and watch the ankle torque hit the wall at −33.4 N·m and stay there.',
-  'in the plot, find where the purple curve leaves its dashed line. What lean is that, and what does the linear model believe beyond it?',
-  'nudge q₀, then q₁. Which one has a positive number on its own row (it runs away from standing), and what does that mean for a torso with no motor?',
+  'in the plot, find where the purple line goes flat (clamped) while its dashed line keeps going. What lean is that, and where does the solid blue line cross zero?',
+  'nudge q̇₀ and read the "inside one call" table: which joint has a τ that is not zero, and why? Then nudge q₀, then q₁. Which one has a positive number on its own row (it runs away from standing), and what does that mean for a torso with no motor?',
   'pick waist, then shoulder, then elbow. Which one moves the lean (q̈₀) most per N·m, and in which direction?',
   'set lean_max to 0.05 and press redesign, note the peak lean on the timeline. Then defaults, posture_max 0.2, redesign. Which helped, and why (step 4)?',
-  'drag the timeline from 0.2 to 1.6 s and watch V = xᵀPx: when is the future most expensive?',
+  'drag the timeline from 0.2 to 1.6 s and watch V = xᵀPx: when is the cost still to come largest, and why is it 0 at the end?',
   'click the waist row. Add the q₀ and q₁ gains in your head: what single angle is the waist really holding?',
   'pick waist and drag from 0.20 to 0.45 s. Find the moment the sum changes sign, and which bar caused it.',
   'keep the ankle picked and compare 0.25 s with 0.40 s. Which bar changed sign, and why does that save the robot?',
@@ -476,8 +505,14 @@ function drawLin() {
   c.strokeStyle = css('--line'); c.strokeRect(x0, y0, x1 - x0, y1 - y0);
   c.strokeStyle = css('--grey'); c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.moveTo(X(0), y0); c.lineTo(X(0), y1); c.stroke(); c.setLineDash([]);
   const line = (fn, col, dash) => { c.strokeStyle = col; c.lineWidth = 2; c.setLineDash(dash || []); c.beginPath(); for (let i = 0; i <= 200; i++) { const q = -qm + 2 * qm * i / 200; i ? c.lineTo(X(q), Y(fn(q))) : c.moveTo(X(q), Y(fn(q))); } c.stroke(); c.setLineDash([]); };
+  const ank = q => -Math.max(-L0, Math.min(L0, 300 * q));
   line(q => 219.5 * Math.sin(q), css('--bad')); line(q => 219.5 * q, css('--bad'), [5, 4]);
-  line(q => -Math.max(-L0, Math.min(L0, 300 * q)), css('--d')); line(q => -300 * q, css('--d'), [5, 4]);
+  line(ank, css('--d')); line(q => -300 * q, css('--d'), [5, 4]);
+  line(q => 219.5 * Math.sin(q) + ank(q), css('--a')); line(q => -80.5 * q, css('--a'), [5, 4]);
+  c.font = 'bold 11px ' + css('--body'); c.textAlign = 'left';
+  const tag = (txt, col, q, t) => { c.fillStyle = col; c.fillText(txt, X(q), Y(t)); };
+  tag('gravity (red)', css('--bad'), 2 / D, 62); tag('ankle: flat = clamped', css('--d'), 11.5 / D, -50);
+  tag('sum (blue)', css('--a'), 15.5 / D, 8); tag('green: lines honest', css('--c'), -qs + .002, -72);
   c.fillStyle = css('--muted'); c.font = '11px ' + css('--body'); c.textAlign = 'center';
   [-20, -10, 0, 10, 20].forEach(d => c.fillText(d + '°', X(d / D), H - 8));
   c.textAlign = 'right'; c.fillText('+80', x0 - 3, y0 + 10); c.fillText('−80', x0 - 3, y1); c.fillText('N·m', x0 - 3, Y(0) + 4); c.textAlign = 'left';

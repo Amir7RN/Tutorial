@@ -383,6 +383,15 @@ class Pages(unittest.TestCase):
             os.unlink(f.name)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def test_riccati_card_scalar_matches_scipy_style_solve(self):
+        from app.pages.humanoid_balance import riccati_scalar, lqr_numbers
+        a = max(np.real(lqr_numbers()["open"]))
+        self.assertAlmostEqual(a, 8.217, places=3)
+        p, k, pole = riccati_scalar(a, 1.0, 1.0, 0.01)
+        self.assertAlmostEqual(2 * a * p - p * p / 0.01 + 1.0, 0.0, places=9)
+        self.assertGreater(p, 0)
+        self.assertAlmostEqual(pole, -math.sqrt(a * a + 100.0), places=9)
+
     def test_lqr_page_story_matches_the_simulation(self):
         from app.pages.humanoid_balance import LQR_STORY as st, lqr_numbers
         n = lqr_numbers()
