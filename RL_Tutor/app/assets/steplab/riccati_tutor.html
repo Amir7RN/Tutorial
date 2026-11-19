@@ -1,0 +1,462 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Riccati Step by Step</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1fr) minmax(400px,1fr)}
+  #pl{width:100%;height:100%;display:block;min-height:330px}
+  .plot{position:relative;flex:1;min-height:340px;padding:4px}
+  .tabs{display:flex;gap:6px;margin-bottom:8px}
+  .tabs button{flex:1;font-size:.95rem;padding:8px}
+  .tabs button[aria-pressed="true"]{background:var(--a);border-color:var(--a);color:var(--panel)}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .chips button{font-size:.78rem;font-weight:400;padding:3px 8px;border-radius:99px}
+  .chips button[aria-current="true"]{background:var(--hi);border-color:var(--a);font-weight:700}
+  .goal{border-left:3px solid var(--a);padding:2px 0 2px 8px;margin:0 0 8px}
+  .do{border:1px dashed var(--c);border-radius:8px;padding:5px 9px;margin:8px 0 0;font-size:.86rem}
+  .do b{color:var(--c)}
+  .math b{color:var(--ink)}
+  table.t{width:100%}
+  table.t td,table.t th{text-align:left;font-family:var(--body);vertical-align:top}
+  table.t td.m{font-family:var(--mono);white-space:nowrap}
+  .ctl{grid-template-columns:170px 1fr 74px}
+  .legend{min-height:20px}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1>The Riccati equation, step by step</h1>
+    <p>Pick LQR or the Kalman filter. Each is shrunk to one number first, so every term can be seen and played with, then grown back to matrices.</p></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card plot"><canvas id="pl"></canvas></div>
+      <div class="card"><div class="legend" id="leg"></div>
+        <div class="controls" id="ctl" style="grid-template-columns:1fr;margin-top:6px"></div>
+        <div class="btns" style="margin-top:6px"><button id="best">set the gain to the Riccati answer</button><button id="dflt">defaults</button></div></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="tabs"><button id="tlqr">LQR (control)</button><button id="tkf">Kalman filter (estimation)</button></div>
+        <p class="h">step</p><div class="chips" id="chips"></div>
+        <div class="nav"><button id="prev">◀ back</button><button id="next">next ▶</button></div></div>
+      <div class="card math" id="exp"></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f = (x, d = 3) => !isFinite(x) ? '∞' : (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d);
+const DEF = { a: 8.217, b: 1, q: 1, r: 0.01, k: 12, ka: -1, c: 1, qn: 1, rn: 0.01, L: 2, s0: 0.5 };
+const S = { tab: 'lqr', step: { lqr: 0, kf: 0 }, p: { ...DEF } };
+
+/* ---------- one-number LQR ---------- */
+const L1 = () => {
+  const { a, b, q, r } = S.p, ps = r * (a + Math.sqrt(a * a + q * b * b / r)) / (b * b), ks = b * ps / r;
+  return { ps, ks, pole: a - b * ks, pk: k => b * k > a ? (q + r * k * k) / (2 * (b * k - a)) : Infinity, g: p => 2 * a * p - b * b * p * p / r + q };
+};
+function simLQR(k, T = 1.2) {
+  const { a, b, q, r } = S.p, dt = 0.0005, x0 = 0.1, out = { t: [], x: [], u: [], Jx: 0, Ju: 0, fell: false };
+  let x = x0;
+  for (let t = 0; t <= T + 1e-9; t += dt) {
+    const u = -k * x;
+    out.t.push(t); out.x.push(x); out.u.push(u);
+    out.Jx += q * x * x * dt; out.Ju += r * u * u * dt;
+    x += dt * (a * x + b * u);
+    if (Math.abs(x) > 0.6) { out.fell = true; break; }
+  }
+  return out;
+}
+/* ---------- one-number Kalman ---------- */
+const K1 = () => {
+  const { ka: a, c, qn, rn } = S.p, ss = rn * (a + Math.sqrt(a * a + qn * c * c / rn)) / (c * c), Ls = ss * c / rn;
+  return { ss, Ls, pole: a - Ls * c, sL: L => L * c > a ? (qn + L * L * rn) / (2 * (L * c - a)) : Infinity, g: s => 2 * a * s - c * c * s * s / rn + qn };
+};
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function simKF(L, T = 4, Tstat = 200) {
+  const { ka: a, c, qn, rn, s0 } = S.p, dt = 0.01, R = rng(7), N = () => Math.sqrt(-2 * Math.log(R() + 1e-12)) * Math.cos(2 * Math.PI * R());
+  const out = { t: [], x: [], y: [], xh: [] };
+  let x = Math.sqrt(s0) * N(), xh = 0, se = 0, n = 0;
+  for (let i = 0; i * dt <= Tstat; i++) {
+    const t = i * dt, y = c * x + Math.sqrt(rn / dt) * N();
+    if (t <= T) { out.t.push(t); out.x.push(x); out.y.push(y); out.xh.push(xh); }
+    if (t > 2) { se += (x - xh) * (x - xh); n++; }
+    const xn = x + dt * a * x + Math.sqrt(qn * dt) * N();
+    xh = xh + dt * (a * xh + L * (y - c * xh));
+    x = xn;
+    if (Math.abs(x) > 1e3 || Math.abs(xh) > 1e3) break;
+  }
+  out.var = n ? se / n : Infinity;
+  return out;
+}
+
+/* ---------- plotting ---------- */
+const cv = document.getElementById('pl');
+function frame() {
+  const r = cv.getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)), pr = devicePixelRatio;
+  if (cv.width !== Math.round(W * pr) || cv.height !== Math.round(H * pr)) { cv.width = Math.round(W * pr); cv.height = Math.round(H * pr); }
+  const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, 0, 0); c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
+  return { c, W, H };
+}
+function panel(G, o) {
+  const { c, W, H } = G, x0 = 56, x1 = W - 14, y0 = o.top * H + 18, y1 = o.bot * H - 26;
+  const [xa, xb] = o.xr, [ya, yb] = o.yr, X = v => x0 + (v - xa) / (xb - xa) * (x1 - x0), Y = v => y1 - (Math.max(ya, Math.min(yb, v)) - ya) / (yb - ya) * (y1 - y0);
+  c.strokeStyle = css('--line'); c.lineWidth = 1; c.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  if (ya < 0 && yb > 0) { c.strokeStyle = css('--grey'); c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.stroke(); c.setLineDash([]); }
+  c.fillStyle = css('--muted'); c.font = '11px ' + css('--body');
+  c.textAlign = 'left'; c.fillText(o.title || '', x0, y0 - 5);
+  c.textAlign = 'center'; c.fillText(o.xlab || '', (x0 + x1) / 2, y1 + 22);
+  [xa, (xa + xb) / 2, xb].forEach(v => c.fillText(+v.toFixed(3) + '', X(v), y1 + 11));
+  c.textAlign = 'right'; [ya, yb, ...(ya < 0 && yb > 0 ? [0] : [])].forEach(v => c.fillText(+v.toPrecision(3) + '', x0 - 4, Y(v) + 4));
+  c.save(); c.beginPath(); c.rect(x0, y0, x1 - x0, y1 - y0); c.clip();
+  (o.series || []).forEach(s => {
+    c.strokeStyle = c.fillStyle = css(s.col); c.lineWidth = s.w || 2; c.setLineDash(s.dash || []);
+    if (s.dots) { s.xs.forEach((xv, i) => { if (i % (s.every || 1) === 0) c.fillRect(X(xv) - 1.2, Y(s.ys[i]) - 1.2, 2.4, 2.4); }); }
+    else { c.beginPath(); let on = false; s.xs.forEach((xv, i) => { const yv = s.ys[i]; if (!isFinite(yv)) { on = false; return; } on ? c.lineTo(X(xv), Y(yv)) : c.moveTo(X(xv), Y(yv)); on = true; }); c.stroke(); }
+    c.setLineDash([]);
+  });
+  (o.marks || []).forEach(m => {
+    if (!isFinite(m.y)) return;
+    c.fillStyle = css(m.col); c.beginPath(); c.arc(X(m.x), Y(m.y), m.r || 5, 0, 7); c.fill();
+    if (m.label) { c.font = 'bold 11px ' + css('--body'); c.textAlign = m.right ? 'right' : 'left'; c.fillText(m.label, X(m.x) + (m.right ? -8 : 8), Y(m.y) - 7); }
+  });
+  (o.vlines || []).forEach(v => { c.strokeStyle = css(v.col); c.setLineDash([4, 3]); c.beginPath(); c.moveTo(X(v.x), y0); c.lineTo(X(v.x), y1); c.stroke(); c.setLineDash([]); });
+  c.restore();
+}
+const lin = (a, b, n = 300) => Array.from({ length: n + 1 }, (_, i) => a + (b - a) * i / n);
+function boxes(G, rows) {
+  const { c, W, H } = G;
+  c.font = '13px ' + css('--body'); c.textAlign = 'center'; c.textBaseline = 'middle';
+  rows.forEach(([txt, col, fx, fy, fw, fh, bold]) => {
+    const x = fx * W, y = fy * H, w = fw * W, h = fh * H;
+    c.strokeStyle = css(col); c.lineWidth = 2; c.fillStyle = css('--inset');
+    c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, 8) : c.rect(x, y, w, h); c.fill(); c.stroke();
+    c.fillStyle = css('--ink'); c.font = (bold ? 'bold ' : '') + '13px ' + css('--body');
+    const lines = txt.split('\n'); lines.forEach((l, i) => c.fillText(l, x + w / 2, y + h / 2 + (i - (lines.length - 1) / 2) * 17));
+  });
+  c.textBaseline = 'alphabetic';
+}
+function arrows(G, list) {
+  const { c, W, H } = G; c.strokeStyle = css('--muted'); c.fillStyle = css('--muted'); c.lineWidth = 2;
+  list.forEach(([ax, ay, bx, by]) => {
+    const A = [ax * W, ay * H], B = [bx * W, by * H], an = Math.atan2(B[1] - A[1], B[0] - A[0]);
+    c.beginPath(); c.moveTo(...A); c.lineTo(...B); c.stroke();
+    c.beginPath(); c.moveTo(...B); c.lineTo(B[0] - 9 * Math.cos(an - .4), B[1] - 9 * Math.sin(an - .4)); c.lineTo(B[0] - 9 * Math.cos(an + .4), B[1] - 9 * Math.sin(an + .4)); c.fill();
+  });
+}
+const legend = items => document.getElementById('leg').innerHTML = items.map(([t, col, dash]) =>
+  `<span><span class="sw" style="background:${dash ? 'repeating-linear-gradient(90deg,var(' + col + ') 0 4px,transparent 4px 7px)' : 'var(' + col + ')'}"></span>${t}</span>`).join('');
+
+/* ---------- plots per kind ---------- */
+const PLOTS = {
+  lqrMap(G) {
+    boxes(G, [['A  (8 × 8)\nhow the robot moves\non its own · step 5', '--a', .03, .05, .29, .2],
+      ['B  (8 × 3)\nwhat each motor does\nstep 6', '--a', .03, .29, .29, .2],
+      ['Q  (8 × 8)\npenalty on errors\nstep 7', '--b', .03, .53, .29, .2],
+      ['R  (3 × 3)\npenalty on torque\nstep 7', '--b', .03, .77, .29, .2],
+      ['Riccati\nequation', '--d', .4, .4, .2, .2, true],
+      ['P  (8 × 8)\nTHE UNKNOWN\ncost still to come', '--bad', .68, .1, .29, .22, true],
+      ['K = R⁻¹ Bᵀ P\n(3 × 8)', '--c', .68, .44, .29, .16, true],
+      ['u = −K x\non the robot', '--c', .68, .72, .29, .16]]);
+    arrows(G, [[.32, .15, .4, .45], [.32, .39, .4, .48], [.32, .63, .4, .52], [.32, .87, .4, .55], [.6, .45, .68, .25], [.825, .32, .825, .44], [.825, .6, .825, .72]]);
+  },
+  kfMap(G) {
+    boxes(G, [['A  (n × n)\nhow the state moves\non its own', '--a', .03, .05, .29, .2],
+      ['C  (m × n)\nwhat the sensors see\ny = C x + noise', '--a', .03, .29, .29, .2],
+      ['Q  (n × n)\nhow big the random\npushes are', '--b', .03, .53, .29, .2],
+      ['R  (m × m)\nhow noisy the\nsensors are', '--b', .03, .77, .29, .2],
+      ['Riccati\nequation', '--d', .4, .4, .2, .2, true],
+      ['Σ  (n × n)\nTHE UNKNOWN\nhow unsure the estimate is', '--bad', .68, .1, .29, .22, true],
+      ['L = Σ Cᵀ R⁻¹\n(n × m)', '--c', .68, .44, .29, .16, true],
+      ['x̂̇ = A x̂ + B u\n + L (y − C x̂)', '--c', .68, .72, .29, .16]]);
+    arrows(G, [[.32, .15, .4, .45], [.32, .39, .4, .48], [.32, .63, .4, .52], [.32, .87, .4, .55], [.6, .45, .68, .25], [.825, .32, .825, .44], [.825, .6, .825, .72]]);
+  },
+  lqrOpen(G) {
+    const { a } = S.p, t = lin(0, 0.6), x = t.map(v => 0.1 * Math.exp(a * v));
+    panel(G, { top: 0, bot: 1, xr: [0, .6], yr: [0, 0.6], title: 'tilt x (rad), no motor (u = 0), starting at 0.1 rad', xlab: 'time (s)', series: [{ xs: t, ys: x, col: '--bad' }] });
+    legend([['x(t) = 0.1 · e^(a t): runs away', '--bad']]);
+  },
+  lqrSim(G) {
+    const s = simLQR(S.p.k), b = simLQR(L1().ks);
+    panel(G, { top: 0, bot: .55, xr: [0, 1.2], yr: [-0.05, 0.3], title: 'tilt x (rad)', xlab: 'time (s)', series: [{ xs: b.t, ys: b.x, col: '--grey', dash: [5, 4] }, { xs: s.t, ys: s.x, col: '--a' }] });
+    panel(G, { top: .55, bot: 1, xr: [0, 1.2], yr: [-4, 1], title: 'motor u = −k x', xlab: 'time (s)', series: [{ xs: b.t, ys: b.u, col: '--grey', dash: [5, 4] }, { xs: s.t, ys: s.u, col: '--b' }] });
+    legend([['your k: tilt', '--a'], ['your k: motor', '--b'], ['the best k (Riccati answer, step 5)', '--grey', 1]]);
+  },
+  lqrBowl(G) {
+    const l = L1(), ks = lin(0, 60, 600), J = ks.map(k => l.pk(k) * 0.01), top = l.ps * 0.01 * 3;
+    panel(G, { top: 0, bot: 1, xr: [0, 60], yr: [0, top], title: 'total penalty J for x₀ = 0.1 rad, against the gain k', xlab: 'gain k', series: [{ xs: ks, ys: J, col: '--a' }],
+      vlines: [{ x: S.p.a / S.p.b, col: '--bad' }],
+      marks: [{ x: S.p.k, y: l.pk(S.p.k) * 0.01, col: '--b', label: 'your k' }, ...(S.step.lqr >= 4 ? [{ x: l.ks, y: l.ps * 0.01, col: '--c', label: 'bottom', right: true }] : [])] });
+    legend([['J(k) = p(k) · x₀²', '--a'], ['your k', '--b'], ['k = a/b: below this it falls', '--bad', 1]]);
+  },
+  lqrParab(G) {
+    const l = L1(), pmax = Math.max(l.ps * 2.2, 0.05), ps = lin(-pmax * 0.4, pmax), gs = ps.map(l.g), ymax = Math.max(...gs.map(Math.abs).filter(isFinite));
+    const { a, b, r, q } = S.p;
+    panel(G, { top: 0, bot: 1, xr: [ps[0], pmax], yr: [-ymax, ymax * 0.6 + 1], title: 'left side of the Riccati equation, as a function of p', xlab: 'p',
+      series: [{ xs: ps, ys: ps.map(p => 2 * a * p), col: '--bad', w: 1.5, dash: [5, 4] }, { xs: ps, ys: ps.map(p => -b * b * p * p / r), col: '--c', w: 1.5, dash: [5, 4] }, { xs: ps, ys: ps.map(() => q), col: '--b', w: 1.5, dash: [5, 4] }, { xs: ps, ys: gs, col: '--d', w: 2.5 }],
+      marks: [{ x: l.ps, y: 0, col: '--d', label: 'p = ' + f(l.ps, 4) }] });
+    legend([['2ap (drift)', '--bad', 1], ['+q (new penalty)', '--b', 1], ['−b²p²/r (motor removes)', '--c', 1], ['sum: zero at the answer', '--d']]);
+  },
+  lqrMarch(G) {
+    const l = L1(), ds = 0.0005, s = [0], p = [0];
+    for (let i = 0; i < 1200; i++) { p.push(p[i] + ds * l.g(p[i])); s.push((i + 1) * ds); }
+    panel(G, { top: 0, bot: 1, xr: [0, .6], yr: [0, l.ps * 1.3], title: 'p, stepping backward from the end of time', xlab: 'time before the end (s)', series: [{ xs: s, ys: s.map(() => l.ps), col: '--grey', dash: [5, 4] }, { xs: s, ys: p, col: '--d' }] });
+    legend([['p marching back from p = 0', '--d'], ['the Riccati root', '--grey', 1]]);
+  },
+  kfWhy(G) {
+    const R = rng(3), N = () => Math.sqrt(-2 * Math.log(R() + 1e-12)) * Math.cos(2 * Math.PI * R()), sd = Math.sqrt(S.p.s0), xs = lin(0, 1, 200), e = xs.map(() => sd * N());
+    const bins = 25, lo = -2, hi = 2, cnt = new Array(bins).fill(0); e.forEach(v => { const i = Math.floor((v - lo) / (hi - lo) * bins); if (i >= 0 && i < bins) cnt[i]++; });
+    panel(G, { top: 0, bot: .5, xr: [0, 1], yr: [-2, 2], title: 'error e = x − x̂ of 200 guesses (dots); band = ± one standard deviation', xlab: 'guess number / 200',
+      series: [{ xs: xs, ys: e, col: '--a', dots: true }, { xs: [0, 1], ys: [sd, sd], col: '--b', dash: [5, 4] }, { xs: [0, 1], ys: [-sd, -sd], col: '--b', dash: [5, 4] }] });
+    const bx = lin(lo, hi, bins), mx = Math.max(...cnt);
+    panel(G, { top: .5, bot: 1, xr: [lo, hi], yr: [0, 1.1], title: 'how often each error happens (bars) and the Gaussian bell with variance Σ', xlab: 'error e',
+      series: [{ xs: bx.flatMap((x, i) => [x, x, x + (hi - lo) / bins, x + (hi - lo) / bins]), ys: cnt.flatMap(v => [0, v / mx, v / mx, 0]), col: '--a', w: 1 },
+        { xs: lin(lo, hi), ys: lin(lo, hi).map(x => Math.exp(-x * x / (2 * S.p.s0))), col: '--b' }] });
+    legend([['errors', '--a'], ['± √Σ, and the bell', '--b']]);
+  },
+  kfSim(G) {
+    const s = simKF(S.p.L), lim = 3;
+    panel(G, { top: 0, bot: 1, xr: [0, 4], yr: [-lim, lim], title: 'true x (hidden), sensor y (dots), estimate x̂', xlab: 'time (s)',
+      series: [{ xs: s.t, ys: s.y, col: '--grey', dots: true, every: 2 }, { xs: s.t, ys: s.x, col: '--ink', w: 2 }, ...(S.step.kf >= 3 ? [{ xs: s.t, ys: s.xh, col: '--b', w: 2 }] : [])] });
+    legend([['true x', '--ink'], ['sensor y = c x + noise', '--grey'], ...(S.step.kf >= 3 ? [['estimate x̂ with your L', '--b']] : [])]);
+  },
+  kfBowl(G) {
+    const k = K1(), Ls = lin(0, 40, 400), sv = Ls.map(k.sL), top = Math.max(k.ss * 4, 0.05), sim = simKF(S.p.L);
+    panel(G, { top: 0, bot: 1, xr: [0, 40], yr: [0, top], title: 'uncertainty Σ (average error²) against the gain L', xlab: 'gain L', series: [{ xs: Ls, ys: sv, col: '--a' }],
+      marks: [{ x: S.p.L, y: k.sL(S.p.L), col: '--b', label: 'your L (formula)' }, { x: S.p.L, y: sim.var, col: '--grey', r: 4, label: 'measured' },
+        ...(S.step.kf >= 5 ? [{ x: k.Ls, y: k.ss, col: '--c', label: 'bottom' }] : [])] });
+    legend([['Σ(L) formula', '--a'], ['your L', '--b'], ['same L, measured from 200 s of simulation', '--grey']]);
+  },
+  kfParab(G) {
+    const k = K1(), { ka: a, c, rn, qn } = S.p, smax = Math.max(k.ss * 2.2, 0.05), ss = lin(-smax * 0.4, smax), gs = ss.map(k.g), ymax = Math.max(...gs.map(Math.abs));
+    panel(G, { top: 0, bot: 1, xr: [ss[0], smax], yr: [-ymax, ymax * 0.6 + 1], title: 'left side of the Riccati equation, as a function of Σ', xlab: 'Σ',
+      series: [{ xs: ss, ys: ss.map(s => 2 * a * s), col: '--bad', w: 1.5, dash: [5, 4] }, { xs: ss, ys: ss.map(s => -c * c * s * s / rn), col: '--c', w: 1.5, dash: [5, 4] }, { xs: ss, ys: ss.map(() => qn), col: '--b', w: 1.5, dash: [5, 4] }, { xs: ss, ys: gs, col: '--d', w: 2.5 }],
+      marks: [{ x: k.ss, y: 0, col: '--d', label: 'Σ = ' + f(k.ss, 4) }] });
+    legend([['2aΣ (drift)', '--bad', 1], ['+q (new pushes)', '--b', 1], ['−c²Σ²/r (sensor removes)', '--c', 1], ['sum: zero at the answer', '--d']]);
+  },
+  kfMarch(G) {
+    const k = K1(), dt = 0.0005, t = [0], s = [S.p.s0];
+    for (let i = 0; i < 1200; i++) { s.push(s[i] + dt * k.g(s[i])); t.push((i + 1) * dt); }
+    panel(G, { top: 0, bot: 1, xr: [0, .6], yr: [0, Math.max(S.p.s0, k.ss) * 1.2], title: 'Σ, stepping forward from the first moment', xlab: 'time since start (s)', series: [{ xs: t, ys: t.map(() => k.ss), col: '--grey', dash: [5, 4] }, { xs: t, ys: s, col: '--d' }] });
+    legend([['Σ marching forward from Σ(0)', '--d'], ['the Riccati root', '--grey', 1]]);
+  },
+};
+
+/* ---------- the steps ---------- */
+const LQR = [
+  ['0 · what is unknown', 'lqrMap', [], () => `
+    <p class="goal"><b>What Riccati is for, in one sentence:</b> it is the equation you solve to get <b>P</b>, and P gives you K.</p>
+    <p>By the time you reach step 8 of the lab above, you already have four tables of numbers. The picture on the left is the whole job:</p>
+    <table class="t"><tr><th>symbol</th><th>size</th><th>what it is</th><th>where it came from</th></tr>
+    <tr><td class="m">A</td><td class="m">8 × 8</td><td>how the robot moves on its own</td><td>known: nudging, step 5</td></tr>
+    <tr><td class="m">B</td><td class="m">8 × 3</td><td>what each motor does to the state</td><td>known: nudging, step 6</td></tr>
+    <tr><td class="m">Q</td><td class="m">8 × 8</td><td>penalty on errors</td><td>known: you chose it, step 7</td></tr>
+    <tr><td class="m">R</td><td class="m">3 × 3</td><td>penalty on torque</td><td>known: you chose it, step 7</td></tr>
+    <tr><td class="m cbad">P</td><td class="m">8 × 8</td><td><b>unknown</b>: the penalty still to come from each state</td><td><b>the Riccati equation</b></td></tr>
+    <tr><td class="m cc">K</td><td class="m">3 × 8</td><td>the controller, u = −K x</td><td>K = R⁻¹ Bᵀ P, once P is known</td></tr></table>
+    <p>So the Riccati equation plays the same role as <span class="m">x² − 5x + 6 = 0</span> at school: a rule the unknown must obey. Here the knowns are A, B, Q, R and the unknown is P.</p>
+    <p><b>Plan.</b> Matrices hide what is going on, so steps 1–6 use the robot shrunk to <b>one number</b>: same story, every term visible, sliders to play with. Step 7 grows it back to the 8 × 8 version.</p>`],
+  ['1 · one number: the falling torso', 'lqrOpen', ['a'], () => `
+    <p class="goal"><b>The smallest LQR problem.</b> One state, one motor.</p>
+    <p>x = the torso's tilt (rad). u = the waist motor command. The straight-line model (one number instead of A and B):</p>
+    <span class="eq">ẋ = a x + b u          a = ${f(S.p.a, 3)},  b = ${f(S.p.b, 2)}</span>
+    <p><b>a</b> plays the role of A: what the tilt does on its own. a = 8.217 is the robot's real runaway rate (the open-loop pole from the lab: the torso tipping over the waist). Positive a means "the more it tilts, the faster it tilts more": the plot shows 0.1 rad growing to 0.6 rad in about ${f(Math.log(6) / S.p.a, 2)} s.</p>
+    <p><b>b</b> plays the role of B: how much one unit of u changes the tilt rate.</p>
+    <p><b>The penalty</b> (step 7 of the lab, with one weight each):</p>
+    <span class="eq">J = ∫ ( q x²  +  r u² ) dt          q = ${f(S.p.q, 2)},  r = ${f(S.p.r, 4)}</span>
+    <p>Knowns: a, b, q, r. Unknown so far: which controller. LQR's controller has the form <span class="m">u = −k x</span>, so the question is: <b>which number k?</b></p>`],
+  ['2 · try a gain k by hand', 'lqrSim', ['k'], () => {
+    const s = simLQR(S.p.k);
+    return `<p class="goal"><b>Do the search by hand first.</b> Move the k slider. The robot starts tilted 0.1 rad, the motor pushes u = −k x.</p>
+    <p>For your k = ${f(S.p.k, 2)}:</p>
+    <span class="eq">${s.fell ? 'FELL: k is too small, the motor loses to a' : `penalty from tilt   ∫ q x² dt = ${f(s.Jx, 5)}
+penalty from motor  ∫ r u² dt = ${f(s.Ju, 5)}
+total J                       = ${f(s.Jx + s.Ju, 5)}`}</span>
+    <ul><li><b>k below a/b = ${f(S.p.a / S.p.b, 2)}:</b> the motor is weaker than the runaway: the torso falls.</li>
+    <li><b>k a bit above:</b> it comes back slowly; small torque, but the tilt penalty piles up for a long time.</li>
+    <li><b>k very big:</b> it snaps back fast; tilt penalty small, but a huge torque at the start costs a lot.</li></ul>
+    <p>Somewhere in between is the k with the smallest total. Finding that k is the whole of LQR.</p>`; }],
+  ['3 · the total penalty is a bowl', 'lqrBowl', ['k', 'q', 'r'], () => {
+    const l = L1(), k = S.p.k;
+    return `<p class="goal"><b>Instead of simulating, compute J for every k at once.</b></p>
+    <p>With u = −kx the model becomes ẋ = (a − bk) x, so the tilt decays as <span class="m">x(t) = x₀ e^(−(bk − a)t)</span>. Put that into J and do the integral (∫ e^(−2ct) dt = 1/2c):</p>
+    <span class="eq">J = ∫ (q + r k²) x₀² e^(−2(bk − a)t) dt  =  x₀² · (q + r k²) / (2(bk − a))</span>
+    <p>Notice the shape: <b>J = (a number) × x₀²</b>. That number is the penalty still to come per unit of starting tilt squared. Call it <b>p</b>:</p>
+    <span class="eq">p(k) = (q + r k²) / (2(bk − a))          your k = ${f(k, 2)}:  p = ${f(l.pk(k), 5)}</span>
+    <p><b>This is what P is.</b> V(x) = p x² is "how many penalty points are still ahead if I start at x". In 8 numbers it becomes V = xᵀ P x.</p>
+    <p>The plot is J(k): a bowl. Too small k on the left (falls at the red line), too big on the right. Move the k slider and watch the orange dot ride the bowl. Change q or r: the bowl moves.</p>`; }],
+  ['4 · bottom of the bowl: k = b p / r', 'lqrBowl', ['k', 'q', 'r'], () => {
+    const l = L1(), k = S.p.k, pk = l.pk(k);
+    return `<p class="goal"><b>Find the bottom with algebra:</b> where the slope of J(k) is zero.</p>
+    <span class="eq">p(k) = (q + r k²) / (2(bk − a))
+dp/dk = 0   ⇔   2rk · 2(bk − a)  −  (q + rk²) · 2b  =  0
+divide by 4(bk − a):    r k  −  b · p(k)  =  0
+                        k  =  b p / r</span>
+    <p><b>That is K = R⁻¹ Bᵀ P in one number:</b> k = (1/r) · b · p. So <i>if you know p, the best gain is one line</i>. Check it live:</p>
+    <span class="eq">your k = ${f(k, 3)}     b · p(k) / r = ${f(S.p.b * pk / S.p.r, 3)}     ${Math.abs(k - S.p.b * pk / S.p.r) < 0.05 ? '← equal: you are at the bottom' : '← not equal: not the bottom'}</span>
+    <p>Press <b>set the gain to the Riccati answer</b>: the two numbers become equal and the dot sits on the green bottom, k = ${f(l.ks, 2)}.</p>
+    <p>But there is a catch: k needs p and p needs k. Two equations, two unknowns. Step 5 removes k.</p>`; }],
+  ['5 · Riccati: one equation for p alone', 'lqrParab', ['a', 'q', 'r'], () => {
+    const l = L1(), { a, b, q, r } = S.p;
+    return `<p class="goal"><b>Eliminate k, and the Riccati equation appears.</b></p>
+    <span class="eq">from step 3:      2 p (b k − a) = q + r k²
+put in k = b p / r (step 4):
+                  2 b² p² / r − 2 a p = q + b² p² / r
+tidy up:          2 a p  +  q  −  b² p² / r  =  0      ← Riccati</span>
+    <p><b>The three terms, each is a rate (penalty points per second, per unit x²):</b></p>
+    <table class="t"><tr><th>term</th><th>now</th><th>meaning</th></tr>
+    <tr><td class="m cbad">2 a p</td><td class="m">${f(2 * a * l.ps, 3)}</td><td>the robot drifting on its own makes the future penalty grow (a &gt; 0: it runs away)</td></tr>
+    <tr><td class="m cb">+ q</td><td class="m">${f(q, 3)}</td><td>the penalty you keep paying while the tilt is not zero</td></tr>
+    <tr><td class="m cc">− b² p² / r</td><td class="m">${f(-b * b * l.ps * l.ps / r, 3)}</td><td>what the motor takes away: more when it is strong (b) and cheap (small r)</td></tr></table>
+    <p>Riccati says: <b>at the right p, drift + new penalty = what the motor removes</b>. The left side is a parabola in p (plot); the answer is where it crosses zero. School formula:</p>
+    <span class="eq">p = r (a + √(a² + q b²/r)) / b²  =  ${f(l.ps, 5)}      k = b p / r = ${f(l.ks, 3)}
+closed loop  ẋ = (a − b k) x = ${f(l.pole, 3)} x     (the runaway ${f(a, 2)} became a decay)</span>
+    <p>The parabola has a second, negative root; it is thrown away because a penalty cannot be negative. The p²-term is what makes this a <b>Riccati</b> equation rather than a linear one.</p>`; }],
+  ['6 · how a computer solves it', 'lqrMarch', ['a', 'q', 'r'], () => `
+    <p class="goal"><b>No formula for matrices, so march instead.</b></p>
+    <p>Think of a run that ends at time T. At the very end nothing is left to pay: p = 0. One small step dt before the end, the penalty still to come grows by exactly the left side of step 5:</p>
+    <span class="eq">p(one step earlier) = p + dt · ( 2 a p + q − b² p² / r )</span>
+    <p>Repeat, stepping backward. The plot: p starts at 0, climbs, and stops changing once the left side reaches 0: that is the Riccati root ${f(L1().ps, 4)} (dashed). A long horizon "forgets" the end, and the controller stops depending on time.</p>
+    <p>The lab above does exactly this with 8 × 8 matrices (the "solving the Riccati equation…" message). Libraries such as SciPy's <span class="m">solve_continuous_are</span> use a faster eigenvector method, same answer.</p>`],
+  ['7 · back to 8 numbers', 'lqrMap', [], () => `
+    <p class="goal"><b>Every piece has a matrix twin.</b> Same equation, same meaning, term by term:</p>
+    <table class="t"><tr><th>one number</th><th>8 × 8 robot</th><th>meaning</th></tr>
+    <tr><td class="m">ẋ = a x + b u</td><td class="m">ẋ = A x + B u</td><td>the model (steps 5–6 of the lab)</td></tr>
+    <tr><td class="m">q x² + r u²</td><td class="m">xᵀQx + uᵀRu</td><td>the penalty (step 7)</td></tr>
+    <tr><td class="m">V = p x²</td><td class="m">V = xᵀ P x</td><td>penalty still to come</td></tr>
+    <tr><td class="m cbad">2 a p</td><td class="m cbad">Aᵀ P + P A</td><td>drift grows it</td></tr>
+    <tr><td class="m cb">q</td><td class="m cb">Q</td><td>new penalty arrives</td></tr>
+    <tr><td class="m cc">b² p² / r</td><td class="m cc">P B R⁻¹ Bᵀ P</td><td>the motors remove it</td></tr>
+    <tr><td class="m">k = b p / r</td><td class="m">K = R⁻¹ Bᵀ P</td><td>the best gain</td></tr></table>
+    <span class="eq">Aᵀ P + P A  +  Q  −  P B R⁻¹ Bᵀ P  =  0</span>
+    <p><b>Why P is a table and not one number.</b> With 8 states the penalty still to come depends on combinations: a forward lean that is already coming back is cheaper than one still growing. V = xᵀPx = Σᵢⱼ Pᵢⱼ xᵢ xⱼ has a weight for every pair. P is symmetric, so 36 unknowns, and the matrix equation is 36 equations. Lab step 8 shows the solved P (its corner 42.6 is the lean's own p), and step 9 the K it gives.</p>
+    <p>Now switch to the <b>Kalman filter</b> tab: the same equation turns up again, answering a different question.</p>`],
+];
+const KF = [
+  ['0 · what is unknown', 'kfMap', [], () => `
+    <p class="goal"><b>A different problem.</b> LQR assumed the controller knows x exactly. Real sensors are noisy and the robot gets random pushes. The Kalman filter's job: <b>the best guess x̂ of the true state</b>, from a noisy sensor and the model.</p>
+    <table class="t"><tr><th>symbol</th><th>what it is</th><th>where it comes from</th></tr>
+    <tr><td class="m">A</td><td>how the state moves on its own</td><td>known: the model (same as LQR)</td></tr>
+    <tr><td class="m">C</td><td>what the sensors see: y = C x + noise</td><td>known: which sensors you have</td></tr>
+    <tr><td class="m">Q</td><td>how big the random pushes and model errors are</td><td>known: <b>measured</b> or estimated</td></tr>
+    <tr><td class="m">R</td><td>how noisy each sensor is</td><td>known: <b>measured</b> (datasheet, or log the sensor at rest)</td></tr>
+    <tr><td class="m cbad">Σ</td><td><b>unknown</b>: how unsure the best guess is</td><td><b>the Riccati equation</b></td></tr>
+    <tr><td class="m cc">L</td><td>the filter gain: how much to trust the sensor</td><td>L = Σ Cᵀ R⁻¹, once Σ is known</td></tr></table>
+    <p>Same structure as LQR: four knowns, one unknown matrix from Riccati, then a gain in one line. Note Q and R here are <b>not</b> your choice: they describe how noisy the world is.</p>
+    <p>Step 1 answers "why squared?", steps 2–7 shrink it to one number, step 8 grows it back.</p>`],
+  ['1 · why "how unsure" is a square', 'kfWhy', ['s0'], () => `
+    <p class="goal"><b>Your question: why is Gaussian noise "squared"?</b></p>
+    <p>Say your guess is x̂ and the truth is x. The error e = x − x̂ is sometimes positive, sometimes negative. To say "how big are my errors <i>usually</i>", you cannot average e: +0.5 and −0.5 average to 0, which would claim a perfect guess. So you average <b>e²</b>: both signs count, big errors count more.</p>
+    <span class="eq">Σ  = average of e²         (the variance)
+√Σ = typical error size    (the standard deviation)</span>
+    <p>That is all Σ is: <b>how big the error usually is, squared</b>. Slider Σ = ${f(S.p.s0, 2)} → typical error ±${f(Math.sqrt(S.p.s0), 2)} (top plot, dashed band).</p>
+    <p><b>Where Gaussian comes in.</b> Random errors that come from many small causes pile up into the bell curve (bottom plot). The bell is fully described by its centre and its width, and its width <i>is</i> √Σ. So for Gaussian noise, knowing Σ means knowing everything about how wrong you might be. Q and R are the same kind of number for the pushes and for the sensor.</p>
+    <p>It is the same reason LQR uses x² and u²: squares are what make the math come out as one clean equation.</p>`],
+  ['2 · one number: a hidden state and a noisy sensor', 'kfSim', ['ka', 'qn', 'rn'], () => `
+    <p class="goal"><b>The smallest Kalman problem.</b> One hidden number x, one sensor.</p>
+    <span class="eq">ẋ = a x + w        (w: random pushes, size q = ${f(S.p.qn, 2)})
+y = c x + v        (v: sensor noise, size r = ${f(S.p.rn, 4)})        a = ${f(S.p.ka, 2)},  c = ${f(S.p.c, 2)}</span>
+    <p>Black: the true x, wandering because of the pushes. Grey dots: what the sensor says, every 0.01 s. You only ever see the dots.</p>
+    <ul><li><b>Trust only the sensor:</b> your guess jumps with every dot (noise of size √(r/0.01) = ${f(Math.sqrt(S.p.rn / 0.01), 2)} per reading).</li>
+    <li><b>Trust only the model:</b> the model does not know the pushes, so it drifts away from the truth.</li></ul>
+    <p>The Kalman filter blends the two. How much of each: that is the unknown.</p>`],
+  ['3 · try a gain L by hand', 'kfSim', ['L', 'ka', 'qn', 'rn'], () => {
+    const s = simKF(S.p.L);
+    return `<p class="goal"><b>The filter's rule, one line:</b> predict with the model, then correct by L × the surprise.</p>
+    <span class="eq">x̂̇ = a x̂  +  L ( y − c x̂ )
+      model    surprise: what the sensor said minus what I expected</span>
+    <p>Move the L slider and watch the orange estimate:</p>
+    <ul><li><b>L = 0:</b> pure model, ignores the sensor; drifts away.</li>
+    <li><b>L huge:</b> chases every noisy dot.</li>
+    <li><b>In between:</b> smooth and close to the truth.</li></ul>
+    <span class="eq">your L = ${f(S.p.L, 2)}     measured average error² over 200 s = ${f(s.var, 5)}</span>
+    <p>That average error² is Σ for this L. The best L makes it smallest.</p>`; }],
+  ['4 · the uncertainty is a bowl', 'kfBowl', ['L', 'qn', 'rn'], () => {
+    const k = K1(), L = S.p.L;
+    return `<p class="goal"><b>Σ for every L at once.</b> Same trick as LQR step 3.</p>
+    <p>The error e = x − x̂ follows its own equation (subtract the filter from the truth):</p>
+    <span class="eq">ė = (a − L c) e  +  w  −  L v</span>
+    <p>(a − Lc) pulls the error toward 0; the pushes w and the sensor noise times L keep kicking it. Where the pull and the kicks balance, the average error² settles at:</p>
+    <span class="eq">Σ(L) = (q + L² r) / (2(L c − a))          your L = ${f(L, 2)}:  Σ = ${f(k.sL(L), 5)}</span>
+    <p><b>Compare with LQR step 3:</b> p(k) = (q + r k²)/(2(bk − a)). The same formula with b → c. Small L: the pull is weak and pushes pile up. Large L: you feed in L² × sensor noise. The grey dot checks the formula against 200 s of simulation (a few percent off: the simulation steps every 0.01 s, the formula assumes infinitely small steps).</p>`; }],
+  ['5 · bottom of the bowl: L = Σ c / r', 'kfBowl', ['L', 'qn', 'rn'], () => {
+    const k = K1(), L = S.p.L, sl = k.sL(L);
+    return `<p class="goal"><b>Same algebra as LQR step 4:</b> slope of Σ(L) = 0.</p>
+    <span class="eq">dΣ/dL = 0   ⇔   2Lr · 2(Lc − a) − (q + L² r) · 2c = 0
+divide by 4(Lc − a):    L r − c Σ(L) = 0
+                        L = Σ c / r</span>
+    <p><b>That is L = Σ Cᵀ R⁻¹ in one number.</b> Read it: trust the sensor more (big L) when you are unsure (big Σ) and the sensor is good (small r).</p>
+    <span class="eq">your L = ${f(L, 3)}     Σ(L) · c / r = ${f(sl * S.p.c / S.p.rn, 3)}     ${Math.abs(L - sl * S.p.c / S.p.rn) < 0.05 ? '← equal: the bottom' : '← not equal: not the bottom'}</span>
+    <p>Press <b>set the gain to the Riccati answer</b>: L = ${f(k.Ls, 3)}.</p>`; }],
+  ['6 · Riccati: one equation for Σ alone', 'kfParab', ['ka', 'qn', 'rn'], () => {
+    const k = K1(), { ka: a, c, qn, rn } = S.p;
+    return `<p class="goal"><b>Eliminate L, exactly as in LQR step 5.</b></p>
+    <span class="eq">from step 4:     2 Σ (L c − a) = q + L² r
+put in L = Σ c / r:
+tidy up:         2 a Σ  +  q  −  c² Σ² / r  =  0      ← Riccati</span>
+    <table class="t"><tr><th>term</th><th>now</th><th>meaning (uncertainty per second)</th></tr>
+    <tr><td class="m cbad">2 a Σ</td><td class="m">${f(2 * a * k.ss, 4)}</td><td>the state drifting on its own: a &gt; 0 spreads old knowledge out, a &lt; 0 lets it fade</td></tr>
+    <tr><td class="m cb">+ q</td><td class="m">${f(qn, 4)}</td><td>new random pushes you could not see add uncertainty</td></tr>
+    <tr><td class="m cc">− c² Σ² / r</td><td class="m">${f(-c * c * k.ss * k.ss / rn, 4)}</td><td>each sensor reading removes uncertainty: more when the sensor is good (small r)</td></tr></table>
+    <p><b>At the right Σ: drift + new pushes = what the sensor removes.</b> Root of the parabola:</p>
+    <span class="eq">Σ = r (a + √(a² + q c²/r)) / c²  =  ${f(k.ss, 5)}      L = Σ c / r = ${f(k.Ls, 3)}
+typical error √Σ = ${f(Math.sqrt(k.ss), 3)}     against a raw sensor reading of ±${f(Math.sqrt(rn / 0.01), 2)}</span>`; }],
+  ['7 · solving it runs forward in time', 'kfMarch', ['s0', 'ka', 'qn', 'rn'], () => `
+    <p class="goal"><b>Here the march goes forward</b>, because uncertainty starts at the beginning.</p>
+    <p>At t = 0 you are unsure by Σ(0) = ${f(S.p.s0, 2)} (slider). Each small step:</p>
+    <span class="eq">Σ(next step) = Σ + dt · ( 2 a Σ + q − c² Σ² / r )</span>
+    <p>The sensor quickly brings Σ down (or up, if you started too sure) to the Riccati root ${f(K1().ss, 4)}. This is literally what a running Kalman filter computes, step after step, alongside the estimate.</p>
+    <p><b>LQR marches backward from the end</b> (nothing left to pay at the end). <b>Kalman marches forward from the start</b> (you know how unsure you were at the start). Same equation, opposite direction.</p>`],
+  ['8 · back to matrices, and LQR side by side', 'kfMap', [], () => `
+    <table class="t"><tr><th>one number</th><th>matrices</th><th>meaning</th></tr>
+    <tr><td class="m">2 a Σ</td><td class="m">A Σ + Σ Aᵀ</td><td>drift spreads uncertainty</td></tr>
+    <tr><td class="m">q</td><td class="m">Q</td><td>new pushes</td></tr>
+    <tr><td class="m">c² Σ² / r</td><td class="m">Σ Cᵀ R⁻¹ C Σ</td><td>sensors remove uncertainty</td></tr>
+    <tr><td class="m">L = Σ c / r</td><td class="m">L = Σ Cᵀ R⁻¹</td><td>the best gain</td></tr></table>
+    <span class="eq">Kalman:   A Σ + Σ Aᵀ  +  Q  −  Σ Cᵀ R⁻¹ C Σ  =  0
+LQR:      Aᵀ P + P A  +  Q  −  P B R⁻¹ Bᵀ P  =  0</span>
+    <p>Swap A → Aᵀ and B → Cᵀ and one is the other. Steering a state with motors and pinning it down with sensors are the same math ("duality"), which is why one solver serves both:</p>
+    <span class="eq">P = solve_continuous_are(A,   B,   Q, R)       K = R⁻¹ Bᵀ P
+Σ = solve_continuous_are(Aᵀ,  Cᵀ,  Q, R)       L = Σ Cᵀ R⁻¹</span>
+    <p>On the G1 the two work together: the Kalman filter turns joint encoders and the IMU into x̂, and the LQR gain applies u = −K x̂.</p>`],
+];
+const SL = {
+  a: ['a (runaway rate)', 0, 15, 0.01, false], k: ['k (your gain)', 0, 60, 0.1, false], q: ['q (tilt penalty)', 0.1, 10, 0.1, false], r: ['r (torque penalty)', -3, -1, 0.01, true],
+  ka: ['a (drift)', -3, 3, 0.05, false], L: ['L (your gain)', 0, 40, 0.1, false], qn: ['q (push size)', 0.1, 5, 0.1, false], rn: ['r (sensor noise)', -3, -1, 0.01, true], s0: ['Σ(0) or Σ', 0.05, 1, 0.01, false],
+};
+
+const steps = () => S.tab === 'lqr' ? LQR : KF;
+function controls() {
+  const keys = steps()[S.step[S.tab]][2];
+  document.getElementById('ctl').innerHTML = keys.length ? keys.map(k => { const [lab, lo, hi, st, lg] = SL[k], v = lg ? Math.log10(S.p[k]) : S.p[k];
+    return `<label class="ctl"><span>${lab}</span><input type="range" data-k="${k}" min="${lo}" max="${hi}" step="${st}" value="${v}"><output>${f(S.p[k], lg ? 4 : 2)}</output></label>`; }).join('')
+    : '<span style="color:var(--muted);font-size:.84rem">No sliders in this step: read the map, then press next.</span>';
+  document.querySelectorAll('#ctl input').forEach(el => el.oninput = () => { const k = el.dataset.k; S.p[k] = SL[k][4] ? Math.pow(10, +el.value) : +el.value; el.nextElementSibling.textContent = f(S.p[k], SL[k][4] ? 4 : 2); draw(); });
+  const hasGain = keys.includes('k') || keys.includes('L');
+  document.getElementById('best').disabled = !hasGain;
+}
+function draw() {
+  const st = steps()[S.step[S.tab]], G = frame();
+  legend([]); PLOTS[st[1]](G);
+  document.getElementById('exp').innerHTML = st[3]();
+}
+function render() {
+  document.getElementById('tlqr').setAttribute('aria-pressed', S.tab === 'lqr');
+  document.getElementById('tkf').setAttribute('aria-pressed', S.tab === 'kf');
+  const chips = document.getElementById('chips');
+  chips.innerHTML = steps().map((s, i) => `<button data-s="${i}" aria-current="${i === S.step[S.tab]}">${s[0]}</button>`).join('');
+  chips.querySelectorAll('button').forEach(b => b.onclick = () => { S.step[S.tab] = +b.dataset.s; render(); });
+  controls(); draw();
+}
+document.getElementById('tlqr').onclick = () => { S.tab = 'lqr'; render(); };
+document.getElementById('tkf').onclick = () => { S.tab = 'kf'; render(); };
+document.getElementById('prev').onclick = () => { S.step[S.tab] = Math.max(0, S.step[S.tab] - 1); render(); };
+document.getElementById('next').onclick = () => { S.step[S.tab] = Math.min(steps().length - 1, S.step[S.tab] + 1); render(); };
+document.getElementById('best').onclick = () => { if (S.tab === 'lqr') S.p.k = +L1().ks.toFixed(2); else S.p.L = +K1().Ls.toFixed(2); controls(); draw(); };
+document.getElementById('dflt').onclick = () => { S.p = { ...DEF }; controls(); draw(); };
+new ResizeObserver(() => draw()).observe(cv);
+new MutationObserver(() => draw()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+window.LAB = { S, render, L1, K1, simKF, simLQR };
+render();
+})();
+</script>
+</body></html>

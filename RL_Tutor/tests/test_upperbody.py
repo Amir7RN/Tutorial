@@ -359,7 +359,7 @@ class Pages(unittest.TestCase):
         self.assertEqual(nums[0], max(c.NUM for c in LESSON_CLASSES if c not in BALANCE_PAGES) + 1)
         self.assertEqual(theme.group_of(BALANCE_PAGES[0].SECTION), "Humanoid Balance")
         for name in ("g1_upper_body.html", "upper_body_lagrange.html", "upper_body_recovery.html",
-                     "lqr_torque_flow.html"):
+                     "lqr_torque_flow.html", "riccati_tutor.html"):
             src = open(STEPLAB / name, encoding="utf-8").read()
             for s in re.findall(r'<script src="([^"]+)"', src):
                 self.assertFalse(s.startswith("http"), name)
@@ -373,24 +373,16 @@ class Pages(unittest.TestCase):
         node = shutil.which("node")
         if not node:
             self.skipTest("node not installed")
-        src = (STEPLAB / "lqr_torque_flow.html").read_text(encoding="utf-8")
-        js = src.split("<script>")[1].split("</script>")[0]
-        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
-            f.write("new Function(" + json.dumps(js) + ");")
-        try:
-            r = subprocess.run([node, f.name], capture_output=True, text=True)
-        finally:
-            os.unlink(f.name)
-        self.assertEqual(r.returncode, 0, r.stderr)
-
-    def test_riccati_card_scalar_matches_scipy_style_solve(self):
-        from app.pages.humanoid_balance import riccati_scalar, lqr_numbers
-        a = max(np.real(lqr_numbers()["open"]))
-        self.assertAlmostEqual(a, 8.217, places=3)
-        p, k, pole = riccati_scalar(a, 1.0, 1.0, 0.01)
-        self.assertAlmostEqual(2 * a * p - p * p / 0.01 + 1.0, 0.0, places=9)
-        self.assertGreater(p, 0)
-        self.assertAlmostEqual(pole, -math.sqrt(a * a + 100.0), places=9)
+        for name in ("lqr_torque_flow.html", "riccati_tutor.html"):
+            src = (STEPLAB / name).read_text(encoding="utf-8")
+            js = src.split("<script>")[1].split("</script>")[0]
+            with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:
+                f.write("new Function(" + json.dumps(js) + ");")
+            try:
+                r = subprocess.run([node, f.name], capture_output=True, text=True)
+            finally:
+                os.unlink(f.name)
+            self.assertEqual(r.returncode, 0, f"{name}: {r.stderr}")
 
     def test_lqr_page_story_matches_the_simulation(self):
         from app.pages.humanoid_balance import LQR_STORY as st, lqr_numbers

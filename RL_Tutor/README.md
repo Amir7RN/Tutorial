@@ -61,7 +61,7 @@ step lab, the momentum matrix and the balance identity dH_O/dt = τ_ankle + m g 
 and three recovery laws (LQR, counterweight, momentum QP) measured against each other in a live
 3-D simulator (`app/assets/steplab/ub.js`, `ub3d.js`, `g1_upper_body.html`,
 `upper_body_lagrange.html`, `upper_body_recovery.html`), with the LQR law opened stage by stage
-(A, B, Bryson's Q and R, Riccati, K, and where each torque goes) on page 170 (`lqr_torque_flow.html`). `tests/test_upperbody.py` checks the
+(A, B, Bryson's Q and R, Riccati, K, and where each torque goes) on page 170 (`lqr_torque_flow.html`, plus `riccati_tutor.html`: the Riccati equation for LQR and the Kalman filter, one number at a time). `tests/test_upperbody.py` checks the
 model against the Newton–Euler arm, the identities, the JavaScript port under node, and the
 recoverable-push numbers quoted on page 169.
 
