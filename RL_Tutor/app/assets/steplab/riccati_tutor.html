@@ -46,25 +46,41 @@
 (() => {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const f = (x, d = 3) => !isFinite(x) ? '∞' : (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d);
-const DEF = { a: 8.217, b: 1, q: 1, r: 0.01, k: 12, ka: -1, c: 1, qn: 1, rn: 0.01, L: 2, s0: 0.5 };
+const DEF = { a: 2, b: 1, q: 1, r: 1, k: 3, ka: -1, c: 1, qn: 1, rn: 0.01, L: 2, s0: 0.5 };
 const S = { tab: 'lqr', step: { lqr: 0, kf: 0 }, p: { ...DEF } };
 
-/* ---------- one-number LQR ---------- */
+/* ---------- one-number LQR: tilt x in degrees, start at x0 = 1 ---------- */
 const L1 = () => {
-  const { a, b, q, r } = S.p, ps = r * (a + Math.sqrt(a * a + q * b * b / r)) / (b * b), ks = b * ps / r;
-  return { ps, ks, pole: a - b * ks, pk: k => b * k > a ? (q + r * k * k) / (2 * (b * k - a)) : Infinity, g: p => 2 * a * p - b * b * p * p / r + q };
+  const { a, b, q, r } = S.p, root = Math.sqrt(a * a + q * b * b / r), ps = r * (a + root) / (b * b), pneg = r * (a - root) / (b * b), ks = b * ps / r;
+  return { ps, pneg, ks, pole: a - b * ks, pk: k => b * k > a ? (q + r * k * k) / (2 * (b * k - a)) : Infinity, g: p => 2 * a * p - b * b * p * p / r + q };
 };
-function simLQR(k, T = 1.2) {
-  const { a, b, q, r } = S.p, dt = 0.0005, x0 = 0.1, out = { t: [], x: [], u: [], Jx: 0, Ju: 0, fell: false };
-  let x = x0;
-  for (let t = 0; t <= T + 1e-9; t += dt) {
+/* exact run (tiny slices of 0.001 s); rem[i] = score still to be added from t[i] to the end */
+function simLQR(k, T = 6) {
+  const { a, b, q, r } = S.p, dt = 0.001, out = { t: [], x: [], u: [], J: [], fell: false };
+  let x = 1, J = 0;
+  for (let i = 0; i * dt <= T + 1e-9; i++) {
     const u = -k * x;
-    out.t.push(t); out.x.push(x); out.u.push(u);
-    out.Jx += q * x * x * dt; out.Ju += r * u * u * dt;
+    out.t.push(i * dt); out.x.push(x); out.u.push(u); out.J.push(J);
+    J += (q * x * x + r * u * u) * dt;
     x += dt * (a * x + b * u);
-    if (Math.abs(x) > 0.6) { out.fell = true; break; }
+    if (Math.abs(x) > 50) { out.fell = true; break; }
   }
+  out.total = out.fell ? Infinity : J;
+  out.rem = out.J.map(v => out.total - v);
   return out;
+}
+/* the calculator version: slices of 0.1 s */
+function handRows(k, n = 8) {
+  const { a, b, q, r } = S.p, dt = 0.1, rows = [];
+  let x = 1, off = 1, J = 0;
+  for (let i = 0; i < 400; i++) {
+    const u = -k * x, xd = a * x + b * u, sx = q * x * x * dt, su = r * u * u * dt;
+    J += sx + su;
+    if (i < n) rows.push({ t: i * dt, x, u, xd, xn: x + dt * xd, sx, su, J, off });
+    x += dt * xd; off += dt * a * off;
+    if (Math.abs(x) > 1e6) { J = Infinity; break; }
+  }
+  return { rows, total: J };
 }
 /* ---------- one-number Kalman ---------- */
 const K1 = () => {
@@ -149,18 +165,18 @@ const legend = items => document.getElementById('leg').innerHTML = items.map(([t
 /* ---------- plots per kind ---------- */
 const PLOTS = {
   lqrMap(G) {
-    boxes(G, [['A  (8 × 8)\nhow the robot moves\non its own · step 5', '--a', .03, .05, .29, .2],
-      ['B  (8 × 3)\nwhat each motor does\nstep 6', '--a', .03, .29, .29, .2],
-      ['Q  (8 × 8)\npenalty on errors\nstep 7', '--b', .03, .53, .29, .2],
-      ['R  (3 × 3)\npenalty on torque\nstep 7', '--b', .03, .77, .29, .2],
-      ['Riccati\nequation', '--d', .4, .4, .2, .2, true],
-      ['P  (8 × 8)\nTHE UNKNOWN\ncost still to come', '--bad', .68, .1, .29, .22, true],
-      ['K = R⁻¹ Bᵀ P\n(3 × 8)', '--c', .68, .44, .29, .16, true],
-      ['u = −K x\non the robot', '--c', .68, .72, .29, .16]]);
-    arrows(G, [[.32, .15, .4, .45], [.32, .39, .4, .48], [.32, .63, .4, .52], [.32, .87, .4, .55], [.6, .45, .68, .25], [.825, .32, .825, .44], [.825, .6, .825, .72]]);
+    boxes(G, [['A  (8 × 8)\nhow fast each state number\nchanges with the motors off\nlab step 5', '--a', .03, .04, .31, .21],
+      ['B  (8 × 3)\nhow much each motor\nchanges each state number\nlab step 6', '--a', .03, .28, .31, .21],
+      ['Q  (8 × 8)\nhow bad each error is\nyou choose · lab step 7', '--b', .03, .52, .31, .2],
+      ['R  (3 × 3)\nhow costly each motor is\nyou choose · lab step 7', '--b', .03, .76, .31, .2],
+      ['Riccati\nequation', '--d', .41, .4, .18, .2, true],
+      ['P  (8 × 8)\nUNKNOWN\nfound by Riccati', '--bad', .67, .1, .3, .22, true],
+      ['K = R⁻¹ Bᵀ P\n(3 × 8)', '--c', .67, .44, .3, .16, true],
+      ['u = −K x\nthe motor rule', '--c', .67, .72, .3, .16]]);
+    arrows(G, [[.34, .15, .41, .45], [.34, .39, .41, .48], [.34, .62, .41, .52], [.34, .86, .41, .55], [.59, .45, .67, .25], [.82, .32, .82, .44], [.82, .6, .82, .72]]);
   },
   kfMap(G) {
-    boxes(G, [['A  (n × n)\nhow the state moves\non its own', '--a', .03, .05, .29, .2],
+    boxes(G, [['A  (n × n)\nhow the state changes\nwhen nobody pushes it', '--a', .03, .05, .29, .2],
       ['C  (m × n)\nwhat the sensors see\ny = C x + noise', '--a', .03, .29, .29, .2],
       ['Q  (n × n)\nhow big the random\npushes are', '--b', .03, .53, .29, .2],
       ['R  (m × m)\nhow noisy the\nsensors are', '--b', .03, .77, .29, .2],
@@ -170,37 +186,43 @@ const PLOTS = {
       ['x̂̇ = A x̂ + B u\n + L (y − C x̂)', '--c', .68, .72, .29, .16]]);
     arrows(G, [[.32, .15, .4, .45], [.32, .39, .4, .48], [.32, .63, .4, .52], [.32, .87, .4, .55], [.6, .45, .68, .25], [.825, .32, .825, .44], [.825, .6, .825, .72]]);
   },
-  lqrOpen(G) {
-    const { a } = S.p, t = lin(0, 0.6), x = t.map(v => 0.1 * Math.exp(a * v));
-    panel(G, { top: 0, bot: 1, xr: [0, .6], yr: [0, 0.6], title: 'tilt x (rad), no motor (u = 0), starting at 0.1 rad', xlab: 'time (s)', series: [{ xs: t, ys: x, col: '--bad' }] });
-    legend([['x(t) = 0.1 · e^(a t): runs away', '--bad']]);
+  lqrRun(G) {
+    const k = S.p.k, s = simLQR(k), h = handRows(k, 31).rows, off = lin(0, 3).map(t => Math.exp(S.p.a * t));
+    panel(G, { top: 0, bot: .58, xr: [0, 3], yr: [-0.3, 2.5], title: 'tilt x (degrees), starting at 1°', xlab: 'time (s)',
+      series: [{ xs: lin(0, 3), ys: off, col: '--bad', dash: [5, 4] }, { xs: s.t, ys: s.x, col: '--a' }, { xs: h.map(r => r.t), ys: h.map(r => r.x), col: '--b', dots: true }] });
+    const umin = Math.min(-1, -k) * 1.1;
+    panel(G, { top: .58, bot: 1, xr: [0, 3], yr: [umin, 0.5], title: 'motor command u = −k · x', xlab: 'time (s)', series: [{ xs: s.t, ys: s.u, col: '--c' }] });
+    legend([['motor off (u = 0)', '--bad', 1], ['tilt with your k', '--a'], ['the hand table, every 0.1 s', '--b'], ['motor command', '--c']]);
   },
-  lqrSim(G) {
-    const s = simLQR(S.p.k), b = simLQR(L1().ks);
-    panel(G, { top: 0, bot: .55, xr: [0, 1.2], yr: [-0.05, 0.3], title: 'tilt x (rad)', xlab: 'time (s)', series: [{ xs: b.t, ys: b.x, col: '--grey', dash: [5, 4] }, { xs: s.t, ys: s.x, col: '--a' }] });
-    panel(G, { top: .55, bot: 1, xr: [0, 1.2], yr: [-4, 1], title: 'motor u = −k x', xlab: 'time (s)', series: [{ xs: b.t, ys: b.u, col: '--grey', dash: [5, 4] }, { xs: s.t, ys: s.u, col: '--b' }] });
-    legend([['your k: tilt', '--a'], ['your k: motor', '--b'], ['the best k (Riccati answer, step 5)', '--grey', 1]]);
+  lqrScore(G) {
+    const k = S.p.k, s = simLQR(k), tot = s.total;
+    panel(G, { top: 0, bot: .36, xr: [0, 3], yr: [-0.1, 1.1], title: 'tilt x', xlab: '', series: [{ xs: s.t, ys: s.x, col: '--a' }] });
+    panel(G, { top: .36, bot: .68, xr: [0, 3], yr: [Math.min(-1, -k) * 1.1, 0.5], title: 'motor command u', xlab: '', series: [{ xs: s.t, ys: s.u, col: '--c' }] });
+    panel(G, { top: .68, bot: 1, xr: [0, 3], yr: [0, isFinite(tot) ? Math.max(tot * 1.15, 1) : 10], title: 'score added up so far (it stops growing once x and u are 0)', xlab: 'time (s)',
+      series: [{ xs: s.t, ys: s.J, col: '--d' }, ...(isFinite(tot) ? [{ xs: [0, 3], ys: [tot, tot], col: '--grey', dash: [5, 4] }] : [])] });
+    legend([['tilt', '--a'], ['motor', '--c'], ['score so far', '--d'], ['final score J', '--grey', 1]]);
   },
   lqrBowl(G) {
-    const l = L1(), ks = lin(0, 60, 600), J = ks.map(k => l.pk(k) * 0.01), top = l.ps * 0.01 * 3;
-    panel(G, { top: 0, bot: 1, xr: [0, 60], yr: [0, top], title: 'total penalty J for x₀ = 0.1 rad, against the gain k', xlab: 'gain k', series: [{ xs: ks, ys: J, col: '--a' }],
+    const l = L1(), ks = lin(0, 12, 600), top = l.ps * 3.2, KS = [2.5, 3, 4, 5, 8];
+    panel(G, { top: 0, bot: 1, xr: [0, 12], yr: [0, top], title: 'final score J (start at 1°) for every k: the formula of step 3', xlab: 'k', series: [{ xs: ks, ys: ks.map(l.pk), col: '--a' }],
       vlines: [{ x: S.p.a / S.p.b, col: '--bad' }],
-      marks: [{ x: S.p.k, y: l.pk(S.p.k) * 0.01, col: '--b', label: 'your k' }, ...(S.step.lqr >= 4 ? [{ x: l.ks, y: l.ps * 0.01, col: '--c', label: 'bottom', right: true }] : [])] });
-    legend([['J(k) = p(k) · x₀²', '--a'], ['your k', '--b'], ['k = a/b: below this it falls', '--bad', 1]]);
+      marks: [...KS.map(k => ({ x: k, y: l.pk(k), col: '--grey', r: 4 })), { x: S.p.k, y: l.pk(S.p.k), col: '--b', label: 'your k' },
+        ...(S.step.lqr >= 4 ? [{ x: l.ks, y: l.ps, col: '--c', label: 'lowest', right: true }] : [])] });
+    legend([['J(k) formula', '--a'], ['the k values tried in step 2', '--grey'], ['your k', '--b'], ['k = a/b: any smaller and it falls', '--bad', 1]]);
   },
   lqrParab(G) {
-    const l = L1(), pmax = Math.max(l.ps * 2.2, 0.05), ps = lin(-pmax * 0.4, pmax), gs = ps.map(l.g), ymax = Math.max(...gs.map(Math.abs).filter(isFinite));
-    const { a, b, r, q } = S.p;
-    panel(G, { top: 0, bot: 1, xr: [ps[0], pmax], yr: [-ymax, ymax * 0.6 + 1], title: 'left side of the Riccati equation, as a function of p', xlab: 'p',
-      series: [{ xs: ps, ys: ps.map(p => 2 * a * p), col: '--bad', w: 1.5, dash: [5, 4] }, { xs: ps, ys: ps.map(p => -b * b * p * p / r), col: '--c', w: 1.5, dash: [5, 4] }, { xs: ps, ys: ps.map(() => q), col: '--b', w: 1.5, dash: [5, 4] }, { xs: ps, ys: gs, col: '--d', w: 2.5 }],
-      marks: [{ x: l.ps, y: 0, col: '--d', label: 'p = ' + f(l.ps, 4) }] });
-    legend([['2ap (drift)', '--bad', 1], ['+q (new penalty)', '--b', 1], ['−b²p²/r (motor removes)', '--c', 1], ['sum: zero at the answer', '--d']]);
+    const l = L1(), { a, b, r, q } = S.p, lo = Math.min(l.pneg * 1.8, -0.5), hi = l.ps * 1.5, ps = lin(lo, hi), gs = ps.map(l.g), top = Math.max(...gs);
+    panel(G, { top: 0, bot: 1, xr: [lo, hi], yr: [Math.min(...gs), top * 1.2], title: 'left side of the Riccati equation:  2ap − (b²/r)p² + q', xlab: 'p',
+      series: [{ xs: ps, ys: gs, col: '--d', w: 2.5 }],
+      marks: [{ x: l.ps, y: 0, col: '--c', label: 'p = ' + f(l.ps, 3) + '  (keep)', right: true }, { x: l.pneg, y: 0, col: '--bad', label: f(l.pneg, 3) + ' (negative: throw away)' }] });
+    legend([['2ap − (b²/r)p² + q', '--d'], ['the answer', '--c'], ['the root thrown away', '--bad']]);
   },
-  lqrMarch(G) {
-    const l = L1(), ds = 0.0005, s = [0], p = [0];
-    for (let i = 0; i < 1200; i++) { p.push(p[i] + ds * l.g(p[i])); s.push((i + 1) * ds); }
-    panel(G, { top: 0, bot: 1, xr: [0, .6], yr: [0, l.ps * 1.3], title: 'p, stepping backward from the end of time', xlab: 'time before the end (s)', series: [{ xs: s, ys: s.map(() => l.ps), col: '--grey', dash: [5, 4] }, { xs: s, ys: p, col: '--d' }] });
-    legend([['p marching back from p = 0', '--d'], ['the Riccati root', '--grey', 1]]);
+  lqrRem(G) {
+    const k = S.p.k, s = simLQR(k), p = L1().pk(k);
+    panel(G, { top: 0, bot: .45, xr: [0, 3], yr: [-0.1, 1.1], title: 'tilt x(t) with your k', xlab: '', series: [{ xs: s.t, ys: s.x, col: '--a' }] });
+    panel(G, { top: .45, bot: 1, xr: [0, 3], yr: [0, isFinite(p) ? p * 1.15 : 10], title: 'score still to be added from time t to the end', xlab: 'time t (s)',
+      series: [{ xs: s.t, ys: s.rem, col: '--d', w: 4 }, { xs: s.t, ys: s.x.map(x => p * x * x), col: '--b', dash: [5, 4] }] });
+    legend([['tilt', '--a'], ['added up from the run (from t to the end)', '--d'], ['p · x(t)²', '--b', 1]]);
   },
   kfWhy(G) {
     const R = rng(3), N = () => Math.sqrt(-2 * Math.log(R() + 1e-12)) * Math.cos(2 * Math.PI * R()), sd = Math.sqrt(S.p.s0), xs = lin(0, 1, 200), e = xs.map(() => sd * N());
@@ -242,100 +264,120 @@ const PLOTS = {
 };
 
 /* ---------- the steps ---------- */
+const n3 = v => f(v, 3);
+const KTRY = () => [2.5, 3, 4, 5, 8, S.p.k].filter((v, i, a) => a.indexOf(v) === i).sort((x, y) => x - y);
 const LQR = [
-  ['0 · what is unknown', 'lqrMap', [], () => `
-    <p class="goal"><b>What Riccati is for, in one sentence:</b> it is the equation you solve to get <b>P</b>, and P gives you K.</p>
-    <p>By the time you reach step 8 of the lab above, you already have four tables of numbers. The picture on the left is the whole job:</p>
-    <table class="t"><tr><th>symbol</th><th>size</th><th>what it is</th><th>where it came from</th></tr>
-    <tr><td class="m">A</td><td class="m">8 × 8</td><td>how the robot moves on its own</td><td>known: nudging, step 5</td></tr>
-    <tr><td class="m">B</td><td class="m">8 × 3</td><td>what each motor does to the state</td><td>known: nudging, step 6</td></tr>
-    <tr><td class="m">Q</td><td class="m">8 × 8</td><td>penalty on errors</td><td>known: you chose it, step 7</td></tr>
-    <tr><td class="m">R</td><td class="m">3 × 3</td><td>penalty on torque</td><td>known: you chose it, step 7</td></tr>
-    <tr><td class="m cbad">P</td><td class="m">8 × 8</td><td><b>unknown</b>: the penalty still to come from each state</td><td><b>the Riccati equation</b></td></tr>
-    <tr><td class="m cc">K</td><td class="m">3 × 8</td><td>the controller, u = −K x</td><td>K = R⁻¹ Bᵀ P, once P is known</td></tr></table>
-    <p>So the Riccati equation plays the same role as <span class="m">x² − 5x + 6 = 0</span> at school: a rule the unknown must obey. Here the knowns are A, B, Q, R and the unknown is P.</p>
-    <p><b>Plan.</b> Matrices hide what is going on, so steps 1–6 use the robot shrunk to <b>one number</b>: same story, every term visible, sliders to play with. Step 7 grows it back to the 8 × 8 version.</p>`],
-  ['1 · one number: the falling torso', 'lqrOpen', ['a'], () => `
-    <p class="goal"><b>The smallest LQR problem.</b> One state, one motor.</p>
-    <p>x = the torso's tilt (rad). u = the waist motor command. The straight-line model (one number instead of A and B):</p>
-    <span class="eq">ẋ = a x + b u          a = ${f(S.p.a, 3)},  b = ${f(S.p.b, 2)}</span>
-    <p><b>a</b> plays the role of A: what the tilt does on its own. a = 8.217 is the robot's real runaway rate (the open-loop pole from the lab: the torso tipping over the waist). Positive a means "the more it tilts, the faster it tilts more": the plot shows 0.1 rad growing to 0.6 rad in about ${f(Math.log(6) / S.p.a, 2)} s.</p>
-    <p><b>b</b> plays the role of B: how much one unit of u changes the tilt rate.</p>
-    <p><b>The penalty</b> (step 7 of the lab, with one weight each):</p>
-    <span class="eq">J = ∫ ( q x²  +  r u² ) dt          q = ${f(S.p.q, 2)},  r = ${f(S.p.r, 4)}</span>
-    <p>Knowns: a, b, q, r. Unknown so far: which controller. LQR's controller has the form <span class="m">u = −k x</span>, so the question is: <b>which number k?</b></p>`],
-  ['2 · try a gain k by hand', 'lqrSim', ['k'], () => {
-    const s = simLQR(S.p.k);
-    return `<p class="goal"><b>Do the search by hand first.</b> Move the k slider. The robot starts tilted 0.1 rad, the motor pushes u = −k x.</p>
-    <p>For your k = ${f(S.p.k, 2)}:</p>
-    <span class="eq">${s.fell ? 'FELL: k is too small, the motor loses to a' : `penalty from tilt   ∫ q x² dt = ${f(s.Jx, 5)}
-penalty from motor  ∫ r u² dt = ${f(s.Ju, 5)}
-total J                       = ${f(s.Jx + s.Ju, 5)}`}</span>
-    <ul><li><b>k below a/b = ${f(S.p.a / S.p.b, 2)}:</b> the motor is weaker than the runaway: the torso falls.</li>
-    <li><b>k a bit above:</b> it comes back slowly; small torque, but the tilt penalty piles up for a long time.</li>
-    <li><b>k very big:</b> it snaps back fast; tilt penalty small, but a huge torque at the start costs a lot.</li></ul>
-    <p>Somewhere in between is the k with the smallest total. Finding that k is the whole of LQR.</p>`; }],
-  ['3 · the total penalty is a bowl', 'lqrBowl', ['k', 'q', 'r'], () => {
-    const l = L1(), k = S.p.k;
-    return `<p class="goal"><b>Instead of simulating, compute J for every k at once.</b></p>
-    <p>With u = −kx the model becomes ẋ = (a − bk) x, so the tilt decays as <span class="m">x(t) = x₀ e^(−(bk − a)t)</span>. Put that into J and do the integral (∫ e^(−2ct) dt = 1/2c):</p>
-    <span class="eq">J = ∫ (q + r k²) x₀² e^(−2(bk − a)t) dt  =  x₀² · (q + r k²) / (2(bk − a))</span>
-    <p>Notice the shape: <b>J = (a number) × x₀²</b>. That number is the penalty still to come per unit of starting tilt squared. Call it <b>p</b>:</p>
-    <span class="eq">p(k) = (q + r k²) / (2(bk − a))          your k = ${f(k, 2)}:  p = ${f(l.pk(k), 5)}</span>
-    <p><b>This is what P is.</b> V(x) = p x² is "how many penalty points are still ahead if I start at x". In 8 numbers it becomes V = xᵀ P x.</p>
-    <p>The plot is J(k): a bowl. Too small k on the left (falls at the red line), too big on the right. Move the k slider and watch the orange dot ride the bowl. Change q or r: the bowl moves.</p>`; }],
-  ['4 · bottom of the bowl: k = b p / r', 'lqrBowl', ['k', 'q', 'r'], () => {
-    const l = L1(), k = S.p.k, pk = l.pk(k);
-    return `<p class="goal"><b>Find the bottom with algebra:</b> where the slope of J(k) is zero.</p>
-    <span class="eq">p(k) = (q + r k²) / (2(bk − a))
-dp/dk = 0   ⇔   2rk · 2(bk − a)  −  (q + rk²) · 2b  =  0
-divide by 4(bk − a):    r k  −  b · p(k)  =  0
-                        k  =  b p / r</span>
-    <p><b>That is K = R⁻¹ Bᵀ P in one number:</b> k = (1/r) · b · p. So <i>if you know p, the best gain is one line</i>. Check it live:</p>
-    <span class="eq">your k = ${f(k, 3)}     b · p(k) / r = ${f(S.p.b * pk / S.p.r, 3)}     ${Math.abs(k - S.p.b * pk / S.p.r) < 0.05 ? '← equal: you are at the bottom' : '← not equal: not the bottom'}</span>
-    <p>Press <b>set the gain to the Riccati answer</b>: the two numbers become equal and the dot sits on the green bottom, k = ${f(l.ks, 2)}.</p>
-    <p>But there is a catch: k needs p and p needs k. Two equations, two unknowns. Step 5 removes k.</p>`; }],
-  ['5 · Riccati: one equation for p alone', 'lqrParab', ['a', 'q', 'r'], () => {
-    const l = L1(), { a, b, q, r } = S.p;
-    return `<p class="goal"><b>Eliminate k, and the Riccati equation appears.</b></p>
-    <span class="eq">from step 3:      2 p (b k − a) = q + r k²
-put in k = b p / r (step 4):
-                  2 b² p² / r − 2 a p = q + b² p² / r
-tidy up:          2 a p  +  q  −  b² p² / r  =  0      ← Riccati</span>
-    <p><b>The three terms, each is a rate (penalty points per second, per unit x²):</b></p>
-    <table class="t"><tr><th>term</th><th>now</th><th>meaning</th></tr>
-    <tr><td class="m cbad">2 a p</td><td class="m">${f(2 * a * l.ps, 3)}</td><td>the robot drifting on its own makes the future penalty grow (a &gt; 0: it runs away)</td></tr>
-    <tr><td class="m cb">+ q</td><td class="m">${f(q, 3)}</td><td>the penalty you keep paying while the tilt is not zero</td></tr>
-    <tr><td class="m cc">− b² p² / r</td><td class="m">${f(-b * b * l.ps * l.ps / r, 3)}</td><td>what the motor takes away: more when it is strong (b) and cheap (small r)</td></tr></table>
-    <p>Riccati says: <b>at the right p, drift + new penalty = what the motor removes</b>. The left side is a parabola in p (plot); the answer is where it crosses zero. School formula:</p>
-    <span class="eq">p = r (a + √(a² + q b²/r)) / b²  =  ${f(l.ps, 5)}      k = b p / r = ${f(l.ks, 3)}
-closed loop  ẋ = (a − b k) x = ${f(l.pole, 3)} x     (the runaway ${f(a, 2)} became a decay)</span>
-    <p>The parabola has a second, negative root; it is thrown away because a penalty cannot be negative. The p²-term is what makes this a <b>Riccati</b> equation rather than a linear one.</p>`; }],
-  ['6 · how a computer solves it', 'lqrMarch', ['a', 'q', 'r'], () => `
-    <p class="goal"><b>No formula for matrices, so march instead.</b></p>
-    <p>Think of a run that ends at time T. At the very end nothing is left to pay: p = 0. One small step dt before the end, the penalty still to come grows by exactly the left side of step 5:</p>
-    <span class="eq">p(one step earlier) = p + dt · ( 2 a p + q − b² p² / r )</span>
-    <p>Repeat, stepping backward. The plot: p starts at 0, climbs, and stops changing once the left side reaches 0: that is the Riccati root ${f(L1().ps, 4)} (dashed). A long horizon "forgets" the end, and the controller stops depending on time.</p>
-    <p>The lab above does exactly this with 8 × 8 matrices (the "solving the Riccati equation…" message). Libraries such as SciPy's <span class="m">solve_continuous_are</span> use a faster eigenvector method, same answer.</p>`],
-  ['7 · back to 8 numbers', 'lqrMap', [], () => `
-    <p class="goal"><b>Every piece has a matrix twin.</b> Same equation, same meaning, term by term:</p>
-    <table class="t"><tr><th>one number</th><th>8 × 8 robot</th><th>meaning</th></tr>
-    <tr><td class="m">ẋ = a x + b u</td><td class="m">ẋ = A x + B u</td><td>the model (steps 5–6 of the lab)</td></tr>
-    <tr><td class="m">q x² + r u²</td><td class="m">xᵀQx + uᵀRu</td><td>the penalty (step 7)</td></tr>
-    <tr><td class="m">V = p x²</td><td class="m">V = xᵀ P x</td><td>penalty still to come</td></tr>
-    <tr><td class="m cbad">2 a p</td><td class="m cbad">Aᵀ P + P A</td><td>drift grows it</td></tr>
-    <tr><td class="m cb">q</td><td class="m cb">Q</td><td>new penalty arrives</td></tr>
-    <tr><td class="m cc">b² p² / r</td><td class="m cc">P B R⁻¹ Bᵀ P</td><td>the motors remove it</td></tr>
-    <tr><td class="m">k = b p / r</td><td class="m">K = R⁻¹ Bᵀ P</td><td>the best gain</td></tr></table>
-    <span class="eq">Aᵀ P + P A  +  Q  −  P B R⁻¹ Bᵀ P  =  0</span>
-    <p><b>Why P is a table and not one number.</b> With 8 states the penalty still to come depends on combinations: a forward lean that is already coming back is cheaper than one still growing. V = xᵀPx = Σᵢⱼ Pᵢⱼ xᵢ xⱼ has a weight for every pair. P is symmetric, so 36 unknowns, and the matrix equation is 36 equations. Lab step 8 shows the solved P (its corner 42.6 is the lean's own p), and step 9 the K it gives.</p>
-    <p>Now switch to the <b>Kalman filter</b> tab: the same equation turns up again, answering a different question.</p>`],
+  ['0 · the question', 'lqrRun', ['k'], () => `
+    <p class="goal"><b>Forget matrices for now.</b> One number, one motor, small round numbers you can check with a calculator. The real robot comes back in step 7.</p>
+    <p><b>x</b> = how far the torso is tilted, in degrees. x = 0 means upright. Every test starts at x = 1°.</p>
+    <p><b>u</b> = the command sent to the waist motor. Negative u pushes the torso back toward upright.</p>
+    <p><b>The motor rule</b> has one shape: <span class="m">u = −k · x</span>. In words: <i>for every degree of tilt, push back k units.</i> With k = 3: at 1° the motor gives −3, at 0.5° it gives −1.5, upright it gives 0.</p>
+    <p><b>The only question is the number k.</b> Move the slider and watch the plot. Small k: the torso falls (blue line goes up). Big k: it comes back fast, but the motor works hard (green line starts far below zero).</p>
+    <p>Which k is <i>best</i>? To answer that we need two things: a rule for how the tilt moves (step 1) and a score that says what "good" means (step 2). The Riccati equation then gives the best k directly (step 5).</p>`],
+  ['1 · how the tilt moves: a and b', 'lqrRun', ['k'], () => {
+    const { a, b } = S.p, k = S.p.k, h = handRows(k).rows;
+    return `<p class="goal"><b>The model is one line.</b></p>
+    <span class="eq">ẋ = a · x + b · u          a = ${f(a, 2)},  b = ${f(b, 2)}</span>
+    <p><b>ẋ</b> (say "x-dot") is the speed of the tilt, in degrees per second. Positive: tilting further. Negative: coming back.</p>
+    <p><b>a: what happens when the motor is off.</b> With u = 0 the model says ẋ = ${f(a, 2)} · x. At 1° of tilt the torso falls further at ${f(a, 2)}°/s; at 3° of tilt, at ${f(3 * a, 2)}°/s. The more it leans, the faster it falls, like a broom balanced on your hand. Red dashed line: motor off.</p>
+    <p><b>b: what the motor does.</b> One unit of u changes the tilt speed by ${f(b, 2)}°/s.</p>
+    <p><b>Where would a and b come from on the real robot?</b> From the nudging experiments of lab steps 5 and 6: a is one entry of A, b one entry of B. Here we just pick a = 2 and b = 1 so the arithmetic stays easy.</p>
+    <p><b>How the plot is computed: by hand, 0.1 s at a time.</b> Each row does three things: motor u = −k·x, speed ẋ = a·x + b·u, next tilt = x + 0.1·ẋ. With your k = ${f(k, 2)}:</p>
+    <table class="t"><tr><th>t (s)</th><th>x</th><th>u = −k·x</th><th>ẋ = a·x + b·u</th><th>next x = x + 0.1·ẋ</th></tr>
+    ${h.map(r => `<tr><td class="m">${f(r.t, 1)}</td><td class="m">${n3(r.x)}</td><td class="m">${n3(r.u)}</td><td class="m">${f(a, 1)}·${n3(r.x)} + ${f(b, 1)}·(${n3(r.u)}) = ${n3(r.xd)}</td><td class="m">${n3(r.x)} + 0.1·(${n3(r.xd)}) = ${n3(r.xn)}</td></tr>`).join('')}</table>
+    <p>The orange dots on the plot are this table. The blue line is the same recipe with slices of 0.001 s instead of 0.1 s, which is more accurate. Nothing else is hidden.</p>`; }],
+  ['2 · the score J: how good is a k?', 'lqrScore', ['k'], () => {
+    const { q, r } = S.p, k = S.p.k, H = handRows(k), h = H.rows, ex = simLQR(k).total;
+    const tries = KTRY().map(kk => { const t = simLQR(kk).total; return [kk, t * q / (q + r * kk * kk), t * r * kk * kk / (q + r * kk * kk), t]; });
+    return `<p class="goal"><b>To call a k "best" we need a score.</b> Lower score = better.</p>
+    <p>Two things we dislike: the torso being tilted, and the motor working. In every slice of time we add points for both:</p>
+    <span class="eq">points in one slice = q · x² · dt  +  r · u² · dt
+q = ${f(q, 2)},  r = ${f(r, 2)},  dt = length of the slice (s)</span>
+    <p><b>q</b> = how much you care about tilt, <b>r</b> = how much you care about motor effort. You choose them (lab step 7 uses Bryson's rule). They are squared so that −1° counts as badly as +1°, and 2° counts 4 times as badly as 1°.</p>
+    <p><b>J</b> = all slices added up, from the start until the tilt is back at 0. The same 0.1 s slices as step 1, k = ${f(k, 2)}:</p>
+    <table class="t"><tr><th>t (s)</th><th>x</th><th>u</th><th>q·x²·0.1</th><th>r·u²·0.1</th><th>J so far</th></tr>
+    ${h.map(rw => `<tr><td class="m">${f(rw.t, 1)}</td><td class="m">${n3(rw.x)}</td><td class="m">${n3(rw.u)}</td><td class="m">${f(q, 1)}·${n3(rw.x)}²·0.1 = ${f(rw.sx, 4)}</td><td class="m">${f(r, 1)}·(${n3(rw.u)})²·0.1 = ${f(rw.su, 4)}</td><td class="m">${f(rw.J, 4)}</td></tr>`).join('')}</table>
+    <p>Keep adding rows until x is 0: <b>J ≈ ${f(H.total, 3)}</b> with 0.1 s slices (rough), <b>J = ${f(ex, 3)}</b> with 0.001 s slices (the purple line on the plot ends there).</p>
+    <p><b>Now try other k</b>, each added up the same way (0.001 s slices):</p>
+    <table class="t"><tr><th>k</th><th>tilt points ∫q·x²</th><th>motor points ∫r·u²</th><th>total J</th></tr>
+    ${tries.map(([kk, a1, a2, t]) => `<tr${kk === k ? ' style="font-weight:700"' : ''}><td class="m">${f(kk, 2)}${kk === k ? ' (yours)' : ''}</td><td class="m">${f(a1, 3)}</td><td class="m">${f(a2, 3)}</td><td class="m">${f(t, 3)}</td></tr>`).join('')}</table>
+    <p>Small k: few motor points but many tilt points (it comes back slowly). Big k: the opposite. <b>The total goes down, then up again; the lowest is somewhere around k ≈ 4.2.</b> LQR's job is to find that k exactly, without trying every value.</p>`; }],
+  ['3 · a formula for J, instead of adding slices', 'lqrBowl', ['k'], () => {
+    const { a, b, q, r } = S.p, k = S.p.k, s = b * k - a, J = L1().pk(k), x05 = Math.exp(-s * 0.5);
+    return `<p class="goal"><b>Adding slices works, but a formula gives J for every k at once.</b> Four small steps, each with your k = ${f(k, 2)}.</p>
+    <p><b>① Put the rule into the model.</b> u = −k·x, so ẋ = a·x + b·(−k·x) = (a − b·k)·x. With numbers: ẋ = (${f(a, 2)} − ${f(b, 2)}·${f(k, 2)})·x = ${f(a - b * k, 3)}·x.</p>
+    <p><b>② Solve it.</b> ${s > 0 ? `"The speed is always −${f(s, 3)} times the tilt" means the tilt shrinks by the same fraction every moment. That is an exponential: <span class="m">x(t) = x₀ · e^(−${f(s, 3)}·t)</span>, where ${f(s, 3)} = b·k − a. Check one point: at t = 0.5 s, e^(−${f(s, 3)}·0.5) = ${f(x05, 3)}, and the blue line in step 1 is at ${f(x05, 3)} there.` : `Here b·k − a = ${f(s, 3)} is not positive: the tilt grows forever (the torso falls) and J is infinite. Move k above a/b = ${f(a / b, 2)}.`}</p>
+    <p><b>③ u is not thrown away; it is written using x.</b> u = −k·x, so u² = k²·x². The points per second, q·x² + r·u², become q·x² + r·k²·x² = <span class="m">(q + r·k²)·x²</span>. With numbers: (${f(q, 2)} + ${f(r, 2)}·${f(k * k, 3)})·x² = ${f(q + r * k * k, 3)}·x².</p>
+    <p><b>④ Add up all slices = the area under that curve.</b> x² = x₀²·e^(−2·(b·k − a)·t). The area under e^(−c·t) from t = 0 to forever is 1/c (it starts at height 1 and dies out at rate c; for c = 2 the area is ½). Here c = 2·(b·k − a). So:</p>
+    <span class="eq">J = (q + r·k²) · x₀² · 1 / (2·(b·k − a))
+  = (${f(q, 2)} + ${f(r, 2)}·${f(k * k, 3)}) · 1 / (2·(${f(b, 2)}·${f(k, 2)} − ${f(a, 2)}))  =  ${f(J, 3)}</span>
+    <p>Step 2 found ${f(simLQR(k).total, 3)} by adding 0.001 s slices: the same number, apart from a tiny slicing error. The blue curve on the plot is this formula for every k; the grey dots are the totals from step 2's table, and they sit on the curve. Left of the red line (k &lt; a/b = ${f(a / b, 2)}) the torso falls.</p>`; }],
+  ['4 · the lowest point: k = b·p / r', 'lqrBowl', ['k'], () => {
+    const { b, r } = S.p, l = L1(), k = S.p.k, pk = l.pk(k);
+    const rowsK = [3, 4, +l.ks.toFixed(3), 5, k].filter((v, i, a) => a.indexOf(v) === i).sort((x, y) => x - y);
+    return `<p class="goal"><b>Find the lowest point of the curve with algebra.</b></p>
+    <p><b>A short name first.</b> Start at x₀ = 1° so that x₀² = 1, and call the score of that run <b>p</b>:</p>
+    <span class="eq">p(k) = (q + r·k²) / (2·(b·k − a))          your k = ${f(k, 2)}:  p = ${f(pk, 3)}</span>
+    <p><b>The lowest point of a curve is where it is flat:</b> slope = 0. For a fraction N/D, the slope is (N′·D − N·D′)/D² (the school quotient rule). Here:</p>
+    <span class="eq">N = q + r·k²        N′ = 2·r·k
+D = 2·(b·k − a)     D′ = 2·b
+flat  ⇔  N′·D = N·D′  ⇔  2rk · 2(bk − a) = (q + rk²) · 2b</span>
+    <p>Divide both sides by 2·2·(bk − a). The right side becomes b·(q + rk²)/(2(bk − a)), which is b·p:</p>
+    <span class="eq">r · k = b · p        so        k = b · p / r</span>
+    <p><b>Check with numbers.</b> At the lowest point, r·k and b·p are equal; anywhere else they are not:</p>
+    <table class="t"><tr><th>k</th><th>p(k)</th><th>r·k</th><th>b·p(k)</th><th></th></tr>
+    ${rowsK.map(kk => { const pp = l.pk(kk), e = Math.abs(r * kk - b * pp) < 0.01; return `<tr${kk === k ? ' style="font-weight:700"' : ''}><td class="m">${f(kk, 3)}${kk === k ? ' (yours)' : ''}</td><td class="m">${f(pp, 3)}</td><td class="m">${f(r * kk, 3)}</td><td class="m">${f(b * pp, 3)}</td><td>${e ? '<b class="cc">equal: lowest point</b>' : 'not equal'}</td></tr>`; }).join('')}</table>
+    <p>Press <b>set the gain to the Riccati answer</b> to put your k at the lowest point (green dot).</p>
+    <p><b>The catch.</b> k = b·p/r needs p, but p (the formula above) needs k. Two equations, two unknowns. Step 5 solves them together, and what comes out is the Riccati equation.</p>`; }],
+  ['5 · the Riccati equation: solve both at once', 'lqrParab', ['a', 'b', 'q', 'r'], () => {
+    const { a, b, q, r } = S.p, l = L1(), A2 = b * b / r, disc = 4 * a * a + 4 * A2 * q;
+    return `<p class="goal"><b>At the best k, two facts hold at the same time:</b></p>
+    <span class="eq">(1)  p = (q + r·k²) / (2·(b·k − a))        the score formula (steps 3–4)
+(2)  k = b·p / r                         the lowest point (step 4)</span>
+    <p><b>Put (2) into (1) to get rid of k.</b> Left: letters. Right: your numbers (a = ${f(a, 2)}, b = ${f(b, 2)}, q = ${f(q, 2)}, r = ${f(r, 2)}).</p>
+    <table class="t"><tr><th>what we do</th><th>letters</th><th>numbers</th></tr>
+    <tr><td>(1) times its bottom</td><td class="m">2p(bk − a) = q + rk²</td><td class="m">2p(${f(b, 2)}k − ${f(a, 2)}) = ${f(q, 2)} + ${f(r, 2)}k²</td></tr>
+    <tr><td>replace k by bp/r</td><td class="m">2p(b²p/r − a) = q + b²p²/r</td><td class="m">2p(${f(A2, 3)}p − ${f(a, 2)}) = ${f(q, 2)} + ${f(A2, 3)}p²</td></tr>
+    <tr><td>multiply out</td><td class="m">2(b²/r)p² − 2ap = q + (b²/r)p²</td><td class="m">${f(2 * A2, 3)}p² − ${f(2 * a, 2)}p = ${f(q, 2)} + ${f(A2, 3)}p²</td></tr>
+    <tr><td><b>move all to one side</b></td><td class="m"><b>2ap − (b²/r)p² + q = 0</b></td><td class="m"><b>${f(2 * a, 2)}p − ${f(A2, 3)}p² + ${f(q, 2)} = 0</b></td></tr></table>
+    <p><b>That last line is the Riccati equation.</b> k is gone; only p and the knowns a, b, q, r are left. It has a p², so it is a quadratic, solved with the school formula:</p>
+    <span class="eq">p = ( 2a ± √(4a² + 4·(b²/r)·q) ) / (2·b²/r)
+  = ( ${f(2 * a, 2)} ± √(${f(4 * a * a, 3)} + ${f(4 * A2 * q, 3)}) ) / ${f(2 * A2, 3)}
+  = ( ${f(2 * a, 2)} ± ${f(Math.sqrt(disc), 3)} ) / ${f(2 * A2, 3)}   →   ${f(l.ps, 3)}  or  ${f(l.pneg, 3)}</span>
+    <p>p is a score, and a score cannot be negative, so <b>p = ${f(l.ps, 3)}</b>. Then fact (2) gives <b>k = b·p/r = ${f(b, 2)}·${f(l.ps, 3)}/${f(r, 2)} = ${f(l.ks, 3)}</b>: exactly the lowest point of step 4.</p>
+    <p><b>Check that it works.</b> With this k the model is ẋ = (a − b·k)·x = (${f(a, 2)} − ${f(b * l.ks, 3)})·x = ${f(l.pole, 3)}·x: negative, so the tilt shrinks back to 0.</p>
+    <p><b>What the three terms are.</b> 2ap: the falling (a) makes the score grow. +q: you keep paying while tilted. −(b²/r)p²: what the motor (b) takes away, more when it is cheap (small r). At the right p they cancel to zero; the plot shows where.</p>
+    <p>Move a, b, q, r: every time, the crossing on the right is the best p.</p>`; }],
+  ['6 · what p means: the score still ahead', 'lqrRem', ['k'], () => {
+    const k = S.p.k, s = simLQR(k), p = L1().pk(k), i = Math.round(0.5 / 0.001), x = s.x[i];
+    return `<p class="goal"><b>p was the score of a run that starts at 1°. It also tells you the score still ahead at any moment.</b></p>
+    <p>Stop the run halfway, at time t. The tilt is now x(t). From here on the physics and the motor rule are the same as at the start, so <b>the rest of the run is just a new run that starts at x(t)</b> instead of at 1°. By step 3 its score is p·x(t)².</p>
+    <p>The plot checks it. Purple: the points actually added from t to the end, read off the simulation. Dashed orange: p·x(t)². They lie on top of each other.</p>
+    ${s.fell ? '<p class="cbad"><b>With this k the torso falls, so there is no finite score. Move k above a/b.</b></p>' : `<span class="eq">your k = ${f(k, 2)},  p = ${f(p, 3)}
+at t = 0.5 s:  x = ${f(x, 3)}   p·x² = ${f(p * x * x, 4)}   added from 0.5 s to the end = ${f(s.rem[i], 4)}</span>`}
+    <p>Textbooks call this the <b>cost-to-go</b> ("cost" = score, "to go" = from now until the end) and write <span class="m">V(x) = p·x²</span>. For the robot's 8 numbers it is <span class="m">V = xᵀ P x</span>: that is the P matrix in lab step 8.</p>
+    <p>You do not need this step to compute k (steps 3–5 already did). It explains the name of P and why the robot's P is a table: with 8 numbers, the score still ahead depends on every pair of them.</p>`; }],
+  ['7 · the real robot: 8 numbers', 'lqrMap', [], () => `
+    <p class="goal"><b>Same steps, with tables of numbers instead of single numbers.</b></p>
+    <table class="t"><tr><th>one number (this lab)</th><th>robot (the lab above)</th><th>what it is</th></tr>
+    <tr><td class="m">x (tilt)</td><td class="m">x (8 numbers)</td><td>4 joint angles and 4 joint speeds (lab step 1)</td></tr>
+    <tr><td class="m">a = 2</td><td class="m">A (8 × 8)</td><td>row i, column j: how fast number i changes per unit of number j, motors off. Measured by nudging (lab step 5)</td></tr>
+    <tr><td class="m">b = 1</td><td class="m">B (8 × 3)</td><td>how fast each number changes per N·m of each motor (lab step 6)</td></tr>
+    <tr><td class="m">q, r</td><td class="m">Q (8 × 8), R (3 × 3)</td><td>how much you care about each error and each motor (lab step 7)</td></tr>
+    <tr><td class="m">p</td><td class="m">P (8 × 8)</td><td>the unknown: the score still ahead, V = xᵀPx</td></tr>
+    <tr><td class="m">k = b·p/r</td><td class="m">K = R⁻¹ Bᵀ P</td><td>the motor rule, u = −K x (lab step 9)</td></tr></table>
+    <p><b>The Riccati equation, term by term:</b></p>
+    <span class="eq">one number:   2ap        −  p·b·(1/r)·b·p   +  q  = 0
+robot:        AᵀP + PA   −  P·B·R⁻¹·Bᵀ·P    +  Q  = 0</span>
+    <p>2ap is a·p + p·a; with tables the order matters, so it becomes AᵀP + PA. (b²/r)p² is p·b·(1/r)·b·p, which becomes P·B·R⁻¹·Bᵀ·P.</p>
+    <p><b>Why a computer solves it.</b> P is 8 × 8 and symmetric: 36 unknown numbers tied together by 36 equations, so there is no school formula. The lab above solves it numerically ("solving the Riccati equation…", about 2 s); in Python, <span class="m">scipy.linalg.solve_continuous_are(A, B, Q, R)</span> does the same. Lab step 8 shows the resulting P, and step 9 the K = R⁻¹BᵀP.</p>
+    <p>Now try the <b>Kalman filter</b> tab: the same kind of equation answers a different question.</p>`],
 ];
 const KF = [
   ['0 · what is unknown', 'kfMap', [], () => `
     <p class="goal"><b>A different problem.</b> LQR assumed the controller knows x exactly. Real sensors are noisy and the robot gets random pushes. The Kalman filter's job: <b>the best guess x̂ of the true state</b>, from a noisy sensor and the model.</p>
     <table class="t"><tr><th>symbol</th><th>what it is</th><th>where it comes from</th></tr>
-    <tr><td class="m">A</td><td>how the state moves on its own</td><td>known: the model (same as LQR)</td></tr>
+    <tr><td class="m">A</td><td>how fast the state changes when nobody pushes it</td><td>known: the model (same as LQR)</td></tr>
     <tr><td class="m">C</td><td>what the sensors see: y = C x + noise</td><td>known: which sensors you have</td></tr>
     <tr><td class="m">Q</td><td>how big the random pushes and model errors are</td><td>known: <b>measured</b> or estimated</td></tr>
     <tr><td class="m">R</td><td>how noisy each sensor is</td><td>known: <b>measured</b> (datasheet, or log the sensor at rest)</td></tr>
@@ -394,7 +436,7 @@ divide by 4(Lc − a):    L r − c Σ(L) = 0
 put in L = Σ c / r:
 tidy up:         2 a Σ  +  q  −  c² Σ² / r  =  0      ← Riccati</span>
     <table class="t"><tr><th>term</th><th>now</th><th>meaning (uncertainty per second)</th></tr>
-    <tr><td class="m cbad">2 a Σ</td><td class="m">${f(2 * a * k.ss, 4)}</td><td>the state drifting on its own: a &gt; 0 spreads old knowledge out, a &lt; 0 lets it fade</td></tr>
+    <tr><td class="m cbad">2 a Σ</td><td class="m">${f(2 * a * k.ss, 4)}</td><td>the state changing by itself (no pushes): a &gt; 0 spreads old knowledge out, a &lt; 0 lets it fade</td></tr>
     <tr><td class="m cb">+ q</td><td class="m">${f(qn, 4)}</td><td>new random pushes you could not see add uncertainty</td></tr>
     <tr><td class="m cc">− c² Σ² / r</td><td class="m">${f(-c * c * k.ss * k.ss / rn, 4)}</td><td>each sensor reading removes uncertainty: more when the sensor is good (small r)</td></tr></table>
     <p><b>At the right Σ: drift + new pushes = what the sensor removes.</b> Root of the parabola:</p>
@@ -420,7 +462,7 @@ LQR:      Aᵀ P + P A  +  Q  −  P B R⁻¹ Bᵀ P  =  0</span>
     <p>On the G1 the two work together: the Kalman filter turns joint encoders and the IMU into x̂, and the LQR gain applies u = −K x̂.</p>`],
 ];
 const SL = {
-  a: ['a (runaway rate)', 0, 15, 0.01, false], k: ['k (your gain)', 0, 60, 0.1, false], q: ['q (tilt penalty)', 0.1, 10, 0.1, false], r: ['r (torque penalty)', -3, -1, 0.01, true],
+  a: ['a (how fast it falls)', 0.5, 5, 0.1, false], b: ['b (motor strength)', 0.2, 3, 0.1, false], k: ['k (your gain)', 0, 12, 0.01, false], q: ['q (care about tilt)', 0.1, 5, 0.1, false], r: ['r (care about motor)', 0.1, 5, 0.1, false],
   ka: ['a (drift)', -3, 3, 0.05, false], L: ['L (your gain)', 0, 40, 0.1, false], qn: ['q (push size)', 0.1, 5, 0.1, false], rn: ['r (sensor noise)', -3, -1, 0.01, true], s0: ['Σ(0) or Σ', 0.05, 1, 0.01, false],
 };
 
@@ -451,7 +493,7 @@ document.getElementById('tlqr').onclick = () => { S.tab = 'lqr'; render(); };
 document.getElementById('tkf').onclick = () => { S.tab = 'kf'; render(); };
 document.getElementById('prev').onclick = () => { S.step[S.tab] = Math.max(0, S.step[S.tab] - 1); render(); };
 document.getElementById('next').onclick = () => { S.step[S.tab] = Math.min(steps().length - 1, S.step[S.tab] + 1); render(); };
-document.getElementById('best').onclick = () => { if (S.tab === 'lqr') S.p.k = +L1().ks.toFixed(2); else S.p.L = +K1().Ls.toFixed(2); controls(); draw(); };
+document.getElementById('best').onclick = () => { if (S.tab === 'lqr') S.p.k = +L1().ks.toFixed(3); else S.p.L = +K1().Ls.toFixed(2); controls(); draw(); };
 document.getElementById('dflt').onclick = () => { S.p = { ...DEF }; controls(); draw(); };
 new ResizeObserver(() => draw()).observe(cv);
 new MutationObserver(() => draw()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
