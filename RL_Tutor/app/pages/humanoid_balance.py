@@ -501,6 +501,29 @@ class UpperBodyLQRPage(BalancePage):
             f"{st['locked_peak']:.1f}° with everything locked."))
         self.lab("lqr_torque_flow.html", "Lab · LQR opened up: state → A, B → Q, R → K → each joint's torque → the motion", 1180)
         self.lab("riccati_tutor.html", "Lab · the Riccati equation step by step: pick LQR or the Kalman filter", 980)
+        self.lab("kalman_encoder.html",
+                 "Lab · the Kalman filter, concept first: a prosthesis motor with only an encoder", 1000)
+        self.add(Reveal("The Kalman filter, said out loud", [
+            ("What does a Kalman filter do, in one sentence?",
+             "It keeps a best guess of the whole state and an honest measure of how unsure it is (P), predicts "
+             "both forward with the physics, and when a measurement arrives moves the guess toward it by an amount "
+             "set by which of the two it trusts more."),
+            ("The encoder already gives the angle. Why not just trust it?",
+             "Two reasons. The angle gets cleaner, because the physics lets the filter average many readings "
+             "(the angle cannot jump between milliseconds). And the encoder gives one number while the controller "
+             "needs four: speed, and the ankle torque at the motor and its rate, which no sensor measures. "
+             "Differentiating the encoder divides its noise by dt; the filter infers them instead."),
+            ("What are the innovation, S, P and K?",
+             "Innovation ν = y − Cx̂⁻: the surprise, the only new information in a reading. S = CP⁻Cᵀ + R: how big "
+             "the surprise usually is (squared). P: the error covariance; diagonal = how unsure each state is, "
+             "off-diagonal = how the errors are linked. K = P⁻Cᵀ/S: the share of the surprise each state accepts. "
+             "K₁ = P⁻₁₁/(P⁻₁₁ + R) is between 0 (trust physics) and 1 (copy the encoder); the other entries "
+             "correct the unmeasured states through the off-diagonal links."),
+            ("What balance does the Riccati recursion find?",
+             "Each step the model adds fresh doubt (A P Aᵀ moves it around, Q adds new) and each reading removes "
+             "some (P⁻CᵀCP⁻/S). P settles where the two are equal. It never uses the readings, so K can be "
+             "computed offline and stored, like the LQR gain."),
+        ]))
 
         self.add(two_col(
             Reveal("Say it out loud", [

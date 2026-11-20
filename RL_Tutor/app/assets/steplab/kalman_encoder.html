@@ -1,0 +1,391 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kalman Filter, Concept First</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1fr) minmax(400px,1fr)}
+  @media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+  #pl{width:100%;height:100%;display:block;min-height:330px}
+  .plot{position:relative;flex:1;min-height:340px;padding:4px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  .chips button{font-size:.78rem;font-weight:400;padding:3px 8px;border-radius:99px}
+  .chips button[aria-current="true"]{background:var(--hi);border-color:var(--a);font-weight:700}
+  .goal{border-left:3px solid var(--a);padding:2px 0 2px 8px;margin:0 0 8px}
+  .math b{color:var(--ink)}
+  table.t{width:100%}
+  table.t td,table.t th{text-align:left;font-family:var(--body);vertical-align:top}
+  table.t td.m{font-family:var(--mono);white-space:nowrap}
+  table.mx{border-collapse:collapse;font-family:var(--mono);font-size:.76rem;margin:2px 0 6px}
+  table.mx td{padding:1px 7px;text-align:right;border-left:1px solid var(--line)}
+  table.mx td:first-child{border-left:none}
+  .ctl{grid-template-columns:200px 1fr 84px}
+  .legend{min-height:20px}
+  .say{border:1px solid var(--c);border-radius:8px;padding:6px 10px;margin:6px 0}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1>The Kalman filter, concept first: a prosthesis motor with only an encoder</h1>
+    <p>Four states, one sensor. Why not just trust the encoder, what P, the innovation and K really are, and what balance the Riccati recursion finds.</p></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card plot"><canvas id="pl"></canvas></div>
+      <div class="card"><div class="legend" id="leg"></div>
+        <div class="controls" id="ctl" style="grid-template-columns:1fr;margin-top:6px"></div>
+        <div class="btns" style="margin-top:6px"><button id="dflt">defaults</button></div></div>
+    </div>
+    <div class="side">
+      <div class="card"><p class="h">step</p><div class="chips" id="chips"></div>
+        <div class="nav"><button id="prev">◀ back</button><button id="next">next ▶</button></div></div>
+      <div class="card math" id="exp"></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f = (x, d = 3) => !isFinite(x) ? '∞' : (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d);
+const g = (x, d = 3) => !isFinite(x) ? '∞' : (x === 0 ? '0' : Math.abs(x) >= 1e4 || Math.abs(x) < 1e-3 ? x.toExponential(d - 1) : x.toPrecision(d));
+
+/* ---------- the machine ---------- */
+const DT = 0.001, NSTEP = 2000, J = 1.5e-5, KT = 0.07, CPR = 4096, RES = 2 * Math.PI / CPR;
+const DEF = { sc: 5, su: 0.05, q4: 0.9, rs: 1, qs: 1, k: 400 };
+const S = { step: 0, p: { ...DEF } };
+const W = 2 * Math.PI;
+const TRUE = {
+  th: t => 10 * Math.sin(W * t), om: t => 10 * W * Math.cos(W * t), al: t => -10 * W * W * Math.sin(W * t),
+  ta: t => 1.2 * Math.sin(W * t + 0.5) + 0.4 * Math.sin(3 * W * t),
+  td: t => 1.2 * W * Math.cos(W * t + 0.5) + 1.2 * W * Math.cos(3 * W * t),
+};
+const A = [[1, DT, -DT * DT / (2 * J), -(DT * DT * DT) / (6 * J)], [0, 1, -DT / J, -DT * DT / (2 * J)], [0, 0, 1, DT], [0, 0, 0, 1]];
+const B = [DT * DT * KT / (2 * J), DT * KT / J, 0, 0];
+const I4 = () => [0, 1, 2, 3].map(i => [0, 1, 2, 3].map(j => +(i === j)));
+const mv = (M, x) => M.map(r => r.reduce((s, a, j) => s + a * x[j], 0));
+const mm = (X, Y) => X.map(r => [0, 1, 2, 3].map(j => r.reduce((s, a, m) => s + a * Y[m][j], 0)));
+const tr = M => [0, 1, 2, 3].map(i => M.map(r => r[i]));
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const noises = (p) => {
+  const R = p.sc * RES, Rv = R * R, Q = B.map(bi => B.map(bj => p.su * p.su * bi * bj));
+  Q[3][3] += p.q4;
+  return { Rv, Q };
+};
+
+/* the whole run: truth, encoder, current, and the filter; every step recorded */
+let RUN = null;
+function run() {
+  const p = S.p, Rn = rng(11), G = () => Math.sqrt(-2 * Math.log(Rn() + 1e-12)) * Math.cos(2 * Math.PI * Rn());
+  const tru = noises(p), Rf = tru.Rv * p.rs, Qf = tru.Q.map(r => r.map(v => v * p.qs));
+  let x = [0, 0, 0, 0], P = I4(), u = 0, yprev = null;
+  const rec = [];
+  for (let k = 0; k < NSTEP; k++) {
+    const t = k * DT, xs = [TRUE.th(t), TRUE.om(t), TRUE.ta(t), TRUE.td(t)];
+    const xpost0 = x.slice();
+    let xm = x, Pm = P;
+    if (k > 0) { xm = mv(A, x).map((v, i) => v + B[i] * u); Pm = mm(mm(A, P), tr(A)).map((r, i) => r.map((v, j) => v + Qf[i][j])); }
+    const y = RES * Math.round(TRUE.th(t) / RES + p.sc * G());
+    const Sv = Pm[0][0] + Rf, K = Pm.map(r => r[0] / Sv), nu = y - xm[0];
+    x = xm.map((v, i) => v + K[i] * nu);
+    P = Pm.map((r, i) => r.map((v, j) => v - K[i] * Pm[0][j]));
+    P = P.map((r, i) => r.map((v, j) => (v + P[j][i]) / 2));
+    const fd = yprev === null ? NaN : (y - yprev) / DT;
+    rec.push({ t, xs, xprev: xpost0, uprev: u, xm, Pm, y, nu, S: Sv, K, x: x.slice(), P, fd });
+    yprev = y;
+    u = (J * TRUE.al(t) + TRUE.ta(t)) / KT - p.su * G();   // the filter is told u; the motor got u + noise
+  }
+  // steady state from the recursion alone (no data): P- -> A (P- - P- C'C P- / S) A' + Q
+  let Pss = I4(), Kss = null, Sss = 0;
+  for (let i = 0; i < 20000; i++) {
+    Sss = Pss[0][0] + Rf; Kss = Pss.map(r => r[0] / Sss);
+    const Pp = Pss.map((r, a) => r.map((v, b) => v - Kss[a] * Pss[0][b]));
+    const Pn = mm(mm(A, Pp), tr(A)).map((r, a) => r.map((v, b) => v + Qf[a][b]));
+    const d = Math.abs(Pn[0][0] - Pss[0][0]) + Math.abs(Pn[1][1] - Pss[1][1]) * 1e-6;
+    Pss = Pn; if (d < 1e-16 && i > 50) break;
+  }
+  const rms = a => Math.sqrt(a.reduce((s, v) => s + v * v, 0) / a.length);
+  const late = rec.filter(r => r.t > 0.3);
+  RUN = { rec, Rf, Qf, Pss, Kss, Sss,
+    enc: rms(late.map(r => r.y - r.xs[0])), kfa: rms(late.map(r => r.x[0] - r.xs[0])),
+    fdv: rms(late.slice(1).map(r => r.fd - r.xs[1])), kfv: rms(late.map(r => r.x[1] - r.xs[1])),
+    kft: rms(late.map(r => r.x[2] - r.xs[2])), kftd: rms(late.map(r => r.x[3] - r.xs[3])) };
+}
+
+/* ---------- plotting ---------- */
+const cv = document.getElementById('pl');
+function frame() {
+  const r = cv.getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)), pr = devicePixelRatio;
+  if (cv.width !== Math.round(W * pr) || cv.height !== Math.round(H * pr)) { cv.width = Math.round(W * pr); cv.height = Math.round(H * pr); }
+  const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, 0, 0); c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
+  return { c, W, H };
+}
+function panel(G, o) {
+  const { c, W, H } = G, x0 = 62, x1 = W - 14, y0 = o.top * H + 18, y1 = o.bot * H - 26;
+  const [xa, xb] = o.xr, [ya, yb] = o.yr, X = v => x0 + (v - xa) / (xb - xa) * (x1 - x0), Y = v => y1 - (Math.max(ya, Math.min(yb, v)) - ya) / (yb - ya) * (y1 - y0);
+  c.strokeStyle = css('--line'); c.lineWidth = 1; c.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  if (ya < 0 && yb > 0) { c.strokeStyle = css('--grey'); c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.stroke(); c.setLineDash([]); }
+  c.fillStyle = css('--muted'); c.font = '11px ' + css('--body');
+  c.textAlign = 'left'; c.fillText(o.title || '', x0, y0 - 5);
+  c.textAlign = 'center'; c.fillText(o.xlab || '', (x0 + x1) / 2, y1 + 22);
+  (o.xt || [xa, (xa + xb) / 2, xb]).forEach(v => c.fillText(typeof v === 'string' ? v : +v.toFixed(3) + '', X(typeof v === 'string' ? 0 : v), y1 + 11));
+  c.textAlign = 'right'; [ya, yb, ...(ya < 0 && yb > 0 ? [0] : [])].forEach(v => c.fillText((o.yfmt ? o.yfmt(v) : +v.toPrecision(3)) + '', x0 - 4, Y(v) + 4));
+  c.save(); c.beginPath(); c.rect(x0, y0, x1 - x0, y1 - y0); c.clip();
+  (o.series || []).forEach(s => {
+    c.strokeStyle = c.fillStyle = css(s.col); c.lineWidth = s.w || 2; c.setLineDash(s.dash || []);
+    if (s.dots) { s.xs.forEach((xv, i) => { if (i % (s.every || 1) === 0 && isFinite(s.ys[i])) c.fillRect(X(xv) - 1.3, Y(s.ys[i]) - 1.3, 2.6, 2.6); }); }
+    else { c.beginPath(); let on = false; s.xs.forEach((xv, i) => { const yv = s.ys[i]; if (!isFinite(yv)) { on = false; return; } on ? c.lineTo(X(xv), Y(yv)) : c.moveTo(X(xv), Y(yv)); on = true; }); c.stroke(); }
+    c.setLineDash([]);
+  });
+  (o.bars || []).forEach(b => {   // estimate ± one standard deviation
+    c.strokeStyle = c.fillStyle = css(b.col); c.lineWidth = 3;
+    c.beginPath(); c.moveTo(X(b.x), Y(b.y - b.s)); c.lineTo(X(b.x), Y(b.y + b.s)); c.stroke();
+    c.fillRect(X(b.x) - 12, Y(b.y - b.s) - 1, 24, 2); c.fillRect(X(b.x) - 12, Y(b.y + b.s) - 1, 24, 2);
+    c.beginPath(); c.arc(X(b.x), Y(b.y), 6, 0, 7); c.fill();
+    c.font = 'bold 11px ' + css('--body'); c.textAlign = 'center'; c.fillText(b.label, X(b.x), y0 + 14);
+  });
+  (o.marks || []).forEach(m => { if (!isFinite(m.y)) return; c.fillStyle = css(m.col); c.beginPath(); c.arc(X(m.x), Y(m.y), m.r || 4, 0, 7); c.fill(); });
+  (o.vlines || []).forEach(v => { c.strokeStyle = css(v.col); c.setLineDash([4, 3]); c.beginPath(); c.moveTo(X(v.x), y0); c.lineTo(X(v.x), y1); c.stroke(); c.setLineDash([]); });
+  c.restore();
+}
+function boxes(G, rows) {
+  const { c, W, H } = G;
+  c.textAlign = 'center'; c.textBaseline = 'middle';
+  rows.forEach(([txt, col, fx, fy, fw, fh, bold]) => {
+    const x = fx * W, y = fy * H, w = fw * W, h = fh * H;
+    c.strokeStyle = css(col); c.lineWidth = 2; c.fillStyle = css('--inset');
+    c.beginPath(); c.roundRect ? c.roundRect(x, y, w, h, 8) : c.rect(x, y, w, h); c.fill(); c.stroke();
+    c.fillStyle = css('--ink'); c.font = (bold ? 'bold ' : '') + '12.5px ' + css('--body');
+    const lines = txt.split('\n'); lines.forEach((l, i) => c.fillText(l, x + w / 2, y + h / 2 + (i - (lines.length - 1) / 2) * 16));
+  });
+  c.textBaseline = 'alphabetic';
+}
+function arrows(G, list) {
+  const { c, W, H } = G; c.strokeStyle = css('--muted'); c.fillStyle = css('--muted'); c.lineWidth = 2;
+  list.forEach(([ax, ay, bx, by]) => {
+    const P0 = [ax * W, ay * H], P1 = [bx * W, by * H], an = Math.atan2(P1[1] - P0[1], P1[0] - P0[0]);
+    c.beginPath(); c.moveTo(...P0); c.lineTo(...P1); c.stroke();
+    c.beginPath(); c.moveTo(...P1); c.lineTo(P1[0] - 9 * Math.cos(an - .4), P1[1] - 9 * Math.sin(an - .4)); c.lineTo(P1[0] - 9 * Math.cos(an + .4), P1[1] - 9 * Math.sin(an + .4)); c.fill();
+  });
+}
+const legend = items => document.getElementById('leg').innerHTML = items.map(([t, col, dash]) =>
+  `<span><span class="sw" style="background:${dash ? 'repeating-linear-gradient(90deg,var(' + col + ') 0 4px,transparent 4px 7px)' : 'var(' + col + ')'}"></span>${t}</span>`).join('');
+const pick = (t0, t1) => RUN.rec.filter(r => r.t >= t0 && r.t <= t1);
+const span = (arr, pad = 0.1) => { const v = arr.filter(isFinite); let lo = Math.min(...v), hi = Math.max(...v); const d = (hi - lo) || 1; return [lo - pad * d, hi + pad * d]; };
+const lg = v => Math.log10(Math.max(v, 1e-30));
+
+const PLOTS = {
+  machine(G) {
+    boxes(G, [['motor\nstate 1: θ (angle)\nstate 2: ω (speed)', '--a', .03, .06, .3, .22, true],
+      ['belt / drivetrain\nratio N', '--grey', .37, .1, .24, .14],
+      ['ankle joint\ndesired torque τₐ', '--grey', .67, .06, .3, .22],
+      ['state 3: τ = τₐ / N\nthe ankle torque, seen at the motor\nstate 4: τ̇, how fast it changes', '--d', .37, .36, .6, .2, true],
+      ['current u (amps)\nKₜ·u = J·α + τ', '--b', .03, .4, .3, .16],
+      ['encoder: y = θ + noise\nthe ONLY sensor\nC = [1 0 0 0]', '--c', .03, .7, .3, .2, true],
+      ['ω, τ, τ̇: never measured\nthe filter must infer them', '--bad', .45, .7, .5, .2, true]]);
+    arrows(G, [[.33, .17, .37, .17], [.61, .17, .67, .17], [.24, .4, .24, .29], [.07, .29, .07, .7], [.67, .36, .67, .28]]);
+    legend([]);
+  },
+  why(G) {
+    const r = pick(0.3, 0.8);
+    const ea = r.map(q => (q.y - q.xs[0]) * 1000), ka = r.map(q => (q.x[0] - q.xs[0]) * 1000), [lo, hi] = span(ea);
+    panel(G, { top: 0, bot: .45, xr: [0.3, 0.8], yr: [lo, hi], title: 'angle error (milliradians): encoder reading − truth (dots), filter − truth (line)', xlab: '',
+      series: [{ xs: r.map(q => q.t), ys: ea, col: '--grey', dots: true }, { xs: r.map(q => q.t), ys: ka, col: '--a', w: 2 }] });
+    const vs = r.map(q => q.fd), [vlo, vhi] = span(r.map(q => q.xs[1]).concat(vs), 0.05);
+    panel(G, { top: .45, bot: 1, xr: [0.3, 0.8], yr: [vlo, vhi], title: 'motor speed ω (rad/s): truth, differentiated encoder, filter', xlab: 'time (s)',
+      series: [{ xs: r.map(q => q.t), ys: vs, col: '--grey', dots: true }, { xs: r.map(q => q.t), ys: r.map(q => q.xs[1]), col: '--ink', w: 3 }, { xs: r.map(q => q.t), ys: r.map(q => q.x[1]), col: '--a', w: 1.6 }] });
+    legend([['encoder (angle) / encoder differentiated (speed)', '--grey'], ['true', '--ink'], ['Kalman estimate', '--a']]);
+  },
+  hidden(G) {
+    const r = pick(0, 2);
+    panel(G, { top: 0, bot: .5, xr: [0, 2], yr: [-2, 2], title: 'state 3: τ, ankle torque at the motor (N·m) — no sensor measures it', xlab: '',
+      series: [{ xs: r.map(q => q.t), ys: r.map(q => q.xs[2]), col: '--ink', w: 3 }, { xs: r.map(q => q.t), ys: r.map(q => q.x[2]), col: '--d', w: 1.6 }] });
+    panel(G, { top: .5, bot: 1, xr: [0, 2], yr: [-25, 25], title: 'state 4: τ̇ (N·m/s)', xlab: 'time (s)',
+      series: [{ xs: r.map(q => q.t), ys: r.map(q => q.xs[3]), col: '--ink', w: 3 }, { xs: r.map(q => q.t), ys: r.map(q => q.x[3]), col: '--d', w: 1.3 }] });
+    legend([['true', '--ink'], ['Kalman estimate (from the encoder and the current only)', '--d']]);
+  },
+  loop(G) {
+    boxes(G, [['best guess x̂ (4 numbers)\n+ doubt P (4 × 4)', '--a', .3, .02, .4, .15, true],
+      ['1 · PREDICT with physics\nx̂⁻ = A x̂ + B u\nP⁻ = A P Aᵀ + Q', '--b', .56, .26, .41, .2],
+      ['2 · MEASURE\nencoder gives y', '--c', .56, .56, .41, .13],
+      ['3 · COMPARE\nsurprise ν = y − θ̂⁻\nexpected size² S = P⁻₁₁ + R', '--d', .03, .56, .44, .2],
+      ['4 · CORRECT\nK = P⁻Cᵀ / S\nx̂ = x̂⁻ + K ν,  P = P⁻ − K S Kᵀ', '--bad', .03, .26, .44, .2, true]]);
+    arrows(G, [[.7, .17, .76, .26], [.76, .46, .76, .56], [.56, .63, .47, .66], [.25, .56, .25, .46], [.25, .26, .3, .14]]);
+    G.c.fillStyle = css('--muted'); G.c.font = '12px ' + css('--body'); G.c.textAlign = 'center';
+    G.c.fillText('every 1 ms, forever', G.W * .5, G.H * .9);
+    legend([]);
+  },
+  cycle(G) {
+    const r = RUN.rec[S.p.k], t0 = r.xs[0], m = 1000;
+    const pr = (r.xm[0] - t0) * m, sp = Math.sqrt(r.Pm[0][0]) * m, ye = (r.y - t0) * m, sr = Math.sqrt(RUN.Rf) * m, po = (r.x[0] - t0) * m, spo = Math.sqrt(r.P[0][0]) * m;
+    const lim = Math.max(Math.abs(pr) + sp, Math.abs(ye) + sr, Math.abs(po) + spo) * 1.25;
+    panel(G, { top: 0, bot: 1, xr: [0, 4], yr: [-lim, lim], title: `step k = ${S.p.k} (t = ${f(r.t, 3)} s): angle, minus the truth, in milliradians (0 = the truth)`, xlab: '', xt: [],
+      bars: [{ x: 0.8, y: pr, s: sp, col: '--b', label: 'physics predicts' }, { x: 2, y: ye, s: sr, col: '--c', label: 'encoder says' }, { x: 3.2, y: po, s: spo, col: '--a', label: 'blend (filter)' }] });
+    legend([['dot = the value, bar = ± one standard deviation (how unsure)', '--grey']]);
+  },
+  saw(G) {
+    const n = 14, xs = [], ys = [];
+    for (let k = 0; k < n; k++) { const r = RUN.rec[k]; xs.push(k, k + 0.5); ys.push(lg(r.Pm[0][0]), lg(r.P[0][0])); }
+    const ss = lg(RUN.Pss[0][0]), ssp = lg(RUN.Pss[0][0] - RUN.Kss[0] * RUN.Pss[0][0]), lo = Math.min(...ys, ssp) - 0.3;
+    panel(G, { top: 0, bot: 1, xr: [0, n], yr: [lo, 0.3], title: 'log₁₀ P₁₁ (angle doubt, rad²): up at each predict, down at each reading', xlab: 'step k', yfmt: v => '10^' + f(v, 1),
+      series: [{ xs, ys, col: '--a', w: 2 }, { xs, ys, col: '--a', dots: true }, { xs: [0, n], ys: [ss, ss], col: '--b', dash: [5, 4] }, { xs: [0, n], ys: [ssp, ssp], col: '--c', dash: [5, 4] }] });
+    legend([['P₁₁ step by step', '--a'], ['steady value before a reading', '--b', 1], ['steady value after a reading', '--c', 1]]);
+  },
+  gain(G) {
+    const r = pick(0, 0.25);
+    panel(G, { top: 0, bot: .45, xr: [0, .25], yr: [0, 1], title: 'K₁ = P⁻₁₁ / (P⁻₁₁ + R): the share of the surprise the angle accepts', xlab: '',
+      series: [{ xs: r.map(q => q.t), ys: r.map(q => q.K[0]), col: '--a' }, { xs: [0, .25], ys: [RUN.Kss[0], RUN.Kss[0]], col: '--grey', dash: [5, 4] }] });
+    const cols = ['--b', '--d', '--e'];
+    panel(G, { top: .45, bot: 1, xr: [0, .25], yr: [-1.5, 1.5], title: 'K₂, K₃, K₄ divided by their final values (they settle at 1)', xlab: 'time (s)',
+      series: [1, 2, 3].map((i, n) => ({ xs: r.map(q => q.t), ys: r.map(q => q.K[i] / RUN.Kss[i]), col: cols[n] })) });
+    legend([['K₁ (angle)', '--a'], ['K₂ (speed)', '--b'], ['K₃ (τ)', '--d'], ['K₄ (τ̇)', '--e'], ['steady-state value', '--grey', 1]]);
+  },
+  tune(G) {
+    const r = pick(0.3, 1.3);
+    const ka = r.map(q => (q.x[0] - q.xs[0]) * 1000), ea = r.map(q => (q.y - q.xs[0]) * 1000), [lo, hi] = span(ea.concat(ka));
+    panel(G, { top: 0, bot: .5, xr: [0.3, 1.3], yr: [lo, hi], title: 'angle error (mrad): encoder (dots) and filter (line)', xlab: '',
+      series: [{ xs: r.map(q => q.t), ys: ea, col: '--grey', dots: true, every: 3 }, { xs: r.map(q => q.t), ys: ka, col: '--a' }] });
+    const kv = r.map(q => q.x[1] - q.xs[1]), [vlo, vhi] = span(kv);
+    panel(G, { top: .5, bot: 1, xr: [0.3, 1.3], yr: [Math.min(vlo, -1), Math.max(vhi, 1)], title: 'speed error of the filter (rad/s)', xlab: 'time (s)',
+      series: [{ xs: r.map(q => q.t), ys: kv, col: '--b' }] });
+    legend([['encoder error', '--grey'], ['filter angle error', '--a'], ['filter speed error', '--b']]);
+  },
+};
+
+/* ---------- small renderers for the text ---------- */
+const mat = (M, d = 3) => `<table class="mx">${M.map(r => `<tr>${(Array.isArray(r) ? r : [r]).map(v => `<td>${g(v, d)}</td>`).join('')}</tr>`).join('')}</table>`;
+const col = v => mat(v.map(x => [x]));
+
+/* ---------- the steps ---------- */
+const STEPS = [
+  ['0 · your machine', 'machine', [], () => {
+    const p = S.p;
+    return `<p class="goal"><b>The system you built.</b> A motor drives the prosthetic ankle through a belt. Four numbers describe it at any instant; one sensor, the motor encoder, reads one of them.</p>
+    <table class="t"><tr><th>state</th><th>what it is</th><th>measured?</th></tr>
+    <tr><td class="m">x₁ = θ</td><td>motor angle (rad)</td><td class="cc"><b>yes, by the encoder (noisily)</b></td></tr>
+    <tr><td class="m">x₂ = ω</td><td>motor speed (rad/s)</td><td class="cbad">no</td></tr>
+    <tr><td class="m">x₃ = τ</td><td>the desired ankle torque seen at the motor, τₐ / N (N·m)</td><td class="cbad">no</td></tr>
+    <tr><td class="m">x₄ = τ̇</td><td>how fast that torque changes (N·m/s)</td><td class="cbad">no</td></tr></table>
+    <p><b>Physics of the rotor.</b> The motor torque Kₜ·u (u = current) does two jobs: spin up the rotor, and supply the joint's torque through the belt:</p>
+    <span class="eq">Kₜ · u = J · α + τ      ⇒      α = (Kₜ u − τ) / J</span>
+    <p class="cg">Sign check: with nothing attached (τ = 0) all of Kₜu must go into J·α. If you wrote it as τ = Kₜu + Jα, the J·α term has the opposite sign; the filter works the same way, only the signs inside A change.</p>
+    <p><b>One time step dt = 1 ms</b>, assuming u and τ̇ stay constant during the step (Taylor, exact for that assumption):</p>
+    <span class="eq">θ⁺ = θ + dt·ω + ½dt²·α − (dt³/6J)·τ̇
+ω⁺ = ω + dt·α − (dt²/2J)·τ̇
+τ⁺ = τ + dt·τ̇
+τ̇⁺ = τ̇ + (an unknown change: this is where q₄ comes in)</span>
+    <p>Written as x⁺ = A x + B u, y = C x, with J = ${g(J)} kg·m², Kₜ = ${KT} N·m/A:</p>
+    <table><tr><td>A =</td><td>${mat(A)}</td><td>&nbsp;B =</td><td>${col(B)}</td></tr></table>
+    <span class="eq">C = [1  0  0  0]       (only the angle comes out)</span>
+    <p>Your noise numbers: current noise σᵤ = ${f(p.su, 3)} A, so the top-left 2 × 2 of Q is σᵤ²·B Bᵀ; τ̇ gets q₄ = ${g(p.q4)} added each step; the encoder is off by about ±${f(p.sc, 1)} counts of ${CPR} per turn, so R = (${f(p.sc, 1)} × 2π/${CPR})² = ${g(RUN.Rf / p.rs)} rad².</p>
+    <p>The question the next steps answer: <b>if the encoder already gives the angle, why run a filter at all?</b></p>`; }],
+  ['1 · why not just trust the encoder?', 'why', ['sc'], () => `
+    <p class="goal"><b>Two reasons, and the second one is the big one.</b></p>
+    <p><b>Reason 1: even the angle gets better.</b> Each encoder reading is off by about ±${f(S.p.sc, 1)} counts, independently, every millisecond. But the real angle cannot jump: from one millisecond to the next it moves by ω·dt, and the physics knows roughly what ω is. So the filter effectively averages many readings, using the model to line them up. Top plot:</p>
+    <span class="eq">RMS angle error, raw encoder : ${f(RUN.enc * 1000, 2)} mrad
+RMS angle error, filter      : ${f(RUN.kfa * 1000, 2)} mrad</span>
+    <p><b>Reason 2: the encoder gives one number; you need four.</b> Your controller needs the speed, and the torque the ankle is carrying. No sensor gives those. The obvious fix, differentiating the encoder, divides its noise by dt = 0.001 s: ±${f(S.p.sc, 0)} counts becomes ±${f(S.p.sc * RES / DT * Math.SQRT2, 0)} rad/s of noise (grey dots, bottom plot). The filter's speed (blue) is smooth and close to the truth:</p>
+    <span class="eq">RMS speed error, differentiated encoder : ${f(RUN.fdv, 2)} rad/s
+RMS speed error, filter                 : ${f(RUN.kfv, 2)} rad/s</span>
+    <p>So the answer to "are we just trusting the encoder?": <b>no, and we are not just trusting the model either.</b> The encoder is the only link to reality; the physics is what turns one noisy number per millisecond into four good ones. Move the encoder-noise slider: the raw encoder gets worse in proportion, the filter degrades much more slowly.</p>`],
+  ['2 · the hidden states come out too', 'hidden', ['sc', 'q4'], () => `
+    <p class="goal"><b>τ and τ̇ are never measured, yet the filter recovers them.</b> How?</p>
+    <p>The filter knows the current u it sent. The physics says u should produce an acceleration α = (Kₜu − τ)/J. If the encoder shows the rotor accelerating <i>less</i> than u alone would explain, something is holding it back: that something is τ. A torque error of only 0.01 N·m changes α by 0.01/J = ${f(0.01 / J, 0)} rad/s², which is visible in the angle within a few milliseconds. The rotor is a very light, very sensitive torque meter, and the encoder reads it.</p>
+    <span class="eq">RMS error of τ̂  : ${f(RUN.kft, 4)} N·m   (the torque swings ±1.6 N·m)
+RMS error of τ̂̇ : ${f(RUN.kftd, 2)} N·m/s</span>
+    <p>Look at the start of the plot: the filter begins at x̂ = 0 with P = I (your initial guess) and locks on within a few tens of milliseconds.</p>
+    <p><b>This is the main reason Kalman filters exist</b>: a model plus the sensors you have estimates the states you do not have. Your encoder-only prosthesis gets a torque estimate without a torque sensor. The catch, step 7: it is only as good as the model and the Q you give it.</p>`],
+  ['3 · the loop: predict, compare, correct', 'loop', [], () => `
+    <p class="goal"><b>Every millisecond the filter does four things.</b> Before any formula, in words:</p>
+    <ol><li><b>Predict.</b> Run the physics one step forward from the last best guess: x̂⁻ = A x̂ + B u. Also push the <i>doubt</i> forward: P⁻ = A P Aᵀ + Q (step 6 explains both terms).</li>
+    <li><b>Measure.</b> The encoder gives y.</li>
+    <li><b>Compare.</b> The prediction says the angle should be θ̂⁻ = C x̂⁻. The difference <b>ν = y − θ̂⁻</b> is the <b>surprise</b>. This number, ν, is what textbooks call the <b>innovation</b>: the part of the reading the filter did not already expect, the only new information in it. Its expected size² is <b>S = C P⁻ Cᵀ + R = P⁻₁₁ + R</b>: doubt in the prediction plus doubt in the sensor. (You called S the innovation; strictly S is the <i>innovation covariance</i>, how big ν usually is, squared.)</li>
+    <li><b>Correct.</b> Move each of the four states by its own share of the surprise: x̂ = x̂⁻ + K ν, with K = P⁻ Cᵀ / S. Then shrink the doubt: P = P⁻ − K S Kᵀ = P⁻ − P⁻CᵀC P⁻ / S.</li></ol>
+    <p>That is the whole Kalman filter. Everything else is explaining why K and P are what they are.</p>`],
+  ['4 · one cycle, by hand', 'cycle', ['k'], () => {
+    const r = RUN.rec[S.p.k];
+    return `<p class="goal"><b>Pick a millisecond k and follow the numbers.</b></p>
+    <table><tr><td>last best guess x̂ =</td><td>${col(r.xprev)}</td><td>&nbsp;current sent u = ${f(r.uprev, 3)} A</td></tr></table>
+    <p><b>1 · predict</b> x̂⁻ = A x̂ + B u and the doubt P⁻ = A P Aᵀ + Q:</p>
+    <table><tr><td>x̂⁻ =</td><td>${col(r.xm)}</td><td>&nbsp;P⁻ =</td><td>${mat(r.Pm, 2)}</td></tr></table>
+    <p><b>2, 3 · measure and compare.</b> Encoder y = ${f(r.y, 5)} rad. Predicted angle θ̂⁻ = ${f(r.xm[0], 5)}.</p>
+    <span class="eq">surprise (innovation)  ν = y − θ̂⁻ = ${g(r.nu)} rad
+its expected size²     S = P⁻₁₁ + R = ${g(r.Pm[0][0])} + ${g(RUN.Rf)} = ${g(r.S)} rad²</span>
+    <p><b>4 · correct.</b> K = (first column of P⁻) / S, then x̂ = x̂⁻ + K·ν:</p>
+    <table><tr><td>K =</td><td>${col(r.K)}</td><td>&nbsp;K·ν =</td><td>${col(r.K.map(v => v * r.nu))}</td><td>&nbsp;x̂ =</td><td>${col(r.x)}</td><td>&nbsp;truth =</td><td>${col(r.xs)}</td></tr></table>
+    <p><b>The plot</b> is the angle part of this cycle, measured from the truth. Orange: what physics predicted, with its doubt ±√P⁻₁₁. Green: what the encoder said, with its doubt ±√R. Blue: the blend. <b>The blend sits between the two, closer to whichever is surer, and its bar is shorter than both.</b> Two uncertain opinions combined give one opinion that is surer than either. That single picture is the Kalman filter. Drag k.</p>`; }],
+  ['5 · what P is, and what K does with it', 'gain', ['rs'], () => {
+    const Pss = RUN.Pss, Kss = RUN.Kss, rho = [1, 2, 3].map(i => Pss[i][0] / Math.sqrt(Pss[0][0] * Pss[i][i]));
+    return `<p class="goal"><b>P is the filter's honest opinion of its own error.</b></p>
+    <p><b>Diagonal:</b> P₁₁ is the average squared error of θ̂, P₂₂ of ω̂, and so on. √Pᵢᵢ is the "± how much" for each state. You started at P = I: "I am unsure by about ±1 unit of every state".</p>
+    <p><b>Off-diagonal: the part people skip, and the part that matters most.</b> P₂₁ says how the speed error and the angle error <i>move together</i>. If my speed estimate is too high, my predicted angle will be too high too, because the angle is built from the speed. So the errors are linked. In the steady state here, as correlations (−1 to 1):</p>
+    <span class="eq">angle error ↔ speed error   ${f(rho[0], 2)}
+angle error ↔ τ error       ${f(rho[1], 2)}
+angle error ↔ τ̇ error      ${f(rho[2], 2)}</span>
+    <p><b>Now K = P⁻Cᵀ / S reads like a sentence.</b> P⁻Cᵀ is just the first column of P⁻: how each state's error is linked to the angle error. Divide by S, the expected size² of the surprise:</p>
+    <ul><li><b>K₁ = P⁻₁₁ / (P⁻₁₁ + R)</b>, a number between 0 and 1: the share of the surprise the angle accepts. Prediction much surer than the encoder (P⁻₁₁ ≪ R): K₁ → 0, ignore the reading. Encoder much surer: K₁ → 1, copy the reading. Here K₁ = ${f(Kss[0], 3)}.</li>
+    <li><b>K₂, K₃, K₄ = P⁻ᵢ₁ / S</b>: "the angle surprised me by ν; given how my errors are linked, my speed is probably off by K₂·ν, my torque by K₃·ν." This is how a reading of the angle corrects states nobody measured. K = ${col(Kss).replace('<table', '<table style="display:inline-table"')}</li></ul>
+    <p>Top plot: K₁ starts high (P = I says "I know nothing, believe the encoder"), then settles. Bottom: the other gains settle too. <b>Try the R slider</b> (the R the filter is told): bigger R → smaller K₁, the filter leans on physics; smaller R → it copies the encoder.</p>`; }],
+  ['6 · the balance: why P stops changing', 'saw', ['q4', 'sc'], () => {
+    const Pss = RUN.Pss, Kss = RUN.Kss, pre = Pss[0][0], post = pre - Kss[0] * pre;
+    return `<p class="goal"><b>The recursion you memorised, read as a story.</b></p>
+    <span class="eq">P⁻(next) =  A · ( P⁻ − P⁻Cᵀ C P⁻ / S ) · Aᵀ  +  Q
+              ③      ①                        ③     ②</span>
+    <p><b>① A reading shrinks the doubt.</b> P⁻CᵀCP⁻/S is the doubt the encoder removes. P⁻Cᵀ (how each state's error is linked to the angle) appears twice because each state is corrected through that link, and the product is divided by S, the size of the surprise. Big S (noisy encoder) → little removed.</p>
+    <p><b>② The world adds fresh doubt: +Q.</b> Each millisecond the current is off by unknown noise and τ̇ changes in ways the model cannot predict (your q₄). Nothing the filter does prevents this.</p>
+    <p><b>③ Physics moves the doubt around: A·P·Aᵀ.</b> It does not create or destroy doubt so much as move it: doubt in speed becomes doubt in angle one step later (ω·dt), doubt in τ becomes doubt in speed. This is also what builds the off-diagonal links of step 5.</p>
+    <p><b>The balance.</b> Started at P = I, every reading removes more doubt than Q adds, so P falls. As P falls, there is less doubt to remove, so ① gets smaller. It stops where <b>what one reading removes = what one step adds</b>. The plot: up at each predict, down at each reading, settling into a fixed sawtooth.</p>
+    <span class="eq">steady P⁻₁₁ (before a reading) = ${g(pre)} rad²  → ±${f(Math.sqrt(pre) * 1000, 2)} mrad
+steady P₁₁  (after a reading)  = ${g(post)} rad²  → ±${f(Math.sqrt(post) * 1000, 2)} mrad
+encoder alone, R               = ${g(RUN.Rf)} rad²  → ±${f(Math.sqrt(RUN.Rf) * 1000, 2)} mrad</span>
+    <p>That fixed point is the solution of the <b>discrete algebraic Riccati equation</b>: the same balance as the Riccati tab above (drift + new pushes = what the sensor removes), with time steps instead of a derivative.</p>
+    <p><b>Notice: y never appears in this recursion.</b> P and K depend only on A, C, Q, R, never on the actual readings. So you can run it offline until it stops changing and store the final K: the <b>steady-state Kalman filter</b>, exactly like storing the LQR gain. On the prosthesis's microcontroller only x̂ = x̂⁻ + K(y − θ̂⁻) runs, 4 multiplies per millisecond.</p>`; }],
+  ['7 · tuning Q and R: what you are really choosing', 'tune', ['qs', 'rs', 'q4'], () => `
+    <p class="goal"><b>The filter is only as good as its honesty about noise.</b> These sliders change the Q and R the filter <i>is told</i>; the real noise stays the same.</p>
+    <ul><li><b>Q too small</b> (filter thinks its model is perfect): K shrinks, the estimate ignores the encoder and lags behind every change the model does not know about (the torque changes are exactly that). Try ×0.01.</li>
+    <li><b>Q too large</b> or <b>R too small</b> (filter thinks the encoder is perfect): K₁ → 1, x̂ copies the noisy encoder and the speed estimate becomes as noisy as differentiating it. Try R ×0.01.</li>
+    <li><b>About right</b>: the filter's own claim √P₁₁ matches the error it actually makes. That is the test for "about right" on real data: the surprises ν should be about ±√S, no bigger, no smaller.</li></ul>
+    <span class="eq">filter told: Q × ${g(S.p.qs, 2)}, R × ${g(S.p.rs, 2)}, q₄ = ${g(S.p.q4, 2)}
+RMS angle error : ${f(RUN.kfa * 1000, 2)} mrad   (encoder alone ${f(RUN.enc * 1000, 2)})
+RMS speed error : ${f(RUN.kfv, 2)} rad/s   (differentiated encoder ${f(RUN.fdv, 2)})
+RMS τ error     : ${f(RUN.kft, 4)} N·m</span>
+    <p><b>Why you had to "sweep" q₄.</b> Nothing measures how fast the ankle torque really changes; the model says τ̇ is constant over a step, which is false during gait. q₄ is your admission of that: how much τ̇ can change per step without the filter being shocked. Small q₄: smooth but lagging torque estimate. Large q₄: fast but noisier. It is a trade-off you choose, not a constant of nature, which is why it had to be tuned.</p>`],
+  ['8 · say it out loud', 'loop', [], () => `
+    <p class="goal"><b>If someone asks "what is a Kalman filter?"</b></p>
+    <div class="say"><b>One sentence.</b> It keeps a best guess of the whole state and an honest measure of how unsure it is, predicts both forward with the physics, and every time a measurement arrives it moves the guess toward the measurement by an amount that depends on which of the two it trusts more.</div>
+    <div class="say"><b>What balance it finds.</b> Each step the model adds fresh doubt (Q) and each reading removes some (how much depends on R). P settles where the two are equal; that is the Riccati equation. The gain K = P⁻Cᵀ/(CP⁻Cᵀ + R) at that balance is the blend that makes the average squared error of every state as small as possible, for a linear model with Gaussian noise.</div>
+    <div class="say"><b>Why not just trust the encoder.</b> The encoder gives one noisy number. The filter gives four: a cleaner angle (many readings averaged through the physics), and a speed and an ankle torque that no sensor measures, inferred through how their errors are linked to the angle error (the off-diagonal of P).</div>
+    <div class="say"><b>The words.</b> Innovation ν = y − Cx̂⁻, the surprise. S = CP⁻Cᵀ + R, how big the surprise usually is. K: how much of the surprise each state accepts. P: the error covariance, diagonal = how unsure, off-diagonal = how errors are linked. Q: what the model does not know. R: what the sensor does not know.</div>
+    <div class="say"><b>Its twin.</b> LQR's P is the cost still ahead and runs backward from the end; the Kalman P is the doubt so far and runs forward from the start. Same Riccati equation with A ↔ Aᵀ and B ↔ Cᵀ: the second tab of the lab above.</div>`],
+];
+const SL = {
+  sc: ['encoder noise (counts, real)', 0.5, 20, 0.5, false], su: ['current noise σᵤ (A)', -3, 0, 0.01, true],
+  q4: ['q₄: τ̇ change per step', -5, 1, 0.05, true], rs: ['R told to filter (× true)', -2, 2, 0.05, true], qs: ['Q told to filter (× true)', -2, 2, 0.05, true],
+  k: ['millisecond k', 0, NSTEP - 1, 1, false],
+};
+
+function controls() {
+  const keys = STEPS[S.step][2];
+  document.getElementById('ctl').innerHTML = keys.length ? keys.map(k => { const [lab, lo, hi, st, lg] = SL[k], v = lg ? Math.log10(S.p[k]) : S.p[k];
+    return `<label class="ctl"><span>${lab}</span><input type="range" data-k="${k}" min="${lo}" max="${hi}" step="${st}" value="${v}"><output>${g(S.p[k], 3)}</output></label>`; }).join('')
+    : '<span style="color:var(--muted);font-size:.84rem">No sliders in this step: read the picture, then press next.</span>';
+  document.querySelectorAll('#ctl input').forEach(el => el.oninput = () => { const k = el.dataset.k; S.p[k] = SL[k][4] ? Math.pow(10, +el.value) : +el.value; el.nextElementSibling.textContent = g(S.p[k], 3); if (k !== 'k') run(); draw(); });
+}
+function draw() {
+  const st = STEPS[S.step], G = frame();
+  legend([]); PLOTS[st[1]](G);
+  document.getElementById('exp').innerHTML = st[3]();
+}
+function render() {
+  const chips = document.getElementById('chips');
+  chips.innerHTML = STEPS.map((s, i) => `<button data-s="${i}" aria-current="${i === S.step}">${s[0]}</button>`).join('');
+  chips.querySelectorAll('button').forEach(b => b.onclick = () => { S.step = +b.dataset.s; render(); });
+  controls(); draw();
+}
+document.getElementById('prev').onclick = () => { S.step = Math.max(0, S.step - 1); render(); };
+document.getElementById('next').onclick = () => { S.step = Math.min(STEPS.length - 1, S.step + 1); render(); };
+document.getElementById('dflt').onclick = () => { S.p = { ...DEF }; run(); controls(); draw(); };
+new ResizeObserver(() => draw()).observe(cv);
+new MutationObserver(() => draw()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+run();
+window.LAB = { S, run, get RUN() { return RUN; }, A, B, STEPS };
+render();
+})();
+</script>
+</body></html>
