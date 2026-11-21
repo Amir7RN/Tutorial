@@ -253,7 +253,7 @@ const PLOTS = {
     const { c } = G, { x, pv, b, r } = S.p, us = 2 * Math.max(1, b * pv * x / r), u0 = -us, u1 = us * 0.35, ust = -b * pv * x / r, N = u => r * u * u + 2 * pv * b * x * u;
     const xs = lin(u0, u1, 300), depth = N(ust);
     const ymax = Math.max(r * u0 * u0, 1), ymin = Math.min(2 * pv * b * x * u0, depth) * 1.05;
-    const pp = panel(G, { top: 0, bot: .72, xr: [u0, u1], yr: [ymin, ymax], title: 'heat of pushing u for one second, at tilt x = ' + f(x, 2) + '°', xlab: 'motor push u (negative = push the tilt back)',
+    const pp = panel(G, { top: 0, bot: .72, xr: [u0, u1], yr: [ymin, ymax], title: 'heat rate N(u) of push u (per second), at tilt x = ' + f(x, 2) + '°', xlab: 'motor push u (negative = push the tilt back)',
       series: [{ xs, ys: xs.map(u => r * u * u), col: '--b', dash: [6, 4] }, { xs, ys: xs.map(u => 2 * pv * b * x * u), col: '--a', dash: [6, 4] }, { xs, ys: xs.map(N), col: '--ink', w: 3 }],
       vlines: [{ x: ust, col: '--c' }],
       marks: [{ x: ust, y: depth, col: '--c', r: 6, label: 'best u = ' + f(ust, 2) + ',  depth ' + f(depth, 2), below: true }] });
@@ -266,7 +266,7 @@ const PLOTS = {
     arrow(c, XU - 12, y, XU - 70, y, '--a', 3);
     text(c, 'valley pushes: lever × slope = b·2p·x = ' + f(2 * b * pv * x, 2), XU - 74, y + 26, '--a', 'left', 11, true);
     text(c, 'motor-heat spring pulls back: 2r·u', (XU + X0) / 2, y - 12, '--b', 'center', 11, true);
-    legend([['motor heat r·u² (cost now)', '--b', 1], ['change in heat to come 2p·x·b·u', '--a', 1], ['sum: the second costs this', '--ink']]);
+    legend([['motor heat r·u² (cost now)', '--b', 1], ['change in heat to come 2p·x·b·u', '--a', 1], ['sum: N(u), heat per second', '--ink']]);
   },
   improve(G) {
     const { b, r, a } = S.p, pk = pOf, pst = best().ps, kst = best().ks, kmax = Math.max(10, S.p.k0 * 1.1, kst * 2), pmax = Math.max(10, pst * 2);
@@ -410,29 +410,38 @@ const STEPS = [
     <p class="do"><b>Do:</b> drag k from 2.5 to 8 and watch the red area shrink while the orange area grows.</p>`; }],
 
   ['3 · heat still to come: a valley', 'valley', ['t', 'k'], () => {
-    const { k, t } = S.p, sim = simRule(k), i = idx(sim, t), x = sim.x[i], p = sim.total, rem = p - sim.burned[i];
-    return `<p class="goal"><b>Goal:</b> a number for <i>"how much heat is still to come in this run, from now on"</i>. Books call it the <b>cost-to-go V</b>. Here it is heat still in the run.</p>
+    const { k, t, a, b } = S.p, sim = simRule(k), i = idx(sim, t), x = sim.x[i], p = sim.total, rem = p - sim.burned[i];
+    const s = b * k - a, T = sim.t[sim.t.length - 1], i3 = idx(sim, Math.min(3, T)), left3 = p - sim.burned[i3];
+    return `<p class="goal"><b>Goal:</b> a number for <i>"how much heat is still to come in this run, from now on"</i>. Books call it the <b>cost-to-go V</b>: "to go" as in "distance to go" on a trip. Not how far you drove, how far is left.</p>
+    <p><b>When does a run start and end?</b> The robot stands upright, x = 0: no tilt, no push, no heat. A shove knocks it to 1°. That moment is t = 0, the run starts. <b>Nobody picks an end time.</b> The run lasts until the tilt is gone. With your rule the tilt dies out like a cooling cup, x(t) = e<sup>−(b·k−a)·t</sup> = e<sup>−${f(s, 2)}·t</sup>: it halves every ln 2 / ${f(s, 2)} = ${f(Math.LN2 / s, 3)} s. Heat goes with x², so it fades even faster. After 3 s only ${f(left3, 6)} of the heat is still to come. The computer keeps adding until t = ${f(T, 1)} s, where nothing measurable is left. So J = the heat of cleaning up one shove, completely. The time goes to infinity but the area stays finite, because the curve dies out.</p>
     <p>Stop the clock at t = ${f(t, 2)} s. The tilt is x(t) = ${f(x, 3)}°. Two numbers always add to the total J = ${f(p, 3)}:</p>
     <span class="eq">burned so far ${f(sim.burned[i], 3)}  +  still to come ${f(rem, 3)}  =  ${f(p, 3)}</span>
-    <p><b>The key fact.</b> From now on the robot runs the same rule from a tilt of ${f(x, 3)}° instead of 1°. Every tilt and every push of the rest of the run is the 1° run scaled by ${f(x, 3)}. Heat is made of squares, so every heat is scaled by ${f(x, 3)}² = ${f(x * x, 4)}:</p>
+    <p><b>The key fact: the robot has no memory.</b> At t = ${f(t, 2)} s it sits at ${f(x, 3)}° and keeps running the rule. Now take a second robot, standing still, and shove it to exactly ${f(x, 3)}°. From here on the two do exactly the same thing: same tilt, same rule, same gravity, and neither has an end date to rush toward. So <b>the rest of this run = a fresh run that starts at ${f(x, 3)}°.</b></p>
+    <p>A fresh run from ${f(x, 3)}° is the 1° run with every tilt and every push multiplied by ${f(x, 3)} (the model is linear: shove twice as hard and everything is twice as big). Heat is made of squares, so every heat is multiplied by ${f(x, 3)}² = ${f(x * x, 4)}:</p>
     <span class="eq">still to come = (heat of a whole 1° run) × x(t)²  =  p · x²
              = ${f(p, 3)} × ${f(x * x, 4)} = ${f(p * x * x, 3)}     measured from the run: ${f(rem, 3)}</span>
-    <p><b>p</b> = heat of a whole run that starts at 1°. For your rule p = ${f(p, 3)}.</p>
+    <p><b>p</b> = heat of a whole run that starts at 1°. For your rule p = ${f(p, 3)}. A 2° shove costs 4·p = ${f(4 * p, 3)}. That is why x² appears: it is just the scaling, nothing more.</p>
     <p class="phys"><b>Picture it as a valley</b> V(x) = p·x². The ball's height is the heat still to come. As the tilt shrinks the ball slides down, and the height it loses becomes burned heat, like a ball rolling in a bowl with friction: height lost = heat made. <b>p is the steepness of the valley.</b> Same shape as a spring's stored energy ½·k·x²: a tilt stores heat that comes out later.</p>
     <p class="do"><b>Do:</b> drag t. The ball slides, the purple dots sit on the blue line at every time. Then change k: p (the steepness) changes.</p>`; }],
 
   ['4 · the best push: a spring balance', 'push', ['x', 'pv', 'b', 'r'], () => {
     const { x, pv, b, r } = S.p, us = -b * pv * x / r, mh = r * us * us, sv = 2 * pv * b * x * us;
     return `<p class="goal"><b>Goal:</b> you are tilted x = ${f(x, 2)}° and you know the valley (steepness p = ${f(pv, 2)}). How hard should you push <i>right now</i>?</p>
-    <p>Push u for one second. Two things happen:</p>
-    <table class="t"><tr><td class="m cb">r·u²</td><td><b>costs motor heat now.</b> Doubling the push costs 4×.</td></tr>
-    <tr><td class="m ca">2p·x · b·u</td><td><b>moves you down the valley.</b> The push turns the tilt by b·u °/s (the lever). Each degree is worth the valley's slope, 2p·x (slope of p·x²). Product = change of heat still to come; negative = saved.</td></tr></table>
-    <span class="eq">heat of this second  N(u) = r·u² + 2p·x·b·u</span>
+    <p>The motor picks a push for the next <b>tiny moment</b>, dt = 0.01 s. During it two things change:</p>
+    <table class="t"><tr><td class="m cb">r·u²·dt</td><td><b>motor heat burned in the moment.</b> Doubling the push costs 4×.</td></tr>
+    <tr><td class="m ca">2p·x · (a·x + b·u)·dt</td><td><b>the ball moves in the valley.</b> In dt the tilt changes by (a·x + b·u)·dt: gravity's part a·x, plus the push's part b·u (b = the lever, degrees per second per unit push). The valley's height changes by <i>slope × step</i>, and the slope of p·x² is 2p·x. Negative = height lost = heat still to come saved.</td></tr></table>
+    <p>Gravity's part, 2p·x·a·x·dt, happens <b>whatever you push</b>, so it cannot change which push is best: leave it out. What the push controls, divided by dt to get a rate (heat per second):</p>
+    <span class="eq">N(u) = r·u² + 2p·x·b·u
+       motor heat   valley height the push saves</span>
+    <p>Try pushes by hand at x = ${f(x, 2)}°, p = ${f(pv, 2)}, over one moment dt = 0.01 s:</p>
+    <table class="t"><tr><th>push u</th><th>tilt step b·u·dt</th><th>height change 2p·x × step (− = saved)</th><th>motor heat r·u²·dt</th><th>net N(u)·dt</th></tr>
+    ${[0, us / 2, us, 1.5 * us, 2 * us].map(u => { const st = b * u * 0.01, sav = 2 * pv * x * st, mo = r * u * u * 0.01; return `<tr><td class="m">${f(u, 3)}</td><td class="m">${f(st, 4)}°</td><td class="m">${f(sav, 4)}</td><td class="m">${f(mo, 4)}</td><td class="m">${f(sav + mo, 4)}</td></tr>`; }).join('')}</table>
+    <p>No push saves nothing. Pushing harder saves more valley height, but motor heat grows as the square, so past one point it eats the saving. Twice the best push wastes it all (net 0).</p>
     <p><b>Lowest point.</b> There the two pulls balance, exactly like a spring and a force (Hooke's law): the motor-heat spring pulls back with 2r·u, the valley pushes with b·2p·x:</p>
     <span class="eq">2r·u + 2p·x·b = 0   →   u = −(b·p / r)·x
             = −(${f(b, 2)} × ${f(pv, 2)} / ${f(r, 2)}) × ${f(x, 2)} = ${f(us, 3)}</span>
     <p>Read it physically: <b>push = −(lever × valley slope) / motor price</b>. Steep valley: push more. Good lever: push more. Cheap motor (small r = soft spring): push more.</p>
-    <p>At that push: motor heat ${f(mh, 3)}, saving ${f(sv, 3)}, so the second's net is <b>${f(mh + sv, 3)} = −b²p²x²/r</b>. Keep this depth in mind: it is the motor's term in the Riccati equation (step 6).</p>
+    <p>At that push: motor heat ${f(mh, 3)}, saving ${f(sv, 3)}, so the net rate is <b>${f(mh + sv, 3)} = −b²p²x²/r</b>. Keep this depth in mind: it is the motor's term in the Riccati equation (step 6).</p>
     <p>So the best rule is u = −k·x with <b>k = b·p/r</b>.</p>
     <p class="phys"><b>Eight numbers: u = −R⁻¹ Bᵀ P x.</b> P x is the valley's slope in all 8 directions, a "force" in state space. B maps motor pushes to state speeds, as a Jacobian J maps joint speeds to hand speed, so <b>Bᵀ maps that force back to each motor, exactly as τ = Jᵀ F maps a hand force to joint torques.</b> R⁻¹ is each motor's softness. So K = R⁻¹BᵀP.</p>
     <p class="do"><b>Do:</b> drag p and watch the block (best push) slide left. Make r small: the spring softens and the push grows.</p>`; }],
