@@ -15,8 +15,9 @@ tests/test_upperbody.py checks every claim made here, in both languages.
     167  sagittal plane: from twists to the equations of motion
     168  momentum: why the arms can save a fall
     169  the recovery law: from a push to joint torques
-    170  LQR opened up: from -Kx to a torque at each joint
-    171  from this model to MuJoCo and C++
+    170  the Riccati equation, physically: one tank behind LQR and the Kalman filter
+    171  LQR opened up: from -Kx to a torque at each joint
+    172  from this model to MuJoCo and C++
 """
 
 from __future__ import annotations
@@ -112,7 +113,7 @@ class UpperBodyMachinePage(BalancePage):
                 ("Why can both arms be one link?",
                  "In a planar model they are given the same angle, so their masses and inertias simply add. "
                  "The moment one arm does something the other does not (the real robot can), the model "
-                 "needs a tree, which is what MuJoCo gives you on page 171."),
+                 "needs a tree, which is what MuJoCo gives you on page 172."),
                 ("What is M<sub>01</sub> physically?",
                  "The torque the ankle feels when the waist alone accelerates by 1 rad/s²: every mass above "
                  "the waist, times its arm to the ankle, times its arm to the waist, times the cosine between "
@@ -385,7 +386,7 @@ class UpperBodyRecoveryPage(BalancePage):
         laws.add(math_label(r"\tau_u=-K\begin{bmatrix}q\\\dot q\end{bmatrix},\qquad K=R^{-1}B^TP", 15))
         laws.add(body("clipped to the limits. It discovers a hip strategy by itself: while the push is on, the waist "
                       "throws the torso back behind vertical (the legs pay with a faster lean), then reverses and brakes "
-                      "it, and that reaction holds the legs back while the ankle is saturated. Page 170 opens it step by step."))
+                      "it, and that reaction holds the legs back while the ankle is saturated. Page 171 opens it step by step."))
         laws.add(body("<b>2 · The counterweight (looks right, fails).</b> Put the whole-body COM behind the "
                       "ankle in proportion to the lean, through a virtual spring on the upper body's COM and "
                       "page 145's Jᵀ:"))
@@ -429,7 +430,7 @@ class UpperBodyRecoveryPage(BalancePage):
                 ("What does LQR know that the counterweight does not?",
                  "The coupling and the kick. Its A matrix contains M⁻¹ and the gravity stiffness, so it knows "
                  "that moving the torso back pushes the legs forward. It moves the torso back early, while the ankle "
-                 "still has torque in hand, and reverses the waist torque when the ankle saturates (page 170)."),
+                 "still has torque in hand, and reverses the waist torque when the ankle saturates (page 171)."),
                 ("Why does the momentum QP spin the torso?",
                  "Because its target is a rate. As long as the DCM is in front of the foot it asks for forward "
                  "momentum rate, and the torso delivers it by accelerating until the stop. Nothing in a rate "
@@ -455,8 +456,48 @@ class UpperBodyRecoveryPage(BalancePage):
 # 170
 # ==========================================================================
 
+class RiccatiPage(BalancePage):
+    TITLE = "The Riccati Equation, Physically: One Tank Behind LQR and the Kalman Filter"
+    SUBTITLE = ("Before page 171 uses it on the G1: the Riccati equation on a robot shrunk to one number, the tilt. "
+                "Every symbol gets one physical job (heat, a valley, a spring, a tank, a cloud) and keeps it, first "
+                "for pushing (LQR), then for knowing where the tilt is (the Kalman filter).")
+    NOTES = "Riccati"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.add(start_here(
+            "<b>Work this page in the lab, one step at a time.</b> LQR and the Kalman filter both end in a "
+            "Riccati equation, and both are hard to follow when P, K, cost-to-go and the formulas arrive at once. "
+            "Here they arrive one per step, each as something you can picture: the price of a run is <b>heat</b>; "
+            "the heat still to come is the height in a <b>valley</b>, p·x²; the best push is a <b>spring</b> "
+            "balance (Hooke); the Riccati equation is a <b>tank</b> that a fill and a stretch raise and a drain "
+            "lowers; and for the Kalman filter the tank holds the width² of a <b>cloud</b> of possible tilts. "
+            "The result to see by the end: with a = 2 and every price 1, both tanks settle at 2 + √5 = 4.236."))
+        self.lab("riccati_physical.html",
+                 "Lab · the Riccati equation, physically: heat, a valley, a spring, a tank, a cloud", 1040)
+        self.add(_table(["word", "one physical meaning, kept on every page", "symbol"], [
+            ["tilt", "the one number being controlled, in degrees; on the G1 eight numbers", "x"],
+            ["gravity growth", "how fast the tilt feeds itself, per second", "a → A"],
+            ["lever", "how much one unit of push (or one reading) moves the tilt", "b → B, c → C"],
+            ["heat", "what a run costs: tilt heat q·x² + motor heat r·u², every second", "J"],
+            ["heat still to come", "the height in the valley p·x²; textbooks: cost-to-go", "V = xᵀPx"],
+            ["valley steepness", "heat still to come per 1°² of tilt; the tank level", "p → P"],
+            ["best push", "lever × valley slope / motor price", "k = bp/r → K = R⁻¹BᵀP"],
+            ["fill · stretch · drain", "the three flows of the tank: q, 2a·p, b²p²/r", "Riccati"],
+            ["cloud width²", "how unsure the guess is; the Kalman tank level", "Σ"],
+            ["trust", "lever × doubt / sensor noise", "L = cΣ/r → ΣCᵀR⁻¹"],
+        ]))
+        self.lab("riccati_tutor.html",
+                 "Lab · optional, the same equation by algebra: the quotient-rule road, one number at a time", 980)
+        self.finish()
+
+
+# ==========================================================================
+# 171
+# ==========================================================================
+
 def lqr_numbers():
-    """Everything page 170 quotes about the LQR design at standing, computed, not typed."""
+    """Everything page 171 quotes about the LQR design at standing, computed, not typed."""
     m, g = ub.PLANES["sagittal"], ub.Gains()
     K, free, A, B, poles = ub.lqr_gain(m, g, [1, 2, 3])
     k = m.core(np.zeros(4))
@@ -500,7 +541,6 @@ class UpperBodyLQRPage(BalancePage):
             f"next. The result to explain by the end: peak lean {st['peak']:.1f}° with the upper body, "
             f"{st['locked_peak']:.1f}° with everything locked."))
         self.lab("lqr_torque_flow.html", "Lab · LQR opened up: state → A, B → Q, R → K → each joint's torque → the motion", 1180)
-        self.lab("riccati_tutor.html", "Lab · the Riccati equation step by step: pick LQR or the Kalman filter", 980)
         self.lab("kalman_encoder.html",
                  "Lab · the Kalman filter, concept first: a prosthesis motor with only an encoder", 1000)
         self.add(Reveal("The Kalman filter, said out loud", [
@@ -560,7 +600,7 @@ class UpperBodyLQRPage(BalancePage):
 
 
 # ==========================================================================
-# 171
+# 172
 # ==========================================================================
 
 MUJOCO_CHECK = r'''
@@ -627,7 +667,7 @@ class UpperBodyProjectPage(BalancePage):
                              "A q̇ from page 168, at the same joint rates"],
                        ["5", "Linearise by finite differences of mj_step (mjd_transitionFD does it for you), "
                              "design K with the same Bryson weights", "the gains have the same signs as the planar K: "
-                             "a forward lean gives a backward waist torque (page 170)"],
+                             "a forward lean gives a backward waist torque (page 171)"],
                        ["6", "Apply the push with xfrc_applied; log lean, link momenta, torques", "the plots of "
                              "page 169: momentum moves to the arms, then returns; find the push at which it falls"],
                        ["7", "Free the base (feet on the ground through contact), keep the legs' joints under a stiff "
@@ -672,4 +712,4 @@ class UpperBodyProjectPage(BalancePage):
 
 
 BALANCE_PAGES = [UpperBodyMachinePage, UpperBodyDerivePage, UpperBodyMomentumPage,
-                 UpperBodyRecoveryPage, UpperBodyLQRPage, UpperBodyProjectPage]
+                 UpperBodyRecoveryPage, RiccatiPage, UpperBodyLQRPage, UpperBodyProjectPage]

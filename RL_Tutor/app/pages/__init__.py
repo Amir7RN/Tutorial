@@ -502,7 +502,7 @@ PAGE_CLASSES = [
     # MuJoCo push-recovery project. Planar dynamics derived by hand, momentum,
     # the recovery law, and the path to MuJoCo and C++ (ctrlcore/upperbody.py).
     # ======================================================================
-    *BALANCE_PAGES,        # 166-171 machine, derivation, momentum, recovery law, LQR, project
+    *BALANCE_PAGES,        # 166-172 machine, derivation, momentum, recovery law, Riccati, LQR, project
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read

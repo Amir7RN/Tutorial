@@ -1,0 +1,582 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Riccati Physically</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.1fr) minmax(400px,1fr)}
+  #pl{width:100%;height:100%;display:block;min-height:360px}
+  .plot{position:relative;flex:1;min-height:380px;padding:4px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .chips .sec{font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin:4px 4px 0 0;width:100%}
+  .chips button{font-size:.78rem;font-weight:400;padding:3px 8px;border-radius:99px}
+  .chips button[aria-current="true"]{background:var(--hi);border-color:var(--a);font-weight:700}
+  .goal{border-left:3px solid var(--a);padding:2px 0 2px 8px;margin:0 0 8px}
+  .do{border:1px dashed var(--c);border-radius:8px;padding:5px 9px;margin:8px 0 0;font-size:.86rem}
+  .do b{color:var(--c)}
+  .phys{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:5px 9px;margin:6px 0 8px}
+  .phys b{color:var(--e)}
+  table.t{width:100%}
+  table.t td,table.t th{text-align:left;font-family:var(--body);vertical-align:top}
+  table.t td.m{font-family:var(--mono);white-space:nowrap}
+  .ctl{grid-template-columns:190px 1fr 70px}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1>The Riccati equation, physically: heat, a valley, a spring, a tank, a cloud</h1>
+    <p>One robot reduced to one number, the tilt. Every symbol gets one physical job and keeps it to the end. First LQR (how hard to push), then the Kalman filter (where the tilt is): the same tank with a different liquid.</p></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card plot"><canvas id="pl"></canvas></div>
+      <div class="card"><div class="legend" id="leg"></div>
+        <div class="controls" id="ctl" style="grid-template-columns:1fr;margin-top:6px"></div>
+        <div class="btns" style="margin-top:6px"><button id="dflt">defaults</button></div></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="chips" id="chips"></div>
+        <div class="nav"><button id="prev">◀ back</button><button id="next" class="primary">next ▶</button></div></div>
+      <div class="card math" id="exp"></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f = (x, d = 3) => !isFinite(x) ? '∞' : (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d);
+const DEF = { t: 0.5, a: 2, b: 1, k: 3, q: 1, r: 1, x: 1, pv: 5, k0: 3, tau: 0.5, c: 1, qn: 1, rn: 1, s0: 0.25, sg: 2, rd: 1, y: 2 };
+const S = { step: 0, p: { ...DEF } };
+
+/* ---------- small cache ---------- */
+let memo = {};
+const cached = (key, fn) => { if (!(key in memo)) { if (Object.keys(memo).length > 60) memo = {}; memo[key] = fn(); } return memo[key]; };
+
+/* ---------- LQR on one number: tilt x in degrees, starts at 1 degree ---------- */
+const best = () => {
+  const { a, b, q, r } = S.p, root = Math.sqrt(a * a + b * b * q / r);
+  const ps = r * (a + root) / (b * b);
+  return { ps, pneg: r * (a - root) / (b * b), ks: b * ps / r, pole: a - b * b * ps / r, root };
+};
+const pOf = k => { const { a, b, q, r } = S.p; return b * k > a ? (q + r * k * k) / (2 * (b * k - a)) : Infinity; };
+
+/* run the rule u = -k x from x = 1 in slices of 0.001 s and add up the heat */
+function simRule(k) {
+  const { a, b, q, r } = S.p;
+  return cached(['R', a, b, q, r, k].join(), () => {
+    const dt = 0.001, s = b * k - a, T = s > 0 ? Math.min(60, Math.max(6, 14 / s)) : 3, n = Math.round(T / dt);
+    const t = [], x = [], u = [], ht = [], hm = [], burned = [];
+    let X = 1, B = 0, Bt = 0, Bm = 0, fell = false;
+    for (let i = 0; i <= n; i++) {
+      if (Math.abs(X) > 90) { fell = true; break; }
+      const U = -k * X;
+      t.push(i * dt); x.push(X); u.push(U); ht.push(q * X * X); hm.push(r * U * U); burned.push(B);
+      B += (q * X * X + r * U * U) * dt; Bt += q * X * X * dt; Bm += r * U * U * dt;
+      X += dt * (a * X + b * U);
+    }
+    const total = fell ? Infinity : burned[burned.length - 1];
+    return { t, x, u, ht, hm, burned, total, tilt: fell ? Infinity : Bt, motor: fell ? Infinity : Bm, fell, dt };
+  });
+}
+const idx = (sim, t) => Math.min(sim.t.length - 1, Math.round(t / sim.dt));
+
+/* RK4 march of a tank level */
+function march(rate, y0, T, h = 0.002) {
+  const ts = [0], ys = [y0]; let y = y0;
+  for (let i = 1; i <= Math.round(T / h); i++) {
+    const k1 = rate(y), k2 = rate(y + h / 2 * k1), k3 = rate(y + h / 2 * k2), k4 = rate(y + h * k3);
+    y += h / 6 * (k1 + 2 * k2 + 2 * k3 + k4); ts.push(i * h); ys.push(y);
+  }
+  return { ts, ys, h };
+}
+const at = (M, t) => M.ys[Math.min(M.ys.length - 1, Math.max(0, Math.round(t / M.h)))];
+const tankLQR = () => { const { a, b, q, r } = S.p; return cached(['T', a, b, q, r].join(), () => march(p => q + 2 * a * p - b * b * p * p / r, 0, 3)); };
+
+/* ---------- Kalman on one number ---------- */
+const bestKF = () => {
+  const { a, c, qn, rn } = S.p, s = rn * (a + Math.sqrt(a * a + c * c * qn / rn)) / (c * c);
+  return { ss: s, Ls: s * c / rn, pole: a - c * c * s / rn, sneg: rn * (a - Math.sqrt(a * a + c * c * qn / rn)) / (c * c) };
+};
+function mulberry32(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+/* 600 possible errors (true tilt minus guess), each kicked by its own noise; sensor on or off */
+function cloud(sensor) {
+  const { a, c, qn, rn, s0 } = S.p, T = sensor ? 2 : 1.2;
+  return cached(['C', sensor, a, c, qn, rn, s0].join(), () => {
+    const N = 600, dt = 0.001, every = 40, rng = mulberry32(7);
+    let spare = null;
+    const gauss = () => { if (spare !== null) { const v = spare; spare = null; return v; } let u = 0, v = 0; while (u === 0) u = rng(); v = rng(); const m = Math.sqrt(-2 * Math.log(u)); spare = m * Math.sin(2 * Math.PI * v); return m * Math.cos(2 * Math.PI * v); };
+    const e = Array.from({ length: N }, () => Math.sqrt(s0) * gauss());
+    let Sg = s0; const snaps = [], ts = [], vars = [], sig = [], steps = Math.round(T / dt);
+    for (let i = 0; i <= steps; i++) {
+      if (i % every === 0) { snaps.push(e.slice()); ts.push(i * dt); vars.push(e.reduce((s, v) => s + v * v, 0) / N); sig.push(Sg); }
+      if (i === steps) break;
+      const L = sensor ? Sg * c / rn : 0, sq = Math.sqrt(qn * dt), sr = Math.sqrt(rn * dt);
+      for (let j = 0; j < N; j++) e[j] += (a - L * c) * e[j] * dt + sq * gauss() - L * sr * gauss();
+      Sg += dt * (qn + 2 * a * Sg - (sensor ? c * c * Sg * Sg / rn : 0));
+    }
+    return { snaps, ts, vars, sig, T, N, every, dt };
+  });
+}
+const snapAt = (C, t) => Math.min(C.ts.length - 1, Math.max(0, Math.round(t / (C.every * C.dt))));
+
+/* ---------- drawing ---------- */
+const cv = document.getElementById('pl');
+function frame() {
+  const r = cv.getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)), pr = devicePixelRatio;
+  if (cv.width !== Math.round(W * pr) || cv.height !== Math.round(H * pr)) { cv.width = Math.round(W * pr); cv.height = Math.round(H * pr); }
+  const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, 0, 0); c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
+  return { c, W, H };
+}
+const nice = v => +(+v).toPrecision(3) + '';
+function panel(G, o) {
+  const { c, W, H } = G, x0 = (o.l || 0) * W + 52, x1 = (o.r === undefined ? 1 : o.r) * W - 12, y0 = o.top * H + 20, y1 = o.bot * H - 28;
+  const [xa, xb] = o.xr, [ya, yb] = o.yr;
+  const X = v => x0 + (v - xa) / (xb - xa) * (x1 - x0), Y = v => y1 - (Math.max(ya - 1e9, Math.min(yb + 1e9, v)) - ya) / (yb - ya) * (y1 - y0);
+  c.strokeStyle = css('--line'); c.lineWidth = 1; c.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  if (ya < 0 && yb > 0) { c.strokeStyle = css('--grey'); c.setLineDash([3, 3]); c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.stroke(); c.setLineDash([]); }
+  c.fillStyle = css('--muted'); c.font = '11px ' + css('--body');
+  c.textAlign = 'left'; c.fillText(o.title || '', x0, y0 - 6);
+  c.textAlign = 'center'; c.fillText(o.xlab || '', (x0 + x1) / 2, y1 + 23);
+  [xa, (xa + xb) / 2, xb].forEach(v => c.fillText(nice(v), X(v), y1 + 11));
+  c.textAlign = 'right'; [ya, yb, ...(ya < 0 && yb > 0 ? [0] : [])].forEach(v => c.fillText(nice(v), x0 - 4, Y(v) + 4));
+  c.save(); c.beginPath(); c.rect(x0, y0, x1 - x0, y1 - y0); c.clip();
+  (o.series || []).forEach(s => {
+    const col = css(s.col); c.strokeStyle = c.fillStyle = col; c.lineWidth = s.w || 2; c.setLineDash(s.dash || []);
+    if (s.fill) {
+      c.globalAlpha = s.fill; c.beginPath();
+      s.xs.forEach((xv, i) => i ? c.lineTo(X(xv), Y(s.ys[i])) : c.moveTo(X(xv), Y(s.ys[i])));
+      for (let i = s.xs.length - 1; i >= 0; i--) c.lineTo(X(s.xs[i]), Y(s.base ? s.base[i] : 0));
+      c.fill(); c.globalAlpha = 1;
+    } else if (s.dots) {
+      s.xs.forEach((xv, i) => { if (i % (s.every || 1) === 0) c.fillRect(X(xv) - (s.sz || 1.3), Y(s.ys[i]) - (s.sz || 1.3), 2 * (s.sz || 1.3), 2 * (s.sz || 1.3)); });
+    } else {
+      c.beginPath(); let on = false;
+      s.xs.forEach((xv, i) => { const yv = s.ys[i]; if (!isFinite(yv)) { on = false; return; } on ? c.lineTo(X(xv), Y(yv)) : c.moveTo(X(xv), Y(yv)); on = true; });
+      c.stroke();
+    }
+    c.setLineDash([]);
+  });
+  (o.vlines || []).forEach(v => { c.strokeStyle = css(v.col); c.setLineDash([4, 3]); c.lineWidth = 1.2; c.beginPath(); c.moveTo(X(v.x), y0); c.lineTo(X(v.x), y1); c.stroke(); c.setLineDash([]); });
+  (o.marks || []).forEach(m => {
+    if (!isFinite(m.y) || !isFinite(m.x)) return;
+    c.fillStyle = css(m.col); c.beginPath(); c.arc(X(m.x), Y(m.y), m.r || 5, 0, 7); c.fill();
+    if (m.label) { c.font = 'bold 11px ' + css('--body'); c.textAlign = m.right ? 'right' : 'left'; c.fillText(m.label, X(m.x) + (m.right ? -8 : 8), Y(m.y) + (m.below ? 15 : -7)); }
+  });
+  c.restore();
+  (o.tags || []).forEach(tg => { c.font = 'bold 11px ' + css('--body'); c.fillStyle = css(tg.col); c.textAlign = tg.align || 'left'; c.fillText(tg.txt, X(tg.x), Y(tg.y)); });
+  return { X, Y, x0, x1, y0, y1 };
+}
+const lin = (a, b, n = 300) => Array.from({ length: n + 1 }, (_, i) => a + (b - a) * i / n);
+const legend = items => document.getElementById('leg').innerHTML = items.map(([t, col, dash]) =>
+  `<span><span class="sw" style="background:${dash ? 'repeating-linear-gradient(90deg,var(' + col + ') 0 4px,transparent 4px 7px)' : 'var(' + col + ')'}"></span>${t}</span>`).join('');
+function arrow(c, ax, ay, bx, by, col, w = 2) {
+  const an = Math.atan2(by - ay, bx - ax); c.strokeStyle = c.fillStyle = css(col); c.lineWidth = w;
+  c.beginPath(); c.moveTo(ax, ay); c.lineTo(bx, by); c.stroke();
+  c.beginPath(); c.moveTo(bx, by); c.lineTo(bx - 9 * Math.cos(an - .4), by - 9 * Math.sin(an - .4)); c.lineTo(bx - 9 * Math.cos(an + .4), by - 9 * Math.sin(an + .4)); c.fill();
+}
+function text(c, s, x, y, col = '--ink', align = 'left', size = 12, bold = false) {
+  c.fillStyle = css(col); c.font = (bold ? 'bold ' : '') + size + 'px ' + css('--body'); c.textAlign = align; c.fillText(s, x, y);
+}
+function spring(c, xa, xb, y, col, w = 2, coils = 8, amp = 7) {
+  c.strokeStyle = css(col); c.lineWidth = w; c.beginPath(); c.moveTo(xa, y);
+  const n = coils * 2, L = xb - xa, lead = L * 0.12;
+  c.lineTo(xa + lead, y);
+  for (let i = 1; i <= n; i++) c.lineTo(xa + lead + (L - 2 * lead) * i / n, y + (i === n ? 0 : (i % 2 ? -amp : amp)));
+  c.lineTo(xb, y); c.stroke();
+}
+/* a tank: o = {x, y, w, h, level, max, title, unit, flows: [[label, value, col, kind]]} kind: in | stretch | out */
+function tank(G, o) {
+  const { c } = G, fr = Math.max(0, Math.min(1, o.level / o.max));
+  c.fillStyle = css('--a'); c.globalAlpha = .28; c.fillRect(o.x, o.y + o.h * (1 - fr), o.w, o.h * fr); c.globalAlpha = 1;
+  c.strokeStyle = css('--a'); c.lineWidth = 2; c.beginPath(); c.moveTo(o.x, o.y + o.h * (1 - fr)); c.lineTo(o.x + o.w, o.y + o.h * (1 - fr)); c.stroke();
+  c.strokeStyle = css('--ink'); c.lineWidth = 2.5; c.beginPath(); c.moveTo(o.x, o.y); c.lineTo(o.x, o.y + o.h); c.lineTo(o.x + o.w, o.y + o.h); c.lineTo(o.x + o.w, o.y); c.stroke();
+  text(c, o.title, o.x + o.w / 2, o.y - 30, '--ink', 'center', 12, true);
+  text(c, o.unit + ' = ' + f(o.level, 3), o.x + o.w / 2, o.y + o.h * (1 - fr) - 6, '--a', 'center', 12, true);
+  (o.flows || []).forEach(([lab, val, col, kind]) => {
+    if (kind === 'in') { arrow(c, o.x + o.w * .3, o.y - 24, o.x + o.w * .3, o.y + 14, col, 4); text(c, lab + ' = ' + f(val, 2), o.x + o.w * .3 - 6, o.y - 12, col, 'right', 11, true); }
+    if (kind === 'stretch') { arrow(c, o.x + o.w + 44, o.y + o.h * .85, o.x + o.w + 44, o.y + o.h * .3, col, 4); text(c, lab, o.x + o.w + 52, o.y + o.h * .55, col, 'left', 11, true); text(c, '= ' + f(val, 2), o.x + o.w + 52, o.y + o.h * .55 + 14, col, 'left', 11, true); }
+    if (kind === 'out') { arrow(c, o.x + o.w * .7, o.y + o.h, o.x + o.w * .7, o.y + o.h + 30, col, 4); text(c, lab + ' = ' + f(val, 2), o.x + o.w * .7 + 8, o.y + o.h + 22, col, 'left', 11, true); }
+  });
+}
+
+/* ---------- plots ---------- */
+const PLOTS = {
+  robot(G) {
+    const { c, W, H } = G, { a, b, t } = S.p, xoff = Math.exp(a * t), xon = Math.exp((a - 3 * b) * t);
+    const cx = W * .17, cy = H * .78, L = Math.min(W * .14, H * .55);
+    text(c, 'motor off: the tilt grows by itself', cx, H * .1, '--bad', 'center', 12, true);
+    c.strokeStyle = css('--grey'); c.setLineDash([4, 4]); c.lineWidth = 1; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx, cy - L * 1.1); c.stroke(); c.setLineDash([]);
+    const th = Math.min(88, xoff) * Math.PI / 180, ex = cx + L * Math.sin(th), ey = cy - L * Math.cos(th);
+    c.strokeStyle = css('--bad'); c.lineWidth = 6; c.lineCap = 'round'; c.beginPath(); c.moveTo(cx, cy); c.lineTo(ex, ey); c.stroke(); c.lineCap = 'butt';
+    c.fillStyle = css('--ink'); c.beginPath(); c.arc(ex, ey, 8, 0, 7); c.fill();
+    c.fillStyle = css('--muted'); c.fillRect(cx - 30, cy + 2, 60, 12);
+    text(c, 'hand / ankle', cx, cy + 30, '--muted', 'center', 11);
+    text(c, 'tilt x = ' + f(xoff, 2) + '°' + (xoff > 88 ? '  (fallen)' : ''), cx, cy + 46, '--bad', 'center', 12, true);
+    arrow(c, ex, ey, ex + 26 * Math.cos(th), ey + 26 * Math.sin(th), '--bad', 2);
+    text(c, 'gravity grows it at a·x = ' + f(a * xoff, 2) + ' °/s', cx, H * .1 + 18, '--bad', 'center', 11);
+    const T = 1.5, ts = lin(0, T, 200);
+    panel(G, { l: .36, top: 0, bot: 1, xr: [0, T], yr: [0, Math.max(3, Math.min(25, Math.exp(a * T)))], title: 'tilt x (degrees), starting from 1°', xlab: 'time t (s)',
+      series: [{ xs: ts, ys: ts.map(s => Math.exp(a * s)), col: '--bad' }, { xs: ts, ys: ts.map(s => Math.exp((a - 3 * b) * s)), col: '--a', dash: [6, 4] }],
+      vlines: [{ x: t, col: '--grey' }],
+      marks: [{ x: t, y: xoff, col: '--bad', label: f(xoff, 2) + '°' }, { x: t, y: xon, col: '--a', label: f(xon, 2) + '°', below: true }] });
+    legend([['motor off (u = 0)', '--bad'], ['with a push u = −3·x', '--a', 1]]);
+  },
+  heat(G) {
+    const sim = simRule(S.p.k), T = 3, n = idx(sim, T), step = 10, xs = [], X = [], U = [], ht = [], tot = [];
+    for (let i = 0; i <= n; i += step) { xs.push(sim.t[i]); X.push(sim.x[i]); U.push(sim.u[i]); ht.push(sim.ht[i]); tot.push(sim.ht[i] + sim.hm[i]); }
+    const umin = Math.min(-1, ...U), xmax = Math.max(1.05, ...X);
+    panel(G, { top: 0, bot: .45, xr: [0, T], yr: [umin * 1.05, xmax], title: 'tilt x (°) and motor push u = −k·x', xlab: 'time t (s)',
+      series: [{ xs, ys: X, col: '--bad' }, { xs, ys: U, col: '--b' }] });
+    const hmax = Math.max(1, ...tot.filter(isFinite));
+    panel(G, { top: .5, bot: 1, xr: [0, T], yr: [0, hmax * 1.05], title: 'heat burned per second: tilt heat q·x² (red) + motor heat r·u² (orange) stacked; the area is the heat J', xlab: 'time t (s)',
+      series: [{ xs, ys: ht, col: '--bad', fill: .45 }, { xs, ys: tot, base: ht, col: '--b', fill: .45 }, { xs, ys: tot, col: '--b', w: 1.5 }] });
+    legend([['tilt x', '--bad'], ['motor push u', '--b'], ['shaded areas = heat', '--grey']]);
+  },
+  valley(G) {
+    const { c } = G, sim = simRule(S.p.k), p = sim.total, i = idx(sim, S.p.t), x = sim.x[i], rem = sim.total - sim.burned[i];
+    const xs = lin(-1.15, 1.15, 200);
+    const pv = panel(G, { r: .5, top: 0, bot: 1, xr: [-1.15, 1.15], yr: [0, isFinite(p) ? p * 1.35 : 10], title: 'the valley: heat still to come V = p·x²', xlab: 'tilt x (°)',
+      series: [{ xs, ys: xs.map(v => p * v * v), col: '--d', w: 3 }],
+      marks: [{ x, y: p * x * x, col: '--ink', r: 8, label: 'robot now: x = ' + f(x, 3) + '°', right: true }] });
+    if (isFinite(p)) {
+      c.strokeStyle = css('--a'); c.setLineDash([3, 3]); c.lineWidth = 1.2; c.beginPath(); c.moveTo(pv.X(x), pv.Y(p * x * x)); c.lineTo(pv.X(x), pv.Y(0)); c.stroke(); c.setLineDash([]);
+      text(c, 'height = ' + f(p * x * x, 3), pv.X(x) + 6, (pv.Y(p * x * x) + pv.Y(0)) / 2, '--a', 'left', 11, true);
+      text(c, 'start: x = 1°, height p = ' + f(p, 3), pv.X(1), pv.Y(p) - 10, '--d', 'right', 11, true);
+    }
+    const T = Math.min(sim.t[sim.t.length - 1], 3), n = idx(sim, T), ts = [], R = [], Pp = [], Bn = [];
+    for (let j = 0; j <= n; j += 10) { ts.push(sim.t[j]); R.push(sim.total - sim.burned[j]); Pp.push(p * sim.x[j] ** 2); Bn.push(sim.burned[j]); }
+    panel(G, { l: .5, top: 0, bot: 1, xr: [0, T], yr: [0, isFinite(p) ? p * 1.1 : 10], title: 'heat still to come (measured) and p·x(t)²; burned so far', xlab: 'time t (s)',
+      series: [{ xs: ts, ys: R, col: '--a', w: 4 }, { xs: ts, ys: Pp, col: '--d', dots: true, every: 6, sz: 2.2 }, { xs: ts, ys: Bn, col: '--b', dash: [6, 4] }],
+      vlines: [{ x: S.p.t, col: '--grey' }],
+      marks: [{ x: S.p.t, y: rem, col: '--a', label: 'to come ' + f(rem, 3) }, { x: S.p.t, y: sim.burned[i], col: '--b', label: 'burned ' + f(sim.burned[i], 3), below: true }] });
+    legend([['still to come, added up from the run', '--a'], ['p·x(t)²', '--d', 1], ['burned so far', '--b', 1]]);
+  },
+  push(G) {
+    const { c } = G, { x, pv, b, r } = S.p, us = 2 * Math.max(1, b * pv * x / r), u0 = -us, u1 = us * 0.35, ust = -b * pv * x / r, N = u => r * u * u + 2 * pv * b * x * u;
+    const xs = lin(u0, u1, 300), depth = N(ust);
+    const ymax = Math.max(r * u0 * u0, 1), ymin = Math.min(2 * pv * b * x * u0, depth) * 1.05;
+    const pp = panel(G, { top: 0, bot: .72, xr: [u0, u1], yr: [ymin, ymax], title: 'heat of pushing u for one second, at tilt x = ' + f(x, 2) + '°', xlab: 'motor push u (negative = push the tilt back)',
+      series: [{ xs, ys: xs.map(u => r * u * u), col: '--b', dash: [6, 4] }, { xs, ys: xs.map(u => 2 * pv * b * x * u), col: '--a', dash: [6, 4] }, { xs, ys: xs.map(N), col: '--ink', w: 3 }],
+      vlines: [{ x: ust, col: '--c' }],
+      marks: [{ x: ust, y: depth, col: '--c', r: 6, label: 'best u = ' + f(ust, 2) + ',  depth ' + f(depth, 2), below: true }] });
+    // spring picture: block at u*, spring from u = 0
+    const y = G.H * .86, X0 = pp.X(0), XU = pp.X(ust);
+    text(c, 'the same balance as a spring (Hooke): block at the best push', pp.x0, y - 26, '--muted', 'left', 11, true);
+    c.fillStyle = css('--muted'); c.fillRect(X0 - 2, y - 16, 4, 32);
+    spring(c, XU + 12, X0, y, '--b', 2, 9, 7);
+    c.fillStyle = css('--c'); c.fillRect(XU - 12, y - 12, 24, 24);
+    arrow(c, XU - 12, y, XU - 70, y, '--a', 3);
+    text(c, 'valley pushes: lever × slope = b·2p·x = ' + f(2 * b * pv * x, 2), XU - 74, y + 26, '--a', 'left', 11, true);
+    text(c, 'motor-heat spring pulls back: 2r·u', (XU + X0) / 2, y - 12, '--b', 'center', 11, true);
+    legend([['motor heat r·u² (cost now)', '--b', 1], ['change in heat to come 2p·x·b·u', '--a', 1], ['sum: the second costs this', '--ink']]);
+  },
+  improve(G) {
+    const { b, r, a } = S.p, pk = pOf, pst = best().ps, kst = best().ks, kmax = Math.max(10, S.p.k0 * 1.1, kst * 2), pmax = Math.max(10, pst * 2);
+    const ks = lin(a / b + 1e-3, kmax, 400);
+    const path = []; let k = S.p.k0;
+    if (b * k > a) { path.push([k, 0]); for (let i = 0; i < 6; i++) { const p = pk(k); path.push([k, p]); k = b * p / r; path.push([k, p]); } }
+    panel(G, { top: 0, bot: 1, xr: [0, kmax], yr: [0, pmax], title: 'rule → its valley → a better rule → …', xlab: 'k (push per degree of tilt)',
+      series: [{ xs: ks, ys: ks.map(pk), col: '--d', w: 3 }, { xs: [0, kmax], ys: [0, r * kmax / b], col: '--c', w: 3 },
+        { xs: path.map(z => z[0]), ys: path.map(z => z[1]), col: '--ink', w: 1.5, dash: [4, 3] }],
+      vlines: [{ x: a / b, col: '--bad' }],
+      marks: [{ x: kst, y: pst, col: '--bad', r: 7, label: 'both true: k = p = ' + f(kst, 3), below: true }, ...(path.length ? [{ x: S.p.k0, y: pk(S.p.k0), col: '--ink', label: 'start k = ' + f(S.p.k0, 2) }] : [])],
+      tags: [{ x: a / b, y: pmax * .95, txt: ' k ≤ a/b: falls', col: '--bad' }] });
+    legend([['p = heat of a 1° run with rule k (step 3)', '--d'], ['k = b·p/r: best push for valley p (step 4)', '--c'], ['the walk', '--ink', 1]]);
+  },
+  tank(G) {
+    const { c, W, H } = G, { a, b, q, r, tau } = S.p, M = tankLQR(), p = at(M, tau), B = best(), pmax = Math.max(1, B.ps * 1.5);
+    tank(G, { x: W * .07, y: H * .2, w: W * .17, h: H * .55, level: p, max: pmax, title: 'tank: p, ' + f(tau, 2) + ' s before the end', unit: 'p',
+      flows: [['fill q', q, '--b', 'in'], ['stretch 2a·p', 2 * a * p, '--e', 'stretch'], ['drain b²p²/r', b * b * p * p / r, '--c', 'out']] });
+    const ps = lin(0, pmax, 200);
+    const cp = panel(G, { l: .44, top: 0, bot: .52, xr: [0, pmax], yr: [0, Math.max(q + 2 * a * pmax, b * b * pmax * pmax / r) * 0.8], title: 'flows per second at each level p', xlab: 'tank level p',
+      series: [{ xs: ps, ys: ps.map(v => q + 2 * a * v), col: '--e', w: 3 }, { xs: ps, ys: ps.map(v => b * b * v * v / r), col: '--c', w: 3 }],
+      vlines: [{ x: p, col: '--a' }],
+      marks: [{ x: B.ps, y: q + 2 * a * B.ps, col: '--bad', r: 6, label: 'at rest: p = ' + f(B.ps, 3), right: true }] });
+    if (p < B.ps - 1e-3) arrow(c, cp.X(p), cp.Y(b * b * p * p / r), cp.X(p), cp.Y(q + 2 * a * p), '--a', 2);
+    panel(G, { l: .44, top: .52, bot: 1, xr: [0, 3], yr: [0, pmax], title: 'the level p, filling backward from the end of the run', xlab: 'time before the end τ (s)',
+      series: [{ xs: M.ts.filter((_, i) => i % 5 === 0), ys: M.ys.filter((_, i) => i % 5 === 0), col: '--a', w: 3 }, { xs: [0, 3], ys: [B.ps, B.ps], col: '--bad', dash: [5, 4], w: 1.5 }],
+      vlines: [{ x: tau, col: '--grey' }], marks: [{ x: tau, y: p, col: '--a', label: 'p = ' + f(p, 3), below: true }] });
+    legend([['fill + stretch: q + 2a·p', '--e'], ['drain: b²·p²/r', '--c'], ['gap (arrow) = how fast the level still rises', '--a']]);
+  },
+  matrix(G) {
+    const { c, W, H } = G;
+    const box = (s, col, x, y, w, h, bold) => {
+      c.strokeStyle = css(col); c.lineWidth = 2; c.fillStyle = css('--inset'); c.beginPath(); c.roundRect ? c.roundRect(x * W, y * H, w * W, h * H, 8) : c.rect(x * W, y * H, w * W, h * H); c.fill(); c.stroke();
+      s.split('\n').forEach((l, i, A) => text(c, l, (x + w / 2) * W, (y + h / 2) * H + (i - (A.length - 1) / 2) * 16 + 4, i ? '--ink' : col, 'center', 12, !i || bold));
+    };
+    text(c, 'one number                                   eight numbers (the G1 on page 171)', W * .5, H * .06, '--muted', 'center', 12, true);
+    const rows = [['stretch', '--e', '2a·p', 'AᵀP + PA', 'gravity, the ankle spring and the links\nmove every error into every other'],
+      ['fill', '--b', 'q', 'Q', 'heat per second of each error\n(Bryson prices)'],
+      ['drain', '--c', 'b²p²/r', 'P B R⁻¹ Bᵀ P', 'valley slope seen by each motor,\nsquared, divided by its price'],
+      ['level', '--a', 'p', 'P  (8 × 8)', 'the valley: heat to come = xᵀ P x'],
+      ['push', '--d', 'k = b·p/r', 'K = R⁻¹ Bᵀ P  (3 × 8)', 'u = −K x, three motors']];
+    rows.forEach(([nm, col, one, mat, mean], i) => {
+      const y = .12 + i * .17;
+      box(nm + '\n' + one, col, .03, y, .2, .13);
+      box(nm + '\n' + mat, col, .3, y, .27, .13);
+      text(c, mean.split('\n')[0], W * .6, (y + .055) * H, '--ink', 'left', 12);
+      text(c, mean.split('\n')[1] || '', W * .6, (y + .055) * H + 16, '--ink', 'left', 12);
+      arrow(c, W * .235, (y + .065) * H, W * .295, (y + .065) * H, '--muted', 2);
+    });
+    legend([]);
+  },
+  cloudOff(G) { PLOTS.cloudDraw(G, false); },
+  cloudOn(G) { PLOTS.cloudDraw(G, true); },
+  cloudDraw(G, sensor) {
+    const { c } = G, C = cloud(sensor), t = Math.min(S.p.t, C.T), j = snapAt(C, t), B = bestKF();
+    const smax = Math.max(...C.sig), wmax = Math.sqrt(smax) * 2.6;
+    const pc = panel(G, { top: 0, bot: sensor ? .55 : .62, xr: [0, C.T], yr: [-wmax, wmax], title: '600 possible errors (true tilt − guess), each dot one possibility; lines = ± width √Σ', xlab: 'time t (s)',
+      series: [{ xs: C.ts, ys: C.sig.map(s => Math.sqrt(s)), col: '--a', w: 2 }, { xs: C.ts, ys: C.sig.map(s => -Math.sqrt(s)), col: '--a', w: 2 }],
+      vlines: [{ x: t, col: '--grey' }] });
+    c.save(); c.beginPath(); c.rect(pc.x0, pc.y0, pc.x1 - pc.x0, pc.y1 - pc.y0); c.clip();
+    c.fillStyle = css('--muted'); c.globalAlpha = .25;
+    C.snaps.forEach((sn, k) => { if (k % 2 || k === j) return; const X = pc.X(C.ts[k]); for (let i = 0; i < sn.length; i += 3) c.fillRect(X - 1, pc.Y(sn[i]) - 1, 2, 2); });
+    c.globalAlpha = .8; c.fillStyle = css('--e'); const Xj = pc.X(C.ts[j]);
+    C.snaps[j].forEach((v, i) => c.fillRect(Xj - 1.5 + ((i * 37) % 9) - 4, pc.Y(v) - 1.5, 3, 3));
+    c.globalAlpha = 1; c.restore();
+    if (!sensor) {
+      panel(G, { top: .62, bot: 1, xr: [0, C.T], yr: [0, smax * 1.05], title: 'Σ = width²: the tank level (line) and counted from the 600 dots (squares)', xlab: 'time t (s)',
+        series: [{ xs: C.ts, ys: C.sig, col: '--a', w: 3 }, { xs: C.ts, ys: C.vars, col: '--e', dots: true, sz: 2.5 }], vlines: [{ x: t, col: '--grey' }] });
+    } else {
+      const { a, c: cc, qn, rn } = S.p, smx = Math.max(B.ss * 1.6, ...C.sig), ss = lin(0, smx, 200);
+      const cp = panel(G, { r: .5, top: .55, bot: 1, xr: [0, smx], yr: [0, Math.max(qn + 2 * a * smx, cc * cc * smx * smx / rn) * .8], title: 'flows per second at each level Σ', xlab: 'tank level Σ',
+        series: [{ xs: ss, ys: ss.map(v => qn + 2 * a * v), col: '--e', w: 3 }, { xs: ss, ys: ss.map(v => cc * cc * v * v / rn), col: '--c', w: 3 }],
+        vlines: [{ x: C.sig[j], col: '--a' }], marks: [{ x: B.ss, y: qn + 2 * a * B.ss, col: '--bad', r: 6, label: 'at rest Σ = ' + f(B.ss, 3), right: true }] });
+      panel(G, { l: .5, top: .55, bot: 1, xr: [0, C.T], yr: [0, smx * 1.05], title: 'Σ(t): tank (line), counted (squares)', xlab: 'time t (s)',
+        series: [{ xs: C.ts, ys: C.sig, col: '--a', w: 3 }, { xs: C.ts, ys: C.vars, col: '--e', dots: true, sz: 2.5 }, { xs: [0, C.T], ys: [B.ss, B.ss], col: '--bad', dash: [5, 4], w: 1.5 }], vlines: [{ x: t, col: '--grey' }] });
+    }
+    legend(sensor ? [['possible errors now', '--e'], ['± width √Σ', '--a'], ['fill + stretch', '--e'], ['drain (sensor squeeze)', '--c']] : [['possible errors now', '--e'], ['± width √Σ', '--a'], ['counted Σ', '--e']]);
+  },
+  blend(G) {
+    const { c, W, H } = G, { sg, rd, y } = S.p, share = sg / (sg + rd), m = share * y, sn = sg * rd / (sg + rd);
+    const xs = lin(-4, 5, 400), bell = (mu, v) => xs.map(z => Math.exp(-((z - mu) ** 2) / (2 * v)) / Math.sqrt(2 * Math.PI * v));
+    const top = Math.max(...bell(m, sn));
+    const pb = panel(G, { top: 0, bot: .6, xr: [-4, 5], yr: [0, top * 1.1], title: 'three clouds of possible tilts', xlab: 'tilt (°)',
+      series: [{ xs, ys: bell(0, sg), col: '--b', fill: .2 }, { xs, ys: bell(0, sg), col: '--b' }, { xs, ys: bell(y, rd), col: '--c', fill: .2 }, { xs, ys: bell(y, rd), col: '--c' },
+        { xs, ys: bell(m, sn), col: '--a', w: 3 }],
+      vlines: [{ x: 0, col: '--b' }, { x: y, col: '--c' }, { x: m, col: '--a' }] });
+    const yy = H * .8, X0 = W * .15, XY = W * .85, XM = X0 + share * (XY - X0);
+    text(c, 'two springs pull one bead (the new guess); stiffness = 1/width²; drawn spread out, not to the tilt scale above', W * .05, yy - 44, '--muted', 'left', 11, true);
+    c.fillStyle = css('--b'); c.fillRect(X0 - 3, yy - 18, 6, 36); c.fillStyle = css('--c'); c.fillRect(XY - 3, yy - 18, 6, 36);
+    if (Math.abs(XM - X0) > 14) spring(c, X0, XM - 8, yy, '--b', Math.min(7, 1 + 3 / sg), 7, 7);
+    if (Math.abs(XY - XM) > 14) spring(c, XM + 8, XY, yy, '--c', Math.min(7, 1 + 3 / rd), 7, 7);
+    c.fillStyle = css('--a'); c.beginPath(); c.arc(XM, yy, 9, 0, 7); c.fill();
+    text(c, 'guess 0 (stiffness 1/Σ = ' + f(1 / sg, 2) + ')', X0, yy + 34, '--b', 'center', 11, true);
+    text(c, 'reading ' + f(y, 2) + ' (stiffness 1/r = ' + f(1 / rd, 2) + ')', XY, yy + 50, '--c', 'center', 11, true);
+    text(c, 'new guess ' + f(m, 3), XM, yy - 18, '--a', 'center', 11, true);
+    legend([['guess cloud, width² Σ', '--b'], ['reading cloud, width² r', '--c'], ['blended cloud, narrower', '--a']]);
+  },
+  both(G) {
+    const { W, H } = G, B = best(), K = bestKF(), { a, b, q, r, c: cc, qn, rn } = S.p;
+    tank(G, { x: W * .1, y: H * .28, w: W * .2, h: H * .45, level: B.ps, max: B.ps * 1.5, title: 'LQR: heat to come per 1°²', unit: 'p',
+      flows: [['fill q', q, '--b', 'in'], ['stretch 2a·p', 2 * a * B.ps, '--e', 'stretch'], ['drain b²p²/r', b * b * B.ps * B.ps / r, '--c', 'out']] });
+    tank(G, { x: W * .58, y: H * .28, w: W * .2, h: H * .45, level: K.ss, max: K.ss * 1.5, title: 'Kalman: width² of the cloud', unit: 'Σ',
+      flows: [['fill q', qn, '--b', 'in'], ['stretch 2a·Σ', 2 * a * K.ss, '--e', 'stretch'], ['drain c²Σ²/r', cc * cc * K.ss * K.ss / rn, '--c', 'out']] });
+    text(G.c, 'runs backward from the end', W * .2, H * .12, '--muted', 'center', 12, true);
+    text(G.c, 'runs forward from the start', W * .68, H * .12, '--muted', 'center', 12, true);
+    legend([['both at rest: fill + stretch = drain', '--ink']]);
+  },
+};
+
+/* ---------- the steps ---------- */
+const STEPS = [
+  ['1 · the robot as one number', 'robot', ['t', 'a'], () => {
+    const { a, b, t } = S.p, tb = [0, 0.5, 1, 1.5];
+    return `<p class="goal"><b>Goal:</b> one number you can feel, and the one law it obeys. Everything later is built on these two lines.</p>
+    <p>The number is the <b>tilt x</b> of the robot (or of a broom balanced on your palm), in degrees, starting at 1°. Its law:</p>
+    <span class="eq">ẋ = a·x + b·u</span>
+    <table class="t"><tr><th>symbol</th><th>physical job</th><th>unit</th></tr>
+    <tr><td class="m">ẋ</td><td>how fast the tilt is growing right now</td><td>°/s</td></tr>
+    <tr><td class="m cbad">a·x</td><td><b>gravity.</b> The more it leans, the harder gravity tips it further. a = ${f(a, 1)} means: at 1° the tilt grows at ${f(a, 1)} °/s, at 3° at ${f(3 * a, 1)} °/s</td><td>1/s</td></tr>
+    <tr><td class="m">u</td><td><b>the motor push</b> (think: motor current)</td><td>push units</td></tr>
+    <tr><td class="m">b</td><td><b>the lever:</b> one unit of push turns the tilt back at b = ${f(b, 1)} °/s</td><td>°/s per push</td></tr></table>
+    <p>Motor off (u = 0) the tilt feeds itself, so it grows exponentially: x(t) = e<sup>a·t</sup>. You can check each with a calculator:</p>
+    <table class="t"><tr><th>t (s)</th>${tb.map(s => `<td class="m">${s}</td>`).join('')}</tr><tr><th>x = e<sup>${f(a, 1)}·t</sup></th>${tb.map(s => `<td class="m">${f(Math.exp(a * s), 2)}°</td>`).join('')}</tr></table>
+    <p>With a push: at 1°, push u = −3 gives ẋ = ${f(a, 1)}·1 + ${f(b, 1)}·(−3) = <b>${f(a - 3 * b, 1)} °/s</b>: ${a - 3 * b < 0 ? 'negative, the tilt shrinks' : 'still positive, the push is too weak'}. Now at t = ${f(t, 2)} s: motor off ${f(Math.exp(a * t), 2)}°, with u = −3·x ${f(Math.exp((a - 3 * b) * t), 3)}°.</p>
+    <p class="phys"><b>On the G1:</b> a becomes the matrix A (gravity minus the ankle spring, the −80.5 slope of page 171 step 4, divided by inertia) and b becomes B (one N·m of motor torque, divided by inertia).</p>
+    <p class="do"><b>Do:</b> drag t and watch the red stick fall. Then raise a (stronger gravity): the stick falls sooner.</p>`; }],
+
+  ['2 · heat: what a run costs', 'heat', ['k', 'q', 'r'], () => {
+    const { k, q, r, a, b } = S.p, sim = simRule(k), list = [2.5, 3, 4, +best().ks.toFixed(3), 5, 8].filter(v => b * v > a);
+    return `<p class="goal"><b>Goal:</b> give every way of pushing one number, so two ways can be compared.</p>
+    <p>A way of pushing is a <b>rule</b>: push against the tilt, harder when it leans more, <b>u = −k·x</b>. k = ${f(k, 2)} means ${f(k, 2)} push units per degree.</p>
+    <p>Two heaters run during the recovery. Every second they burn:</p>
+    <table class="t"><tr><td class="m cbad">q·x²</td><td><b>tilt heat.</b> Being tilted is bad: you are closer to falling. q = price of 1°² for 1 s. Squared, so leaning left counts like leaning right, and 2° counts 4× as much as 1°.</td></tr>
+    <tr><td class="m cb">r·u²</td><td><b>motor heat.</b> This one is literal physics: a motor winding heats at i²·R watts (Ohm's law). r plays the winding resistance: price of 1 push² for 1 s.</td></tr></table>
+    <p>The heat of the whole run, <b>J</b>, is the shaded area: the computer adds (q·x² + r·u²) × 0.001 over every 0.001 s slice. For your rule k = ${f(k, 2)}:</p>
+    <span class="eq">tilt heat ${f(sim.tilt, 3)}  +  motor heat ${f(sim.motor, 3)}  =  J = ${f(sim.total, 3)}${sim.fell ? '   (it falls: k must be above a/b = ' + f(a / b, 2) + ')' : ''}</span>
+    <table class="t"><tr><th>k</th><th>tilt heat</th><th>motor heat</th><th>J</th></tr>
+    ${list.map(v => { const s = simRule(v); return `<tr><td class="m">${f(v, 3)}</td><td class="m">${f(s.tilt, 3)}</td><td class="m">${f(s.motor, 3)}</td><td class="m">${f(s.total, 3)}</td></tr>`; }).join('')}</table>
+    <p>The trade: a soft rule (small k) lets the tilt linger, so tilt heat; a hard rule (big k) makes huge pushes, so motor heat. One k in between burns least (it is in the table, ${f(best().ks, 3)}). The next steps find it <i>without</i> trying every k.</p>
+    <p class="phys"><b>q and r are yours.</b> They are the prices that say how much you hate tilt versus motor heat. Nothing measures them; page 171 sets them by Bryson's rule.</p>
+    <p class="do"><b>Do:</b> drag k from 2.5 to 8 and watch the red area shrink while the orange area grows.</p>`; }],
+
+  ['3 · heat still to come: a valley', 'valley', ['t', 'k'], () => {
+    const { k, t } = S.p, sim = simRule(k), i = idx(sim, t), x = sim.x[i], p = sim.total, rem = p - sim.burned[i];
+    return `<p class="goal"><b>Goal:</b> a number for <i>"how much heat is still to come in this run, from now on"</i>. Books call it the <b>cost-to-go V</b>. Here it is heat still in the run.</p>
+    <p>Stop the clock at t = ${f(t, 2)} s. The tilt is x(t) = ${f(x, 3)}°. Two numbers always add to the total J = ${f(p, 3)}:</p>
+    <span class="eq">burned so far ${f(sim.burned[i], 3)}  +  still to come ${f(rem, 3)}  =  ${f(p, 3)}</span>
+    <p><b>The key fact.</b> From now on the robot runs the same rule from a tilt of ${f(x, 3)}° instead of 1°. Every tilt and every push of the rest of the run is the 1° run scaled by ${f(x, 3)}. Heat is made of squares, so every heat is scaled by ${f(x, 3)}² = ${f(x * x, 4)}:</p>
+    <span class="eq">still to come = (heat of a whole 1° run) × x(t)²  =  p · x²
+             = ${f(p, 3)} × ${f(x * x, 4)} = ${f(p * x * x, 3)}     measured from the run: ${f(rem, 3)}</span>
+    <p><b>p</b> = heat of a whole run that starts at 1°. For your rule p = ${f(p, 3)}.</p>
+    <p class="phys"><b>Picture it as a valley</b> V(x) = p·x². The ball's height is the heat still to come. As the tilt shrinks the ball slides down, and the height it loses becomes burned heat, like a ball rolling in a bowl with friction: height lost = heat made. <b>p is the steepness of the valley.</b> Same shape as a spring's stored energy ½·k·x²: a tilt stores heat that comes out later.</p>
+    <p class="do"><b>Do:</b> drag t. The ball slides, the purple dots sit on the blue line at every time. Then change k: p (the steepness) changes.</p>`; }],
+
+  ['4 · the best push: a spring balance', 'push', ['x', 'pv', 'b', 'r'], () => {
+    const { x, pv, b, r } = S.p, us = -b * pv * x / r, mh = r * us * us, sv = 2 * pv * b * x * us;
+    return `<p class="goal"><b>Goal:</b> you are tilted x = ${f(x, 2)}° and you know the valley (steepness p = ${f(pv, 2)}). How hard should you push <i>right now</i>?</p>
+    <p>Push u for one second. Two things happen:</p>
+    <table class="t"><tr><td class="m cb">r·u²</td><td><b>costs motor heat now.</b> Doubling the push costs 4×.</td></tr>
+    <tr><td class="m ca">2p·x · b·u</td><td><b>moves you down the valley.</b> The push turns the tilt by b·u °/s (the lever). Each degree is worth the valley's slope, 2p·x (slope of p·x²). Product = change of heat still to come; negative = saved.</td></tr></table>
+    <span class="eq">heat of this second  N(u) = r·u² + 2p·x·b·u</span>
+    <p><b>Lowest point.</b> There the two pulls balance, exactly like a spring and a force (Hooke's law): the motor-heat spring pulls back with 2r·u, the valley pushes with b·2p·x:</p>
+    <span class="eq">2r·u + 2p·x·b = 0   →   u = −(b·p / r)·x
+            = −(${f(b, 2)} × ${f(pv, 2)} / ${f(r, 2)}) × ${f(x, 2)} = ${f(us, 3)}</span>
+    <p>Read it physically: <b>push = −(lever × valley slope) / motor price</b>. Steep valley: push more. Good lever: push more. Cheap motor (small r = soft spring): push more.</p>
+    <p>At that push: motor heat ${f(mh, 3)}, saving ${f(sv, 3)}, so the second's net is <b>${f(mh + sv, 3)} = −b²p²x²/r</b>. Keep this depth in mind: it is the motor's term in the Riccati equation (step 6).</p>
+    <p>So the best rule is u = −k·x with <b>k = b·p/r</b>.</p>
+    <p class="phys"><b>Eight numbers: u = −R⁻¹ Bᵀ P x.</b> P x is the valley's slope in all 8 directions, a "force" in state space. B maps motor pushes to state speeds, as a Jacobian J maps joint speeds to hand speed, so <b>Bᵀ maps that force back to each motor, exactly as τ = Jᵀ F maps a hand force to joint torques.</b> R⁻¹ is each motor's softness. So K = R⁻¹BᵀP.</p>
+    <p class="do"><b>Do:</b> drag p and watch the block (best push) slide left. Make r small: the spring softens and the push grows.</p>`; }],
+
+  ['5 · improve, repeat: what Riccati finds', 'improve', ['k0'], () => {
+    const { a, b, q, r, k0 } = S.p, rows = []; let k = k0;
+    for (let i = 0; i < 6 && b * k > a; i++) { const p = pOf(k); rows.push([i, k, p, b * p / r]); k = b * p / r; }
+    const kk = 3, s = b * kk - a;
+    return `<p class="goal"><b>Goal:</b> see the catch in step 4, and what fixes it. What is left when it is fixed is the Riccati equation.</p>
+    <p>The catch: the valley p came from a rule (k = 3 gives p = 5, step 3). But step 4 says the best push for that valley is k = b·p/r = 5, a <i>different</i> rule. A new rule has a new valley, which gives a newer push... Keep going:</p>
+    <table class="t"><tr><th>round</th><th>rule k</th><th>its valley p</th><th>best push for it: b·p/r</th></tr>
+    ${rows.map(([i, k, p, kn]) => `<tr><td class="m">${i}</td><td class="m">${f(k, 5)}</td><td class="m">${f(p, 5)}</td><td class="m">${f(kn, 5)}</td></tr>`).join('') || '<tr><td colspan="4">start k must be above a/b = ' + f(a / b, 2) + ', or the robot falls and the heat is infinite</td></tr>'}</table>
+    <p>It stops changing at k = p = ${f(best().ks, 5)}: the rule is the best push <b>for its own valley</b>. Two facts true at once:</p>
+    <span class="eq">①  p = heat of a 1° run with rule k = (q + r·k²) / (2(b·k − a))
+②  k = b·p / r                      (step 4)</span>
+    <p>Where ① comes from: with u = −k·x, ẋ = (a − b·k)·x, so the tilt shrinks as e<sup>−(bk−a)t</sup>; heat per second is (q + r·k²)·x²; the area under e<sup>−2(bk−a)t</sup> is 1/(2(bk−a)). For k = 3: (${f(q, 2)} + ${f(r, 2)}·9) / (2 × ${f(s, 2)}) = ${f(pOf(3), 3)}, the J of step 2.</p>
+    <p>Put ② into ①, and you get one equation in p alone: that is the <b>Riccati equation</b>. Step 6 shows every term of it as something physical.</p>
+    <p class="do"><b>Do:</b> drag the start k anywhere above ${f(a / b, 2)}. The zigzag always ends at the same red dot, in 3 or 4 rounds.</p>`; }],
+
+  ['6 · the Riccati equation: a tank', 'tank', ['tau', 'a', 'b', 'q', 'r'], () => {
+    const { a, b, q, r, tau } = S.p, p = at(tankLQR(), tau), B = best();
+    return `<p class="goal"><b>Goal:</b> the equation as a balance, with every term a physical flow.</p>
+    <p>The tank holds <b>p</b>: the heat still to come per 1°² of tilt. Think <b>backward</b> from the end of the run. At the very end nothing is left to come: <b>p = 0</b>. Step one short moment earlier. Three flows change the tank:</p>
+    <table class="t"><tr><td class="m cb">+ q</td><td><b>fill.</b> This extra moment you are tilted, so you burn q·x² more.</td></tr>
+    <tr><td class="m ce">+ 2a·p</td><td><b>stretch.</b> During this moment gravity grows the tilt (a·x per second). A bigger tilt holds more heat to come (p·x²); x is squared, so its rate doubles: 2a.</td></tr>
+    <tr><td class="m cc">− b²p²/r</td><td><b>drain.</b> The motor uses the best push of step 4 and saves its depth, b²p²/r.</td></tr></table>
+    <p>τ is the time before the end. How fast the level rises:</p>
+    <span class="eq">dp/dτ = q + 2a·p − b²·p²/r
+at τ = ${f(tau, 2)} s:  p = ${f(p, 3)}:   ${f(q, 2)} + ${f(2 * a * p, 3)} − ${f(b * b * p * p / r, 3)} = ${f(q + 2 * a * p - b * b * p * p / r, 3)} per s</span>
+    <p>The fill and stretch grow like a straight line in p, the drain like p². The drain catches up, and the level stops at the crossing:</p>
+    <span class="eq">q + 2a·p = b²·p²/r      the Riccati equation (the tank at rest)
+${f(q, 2)} + ${f(2 * a, 2)}·${f(B.ps, 3)} = ${f(q + 2 * a * B.ps, 3)}      ${f(b * b / r, 2)}·${f(B.ps, 3)}² = ${f(b * b * B.ps * B.ps / r, 3)}   ✓</span>
+    <p>By hand: (b²/r)·p² − 2a·p − q = 0 is a school quadratic: p = r·(a ± √(a² + b²q/r)) / b² = ${f(B.ps, 3)} or ${f(B.pneg, 3)}. The negative one is an upside-down valley (negative heat to come): impossible, so it is thrown away.</p>
+    <p>Then k = b·p/r = <b>${f(B.ks, 3)}</b>, and the tilt shrinks as ẋ = (a − b·k)·x = <b>${f(B.pole, 3)}·x</b>.</p>
+    <p class="phys"><b>Names:</b> the tank while it fills is the <i>Riccati differential equation</i>; the tank at rest is the <i>algebraic Riccati equation</i>. Same as step 5's red dot, reached by a different road.</p>
+    <p class="do"><b>Do:</b> drag τ and watch the tank fill. Raise a (stronger gravity, more stretch): the level and the push rise. Raise r (dearer motor, weaker drain): the level rises too, but the push k = b·p/r falls.</p>`; }],
+
+  ['7 · the same tank in matrices', 'matrix', [], () => `
+    <p class="goal"><b>Goal:</b> recognise each term of the matrix equation of page 171 as the same flow.</p>
+    <span class="eq">Aᵀ P + P A   +   Q   −   P B R⁻¹ Bᵀ P   =   0
+  stretch         fill      drain</span>
+    <p><b>P</b> (8 × 8) is the valley in eight directions: heat to come = xᵀ P x. Its diagonal is the steepness along each state alone. The off-diagonal says how two errors combine: a forward lean with the torso back can cost less than either alone.</p>
+    <p><b>Eigenvectors of P</b> are the valley's main directions, and its <b>eigenvalues</b> their steepness: the dearest and the cheapest ways to be off balance. Same picture as an SVD giving a matrix's main directions and stretches.</p>
+    <p><b>Drain</b> P B R⁻¹ Bᵀ P = (BᵀP)ᵀ R⁻¹ (BᵀP): the valley slope seen by each motor (Bᵀ P, the Jᵀ-like map of step 4), squared, divided by its price. One number: b·p · (1/r) · b·p = b²p²/r.</p>
+    <p><b>Stretch</b> AᵀP + PA: one number gives a·p + p·a = 2a·p. In matrices A moves each error into the others (a lean speeds up the waist), so the two products differ, and both are kept.</p>
+    <p>No hand algebra for 8 × 8: SciPy runs the tank to rest using the eigenvectors of a 16 × 16 matrix:</p>
+    <span class="eq">P = scipy.linalg.solve_continuous_are(A, B, Q, R)
+K = inv(R) @ B.T @ P</span>
+    <p class="do"><b>Do:</b> read the table on the left row by row: one number, then the matrix that replaces it.</p>`],
+
+  ['8 · Kalman: where is the tilt? a cloud', 'cloudOff', ['t', 'a', 'qn'], () => {
+    const { t, a, qn, s0 } = S.p, C = cloud(false), j = snapAt(C, Math.min(t, C.T));
+    return `<p class="goal"><b>Goal:</b> a new question, the same tank. Until now we knew the tilt exactly. Now we don't.</p>
+    <p>The robot reads its tilt with a noisy sensor, and small random kicks (wind, joint jitter) push the tilt. So we never know x. We keep a <b>guess x̂</b>, and around it a <b>cloud</b> of possible true tilts. Each dot on the left is one possible error (true tilt − guess).</p>
+    <p>The cloud's size is <b>Σ = width²</b> (the variance: the average of error²). Why the square? Independent spreads add like arrows at right angles (Pythagoras): widths 3° and 4° together make 5°, not 7°. Their squares just add: 9 + 16 = 25 = 5². A tank needs a quantity that adds, so it holds width².</p>
+    <p><b>Sensor off.</b> Two flows only, both already known:</p>
+    <table class="t"><tr><td class="m ce">+ 2a·Σ</td><td><b>stretch.</b> The same gravity a pushes every possible tilt away from the guess at a·(its distance), so the width grows at a·width and width² at 2a·Σ (the same 2a as in step 6, for the same reason).</td></tr>
+    <tr><td class="m cb">+ q</td><td><b>fill.</b> Random kicks add q to Σ every second, like ink spreading in water (a random walk's width² grows linearly in time).</td></tr></table>
+    <span class="eq">dΣ/dt = 2a·Σ + q
+at t = ${f(C.ts[j], 2)} s:  tank Σ = ${f(C.sig[j], 3)},  counted from the dots ${f(C.vars[j], 3)}</span>
+    <p>(Counted from 600 dots, so it wobbles by up to about ±10%.) Starting width² Σ(0) = ${f(s0, 2)}, so width ${f(Math.sqrt(s0), 2)}°. Without a sensor the cloud explodes, just like the tilt with the motor off in step 1.</p>
+    <p class="do"><b>Do:</b> drag t and watch the pink column of dots spread. Set the kicks q small: the stretch alone still blows it up.</p>`; }],
+
+  ['9 · Kalman: the sensor drains the tank', 'cloudOn', ['t', 'a', 'c', 'qn', 'rn'], () => {
+    const { a, c, qn, rn } = S.p, C = cloud(true), j = snapAt(C, Math.min(S.p.t, C.T)), Sg = C.sig[j], K = bestKF();
+    return `<p class="goal"><b>Goal:</b> the third flow, the drain, and the Kalman filter's Riccati equation.</p>
+    <p>The sensor reads y = c·x + noise. c is the sensor's lever (reading per degree), r its noise (width² of one second of readings). Each reading squeezes the cloud toward what was read:</p>
+    <table class="t"><tr><td class="m cc">− c²Σ²/r</td><td><b>drain.</b> A wide cloud gains a lot from a reading, a narrow one little, so the squeeze grows like Σ². A precise sensor (small r) squeezes more. Step 10 shows why exactly this form.</td></tr></table>
+    <span class="eq">dΣ/dt = q + 2a·Σ − c²·Σ²/r        (forward in time, from Σ(0))
+at t = ${f(C.ts[j], 2)} s:  ${f(qn, 2)} + ${f(2 * a * Sg, 3)} − ${f(c * c * Sg * Sg / rn, 3)} = ${f(qn + 2 * a * Sg - c * c * Sg * Sg / rn, 3)} per s
+tank Σ = ${f(Sg, 3)},  counted from the dots ${f(C.vars[j], 3)}</span>
+    <p>At rest the drain equals fill plus stretch:</p>
+    <span class="eq">q + 2a·Σ = c²·Σ²/r   →   Σ = ${f(K.ss, 3)},  width √Σ = ${f(Math.sqrt(K.ss), 3)}°</span>
+    <p><b>It is the LQR tank of step 6</b> with the motor lever b replaced by the sensor lever c, and p by Σ. With the defaults (all 1, a = 2) even the number is the same: ${f(best().ps, 3)}. One equation, two jobs: how hard to push, and how unsure to be.</p>
+    <p>One difference: LQR's tank fills <b>backward</b> from the end of the run (the heat still to come); the Kalman tank fills <b>forward</b> from the start (doubt piles up as time passes).</p>
+    <p class="do"><b>Do:</b> drag t: the cloud stops growing at width ${f(Math.sqrt(K.ss), 2)}°. Raise r (worse sensor, weaker drain): the cloud settles wider.</p>`; }],
+
+  ['10 · Kalman: the blend, two springs', 'blend', ['sg', 'rd', 'y'], () => {
+    const { sg, rd, y, c, rn } = S.p, sh = sg / (sg + rd), m = sh * y, sn = sg * rd / (sg + rd), K = bestKF();
+    return `<p class="goal"><b>Goal:</b> how a reading moves the guess (the gain L), and why it squeezes the cloud the way step 9 said.</p>
+    <p>Before a reading: guess 0 with width² Σ = ${f(sg, 2)} (orange). The sensor says ${f(y, 2)} with width² r = ${f(rd, 2)} (green). Tie the new guess to both with springs whose <b>stiffness = 1/width²</b>: a sure thing pulls hard.</p>
+    <span class="eq">bead settles where the pulls balance:
+  (1/Σ)·(x − 0) + (1/r)·(x − y) = 0   →   x = Σ/(Σ + r) · y
+  share moved toward the reading = ${f(sg, 2)} / (${f(sg, 2)} + ${f(rd, 2)}) = ${f(sh, 3)}
+  new guess = ${f(sh, 3)} × ${f(y, 2)} = ${f(m, 3)}</span>
+    <p><b>Springs side by side add their stiffness:</b> 1/Σ<sub>new</sub> = 1/Σ + 1/r = ${f(1 / sg, 3)} + ${f(1 / rd, 3)} = ${f(1 / sg + 1 / rd, 3)}, so Σ<sub>new</sub> = ${f(sn, 3)}. Stiffer means narrower: that is the drain of step 9.</p>
+    <p>In continuous time a reading arrives every tiny dt, each very noisy (width² r/dt), so each moves the guess by a share of about Σ·dt/r. Per second that is the gain:</p>
+    <span class="eq">L = Σ·c / r        guess update: dx̂/dt = a·x̂ + b·u + L·(y − c·x̂)
+with the tank at rest: L = ${f(K.ss, 3)} × ${f(c, 2)} / ${f(rn, 2)} = ${f(K.Ls, 3)}</span>
+    <p class="phys"><b>The mirror of LQR:</b> k = b·p/r (push = lever × valley / motor price). L = c·Σ/r (trust = lever × doubt / sensor noise). Matrices: K = R⁻¹BᵀP and L = ΣCᵀR⁻¹.</p>
+    <p class="do"><b>Do:</b> make Σ small (sure guess): the bead stays near 0. Make r small (precise sensor): the bead jumps to the reading.</p>`; }],
+
+  ['11 · one tank, two jobs', 'both', [], () => {
+    const B = best(), K = bestKF();
+    return `<p class="goal"><b>Goal:</b> the whole page in one table. Every word keeps its one job.</p>
+    <table class="t"><tr><th></th><th>LQR: how hard to push</th><th>Kalman: where the tilt is</th></tr>
+    <tr><td>tank level</td><td class="m">p: heat to come per 1°²</td><td class="m">Σ: width² of the cloud</td></tr>
+    <tr><td class="cb">fill</td><td class="m">q: tilt heat per second</td><td class="m">q: random kicks per second</td></tr>
+    <tr><td class="ce">stretch</td><td class="m">2a·p: gravity</td><td class="m">2a·Σ: gravity</td></tr>
+    <tr><td class="cc">drain</td><td class="m">b²p²/r: best push</td><td class="m">c²Σ²/r: sensor squeeze</td></tr>
+    <tr><td>lever / price</td><td class="m">b motor / r motor heat</td><td class="m">c sensor / r sensor noise</td></tr>
+    <tr><td>runs</td><td>backward from the end</td><td>forward from the start</td></tr>
+    <tr><td>at rest</td><td class="m">p = ${f(B.ps, 3)}</td><td class="m">Σ = ${f(K.ss, 3)}</td></tr>
+    <tr><td>gain</td><td class="m">k = b·p/r = ${f(B.ks, 3)}</td><td class="m">L = c·Σ/r = ${f(K.Ls, 3)}</td></tr>
+    <tr><td>matrices</td><td class="m">AᵀP + PA + Q − PBR⁻¹BᵀP = 0</td><td class="m">AΣ + ΣAᵀ + Q − ΣCᵀR⁻¹CΣ = 0</td></tr></table>
+    <p>On the G1 the two work as a pair: the Kalman filter turns encoders and the IMU into the guess x̂ (8 numbers), and LQR pushes with u = −K x̂. Page 171 does the LQR half on the real model.</p>
+    <p class="do"><b>Do:</b> go back to step 6 or 9 and change a: both tanks rise with stronger gravity, for the same reason.</p>`; }],
+];
+
+const SL = {
+  t: ['time t (s)', 0, 1.5, 0.01], a: ['a: gravity growth (1/s)', 0.5, 4, 0.1], b: ['b: motor lever', 0.3, 3, 0.1],
+  k: ['k: push per degree', 0, 12, 0.01], q: ['q: price of tilt', 0.1, 5, 0.1], r: ['r: price of motor heat', 0.1, 5, 0.1],
+  x: ['x: tilt now (°)', 0.1, 2, 0.01], pv: ['p: steepness of the valley', 0.5, 10, 0.01], k0: ['start rule k', 0, 12, 0.01],
+  tau: ['τ: time before the end (s)', 0, 3, 0.01], c: ['c: sensor lever', 0.3, 3, 0.1], qn: ['q: size of random kicks', 0.1, 5, 0.1],
+  rn: ['r: sensor noise', 0.1, 5, 0.1], sg: ['Σ: width² of the guess', 0.1, 5, 0.01], rd: ['r: width² of the reading', 0.1, 5, 0.01], y: ['reading y (°)', -3, 4, 0.01],
+};
+function controls() {
+  const keys = STEPS[S.step][2];
+  document.getElementById('ctl').innerHTML = keys.length ? keys.map(k => { const [lab, lo, hi, st] = SL[k];
+    return `<label class="ctl"><span>${lab}</span><input type="range" data-k="${k}" min="${lo}" max="${hi}" step="${st}" value="${S.p[k]}"><output>${f(S.p[k], 2)}</output></label>`; }).join('')
+    : '<span style="color:var(--muted);font-size:.84rem">No sliders in this step: read the picture, then press next.</span>';
+  document.querySelectorAll('#ctl input').forEach(el => el.oninput = () => { const k = el.dataset.k; S.p[k] = +el.value; el.nextElementSibling.textContent = f(S.p[k], 2); draw(); });
+}
+function draw() {
+  const st = STEPS[S.step], G = frame();
+  legend([]); PLOTS[st[1]](G);
+  document.getElementById('exp').innerHTML = st[3]();
+}
+function render() {
+  const chips = document.getElementById('chips');
+  chips.innerHTML = '<span class="sec">LQR: how hard to push</span>' + STEPS.map((s, i) => (i === 7 ? '<span class="sec">Kalman filter: where the tilt is</span>' : '') +
+    `<button data-s="${i}" aria-current="${i === S.step}">${s[0]}</button>`).join('');
+  chips.querySelectorAll('button').forEach(b => b.onclick = () => { S.step = +b.dataset.s; render(); });
+  document.getElementById('prev').disabled = S.step === 0;
+  document.getElementById('next').disabled = S.step === STEPS.length - 1;
+  controls(); draw();
+}
+document.getElementById('prev').onclick = () => { S.step = Math.max(0, S.step - 1); render(); };
+document.getElementById('next').onclick = () => { S.step = Math.min(STEPS.length - 1, S.step + 1); render(); };
+document.getElementById('dflt').onclick = () => { S.p = { ...DEF }; controls(); draw(); };
+new ResizeObserver(() => draw()).observe(cv);
+new MutationObserver(() => draw()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+window.LAB = { S, render, best, bestKF, pOf, simRule, cloud, tankLQR, at };
+render();
+})();
+</script>
+</body></html>
