@@ -457,6 +457,33 @@ class UpperBodyRecoveryPage(BalancePage):
 # 170
 # ==========================================================================
 
+LQR_RL_EQS = [
+    (r"J=\int_0^\infty \left(x^TSx+u^TRu\right)\,dt",
+     "the return, written as a cost; γ = 1 is allowed because x dies out (steps 1, 3)"),
+    (r"V(x)=x^TPx",
+     "the state-value function: quadratic cost through linear dynamics stays quadratic (step 2)"),
+    (r"0=\min_u\ \left[\,x^TSx+u^TRu+2x^TP(Ax+Bu)\,\right]",
+     "Bellman over a step dt, V(x) cancels; the last term is dV/dt by the product rule (steps 3, 4)"),
+    (r"H(x,u)=x^T(S+A^TP+PA)\,x+2x^TPBu+u^TRu",
+     "the action-value function (Hamiltonian), with 2xᵀPAx symmetrised (step 5)"),
+    (r"u^*=-R^{-1}B^TP\,x=-Kx,\qquad K=R^{-1}B^TP",
+     "complete the square in u (step 6)"),
+    (r"A^TP+PA-PBR^{-1}B^TP+S=0",
+     "the leftover must vanish for every x: the Riccati equation (step 7)"),
+]
+
+KALMAN_EQS = [
+    (r"\dot\Sigma=A\Sigma+\Sigma A^T+W",
+     "the doubt grows: product rule on e eᵀ, mirror of AᵀP + PA + S"),
+    (r"\Sigma^+=\Sigma^- -\Sigma^-C^T\left(C\Sigma^-C^T+\sigma^2\right)^{-1}C\Sigma^-",
+     "a reading shrinks it: completing the square in y (a Schur complement), mirror of −PBR⁻¹BᵀP"),
+    (r"A\Sigma+\Sigma A^T+W-\Sigma C^TN^{-1}C\Sigma=0",
+     "at rest: page 170's Riccati equation with A, B, S, R → Aᵀ, Cᵀ, W, N"),
+    (r"L=\Sigma C^TN^{-1},\qquad \dot{\hat x}=A\hat x+Bu+L\,(y-C\hat x)",
+     "how much to trust a reading, mirror of K = R⁻¹BᵀP"),
+]
+
+
 class RiccatiPage(BalancePage):
     TITLE = "LQR as Continuous-Time Reinforcement Learning: Bellman, the Hamiltonian, Riccati"
     SUBTITLE = ("Before page 171 uses it on the G1: LQR derived as the RL you know, on an inverted pendulum. "
@@ -489,6 +516,11 @@ class RiccatiPage(BalancePage):
             ["consistency", "AᵀP + PA − PBR⁻¹BᵀP + S = 0 (Riccati: nothing left over)", "residual 5e-13"],
             ["value / policy iteration", "Riccati run backward / Kleinman's algorithm", "both reach the same P"],
         ]))
+        eq = Card("the derivation in six lines, each from the step that made it")
+        for tex, cap in LQR_RL_EQS:
+            eq.add(math_label(tex, 15))
+            eq.add(body(cap, dim=True))
+        self.add(eq)
         self.lab("riccati_physical.html",
                  "Lab · optional, the same on one number: heat, a valley, a spring balance, a tank", 1040)
         self.finish()
@@ -744,6 +776,11 @@ class KalmanMirrorPage(BalancePage):
             ["K = R⁻¹BᵀP", "L = ΣCᵀN⁻¹", "how hard to push → how much to trust a reading"],
             ["backward from a deadline", "forward from the start", "value iteration → filtering"],
         ]))
+        eq = Card("the filter in four lines, each the mirror of a page 170 line")
+        for tex, cap in KALMAN_EQS:
+            eq.add(math_label(tex, 15))
+            eq.add(body(cap, dim=True))
+        self.add(eq)
         self.lab("riccati_tutor.html",
                  "Lab · optional, both equations by algebra on one number (LQR and Kalman tabs)", 980)
         self.finish()
