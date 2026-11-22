@@ -360,7 +360,7 @@ class Pages(unittest.TestCase):
         self.assertEqual(theme.group_of(BALANCE_PAGES[0].SECTION), "Humanoid Balance")
         for name in ("g1_upper_body.html", "upper_body_lagrange.html", "upper_body_recovery.html",
                      "lqr_torque_flow.html", "riccati_tutor.html", "kalman_encoder.html",
-                     "riccati_physical.html"):
+                     "riccati_physical.html", "lqr_bellman.html", "kalman_mirror.html"):
             src = open(STEPLAB / name, encoding="utf-8").read()
             for s in re.findall(r'<script src="([^"]+)"', src):
                 self.assertFalse(s.startswith("http"), name)
@@ -375,7 +375,7 @@ class Pages(unittest.TestCase):
         if not node:
             self.skipTest("node not installed")
         for name in ("lqr_torque_flow.html", "riccati_tutor.html", "kalman_encoder.html",
-                     "riccati_physical.html"):
+                     "riccati_physical.html", "lqr_bellman.html", "kalman_mirror.html"):
             src = (STEPLAB / name).read_text(encoding="utf-8")
             js = src.split("<script>")[1].split("</script>")[0]
             with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False, encoding="utf-8") as f:

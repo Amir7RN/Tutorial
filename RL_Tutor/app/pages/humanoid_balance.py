@@ -15,9 +15,10 @@ tests/test_upperbody.py checks every claim made here, in both languages.
     167  sagittal plane: from twists to the equations of motion
     168  momentum: why the arms can save a fall
     169  the recovery law: from a push to joint torques
-    170  the Riccati equation, physically: one tank behind LQR and the Kalman filter
+    170  LQR as continuous-time RL: Bellman, the Hamiltonian, Riccati
     171  LQR opened up: from -Kx to a torque at each joint
     172  from this model to MuJoCo and C++
+    173  the Kalman filter: LQR in a mirror
 """
 
 from __future__ import annotations
@@ -457,38 +458,39 @@ class UpperBodyRecoveryPage(BalancePage):
 # ==========================================================================
 
 class RiccatiPage(BalancePage):
-    TITLE = "The Riccati Equation, Physically: One Tank Behind LQR and the Kalman Filter"
-    SUBTITLE = ("Before page 171 uses it on the G1: the Riccati equation on a robot shrunk to one number, the tilt. "
-                "Every symbol gets one physical job (heat, a valley, a spring, a tank, a cloud) and keeps it, first "
-                "for pushing (LQR), then for knowing where the tilt is (the Kalman filter).")
+    TITLE = "LQR as Continuous-Time Reinforcement Learning: Bellman, the Hamiltonian, Riccati"
+    SUBTITLE = ("Before page 171 uses it on the G1: LQR derived as the RL you know, on an inverted pendulum. "
+                "The value function is a matrix P, the action-value function is the Hamiltonian H, and the "
+                "Riccati equation is Bellman's equation with nothing left over.")
     NOTES = "Riccati"
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(start_here(
-            "<b>Work this page in the lab, one step at a time.</b> LQR and the Kalman filter both end in a "
-            "Riccati equation, and both are hard to follow when P, K, cost-to-go and the formulas arrive at once. "
-            "Here they arrive one per step, each as something you can picture: the price of a run is <b>heat</b>; "
-            "the heat still to come is the height in a <b>valley</b>, p·x²; the best push is a <b>spring</b> "
-            "balance (Hooke); the Riccati equation is a <b>tank</b> that a fill and a stretch raise and a drain "
-            "lowers; and for the Kalman filter the tank holds the width² of a <b>cloud</b> of possible tilts. "
-            "The result to see by the end: with a = 2 and every price 1, both tanks settle at 2 + √5 = 4.236."))
-        self.lab("riccati_physical.html",
-                 "Lab · the Riccati equation, physically: heat, a valley, a spring, a tank, a cloud", 1040)
-        self.add(_table(["word", "one physical meaning, kept on every page", "symbol"], [
-            ["tilt", "the one number being controlled, in degrees; on the G1 eight numbers", "x"],
-            ["gravity growth", "how fast the tilt feeds itself, per second", "a → A"],
-            ["lever", "how much one unit of push (or one reading) moves the tilt", "b → B, c → C"],
-            ["heat", "what a run costs: tilt heat q·x² + motor heat r·u², every second", "J"],
-            ["heat still to come", "the height in the valley p·x²; textbooks: cost-to-go", "V = xᵀPx"],
-            ["valley steepness", "heat still to come per 1°² of tilt; the tank level", "p → P"],
-            ["best push", "lever × valley slope / motor price", "k = bp/r → K = R⁻¹BᵀP"],
-            ["fill · stretch · drain", "the three flows of the tank: q, 2a·p, b²p²/r", "Riccati"],
-            ["cloud width²", "how unsure the guess is; the Kalman tank level", "Σ"],
-            ["trust", "lever × doubt / sensor noise", "L = cΣ/r → ΣCᵀR⁻¹"],
+            "<b>Work this page in the lab, one step at a time.</b> If you know RL you already know LQR: a "
+            "state, an action, a cost instead of a reward, a value function V(x) and an action-value function. "
+            "The lab derives every term on an inverted pendulum (1 m, 1 kg) with its real numbers: where the "
+            "0 in the continuous Bellman equation comes from, why dV/dt = 2xᵀP(Ax + Bu) (the product rule), "
+            "how completing the square in u gives K = R⁻¹BᵀP, why the leftover being zero is the Riccati "
+            "equation, and why solving it is value iteration or policy iteration. The result to see by the "
+            "end: P = [66.19 20.12; 20.12 6.42], K = [20.12 6.42], and a cost map shaped like a canyon whose "
+            "floor is the path the controller takes home."))
+        self.lab("lqr_bellman.html",
+                 "Lab · LQR as continuous-time RL: the map V, Bellman, the Hamiltonian, completing the square", 1040)
+        self.add(_table(["RL word", "here (fixed for this page and page 173)", "pendulum"], [
+            ["state s", "x = (θ, θ̇)", "lean and lean rate"],
+            ["action a", "u", "torque at the pivot"],
+            ["reward", "−(xᵀSx + uᵀRu); S state penalty, R effort penalty", "S = diag(10, 1), R = 1"],
+            ["return, γ", "J = ∫ (xᵀSx + uᵀRu) dt, γ = 1", "finite because x decays"],
+            ["state-value V(s)", "V(x) = xᵀPx, the cost still to pay", "P = [66.19 20.12; 20.12 6.42]"],
+            ["action-value Q(s,a)", "H(x,u) = xᵀSx + uᵀRu + 2xᵀP(Ax + Bu), the Hamiltonian", "0 at the best u"],
+            ["Bellman equation", "0 = min over u of H(x,u) (HJB)", "V(x) cancels from both sides"],
+            ["greedy policy", "u = −Kx, K = R⁻¹BᵀP (complete the square)", "K = [20.12 6.42]"],
+            ["consistency", "AᵀP + PA − PBR⁻¹BᵀP + S = 0 (Riccati: nothing left over)", "residual 5e-13"],
+            ["value / policy iteration", "Riccati run backward / Kleinman's algorithm", "both reach the same P"],
         ]))
-        self.lab("riccati_tutor.html",
-                 "Lab · optional, the same equation by algebra: the quotient-rule road, one number at a time", 980)
+        self.lab("riccati_physical.html",
+                 "Lab · optional, the same on one number: heat, a valley, a spring balance, a tank", 1040)
         self.finish()
 
 
@@ -711,5 +713,42 @@ class UpperBodyProjectPage(BalancePage):
         self.finish()
 
 
+# ==========================================================================
+# 173
+# ==========================================================================
+
+class KalmanMirrorPage(BalancePage):
+    TITLE = "The Kalman Filter: LQR in a Mirror"
+    SUBTITLE = ("Page 170's pendulum with a sensor that reads only the lean, with noise. The doubt about the "
+                "state is a cloud with covariance Σ; it obeys page 170's Riccati equation with A, B, S, R "
+                "swapped for Aᵀ, Cᵀ, W, N, and runs forward in time instead of backward.")
+    NOTES = "Kalman"
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.add(start_here(
+            "<b>Work this page in the lab, after page 170.</b> LQR assumed you know the state. The robot "
+            "does not: its sensor reads the lean every 10 ms with noise, and nothing reads the lean rate. The "
+            "lab builds the best guess with the same three moves as page 170: the product rule gives how the "
+            "doubt Σ grows (AΣ + ΣAᵀ + W); completing the square (a Schur complement) gives how a reading "
+            "shrinks it; and at rest the two balance in the same Riccati equation. It ends with the filter "
+            "and page 170's LQR running together on the pendulum."))
+        self.lab("kalman_mirror.html",
+                 "Lab · the Kalman filter as LQR in a mirror: a cloud of doubt, a reading, the same Riccati", 1040)
+        self.add(_table(["LQR (page 170)", "Kalman (here)", "meaning"], [
+            ["P, cost still to pay", "Σ, doubt (covariance of x − x̂)", "a canyon → a cloud"],
+            ["A", "Aᵀ", "same gravity, read the other way"],
+            ["B, motor lever", "Cᵀ, sensor lever", "what you can push → what you can see"],
+            ["S, price of being off", "W, random torque", "what fills the matrix"],
+            ["R, price of torque", "N, sensor noise", "what limits the drain"],
+            ["K = R⁻¹BᵀP", "L = ΣCᵀN⁻¹", "how hard to push → how much to trust a reading"],
+            ["backward from a deadline", "forward from the start", "value iteration → filtering"],
+        ]))
+        self.lab("riccati_tutor.html",
+                 "Lab · optional, both equations by algebra on one number (LQR and Kalman tabs)", 980)
+        self.finish()
+
+
 BALANCE_PAGES = [UpperBodyMachinePage, UpperBodyDerivePage, UpperBodyMomentumPage,
-                 UpperBodyRecoveryPage, RiccatiPage, UpperBodyLQRPage, UpperBodyProjectPage]
+                 UpperBodyRecoveryPage, RiccatiPage, UpperBodyLQRPage, UpperBodyProjectPage,
+                 KalmanMirrorPage]

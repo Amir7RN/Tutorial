@@ -1,0 +1,372 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kalman as a Mirror</title>
+<link rel="stylesheet" href="steplab.css">
+<style>
+  .grid{grid-template-columns:minmax(0,1.1fr) minmax(400px,1fr)}
+  #pl{width:100%;height:100%;display:block;min-height:360px}
+  .plot{position:relative;flex:1;min-height:380px;padding:4px}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .chips button{font-size:.78rem;font-weight:400;padding:3px 8px;border-radius:99px}
+  .chips button[aria-current="true"]{background:var(--hi);border-color:var(--a);font-weight:700}
+  .goal{border-left:3px solid var(--a);padding:2px 0 2px 8px;margin:0 0 8px}
+  .do{border:1px dashed var(--c);border-radius:8px;padding:5px 9px;margin:8px 0 0;font-size:.86rem}
+  .do b{color:var(--c)}
+  .phys{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:5px 9px;margin:6px 0 8px}
+  .phys b{color:var(--e)}
+  table.t{width:100%}
+  table.t td,table.t th{text-align:left;font-family:var(--body);vertical-align:top}
+  table.t td.m{font-family:var(--mono);white-space:nowrap}
+  .ctl{grid-template-columns:190px 1fr 70px}
+</style>
+</head><body>
+<div class="wrap">
+  <div class="top"><h1>The Kalman filter is LQR in a mirror: the same pendulum, doubt instead of cost</h1>
+    <p>Page 170's pendulum, now with a sensor that reads only the lean θ, 100 times a second, with noise. Where is the pendulum, and how fast is it rotating? Every step uses page 170's moves: product rule, completing the square, Riccati.</p></div>
+  <div class="grid">
+    <div class="left">
+      <div class="card plot"><canvas id="pl"></canvas></div>
+      <div class="card"><div class="legend" id="leg"></div>
+        <div class="controls" id="ctl" style="grid-template-columns:1fr;margin-top:6px"></div>
+        <div class="btns" style="margin-top:6px"><button id="dflt">defaults</button></div></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="chips" id="chips"></div>
+        <div class="nav"><button id="prev">◀ back</button><button id="next" class="primary">next ▶</button></div></div>
+      <div class="card math" id="exp"></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const f = (x, d = 3) => !isFinite(x) ? '∞' : (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d);
+const DEF = { t: 0.3, ts: 0.3, sy: 0.02, w: 1, tk: 0.5, T6: 3 };
+const S = { step: 0, p: { ...DEF } };
+const DT = 0.01, G0 = 9.81, NP = 500, SIG0 = [[0.02 ** 2, 0], [0, 0.1 ** 2]];
+
+/* ---------- 2x2 algebra ---------- */
+const mul = (X, Y) => X.map(r => Y[0].map((_, j) => r.reduce((s, v, k) => s + v * Y[k][j], 0)));
+const T = X => X[0].map((_, j) => X.map(r => r[j]));
+const add = (...Ms) => Ms[0].map((r, i) => r.map((_, j) => Ms.reduce((s, M) => s + M[i][j], 0)));
+const sc = (X, s) => X.map(r => r.map(v => v * s));
+const mv = (X, v) => X.map(r => r.reduce((s, a, k) => s + a * v[k], 0));
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+const outer = (a, b) => a.map(x => b.map(y => x * y));
+const eigSym = M => { const a = M[0][0], b = M[0][1], d = M[1][1], m = (a + d) / 2, h = Math.hypot((a - d) / 2, b);
+  const vec = l => { const v = Math.abs(b) > 1e-15 ? [b, l - a] : (Math.abs(l - a) < 1e-15 ? [1, 0] : [0, 1]); const n = Math.hypot(...v); return [v[0] / n, v[1] / n]; };
+  return [{ l: m - h, v: vec(m - h) }, { l: m + h, v: vec(m + h) }]; };
+const fm = (M, d = 4) => '[' + M.map(r => r.map(v => f(v, d)).join(', ')).join(' ; ') + ']';
+const fe = (v, d = 2) => v === 0 ? '0' : Math.abs(v) >= 0.01 ? f(v, 4) : v.toExponential(d);
+const fme = M => '[' + M.map(r => r.map(v => fe(v)).join(', ')).join(' ; ') + ']';
+
+/* ---------- model ---------- */
+const A = [[0, 1], [G0, 0]], F = add([[1, 0], [0, 1]], sc(A, DT)), C = [1, 0];
+const Qd = () => [[0, 0], [0, S.p.w * DT]];
+const predict = Sg => add(mul(mul(F, Sg), T(F)), Qd());
+const gainD = Sg => { const s = Sg[0][0] + S.p.sy ** 2; return [Sg[0][0] / s, Sg[1][0] / s]; }; // ΣCᵀ(CΣCᵀ+σ²)⁻¹, C = [1 0]
+const update = Sg => { const L = gainD(Sg); return add(Sg, sc(outer(L, [Sg[0][0], Sg[0][1]]), -1)); };
+/* Lyapunov and Kleinman, general single-input form: Aᵀ X + X A − X b bᵀ X / r + Q = 0 */
+function lyap(Fm, M) {
+  const res = p => { const P = [[p[0], p[1]], [p[1], p[2]]], Z = add(mul(T(Fm), P), mul(P, Fm)); return [Z[0][0], Z[0][1], Z[1][1]]; };
+  const G = [res([1, 0, 0]), res([0, 1, 0]), res([0, 0, 1])];
+  const Mx = [0, 1, 2].map(i => [G[0][i], G[1][i], G[2][i]]), rhs = [-M[0][0], -M[0][1], -M[1][1]];
+  const det3 = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det3(Mx), p = [0, 1, 2].map(c => det3(Mx.map((r, i) => r.map((v, j) => j === c ? rhs[i] : v))) / D);
+  return [[p[0], p[1]], [p[1], p[2]]];
+}
+function care(Am, b, Q, r, K0) {
+  let K = K0, X;
+  for (let i = 0; i < 40; i++) { const Fm = add(Am, sc(outer(b, K), -1)); X = lyap(Fm, add(Q, sc(outer(K, K), r))); K = mv(T(X), b).map(v => v / r); }
+  return { X, K };
+}
+const lqr = () => care(A, [0, 1], [[10, 0], [0, 1]], 1, [G0 + 3, 1]); // page 170
+const kfCont = () => { const N = S.p.sy ** 2 * DT, W = [[0, 0], [0, S.p.w]], z = care(T(A), [1, 0], W, N, [5, 15]); return { Sg: z.X, L: z.K, N, W }; };
+const kfSteady = () => { let Sg = SIG0, pr, po; for (let i = 0; i < 3000; i++) { pr = predict(Sg); po = update(pr); Sg = po; } return { pr, po, L: gainD(pr) }; };
+
+/* ---------- random numbers ---------- */
+function rng(seed) { let s = seed, spare = null; const u = () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  return () => { if (spare !== null) { const v = spare; spare = null; return v; } let a = 0; while (a === 0) a = u(); const b = u(), m = Math.sqrt(-2 * Math.log(a)); spare = m * Math.sin(2 * Math.PI * b); return m * Math.cos(2 * Math.PI * b); }; }
+let memo = {};
+const cached = (key, fn) => { if (!(key in memo)) { if (Object.keys(memo).length > 40) memo = {}; memo[key] = fn(); } return memo[key]; };
+const start = g => { const a = Math.sqrt(SIG0[0][0]), b = Math.sqrt(SIG0[1][1]); return Array.from({ length: NP }, () => [a * g(), b * g()]); };
+const counted = E => { const n = E.length; let a = 0, b = 0, d = 0; E.forEach(e => { a += e[0] * e[0]; b += e[0] * e[1]; d += e[1] * e[1]; }); return [[a / n, b / n], [b / n, d / n]]; };
+/* the cloud of errors e = x − x̂, every 10 ms: predict (gravity + random torque), then, if the sensor is on, read and squeeze */
+function cloud(sensor, Tend) {
+  return cached(['c', sensor, Tend, S.p.w, S.p.sy].join(), () => {
+    const g = rng(11); let E = start(g), Sg = SIG0; const snaps = [{ E, Sg, t: 0 }], n = Math.round(Tend / DT);
+    for (let k = 1; k <= n; k++) {
+      const q = Math.sqrt(S.p.w * DT);
+      E = E.map(e => { const m = mv(F, e); return [m[0], m[1] + q * g()]; }); Sg = predict(Sg);
+      if (sensor) { const L = gainD(Sg); E = E.map(e => { const v = S.p.sy * g(), innov = e[0] + v; return [e[0] - L[0] * innov, e[1] - L[1] * innov]; }); Sg = update(Sg); }
+      snaps.push({ E, Sg, t: k * DT });
+    }
+    return snaps;
+  });
+}
+/* LQR + Kalman on the true pendulum */
+function closed() {
+  return cached(['cl', S.p.w, S.p.sy, S.p.T6].join(), () => {
+    const g = rng(5), K = lqr().K, n = Math.round(S.p.T6 / DT), q = Math.sqrt(S.p.w * DT);
+    let x = [0.1, 0], xh = [0, 0], Sg = SIG0, yPrev = null; const out = { t: [], x: [], xh: [], y: [], fd: [], sd: [] };
+    for (let k = 0; k <= n; k++) {
+      const y = x[0] + S.p.sy * g();
+      const L = gainD(Sg), innov = y - xh[0]; xh = [xh[0] + L[0] * innov, xh[1] + L[1] * innov]; Sg = update(Sg);
+      out.t.push(k * DT); out.x.push(x); out.xh.push(xh); out.y.push(y); out.fd.push(yPrev === null ? 0 : (y - yPrev) / DT); out.sd.push(Math.sqrt(Sg[1][1])); yPrev = y;
+      const u = -dot(K, xh);
+      x = [x[0] + DT * x[1], x[1] + DT * (G0 * x[0] + u) + q * g()];
+      xh = [xh[0] + DT * xh[1], xh[1] + DT * (G0 * xh[0] + u)]; Sg = predict(Sg);
+    }
+    return out;
+  });
+}
+
+/* ---------- drawing ---------- */
+const cv = document.getElementById('pl');
+function frame() {
+  const r = cv.getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)), pr = devicePixelRatio;
+  if (cv.width !== Math.round(W * pr) || cv.height !== Math.round(H * pr)) { cv.width = Math.round(W * pr); cv.height = Math.round(H * pr); }
+  const c = cv.getContext('2d'); c.setTransform(pr, 0, 0, pr, 0, 0); c.fillStyle = css('--panel'); c.fillRect(0, 0, W, H);
+  return { c, W, H };
+}
+const nice = v => +(+v).toPrecision(3) + '';
+function panel(G, o) {
+  const { c, W, H } = G, x0 = (o.l || 0) * W + 52, x1 = (o.r === undefined ? 1 : o.r) * W - 12, y0 = o.top * H + 20, y1 = o.bot * H - 28;
+  const [xa, xb] = o.xr, [ya, yb] = o.yr;
+  const X = v => x0 + (v - xa) / (xb - xa) * (x1 - x0), Y = v => y1 - (Math.max(ya - 1e9, Math.min(yb + 1e9, v)) - ya) / (yb - ya) * (y1 - y0);
+  c.strokeStyle = css('--line'); c.lineWidth = 1; c.strokeRect(x0, y0, x1 - x0, y1 - y0);
+  c.strokeStyle = css('--grey'); c.setLineDash([3, 3]);
+  if (ya < 0 && yb > 0) { c.beginPath(); c.moveTo(x0, Y(0)); c.lineTo(x1, Y(0)); c.stroke(); }
+  if (o.zx && xa < 0 && xb > 0) { c.beginPath(); c.moveTo(X(0), y0); c.lineTo(X(0), y1); c.stroke(); }
+  c.setLineDash([]);
+  c.fillStyle = css('--muted'); c.font = '11px ' + css('--body');
+  c.textAlign = 'left'; c.fillText(o.title || '', x0, y0 - 6);
+  c.textAlign = 'center'; c.fillText(o.xlab || '', (x0 + x1) / 2, y1 + 23);
+  [xa, (xa + xb) / 2, xb].forEach(v => c.fillText(nice(v), X(v), y1 + 11));
+  c.textAlign = 'right'; [ya, yb, ...(ya < 0 && yb > 0 ? [0] : [])].forEach(v => c.fillText(nice(v), x0 - 4, Y(v) + 4));
+  if (o.ylab) { c.save(); c.translate(x0 - 40, (y0 + y1) / 2); c.rotate(-Math.PI / 2); c.textAlign = 'center'; c.fillText(o.ylab, 0, 0); c.restore(); }
+  c.save(); c.beginPath(); c.rect(x0, y0, x1 - x0, y1 - y0); c.clip();
+  (o.pts || []).forEach(p => { c.fillStyle = css(p.col); c.globalAlpha = p.alpha || .5; p.E.forEach(e => c.fillRect(X(e[0]) - 1.4, Y(e[1]) - 1.4, 2.8, 2.8)); c.globalAlpha = 1; });
+  (o.ells || []).forEach(el => { const E = eigSym(el.Sg); c.strokeStyle = css(el.col); c.lineWidth = el.w || 2.5; c.setLineDash(el.dash || []); c.beginPath();
+    for (let k = 0; k <= 160; k++) { const ph = k / 160 * 2 * Math.PI, a = 2 * Math.sqrt(Math.max(0, E[0].l)) * Math.cos(ph), b = 2 * Math.sqrt(Math.max(0, E[1].l)) * Math.sin(ph);
+      const px = a * E[0].v[0] + b * E[1].v[0], py = a * E[0].v[1] + b * E[1].v[1]; k ? c.lineTo(X(px), Y(py)) : c.moveTo(X(px), Y(py)); }
+    c.stroke(); c.setLineDash([]); });
+  (o.series || []).forEach(s => {
+    c.strokeStyle = c.fillStyle = css(s.col); c.lineWidth = s.w || 2; c.setLineDash(s.dash || []);
+    if (s.dots) s.xs.forEach((xv, i) => { c.globalAlpha = s.alpha || 1; c.fillRect(X(xv) - 1.5, Y(s.ys[i]) - 1.5, 3, 3); c.globalAlpha = 1; });
+    else { c.beginPath(); s.xs.forEach((xv, i) => i ? c.lineTo(X(xv), Y(s.ys[i])) : c.moveTo(X(xv), Y(s.ys[i]))); c.stroke(); }
+    c.setLineDash([]);
+  });
+  (o.vlines || []).forEach(v => { c.strokeStyle = css(v.col); c.setLineDash([4, 3]); c.lineWidth = 1.2; c.beginPath(); c.moveTo(X(v.x), y0); c.lineTo(X(v.x), y1); c.stroke(); c.setLineDash([]); });
+  (o.marks || []).forEach(m => { c.fillStyle = css(m.col); c.beginPath(); c.arc(X(m.x), Y(m.y), m.r || 5, 0, 7); c.fill();
+    if (m.label) { c.font = 'bold 11px ' + css('--body'); c.textAlign = m.right ? 'right' : 'left'; c.fillText(m.label, X(m.x) + (m.right ? -8 : 8), Y(m.y) + (m.below ? 15 : -7)); } });
+  c.restore();
+  return { X, Y };
+}
+const legend = items => document.getElementById('leg').innerHTML = items.map(([t, col, dash]) =>
+  `<span><span class="sw" style="background:${dash ? 'repeating-linear-gradient(90deg,var(' + col + ') 0 4px,transparent 4px 7px)' : 'var(' + col + ')'}"></span>${t}</span>`).join('');
+const ERR = { top: 0, bot: 1, xr: [-0.2, 0.2], yr: [-0.8, 0.8], zx: true, xlab: 'lean error θ − θ̂ (rad)', ylab: 'rate error θ̇ − θ̂̇ (rad/s)' };
+const at = (snaps, t) => snaps[Math.min(snaps.length - 1, Math.max(0, Math.round(t / DT)))];
+
+/* ---------- plots ---------- */
+const PLOTS = {
+  intro(G) {
+    const o = closed(), n = o.t.length, ts = o.t;
+    panel(G, { top: 0, bot: .5, xr: [0, S.p.T6], yr: [-0.3, 0.3], title: 'lean θ: the truth, and what the sensor says every 10 ms', xlab: 'time (s)',
+      series: [{ xs: ts, ys: o.y, col: '--grey', dots: true, alpha: .6 }, { xs: ts, ys: o.x.map(x => x[0]), col: '--ink', w: 2 }] });
+    panel(G, { top: .5, bot: 1, xr: [0, S.p.T6], yr: [-2, 2], title: 'lean rate θ̇: nobody measures it', xlab: 'time (s)',
+      series: [{ xs: ts, ys: o.x.map(x => x[1]), col: '--ink', w: 2 }] });
+    legend([['truth', '--ink'], ['sensor reading y = θ + noise', '--grey']]);
+  },
+  drift(G) {
+    const sn = cloud(false, 0.6), s = at(sn, S.p.t), sn0 = sn[0];
+    panel(G, { ...ERR, title: 'cloud of possible errors, no sensor, t = ' + f(s.t, 2) + ' s (ellipse = 2 standard deviations)',
+      pts: [{ E: sn0.E, col: '--grey', alpha: .25 }, { E: s.E, col: '--a', alpha: .55 }], ells: [{ Sg: sn0.Sg, col: '--grey', dash: [5, 4], w: 1.5 }, { Sg: s.Sg, col: '--a' }, { Sg: counted(s.E), col: '--b', dash: [3, 3], w: 1.5 }],
+      series: [{ xs: [-1, 1], ys: [-Math.sqrt(G0), Math.sqrt(G0)], col: '--bad', dash: [7, 4], w: 1.5 }] });
+    legend([['at t = 0', '--grey'], ['now: 500 errors', '--a'], ['Σ from the formula', '--a'], ['Σ counted from the dots', '--b', 1], ['gravity\'s unstable direction θ̇ = 3.13 θ', '--bad', 1]]);
+  },
+  squeeze(G) {
+    const sn = cloud(false, 0.6), s = at(sn, S.p.ts), Sg = s.Sg, L = gainD(Sg), g = rng(3);
+    const Ep = s.E.map(e => { const innov = e[0] + S.p.sy * g(); return [e[0] - L[0] * innov, e[1] - L[1] * innov]; });
+    panel(G, { ...ERR, title: 'one reading of θ: before (blue) and after (orange)',
+      pts: [{ E: s.E, col: '--a', alpha: .35 }, { E: Ep, col: '--b', alpha: .6 }], ells: [{ Sg, col: '--a' }, { Sg: update(Sg), col: '--b' }],
+      series: [{ xs: [-1, 1], ys: [-Sg[1][0] / Sg[0][0], Sg[1][0] / Sg[0][0]], col: '--d', dash: [6, 4], w: 1.5 }] });
+    legend([['before the reading Σ⁻', '--a'], ['after Σ⁺ (Schur complement)', '--b'], ['the cloud\'s tilt Σ₂₁/Σ₁₁: how θ̇ errors follow θ errors', '--d', 1]]);
+  },
+  filter(G) {
+    const sn = cloud(true, 1.5), s = at(sn, S.p.tk), st = kfSteady();
+    panel(G, { ...ERR, r: .55, title: 'with the sensor, t = ' + f(s.t, 2) + ' s',
+      pts: [{ E: s.E, col: '--b', alpha: .55 }], ells: [{ Sg: s.Sg, col: '--b' }, { Sg: st.po, col: '--ink', dash: [4, 4], w: 1.2 }] });
+    const ts = sn.map(z => z.t), cnt = sn.map(z => counted(z.E));
+    panel(G, { l: .55, top: 0, bot: 1, xr: [0, 1.5], yr: [0, 0.32], title: 'standard deviation: formula (lines) vs counted (dots)', xlab: 'time (s)',
+      series: [{ xs: ts, ys: sn.map(z => Math.sqrt(z.Sg[0][0]) * 10), col: '--a' }, { xs: ts, ys: sn.map(z => Math.sqrt(z.Sg[1][1])), col: '--b' },
+        { xs: ts.filter((_, i) => i % 4 === 0), ys: cnt.filter((_, i) => i % 4 === 0).map(M => Math.sqrt(M[0][0]) * 10), col: '--a', dots: true }, { xs: ts.filter((_, i) => i % 4 === 0), ys: cnt.filter((_, i) => i % 4 === 0).map(M => Math.sqrt(M[1][1])), col: '--b', dots: true }],
+      vlines: [{ x: S.p.tk, col: '--grey' }] });
+    legend([['lean error, ×10 (rad)', '--a'], ['rate error (rad/s)', '--b'], ['steady cloud', '--ink', 1]]);
+  },
+  mirror(G) {
+    const P = lqr().X, kc = kfCont();
+    const big = M => { const E = eigSym(M); return E; };
+    panel(G, { l: 0, r: .5, top: 0, bot: 1, xr: [-0.2, 0.2], yr: [-0.8, 0.8], zx: true, title: 'LQR (page 170): ring xᵀPx = 0.66 (cost canyon)', xlab: 'θ (rad)', ylab: 'θ̇ (rad/s)',
+      ells: [{ Sg: sc(inv2(P), 0.66 / 4), col: '--a' }] });
+    panel(G, { l: .5, r: 1, top: 0, bot: 1, xr: [-0.04, 0.04], yr: [-0.8, 0.8], zx: true, title: 'Kalman: 2-sd ellipse of Σ (doubt), continuous solution', xlab: 'θ error (rad), zoomed 5×',
+      ells: [{ Sg: kc.Sg, col: '--b' }] });
+    legend([['cost: long along the path home', '--a'], ['doubt: long along what the sensor cannot see', '--b']]);
+  },
+};
+const inv2 = M => { const d = M[0][0] * M[1][1] - M[0][1] * M[1][0]; return [[M[1][1] / d, -M[0][1] / d], [-M[1][0] / d, M[0][0] / d]]; };
+PLOTS.together = G => {
+  const o = closed(), ts = o.t;
+  panel(G, { top: 0, bot: .5, xr: [0, S.p.T6], yr: [-0.3, 0.3], title: 'lean θ: truth, readings, Kalman estimate θ̂ (LQR pushes with u = −K x̂)', xlab: 'time (s)',
+    series: [{ xs: ts, ys: o.y, col: '--grey', dots: true, alpha: .5 }, { xs: ts, ys: o.x.map(x => x[0]), col: '--ink', w: 2 }, { xs: ts, ys: o.xh.map(x => x[0]), col: '--b', w: 2, dash: [6, 3] }] });
+  panel(G, { top: .5, bot: 1, xr: [0, S.p.T6], yr: [-4, 4], title: 'lean rate θ̇: truth, Kalman θ̂̇, and the naive (y_k − y_k−1)/dt (red dots)', xlab: 'time (s)',
+    series: [{ xs: ts, ys: o.fd, col: '--bad', dots: true, alpha: .45 }, { xs: ts, ys: o.x.map(x => x[1]), col: '--ink', w: 2 }, { xs: ts, ys: o.xh.map(x => x[1]), col: '--b', w: 2, dash: [6, 3] }] });
+  legend([['truth', '--ink'], ['Kalman estimate', '--b', 1], ['sensor readings', '--grey'], ['naive difference of readings', '--bad']]);
+};
+PLOTS.summary = PLOTS.mirror;
+
+/* ---------- steps ---------- */
+const STEPS = [
+  ['1 · the question, and the mirror', 'intro', ['sy', 'w'], () => {
+    return `<p class="goal"><b>Goal:</b> know what the Kalman filter is for, and which LQR word each Kalman word mirrors.</p>
+    <p>LQR (page 170) used u = −Kx and assumed you <i>know</i> x = (θ, θ̇). The robot does not. It has a sensor that reads the lean every 10 ms, with noise of size σ = ${f(S.p.sy, 3)} rad, and nothing at all reads θ̇. Also the world pushes back with random torques (size w = ${f(S.p.w, 2)}). Left plot: grey dots are all you get.</p>
+    <p><b>The question:</b> from these dots, what is the best guess x̂ of both θ and θ̇, and how sure can you be?</p>
+    <p><b>Names</b> (P stays page 170's cost matrix; Σ is the doubt):</p>
+    <table class="t"><tr><th>LQR (page 170)</th><th>Kalman (here)</th><th>meaning</th></tr>
+    <tr><td class="m">P</td><td class="m">Σ</td><td>cost bowl → <b>doubt cloud</b>: covariance of the error e = x − x̂</td></tr>
+    <tr><td class="m">A</td><td class="m">Aᵀ</td><td>same gravity, read the other way</td></tr>
+    <tr><td class="m">B</td><td class="m">Cᵀ</td><td>motor's lever → <b>sensor's lever</b>: C = [1 0], it sees θ only</td></tr>
+    <tr><td class="m">S</td><td class="m">W</td><td>price of being off → <b>random torque</b> that blows the cloud up</td></tr>
+    <tr><td class="m">R</td><td class="m">N</td><td>price of torque → <b>sensor noise</b> (how little a reading is worth)</td></tr>
+    <tr><td class="m">K = R⁻¹BᵀP</td><td class="m">L = ΣCᵀN⁻¹</td><td>how hard to push → <b>how much to trust a reading</b></td></tr>
+    <tr><td>backward from a deadline</td><td>forward from the start</td><td>cost still to pay → doubt piled up so far</td></tr></table>
+    <p class="phys"><b>RL view:</b> the guess x̂ is a belief state. Page 170 assumed full observation; this page builds the belief that page 170's policy then acts on.</p>
+    <p class="do"><b>Do:</b> raise σ: the grey dots spread. Nothing on the lower plot changes: θ̇ was never measured anyway.</p>`; }],
+
+  ['2 · doubt is a cloud; gravity stretches it', 'drift', ['t', 'w'], () => {
+    const sn = cloud(false, 0.6), s = at(sn, S.p.t), cn = counted(s.E);
+    return `<p class="goal"><b>Goal:</b> see Σ as the shape of a cloud, and derive how it grows, with page 170's product rule.</p>
+    <p>Imagine 500 copies of the error e = x − x̂, one per possible world. At t = 0 they form a small cloud: σ<sub>θ</sub> = 0.02 rad, σ<sub>θ̇</sub> = 0.1 rad/s. With no sensor each copy follows the error's dynamics: gravity, plus its own random torque kick:</p>
+    <span class="eq">ė = A e + w        (x̂ has no idea about w)</span>
+    <p><b>Σ is the cloud's shape:</b> Σ = average of e eᵀ. Σ₁₁ = width² in θ, Σ₂₂ = width² in θ̇, Σ₁₂ = tilt (do θ errors and θ̇ errors go together?). The ellipse is the 2-standard-deviation ring, the same construction as page 170's rings, the manipulability ellipse, and the SVD.</p>
+    <p><b>How Σ changes, by page 170's product rule:</b></p>
+    <span class="eq">d/dt (e eᵀ) = ė eᵀ + e ėᵀ = A e eᵀ + e eᵀ Aᵀ + (noise terms)
+dΣ/dt = AΣ + ΣAᵀ + W         W = [0 0 ; 0 ${f(S.p.w, 2)}]</span>
+    <p>Compare page 170: dV/dt gave AᵀP + PA. Same product rule, A and Aᵀ swapped: the mirror. Every 10 ms this is Σ ← FΣFᵀ + W·dt with F = I + A·dt.</p>
+    <span class="eq">t = ${f(s.t, 2)} s   Σ formula = ${fme(s.Sg)}
+            Σ counted = ${fme(cn)}</span>
+    <p class="phys"><b>Physical reading:</b> gravity grows any error along θ̇ = +√9.81·θ = 3.13·θ (the pendulum's falling direction, red dashed): an error that leans and falls gets worse. The random torque only kicks θ̇. Two things shape the cloud: gravity tilts and stretches it toward the falling direction, and the random torques widen it in θ̇. Doubt grows where gravity amplifies and where the world kicks.</p>
+    <p class="do"><b>Do:</b> drag t: the cloud grows. Set w to 0.05 (almost no kicks): now only gravity acts and the cloud rotates onto the red line. The orange dashed ring (counted from the dots) sits on the blue one (formula) throughout.</p>`; }],
+
+  ['3 · a reading squeezes it: complete the square again', 'squeeze', ['ts', 'sy'], () => {
+    const s = at(cloud(false, 0.6), S.p.ts), Sg = s.Sg, L = gainD(Sg), Sp = update(Sg), v = S.p.sy ** 2;
+    return `<p class="goal"><b>Goal:</b> the sensor update, derived with the same block-matrix move as page 170 step 7.</p>
+    <p>Before a reading the doubt is Σ⁻ (after ${f(S.p.ts, 2)} s of drift). The reading is y = Cx + v = θ + v, noise width² σ² = ${fe(v)}. Stack the unknown error and what the reading will say about it; their joint covariance is a block matrix:</p>
+    <span class="eq">cov [x ; y] = [ Σ⁻     Σ⁻Cᵀ ;  CΣ⁻    CΣ⁻Cᵀ + σ² ]
+            = [ ${fe(Sg[0][0])}  ${fe(Sg[0][1])}  ${fe(Sg[0][0])} ]
+              [ ${fe(Sg[1][0])}  ${fe(Sg[1][1])}  ${fe(Sg[1][0])} ]
+              [ ${fe(Sg[0][0])}  ${fe(Sg[0][1])}  ${fe(Sg[0][0] + v)} ]</span>
+    <p>Knowing y and asking what is left of x is <b>completing the square in y</b>, which is the <b>Schur complement</b>, exactly as minimising out u was on page 170:</p>
+    <span class="eq">Σ⁺ = Σ⁻ − Σ⁻Cᵀ (CΣ⁻Cᵀ + σ²)⁻¹ CΣ⁻      gain  L = Σ⁻Cᵀ (CΣ⁻Cᵀ + σ²)⁻¹
+L = (${f(L[0], 4)}, ${f(L[1], 3)})
+Σ⁻ = ${fme(Sg)}
+Σ⁺ = ${fme(Sp)}
+σ_θ  ${f(Math.sqrt(Sg[0][0]), 4)} → ${f(Math.sqrt(Sp[0][0]), 4)} rad,   σ_θ̇  ${f(Math.sqrt(Sg[1][1]), 3)} → ${f(Math.sqrt(Sp[1][1]), 3)} rad/s</span>
+    <p>Mirror of page 170: there −PBR⁻¹BᵀP was "the credit for having a motor"; here −ΣCᵀ(…)⁻¹CΣ is <b>the credit for having a sensor</b>. Remove the sensor (C = 0) and it vanishes, just as B = 0 removed the motor.</p>
+    <p class="phys"><b>Why a θ sensor also fixes θ̇:</b> the cloud is tilted (purple line, slope Σ₂₁/Σ₁₁ = ${f(Sg[1][0] / Sg[0][0], 2)}). In it, a lean error comes with a rate error of the same sign. So learning the lean pulls the rate along: L₂ = ${f(L[1], 2)} = tilt × L₁. That is Σ₁₂ doing what P₁₂ did on page 170: two errors that go together. An untilted cloud (t = 0) would leave θ̇ untouched.</p>
+    <p>Read L like K: <b>doubt × sensor lever / (doubt it sees + sensor noise)</b>. Sure guess or noisy sensor: small L, keep the guess. Unsure guess or precise sensor: L₁ → 1, jump to the reading.</p>
+    <p class="do"><b>Do:</b> set drift time to 0: the cloud is untilted and θ̇ is not squeezed at all. Raise σ: the squeeze weakens.</p>`; }],
+
+  ['4 · predict, read, repeat: Riccati forward in time', 'filter', ['tk', 'sy', 'w'], () => {
+    const s = at(cloud(true, 1.5), S.p.tk), st = kfSteady(), cn = counted(s.E);
+    return `<p class="goal"><b>Goal:</b> run the two moves every 10 ms and watch the cloud settle. This loop is the Kalman filter.</p>
+    <span class="eq">predict:  x̂ ← F x̂ + B u dt       Σ ← FΣFᵀ + W dt
+          (gravity stretches, kicks fill)
+read:     x̂ ← x̂ + L (y − C x̂)    Σ ← Σ − ΣCᵀ(CΣCᵀ+σ²)⁻¹CΣ
+          (the sensor drains)</span>
+    <p>Each line on Σ is page 170's iteration read in the mirror: there P was swept <i>backward</i> from a deadline (value iteration); here Σ is swept <i>forward</i> from the start. Stretch and fill vs the sensor's drain: they balance and Σ stops changing.</p>
+    <span class="eq">t = ${f(s.t, 2)} s   Σ formula = ${fme(s.Sg)}
+           Σ counted = ${fme(cn)}
+steady, after a reading: ${fme(st.po)}
+steady σ_θ = ${f(Math.sqrt(st.po[0][0]), 4)} rad   σ_θ̇ = ${f(Math.sqrt(st.po[1][1]), 3)} rad/s
+steady gain L = (${f(st.L[0], 4)}, ${f(st.L[1], 3)}) per reading</span>
+    <p class="phys"><b>Physical reading:</b> the sensor σ = ${f(S.p.sy, 3)} rad per reading, but the filter knows θ to ${f(Math.sqrt(st.po[0][0]), 4)} rad: it averages many readings, weighted by the model. And θ̇, never measured, is known to ±${f(Math.sqrt(st.po[1][1]), 2)} rad/s, purely through the tilt of the cloud and the model linking θ and θ̇.</p>
+    <p class="do"><b>Do:</b> drag t: the cloud collapses in the first 0.2 s, then holds. Raise w (bigger random torques): the steady cloud is wider and L larger (trust readings more because the model is worse).</p>`; }],
+
+  ['5 · steady state: the same Riccati equation', 'mirror', ['sy', 'w'], () => {
+    const kc = kfCont(), st = kfSteady(), lq = lqr(), Sg = kc.Sg, Wm = kc.W;
+    const res = add(mul(A, Sg), mul(Sg, T(A)), Wm, sc(outer([Sg[0][0], Sg[1][0]], [Sg[0][0], Sg[0][1]]), -1 / kc.N));
+    return `<p class="goal"><b>Goal:</b> show it is literally page 170's equation with the mirror swaps.</p>
+    <p>Readings every dt with noise σ: as dt → 0 they act like a continuous sensor of noise intensity N = σ²·dt = ${fe(kc.N)}. The predict and read lines become one differential equation, and at rest:</p>
+    <span class="eq">LQR:      AᵀP + PA + S − PB R⁻¹ BᵀP = 0       K = R⁻¹BᵀP
+Kalman:   AΣ + ΣAᵀ + W − ΣCᵀN⁻¹CΣ   = 0       L = ΣCᵀN⁻¹
+swap:     A → Aᵀ,  B → Cᵀ,  S → W,  R → N,  P → Σ</span>
+    <p>So the same solver works: page 170's solver fed (Aᵀ, Cᵀ, W, N) instead of (A, B, S, R):</p>
+    <span class="eq">continuous Σ = ${fme(Sg)}
+continuous L = (${f(kc.L[0], 2)}, ${f(kc.L[1], 1)}) per second
+residual     = ${fme(res)}
+discrete Σ⁻  = ${fme(st.pr)}  (100 Hz)
+L per reading / dt = (${f(st.L[0] / DT, 2)}, ${f(st.L[1] / DT, 1)}) per second</span>
+    <p>The 100 Hz filter is close to the continuous answer (it reads in steps, so not equal). Page 170 for comparison: P = ${fm(lq.X, 2)}, K = (${f(lq.K[0], 2)}, ${f(lq.K[1], 2)}).</p>
+    <p class="phys"><b>The two ellipses</b> (left: cost, right: doubt). LQR's canyon is long along the path home: being there is cheap. Kalman's cloud is long in θ̇: that is what the sensor cannot see. Each is long along the direction its actuator or sensor cannot reach directly.</p>
+    <p class="do"><b>Do:</b> make the sensor worse (σ up): Σ grows, L shrinks, exactly as R up made K shrink on page 170.</p>`; }],
+
+  ['6 · Kalman + LQR together', 'together', ['sy', 'w', 'T6'], () => {
+    const o = closed(), n = o.t.length, i0 = Math.round(0.5 / DT);
+    let eK = 0, eN = 0; for (let k = i0; k < n; k++) { eK += (o.xh[k][1] - o.x[k][1]) ** 2; eN += (o.fd[k] - o.x[k][1]) ** 2; }
+    return `<p class="goal"><b>Goal:</b> close the loop. The filter guesses x̂ from readings; page 170's law pushes with u = −K x̂.</p>
+    <p>The true pendulum starts at θ = 0.1 rad and gets random torques. The filter starts knowing nothing (x̂ = 0). Every 10 ms: read, update x̂, push with u = −K x̂, predict.</p>
+    <span class="eq">rate error after 0.5 s (root mean square):
+  Kalman θ̂̇:                ${f(Math.sqrt(eK / (n - i0)), 3)} rad/s
+  naive (y_k − y_k−1)/dt:   ${f(Math.sqrt(eN / (n - i0)), 3)} rad/s</span>
+    <p>Differencing readings divides noise by dt = 0.01: σ·√2/dt ≈ ${f(S.p.sy * Math.SQRT2 / DT, 2)} rad/s of noise. The filter uses the model instead, so it gets θ̇ without ever measuring it.</p>
+    <p class="phys"><b>Separation:</b> K was designed on page 170 assuming x is known; L here assuming nothing about K. Put together they still work, and the closed-loop poles are the LQR poles plus the filter poles. You learn one Riccati equation and use it twice.</p>
+    <p class="do"><b>Do:</b> raise σ: θ̂ lags more but stays smooth; the naive rate (red) becomes useless.</p>`; }],
+
+  ['7 · one equation, two jobs', 'summary', [], () => {
+    const kc = kfCont(), lq = lqr();
+    return `<p class="goal"><b>Goal:</b> the whole mirror in one table.</p>
+    <table class="t"><tr><th></th><th>LQR: how hard to push</th><th>Kalman: how much to trust</th></tr>
+    <tr><td>matrix</td><td>P: cost still to pay</td><td>Σ: doubt (error covariance)</td></tr>
+    <tr><td>picture</td><td>a canyon, floor = path home</td><td>a cloud, long where the sensor is blind</td></tr>
+    <tr><td>grows by</td><td class="m">S + AᵀP + PA</td><td class="m">W + AΣ + ΣAᵀ</td></tr>
+    <tr><td>drained by</td><td class="m">PBR⁻¹BᵀP (the motor)</td><td class="m">ΣCᵀN⁻¹CΣ (the sensor)</td></tr>
+    <tr><td>drain from</td><td>completing the square in u</td><td>completing the square in y (Schur)</td></tr>
+    <tr><td>runs</td><td>backward from a deadline</td><td>forward from the start</td></tr>
+    <tr><td>gain</td><td class="m">K = R⁻¹BᵀP = (${f(lq.K[0], 2)}, ${f(lq.K[1], 2)})</td><td class="m">L = ΣCᵀN⁻¹ = (${f(kc.L[0], 1)}, ${f(kc.L[1], 0)})</td></tr>
+    <tr><td>gain says</td><td>leverage × slope / price of torque</td><td>leverage × doubt / sensor noise</td></tr>
+    <tr><td>RL view</td><td>value function of the policy</td><td>belief state the policy acts on</td></tr></table>
+    <p class="phys">Same sentence, different nouns: <b>how hard should I push, given how costly this state is and how expensive my motor is</b>, and <b>how much should I trust this reading, given how unsure I am and how noisy my sensor is</b>.</p>`; }],
+];
+
+const SL = {
+  t: ['t: drift time (s)', 0, 0.6, 0.01], ts: ['drift time before the reading (s)', 0, 0.6, 0.01], sy: ['σ: sensor noise per reading (rad)', 0.002, 0.08, 0.001],
+  w: ['w: size of random torques', 0.05, 4, 0.05], tk: ['t (s)', 0, 1.5, 0.01], T6: ['run length (s)', 1, 6, 0.5],
+};
+function controls() {
+  const keys = STEPS[S.step][2];
+  document.getElementById('ctl').innerHTML = keys.length ? keys.map(k => { const [lab, lo, hi, st] = SL[k];
+    return `<label class="ctl"><span>${lab}</span><input type="range" data-k="${k}" min="${lo}" max="${hi}" step="${st}" value="${S.p[k]}"><output>${f(S.p[k], 3)}</output></label>`; }).join('')
+    : '<span style="color:var(--muted);font-size:.84rem">No sliders in this step.</span>';
+  document.querySelectorAll('#ctl input').forEach(el => el.oninput = () => { const k = el.dataset.k; S.p[k] = +el.value; el.nextElementSibling.textContent = f(S.p[k], 3); draw(); });
+}
+function draw() { const st = STEPS[S.step], G = frame(); legend([]); PLOTS[st[1]](G); document.getElementById('exp').innerHTML = st[3](); }
+function render() {
+  const chips = document.getElementById('chips');
+  chips.innerHTML = STEPS.map((s, i) => `<button data-s="${i}" aria-current="${i === S.step}">${s[0]}</button>`).join('');
+  chips.querySelectorAll('button').forEach(b => b.onclick = () => { S.step = +b.dataset.s; render(); });
+  document.getElementById('prev').disabled = S.step === 0;
+  document.getElementById('next').disabled = S.step === STEPS.length - 1;
+  controls(); draw();
+}
+document.getElementById('prev').onclick = () => { S.step = Math.max(0, S.step - 1); render(); };
+document.getElementById('next').onclick = () => { S.step = Math.min(STEPS.length - 1, S.step + 1); render(); };
+document.getElementById('dflt').onclick = () => { S.p = { ...DEF }; controls(); draw(); };
+new ResizeObserver(() => draw()).observe(cv);
+new MutationObserver(() => draw()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+window.LAB = { S, render, lqr, kfCont, kfSteady, cloud, closed, counted };
+render();
+})();
+</script>
+</body></html>

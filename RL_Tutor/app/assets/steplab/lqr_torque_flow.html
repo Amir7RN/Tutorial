@@ -410,7 +410,7 @@ xᵀQx + xᵀPBR⁻¹BᵀPx + xᵀ(AᵀP + PA)x − 2xᵀPBR⁻¹BᵀPx = 0
 xᵀ( AᵀP + PA − P B R⁻¹ Bᵀ P + Q ) x = 0      for every x</span>
     <p>That holds for every x only if the bracket is zero:</p>
     <span class="eq">AᵀP + PA − P B R⁻¹ Bᵀ P + Q = 0     (algebraic Riccati equation)</span>
-    <p>One-number version: <span class="m">2ap − p²b²/r + q = 0</span>, a quadratic in p: the "−PBR⁻¹BᵀP" term is what makes it a Riccati equation rather than a linear one. Page 170 (the page before) works it physically, as a tank filled by q, stretched by 2a·p and drained by the motors, for LQR and for the Kalman filter.</p>
+    <p>One-number version: <span class="m">2ap − p²b²/r + q = 0</span>, a quadratic in p: the "−PBR⁻¹BᵀP" term is what makes it a Riccati equation rather than a linear one. Page 170 (the page before) derives it as continuous-time RL: Bellman's equation with the value function V = xᵀPx, completing the square in u, and nothing left over. Page 173 does the Kalman filter as its mirror.</p>
     <p>Solving it means finding the P that makes this zero. The lab does it by stepping the equation from "no future" until P stops changing (the two seconds of "solving…"). Check: biggest leftover here = ${res.toExponential(1)} of P's size.</p>
     <p><b>The cost still to come right now</b> (t = ${f(a.t, 3)} s): V = xᵀPx = <b>${f(V, 3)}</b> points. Drag the timeline: it jumps during the push and falls back to 0 as the robot recovers. The ${f(P[0][0], 1)} in the corner of P means a 0.1 rad lean alone, nothing else wrong, still costs ${f(P[0][0] * .01, 2)} points to fix.</p>
     ${mat(P, { rn: XS, cn: XS, d: 2 })}

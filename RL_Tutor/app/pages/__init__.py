@@ -107,8 +107,10 @@ HUMANOID BALANCE
    168     momentum about the ankle, the momentum matrix, why the arms help
    169     the recovery law: LQR vs counterweight vs momentum QP, measured
            (a live push-recovery lab)
-   170     LQR opened up: A, B, Bryson, Riccati, K, and where each torque goes
-   171     from this model to MuJoCo and C++: the project plan
+   170     LQR as continuous-time RL: Bellman, the Hamiltonian, Riccati (step lab)
+   171     LQR opened up: A, B, Bryson, Riccati, K, and where each torque goes
+   172     from this model to MuJoCo and C++: the project plan
+   173     the Kalman filter as LQR in a mirror (step lab)
 
 The mechanics block is appended rather than inserted so that every earlier
 page keeps its number. It derives the plant the control half assumed: where
@@ -502,7 +504,7 @@ PAGE_CLASSES = [
     # MuJoCo push-recovery project. Planar dynamics derived by hand, momentum,
     # the recovery law, and the path to MuJoCo and C++ (ctrlcore/upperbody.py).
     # ======================================================================
-    *BALANCE_PAGES,        # 166-172 machine, derivation, momentum, recovery law, Riccati, LQR, project
+    *BALANCE_PAGES,        # 166-173 machine, derivation, momentum, recovery law, LQR as RL, LQR, project, Kalman
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read
