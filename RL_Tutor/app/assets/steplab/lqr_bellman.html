@@ -22,7 +22,7 @@
 </head><body>
 <div class="wrap">
   <div class="top"><h1>LQR is continuous-time reinforcement learning with the value function written as a matrix</h1>
-    <p>An inverted pendulum (1 m, 1 kg). State x = (lean θ, lean rate θ̇), action u = torque. Every step derives one term, with the numbers of this pendulum.</p></div>
+    <p>An inverted pendulum (1 m, 1 kg). State x = (lean θ, lean rate θ̇), action u = torque. Step 1 says when to use LQR and when RL; then every step derives one term, with this pendulum's numbers and the same five words throughout.</p></div>
   <div class="grid">
     <div class="left">
       <div class="card plot"><canvas id="pl"></canvas></div>
@@ -42,7 +42,7 @@
 (() => {
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const f = (x, d = 3) => !isFinite(x) ? '∞' : (Math.abs(x) < 0.5 * Math.pow(10, -d) ? 0 : x).toFixed(d);
-const DEF = { th: 0.1, om: 0, du: 0, dt: 0.05, s1: 10, s2: 1, rr: 1, al: 1.3, tau: 0.5, gl: 9.81 };
+const DEF = { th: 0.1, om: 0, du: 0, t: 0.3, dt: 0.01, s1: 10, s2: 1, rr: 1, al: 1.3, tau: 0.5, gl: 9.81 };
 const S = { step: 0, p: { ...DEF } };
 
 /* ---------- 2x2 linear algebra ---------- */
@@ -212,99 +212,113 @@ function pendulum(G, cx, cy, L, th, u, col = '--a') {
 
 /* ---------- plots ---------- */
 const PLOTS = {
+  lin(G) {
+    const { c } = G, ds = lin(0, 60, 240), rad = d => d * Math.PI / 180, gl = S.p.gl;
+    panel(G, { l: 0, r: .55, top: 0, bot: 1, xr: [0, 60], yr: [0, gl * rad(60) * 1.05], title: 'gravity\'s pull on the lean, per second²: true (sin θ) vs linearised (θ)', xlab: 'lean θ (degrees)',
+      series: [{ xs: ds, ys: ds.map(d => gl * rad(d)), col: '--a', w: 2.5, dash: [6, 4] }, { xs: ds, ys: ds.map(d => gl * Math.sin(rad(d))), col: '--ink', w: 2.5 }],
+      vlines: [{ x: 8.4, col: '--bad' }],
+      marks: [10, 20, 30].map(d => ({ x: d, y: gl * Math.sin(rad(d)), col: '--ink', r: 4, label: d + '°', below: true })) });
+    panel(G, { l: .55, r: 1, top: 0, bot: 1, xr: [0, 60], yr: [0, 15], title: 'error of the linear model (%)', xlab: 'lean θ (degrees)',
+      series: [{ xs: ds, ys: ds.map(d => d ? 100 * (1 - Math.sin(rad(d)) / rad(d)) : 0), col: '--b', w: 2.5 }],
+      vlines: [{ x: 8.4, col: '--bad' }],
+      marks: [10, 20, 30].map(d => ({ x: d, y: 100 * (1 - Math.sin(rad(d)) / rad(d)), col: '--b', r: 4, label: f(100 * (1 - Math.sin(rad(d)) / rad(d)), 1) + '% at ' + d + '°', right: true })) });
+    legend([['true gravity, 9.81·sin θ', '--ink'], ['linear model, 9.81·θ', '--a', 1], ['your G1 plane, page 169: the largest lean LQR survived (8.4°, push 80 N)', '--bad', 1]]);
+  },
   intro(G) {
     const { c, W, H } = G, sol = solve(), x0 = X0(), sim = run(sol.K, x0, 3), free = run([0, 0], x0, 1.2);
-    const t = Math.min(S.p.tau, sim.ts[sim.ts.length - 1]), i = Math.round(t / sim.h), x = sim.xs[i], u = -dot(sol.K, x);
-    pendulum(G, W * .16, H * .7, Math.min(W * .12, H * .4), x[0] * 2.5, u);
-    text(c, 'pendulum at t = ' + f(t, 2) + ' s', W * .16, H * .12, '--ink', 'center', 12, true);
-    text(c, '(lean drawn 2.5× larger)', W * .16, H * .12 + 15, '--muted', 'center', 11);
-    vmap(G, { l: .33, top: 0, bot: 1, P: sol.P, title: 'the state plane: where the pendulum is, and the map V(x) shaded',
-      series: [{ xs: free.xs.map(p => p[0]), ys: free.xs.map(p => p[1]), col: '--bad', w: 2, dash: [6, 4] }, { xs: sim.xs.map(p => p[0]), ys: sim.xs.map(p => p[1]), col: '--a', w: 3 }],
-      marks: [{ x: x0[0], y: x0[1], col: '--ink', label: 'start' }, { x: x[0], y: x[1], col: '--b', r: 6, label: 'now', below: true }] });
-    legend([['no torque: falls', '--bad', 1], ['LQR torque u = −Kx', '--a'], ['shading: V(x), cost still to pay', '--a']]);
+    const t = Math.min(S.p.t, sim.ts[sim.ts.length - 1]), i = Math.round(t / sim.h), x = sim.xs[i], u = -dot(sol.K, x);
+    pendulum(G, W * .14, H * .7, Math.min(W * .11, H * .4), x[0] * 2.5, u);
+    text(c, 'pendulum at t = ' + f(t, 2) + ' s', W * .14, H * .12, '--ink', 'center', 12, true);
+    text(c, '(lean drawn 2.5× larger)', W * .14, H * .12 + 15, '--muted', 'center', 11);
+    const step = 5, ts = sim.ts.filter((_, k) => k % step === 0), xs = sim.xs.filter((_, k) => k % step === 0);
+    panel(G, { l: .3, top: 0, bot: .5, xr: [0, 3], yr: [-0.05, 0.3], title: 'lean θ (rad) after the push', xlab: '',
+      series: [{ xs: free.ts, ys: free.xs.map(p => p[0]), col: '--bad', dash: [6, 4] }, { xs: ts, ys: xs.map(p => p[0]), col: '--a', w: 2.5 }],
+      vlines: [{ x: t, col: '--grey' }] });
+    panel(G, { l: .3, top: .5, bot: 1, xr: [0, 3], yr: [Math.min(-0.5, ...xs.map(p => -dot(sol.K, p))) * 1.1, 0.5], title: 'torque u = −Kx', xlab: 'time t (s)',
+      series: [{ xs: ts, ys: xs.map(p => -dot(sol.K, p)), col: '--b', w: 2.5 }], vlines: [{ x: t, col: '--grey' }] });
+    legend([['no torque: it falls', '--bad', 1], ['LQR torque: it comes back', '--a'], ['the torque it uses', '--b']]);
   },
-  map(G) {
-    const sol = solve(), x = X0(), sim = run(sol.K, x, 8);
-    vmap(G, { l: 0, r: .6, top: 0, bot: 1, P: sol.P, title: 'the map: V(θ, θ̇) = xᵀPx, rings of equal cost',
-      series: [{ xs: sim.xs.map(p => p[0]), ys: sim.xs.map(p => p[1]), col: '--b', w: 2 }],
-      marks: [{ x: x[0], y: x[1], col: '--ink', r: 6, label: 'x: V = ' + f(quad(sol.P, x), 3) }] });
+  cost(G) {
+    const { c } = G, sol = solve(), P = sol.P, x = X0(), sim = run(sol.K, x, 8);
+    const sit = [['lean only', [.1, 0]], ['rate only', [0, .1]], ['lean + falling', [.1, .1]], ['lean + coming back', [.1, -.1]]], vals = sit.map(z => quad(P, z[1]));
+    panel(G, { l: 0, r: .45, top: 0, bot: 1, xr: [0, 4], yr: [0, Math.max(...vals) * 1.2], title: 'cost-to-go V = xᵀPx of four states (0.1 rad, 0.1 rad/s)', xlab: '',
+      over: ({ X, Y }) => sit.forEach(([lab], k) => { c.fillStyle = css(['--a', '--c', '--bad', '--d'][k]); c.globalAlpha = .75; c.fillRect(X(k + .15), Y(vals[k]), X(k + .85) - X(k + .15), Y(0) - Y(vals[k])); c.globalAlpha = 1;
+        text(c, f(vals[k], 3), X(k + .5), Y(vals[k]) - 6, '--ink', 'center', 12, true); text(c, lab, X(k + .5), Y(0) + 14, '--ink', 'center', 11); }) });
     const n = Math.min(sim.ts.length - 1, Math.round(2.5 / sim.h)), ts = [], paid = [], left = [];
-    for (let j = 0; j <= n; j += 10) { ts.push(sim.ts[j]); paid.push(sim.cost[j]); left.push(quad(sol.P, sim.xs[j])); }
-    const V0 = quad(sol.P, x), top = Math.max(.01, V0 * 1.1);
-    panel(G, { l: .6, top: 0, bot: 1, xr: [0, ts[ts.length - 1]], yr: [0, top], title: 'along the run: paid so far + V(x(t))', xlab: 'time t (s)',
-      series: [{ xs: ts, ys: paid, col: '--b', dash: [6, 4] }, { xs: ts, ys: left, col: '--a', w: 3 }, { xs: ts, ys: ts.map((_, k) => paid[k] + left[k]), col: '--ink', w: 1.5 }] });
-    legend([['V(x(t)) = xᵀPx: still to pay', '--a'], ['paid so far (sunk)', '--b', 1], ['sum: flat = V(x₀)', '--ink']]);
+    for (let j = 0; j <= n; j += 10) { ts.push(sim.ts[j]); paid.push(sim.cost[j]); left.push(quad(P, sim.xs[j])); }
+    const V0 = quad(P, x);
+    panel(G, { l: .45, top: 0, bot: 1, xr: [0, ts[ts.length - 1]], yr: [0, Math.max(.01, V0 * 1.15)], title: 'one run from your start: paid so far + cost-to-go', xlab: 'time t (s)',
+      series: [{ xs: ts, ys: paid, col: '--b', dash: [6, 4], w: 2.5 }, { xs: ts, ys: left, col: '--a', w: 3 }, { xs: ts, ys: ts.map((_, k) => paid[k] + left[k]), col: '--ink', w: 1.5 }] });
+    legend([['cost-to-go V(x(t))', '--a'], ['cost paid so far', '--b', 1], ['their sum: flat at V(start)', '--ink']]);
   },
   bellman(G) {
-    const { c, W, H } = G, sol = solve(), x = X0(), { dt, du } = S.p, us = -dot(sol.K, x), u = us + du, s = sys();
+    const { c, W, H } = G, sol = solve(), x = X0(), { dt, du } = S.p, us = -dot(sol.K, x), u = us + du, s = sys(), sim = run(sol.K, x, 8);
     const xd = xdot(x, u), xn = [x[0] + xd[0] * dt, x[1] + xd[1] * dt], cst = (quad(s.Sm, x) + s.r * u * u) * dt, Vn = quad(sol.P, xn), V = quad(sol.P, x);
-    vmap(G, { l: 0, r: .58, top: 0, bot: 1, P: sol.P, title: 'one small step dt from x, with push u',
-      over: ({ X, Y }) => arrow(c, X(x[0]), Y(x[1]), X(xn[0]), Y(xn[1]), '--b', 3),
-      marks: [{ x: x[0], y: x[1], col: '--ink', r: 6, label: 'x' }, { x: xn[0], y: xn[1], col: '--b', r: 5, label: 'x_next', below: true }] });
+    const n = Math.round(1.2 / sim.h), ts = [], paid = [], left = [];
+    for (let j = 0; j <= n; j += 5) { ts.push(sim.ts[j]); paid.push(sim.cost[j]); left.push(quad(sol.P, sim.xs[j])); }
+    panel(G, { l: 0, r: .58, top: 0, bot: 1, xr: [0, 1.2], yr: [0, V * 1.15], title: 'the first small step dt of the best run', xlab: 'time t (s)',
+      series: [{ xs: ts, ys: paid, col: '--b', dash: [6, 4], w: 2.5 }, { xs: ts, ys: left, col: '--a', w: 3 }, { xs: ts, ys: ts.map((_, k) => paid[k] + left[k]), col: '--ink', w: 1.5 }],
+      vlines: [{ x: 0, col: '--grey' }, { x: dt, col: '--grey' }],
+      marks: [{ x: 0, y: V, col: '--a', label: 'V(x) now' }, { x: dt, y: quad(sol.P, sim.xs[Math.round(dt / sim.h)]), col: '--a', label: 'V(x_next)', below: true }] });
     const bx = W * .66, bw = W * .1, base = H * .86, top = H * .14, sc1 = (base - top) / Math.max(V, cst + Vn) / 1.05;
-    const bar = (x0, h0, h, col, lab, val) => { c.fillStyle = css(col); c.globalAlpha = .75; c.fillRect(x0, base - (h0 + h) * sc1, bw, h * sc1); c.globalAlpha = 1; if (h * sc1 > 14) text(c, lab, x0 + bw / 2, base - (h0 + h / 2) * sc1 + 4, '--ink', 'center', 11, true); };
+    const bar = (x0, h0, h, col, lab) => { c.fillStyle = css(col); c.globalAlpha = .75; c.fillRect(x0, base - (h0 + h) * sc1, bw, h * sc1); c.globalAlpha = 1; if (h * sc1 > 14) text(c, lab, x0 + bw / 2, base - (h0 + h / 2) * sc1 + 4, '--ink', 'center', 11, true); };
     bar(bx, 0, V, '--a', 'V(x)'); text(c, f(V, 4), bx + bw / 2, base - V * sc1 - 6, '--a', 'center', 11, true);
-    bar(bx + bw * 1.6, 0, Vn, '--a', 'V(x_next)'); bar(bx + bw * 1.6, Vn, cst, '--b', 'cost·dt');
+    bar(bx + bw * 1.6, 0, Vn, '--a', 'V(x_next)'); bar(bx + bw * 1.6, Vn, cst, '--b', 'paid in dt');
     text(c, f(Vn + cst, 4), bx + bw * 1.6 + bw / 2, base - (Vn + cst) * sc1 - 6, '--b', 'center', 11, true);
     c.strokeStyle = css('--ink'); c.lineWidth = 1; c.beginPath(); c.moveTo(bx - 8, base); c.lineTo(bx + bw * 2.8, base); c.stroke();
-    text(c, 'left side', bx + bw / 2, base + 16, '--muted', 'center', 11); text(c, 'right side', bx + bw * 2.1, base + 16, '--muted', 'center', 11);
-    text(c, 'gap ' + f(Vn + cst - V, 5), bx + bw * 1.3, top - 4, '--ink', 'center', 12, true);
-    legend([['V: the map', '--a'], ['cost paid during dt', '--b'], ['push arrow: where the step lands', '--b']]);
+    text(c, 'cost-to-go now', bx + bw / 2, base + 16, '--muted', 'center', 11); text(c, 'next dt + after', bx + bw * 2.1, base + 16, '--muted', 'center', 11);
+    text(c, du ? 'your push u* + ' + f(du, 2) : 'best push u*', bx + bw * 1.3, top - 22, '--ink', 'center', 12, true);
+    text(c, 'difference ' + f(Vn + cst - V, 5), bx + bw * 1.3, top - 4, '--ink', 'center', 12, true);
+    legend([['cost-to-go V(x(t))', '--a'], ['cost paid so far', '--b', 1], ['sum', '--ink'], ['bars: one step dt with your push', '--grey']]);
   },
   slope(G) {
-    const { c } = G, sol = solve(), x = X0(), us = -dot(sol.K, x) + S.p.du, xd = xdot(x, us), A = sys().A, ax = mv(A, x), bu = [0, us];
-    const k = 0.15;
-    vmap(G, { l: 0, r: .55, top: 0, bot: 1, P: sol.P, title: 'velocity ẋ = Ax (gravity) + Bu (push), drawn for 0.15 s',
-      over: ({ X, Y }) => { arrow(c, X(x[0]), Y(x[1]), X(x[0] + k * ax[0]), Y(x[1] + k * ax[1]), '--bad', 2.5);
-        arrow(c, X(x[0] + k * ax[0]), Y(x[1] + k * ax[1]), X(x[0] + k * xd[0]), Y(x[1] + k * xd[1]), '--b', 2.5);
-        arrow(c, X(x[0]), Y(x[1]), X(x[0] + k * xd[0]), Y(x[1] + k * xd[1]), '--ink', 3); },
-      marks: [{ x: x[0], y: x[1], col: '--ink', r: 5, label: 'x' }] });
-    const hs = lin(0, 0.12, 120), Vt = hs.map(h => quad(sol.P, [x[0] + h * xd[0], x[1] + h * xd[1]])), V0 = quad(sol.P, x), dV = 2 * dot(x, mv(sol.P, xd));
-    const lo = Math.min(...Vt, V0 + dV * 0.12), hi = Math.max(...Vt, V0 + dV * 0.12);
-    panel(G, { l: .55, top: 0, bot: 1, xr: [0, 0.12], yr: [Math.min(0, lo), hi * 1.08 + 1e-6], title: 'V along the straight line x + ẋ·h, and its tangent', xlab: 'h (s)',
-      series: [{ xs: hs, ys: Vt, col: '--a', w: 3 }, { xs: [0, 0.12], ys: [V0, V0 + dV * 0.12], col: '--ink', dash: [6, 4] }],
-      marks: [{ x: 0, y: V0, col: '--ink', label: 'slope dV/dt = ' + f(dV, 3) }] });
-    legend([['Ax: gravity', '--bad'], ['Bu: torque (only moves θ̇)', '--b'], ['ẋ: the sum', '--ink'], ['tangent 2xᵀPẋ', '--ink', 1]]);
+    const sol = solve(), P = sol.P, s = sys(), sim = run(sol.K, X0(), 8), n = Math.round(2.5 / sim.h), t = S.p.t, i = Math.min(n, Math.round(t / sim.h));
+    const ts = [], Vt = [], cr = [], dv = [];
+    for (let j = 0; j <= n; j += 5) { const x = sim.xs[j], u = -dot(sol.K, x); ts.push(sim.ts[j]); Vt.push(quad(P, x)); cr.push(quad(s.Sm, x) + s.r * u * u); dv.push(-2 * dot(x, mv(P, xdot(x, u)))); }
+    const x = sim.xs[i], u = -dot(sol.K, x), V = quad(P, x), d = 2 * dot(x, mv(P, xdot(x, u)));
+    panel(G, { l: 0, r: .5, top: 0, bot: 1, xr: [0, 2.5], yr: [0, Vt[0] * 1.1], title: 'cost-to-go V(x(t)) along the run, and its slope at t', xlab: 'time t (s)',
+      series: [{ xs: ts, ys: Vt, col: '--a', w: 3 }, { xs: [Math.max(0, t - .3), Math.min(2.5, t + .3)], ys: [V + d * (Math.max(0, t - .3) - t), V + d * (Math.min(2.5, t + .3) - t)], col: '--ink', w: 2, dash: [6, 4] }],
+      marks: [{ x: t, y: V, col: '--ink', label: 'dV/dt = ' + f(d, 3) + ' per s' }] });
+    panel(G, { l: .5, r: 1, top: 0, bot: 1, xr: [0, 2.5], yr: [0, Math.max(...cr) * 1.1], title: 'cost rate paid now (orange) and −dV/dt (purple dots)', xlab: 'time t (s)',
+      series: [{ xs: ts, ys: cr, col: '--b', w: 3 }, { xs: ts, ys: dv, col: '--d', dots: true, every: 4, sz: 2.6 }], vlines: [{ x: t, col: '--grey' }] });
+    legend([['cost-to-go V', '--a'], ['tangent: slope = dV/dt', '--ink', 1], ['cost rate xᵀSx + uᵀRu', '--b'], ['−dV/dt = −2xᵀP(Ax+Bu)', '--d']]);
   },
   hpar(G) {
     const sol = solve(), x = X0(), s = sys(), P = sol.P, us = -dot(sol.K, x), u = us + S.p.du;
-    const st = quad(s.Sm, x), dr = 2 * dot(x, mv(P, mv(s.A, x))), pb = 2 * dot(x, mv(P, s.b)), w = Math.max(1, Math.abs(us) * 2.2), us_ = lin(us - w, us + w, 200);
-    const Hs = us_.map(v => st + dr + s.r * v * v + pb * v), lo = Math.min(...Hs, st + dr), hi = Math.max(...Hs.slice(0, 20), ...Hs.slice(-20));
-    panel(G, { top: 0, bot: 1, xr: [us - w, us + w], yr: [lo - .1 * Math.abs(lo) - .1, hi], title: 'H(x, u) at this x, as a function of the push u', xlab: 'torque u',
-      series: [{ xs: us_, ys: Hs, col: '--ink', w: 3 }, { xs: us_, ys: us_.map(v => s.r * v * v), col: '--b', dash: [6, 4] }, { xs: us_, ys: us_.map(v => pb * v), col: '--c', dash: [6, 4] },
-        { xs: us_, ys: us_.map(() => st + dr), col: '--a', dash: [2, 3] }],
+    const st = quad(s.Sm, x), dr = 2 * dot(x, mv(P, mv(s.A, x))), pb = 2 * dot(x, mv(P, s.b)), w = Math.max(1, Math.abs(us) * 2.2), xs = lin(us - w, us + w, 200);
+    const cr = xs.map(v => st + s.r * v * v), dv = xs.map(v => dr + pb * v), Hs = xs.map((v, k) => cr[k] + dv[k]);
+    const all = [...cr, ...dv, ...Hs], lo = Math.min(...all), hi = Math.max(...all);
+    panel(G, { top: 0, bot: 1, xr: [us - w, us + w], yr: [lo, hi], title: 'at your start state: score H of every push u = cost rate now + change of cost-to-go', xlab: 'torque u',
+      series: [{ xs, ys: cr, col: '--b', w: 2.5, dash: [6, 4] }, { xs, ys: dv, col: '--c', w: 2.5, dash: [6, 4] }, { xs, ys: Hs, col: '--ink', w: 3 }],
       vlines: [{ x: u, col: '--grey' }],
-      marks: [{ x: us, y: 0, col: '--d', label: 'best u* = ' + f(us, 3) + ', H = 0', below: true }, { x: u, y: st + dr + s.r * u * u + pb * u, col: '--b', label: 'your u: H = ' + f(st + dr + s.r * u * u + pb * u, 3) }] });
-    legend([['H: the sum', '--ink'], ['uᵀRu: effort', '--b', 1], ['2xᵀPBu: push lowers the debt', '--c', 1], ['xᵀ(S + AᵀP + PA)x: no u in it', '--a', 1]]);
+      marks: [{ x: us, y: 0, col: '--d', label: 'best u* = ' + f(us, 3) + ':  H = 0', below: true }, ...(Math.abs(S.p.du) < 1e-9 ? [] : [{ x: u, y: st + s.r * u * u + dr + pb * u, col: '--b', label: 'your u: H = ' + f(st + s.r * u * u + dr + pb * u, 3) }])] });
+    legend([['cost rate xᵀSx + uᵀRu', '--b', 1], ['dV/dt = 2xᵀP(Ax + Bu)', '--c', 1], ['H = their sum', '--ink']]);
   },
   square(G) {
-    const { c } = G, sol = solve(), x = X0(), s = sys(), P = sol.P, g = mv(P, x).map(v => 2 * v), bb = dot(s.b, mv(P, x)), us = -bb / s.r;
+    const { c, W, H } = G, sol = solve(), x = X0(), s = sys(), P = sol.P, bb = dot(s.b, mv(P, x)), us = -bb / s.r;
     const w = Math.max(1, Math.abs(us) * 2.2), xs = lin(us - w, us + w, 200), lift = -bb * bb / s.r;
-    panel(G, { l: 0, r: .5, top: 0, bot: 1, xr: [us - w, us + w], yr: [lift * 1.25 - .1, Math.max(1, s.r * w * w + lift)], title: 'u-part: R u² + 2(BᵀPx) u = R(u − u*)² − (BᵀPx)²/R', xlab: 'torque u',
+    panel(G, { l: 0, r: .52, top: 0, bot: 1, xr: [us - w, us + w], yr: [lift * 1.25 - .1, Math.max(1, s.r * w * w + lift)], title: 'u-part of H: R u² + 2(BᵀPx) u = R(u − u*)² − (BᵀPx)²/R', xlab: 'torque u',
       series: [{ xs, ys: xs.map(v => s.r * v * v + 2 * bb * v), col: '--ink', w: 3 }, { xs, ys: xs.map(() => lift), col: '--bad', dash: [6, 4] }],
-      marks: [{ x: us, y: lift, col: '--d', label: 'u* = −BᵀPx/R = ' + f(us, 3) }] });
-    vmap(G, { l: .5, r: 1, top: 0, bot: 1, P, title: 'uphill 2Px, and the part the torque can reach (θ̇ only)',
-      over: ({ X, Y }) => { const k = 0.15 / Math.max(1e-9, Math.abs(g[0]) / (TH[1] - TH[0]), Math.abs(g[1]) / (OM[1] - OM[0]));
-        arrow(c, X(x[0]), Y(x[1]), X(x[0] + k * g[0]), Y(x[1] + k * g[1]), '--bad', 2.5);
-        arrow(c, X(x[0]), Y(x[1]), X(x[0]), Y(x[1] + k * g[1]), '--c', 3);
-        arrow(c, X(x[0]), Y(x[1]), X(x[0]), Y(x[1] - Math.sign(g[1]) * 0.25 * (OM[1] - OM[0])), '--d', 3); },
-      marks: [{ x: x[0], y: x[1], col: '--ink', r: 5, label: 'x' }] });
-    legend([['uphill 2Px (arrow scaled)', '--bad'], ['Bᵀ picks the θ̇ part: 2BᵀPx', '--c'], ['push u* points the other way', '--d']]);
+      marks: [{ x: us, y: lift, col: '--d', label: 'u* = ' + f(us, 3) + ', leftover ' + f(lift, 3) }] });
+    const x0 = W * .58, y0 = H * .2, cw = W * .1, ch = 34;
+    text(c, 'P', x0 + cw, y0 - 14, '--ink', 'center', 13, true);
+    P.forEach((r, i) => r.forEach((v, j) => { c.fillStyle = css(i === 1 ? '--hi' : '--inset'); c.fillRect(x0 + j * cw, y0 + i * ch, cw - 4, ch - 4); c.strokeStyle = css(i === 1 ? '--c' : '--line'); c.lineWidth = i === 1 ? 2 : 1; c.strokeRect(x0 + j * cw, y0 + i * ch, cw - 4, ch - 4);
+      text(c, f(v, 2), x0 + j * cw + cw / 2 - 2, y0 + i * ch + ch / 2 + 2, '--ink', 'center', 13, true); }));
+    text(c, 'Bᵀ = [0 1] picks row 2 (the torque only reaches θ̇)', x0, y0 + 2 * ch + 18, '--c', 'left', 11, true);
+    arrow(c, x0 + cw, y0 + 2 * ch + 28, x0 + cw, y0 + 2 * ch + 62, '--c', 2.5);
+    text(c, 'K = R⁻¹ · row 2 = [' + f(sol.K[0], 2) + ', ' + f(sol.K[1], 2) + ']', x0, y0 + 2 * ch + 82, '--ink', 'left', 13, true);
+    text(c, 'u* = −K x = −(' + f(sol.K[0], 2) + '·' + f(x[0], 3) + ' + ' + f(sol.K[1], 2) + '·' + f(x[1], 3) + ') = ' + f(us, 3), x0, y0 + 2 * ch + 106, '--d', 'left', 12, true);
+    legend([['R(u − u*)² + leftover', '--ink'], ['leftover −(BᵀPx)²/R', '--bad', 1]]);
   },
   leftover(G) {
-    const { al } = S.p, sol = solve(), x0 = X0(), als = lin(0.55, 1.6, 120);
-    const ent = als.map(a => leftover(sc(sol.P, a), S.p));
-    const L = leftover(sc(sol.P, al), S.p), all = ent.flatMap(M => [M[0][0], M[0][1], M[1][1]]);
-    panel(G, { l: 0, r: .55, top: 0, bot: 1, xr: [0.55, 1.6], yr: [Math.min(...all), Math.max(...all)], title: 'leftover S + AᵀP + PA − PBR⁻¹BᵀP for trial P = α·P*', xlab: 'α (1 = the solution)',
-      series: [{ xs: als, ys: ent.map(M => M[0][0]), col: '--a' }, { xs: als, ys: ent.map(M => M[0][1]), col: '--c' }, { xs: als, ys: ent.map(M => M[1][1]), col: '--b' }],
-      vlines: [{ x: al, col: '--grey' }, { x: 1, col: '--d' }] });
-    const Pt = sc(sol.P, al), Kt = gainOf(Pt, S.p), sim = run(Kt, x0, 10), promised = quad(Pt, x0), paid = sim.total;
-    const top = Math.max(promised, isFinite(paid) ? paid : 0) * 1.25 + 1e-6, sc2 = v => Math.min(v, top);
-    panel(G, { l: .55, top: 0, bot: 1, xr: [0, 3], yr: [0, top], title: 'the bowl promises; the rule it implies pays', xlab: '',
-      over: ({ X, Y }) => { const c = G.c; [[promised, '--a', 'promised xᵀPx', 0.4], [paid, '--b', 'paid by K = R⁻¹BᵀP', 1.6]].forEach(([v, col, lab, xp]) => {
-        c.fillStyle = css(col); c.globalAlpha = .75; c.fillRect(X(xp), Y(sc2(isFinite(v) ? v : top)), X(xp + 1) - X(xp), Y(0) - Y(sc2(isFinite(v) ? v : top))); c.globalAlpha = 1;
-        text(c, lab, X(xp + .5), Y(0) + 14, col, 'center', 11, true); text(c, isFinite(v) ? f(v, 4) : 'falls: ∞', X(xp + .5), Y(sc2(isFinite(v) ? v : top)) - 6, col, 'center', 12, true); }); } });
-    legend([['leftover (1,1)', '--a'], ['leftover (1,2)', '--c'], ['leftover (2,2)', '--b'], ['α = 1: all zero', '--d', 1]]);
+    const { al } = S.p, sol = solve(), x0 = X0(), Pt = sc(sol.P, al), Kt = gainOf(Pt, S.p), sim = run(Kt, x0, 10);
+    const n = Math.min(sim.ts.length - 1, Math.round(2.5 / sim.h)), ts = [], paid = [], prom = [];
+    for (let j = 0; j <= n; j += 10) { ts.push(sim.ts[j]); paid.push(sim.cost[j]); prom.push(quad(Pt, sim.xs[j])); }
+    const V0 = quad(Pt, x0), top = Math.max(V0, quad(sol.P, x0), ...paid.filter(isFinite)) * 1.2;
+    panel(G, { top: 0, bot: 1, xr: [0, 2.5], yr: [0, top], title: 'trial P = ' + f(al, 2) + '·P*: run its rule K = R⁻¹BᵀP; is paid so far + promised cost-to-go flat?' + (sim.fell ? '  (the rule is too weak: it falls)' : ''), xlab: 'time t (s)',
+      series: [{ xs: ts, ys: paid, col: '--b', dash: [6, 4], w: 2.5 }, { xs: ts, ys: prom, col: '--a', w: 3 }, { xs: ts, ys: ts.map((_, k) => paid[k] + prom[k]), col: '--ink', w: 2 }, { xs: [0, 2.5], ys: [V0, V0], col: '--grey', dash: [3, 4], w: 1 }],
+      marks: [{ x: 0, y: V0, col: '--a', label: 'promised at the start: ' + f(V0, 4) }, ...(sim.fell ? [] : [{ x: 2.5, y: sim.total, col: '--b', label: 'really paid: ' + f(sim.total, 4), right: true, below: true }])] });
+    legend([['promised cost-to-go xᵀPx(t)', '--a'], ['cost paid so far', '--b', 1], ['sum', '--ink'], ['flat reference', '--grey', 1]]);
   },
   iter(G) {
     const bw = backward(), sol = solve(), { tau } = S.p, i = Math.min(bw.Ps.length - 1, Math.round(tau / bw.h)), Pt = bw.Ps[i];
@@ -323,191 +337,207 @@ const PLOTS = {
     const sol = solve(), x0 = X0(), sim = run(sol.K, x0, 6), E = eigSym(sol.P), ev = sol.poles;
     const lines = ev.filter(e => !e.im).map(e => ({ slope: e.re, col: '--d' }));
     vmap(G, { l: 0, r: 1, top: 0, bot: 1, P: sol.P, axes: true, lines, levels: [0.02, 0.1, 0.3, 0.66, 1.2, 2.5],
-      title: 'the canyon: eigen-axes of P (purple dotted: closed-loop eigenvectors). Axes not to the same scale.',
+      title: 'rings of equal cost-to-go; red = expensive direction, green = cheap, purple dotted = closed-loop directions (axes not to scale)',
       series: [{ xs: sim.xs.map(p => p[0]), ys: sim.xs.map(p => p[1]), col: '--b', dots: true, every: 15, sz: 2.4 }],
       marks: [{ x: x0[0], y: x0[1], col: '--ink', r: 6, label: 'start' }] });
-    legend([['steep wall, λ = ' + f(E[1].l, 2), '--bad', 1], ['canyon floor, λ = ' + f(E[0].l, 3), '--c', 1], ['closed-loop eigenvectors', '--d', 1], ['the run, a dot every 30 ms', '--b']]);
+    legend([['expensive direction, λ = ' + f(E[1].l, 2), '--bad', 1], ['cheap direction, λ = ' + f(E[0].l, 3), '--c', 1], ['closed-loop eigenvectors', '--d', 1], ['the run, a dot every 30 ms', '--b']]);
   },
 };
 
 /* ---------- steps ---------- */
+const TERMS = `<table class="t"><tr><th>word</th><th>symbol</th><th>meaning, the same on every step</th></tr>
+    <tr><td>cost rate</td><td class="m">c = xᵀSx + uᵀRu</td><td>what you pay <i>per second, right now</i>: being off (S) plus using torque (R)</td></tr>
+    <tr><td>cost paid so far</td><td class="m">∫₀ᵗ c dt</td><td>everything already paid since the push; gone, it never affects a decision</td></tr>
+    <tr><td>cost-to-go</td><td class="m">V(x) = xᵀPx</td><td>everything you <i>will still</i> pay from state x on, if you push the best way from now on</td></tr>
+    <tr><td>its rate</td><td class="m">dV/dt</td><td>how fast the cost-to-go changes per second as the state moves</td></tr>
+    <tr><td>score of a push</td><td class="m">H(x,u) = c + dV/dt</td><td>the action-value function: cost rate now + the change it causes in the cost-to-go</td></tr></table>`;
+
 const STEPS = [
-  ['1 · the RL dictionary', 'intro', ['th', 'om', 'tau'], () => {
+  ['1 · LQR or RL? (your humanoid)', 'lin', [], () => `<p class="goal"><b>Goal:</b> know when to use LQR and when RL, before deriving anything.</p>
+    <p>Both answer the same question: <i>which torque, in which state, makes the total cost (or reward) best?</i> They differ in what they need and where they work.</p>
+    <table class="t"><tr><th></th><th>LQR</th><th>RL</th></tr>
+    <tr><td>needs</td><td>a model ẋ = Ax + Bu (from M, c, g, linearised at standing, page 171)</td><td>no model: it learns from experience, millions of simulated pushes</td></tr>
+    <tr><td>cost</td><td>quadratic only: xᵀSx + uᵀRu</td><td>any reward: "+1 per second standing, −100 if it falls", limits, energy</td></tr>
+    <tr><td>cost-to-go V</td><td>exactly xᵀPx: 3 numbers here, 36 for the G1's 8 states</td><td>a neural network with thousands of weights, approximately</td></tr>
+    <tr><td>found by</td><td>one equation (Riccati), milliseconds</td><td>training, hours</td></tr>
+    <tr><td>works where</td><td>near the point you linearised</td><td>wherever it was trained</td></tr>
+    <tr><td>torque limits, foot tipping, stepping</td><td>ignored: it may ask for torque the foot cannot give</td><td>learned, if they happen in training</td></tr>
+    <tr><td>guarantee</td><td>stability proven near standing; every gain readable</td><td>none in general; sim-to-real gap</td></tr>
+    <tr><td>in this tutor</td><td>value iteration with a known model, page 70; model-based, page 76</td><td>Monte Carlo from experience, pages 72 to 74; model-free, page 76</td></tr></table>
+    <p><b>How far does the linearisation hold?</b> Two different things break, and on your robot the second one breaks first.</p>
+    <p>1. <b>The model.</b> Gravity pulls with sin θ, the linear model uses θ. Error: 0.5% at 10°, 2.0% at 20°, 3.4% at 26°, 4.5% at 30° (left plots). With several joints, M(q) also changes with the posture and Coriolis terms (∝ q̇²) appear when the arms swing fast. Rough rule: the linear model is good to about 15 to 20°.</p>
+    <p>2. <b>The limits.</b> Your 4-joint G1 plane (ankle spring-damper, waist, shoulder, elbow) on page 169: LQR with the upper body stands after an 80 N push with a peak lean of only <b>8.4°</b>, and falls at 85 N. The lean never gets near where sin θ ≠ θ matters. It falls because the ankle torque is capped by the foot (m·g × 0.10 m), the waist at 88 N·m and the arms at 50 N·m: LQR asks for more than they can give.</p>
+    <p><b>So for your humanoid:</b></p>
+    <p>• <b>Start with LQR</b> (pages 169, 171). It is exact for small and medium pushes, computed in milliseconds, and you can read why each joint does what it does. Measure in MuJoCo the largest push it survives.</p>
+    <p>• <b>Beyond that the problem is limits and contact</b> (the heel lifts, a step is needed), not angle. Options, in order of effort: page 169's momentum QP (LQR's idea with the limits inside); MPC (the same quadratic cost, limits as constraints, re-solved every few ms); RL trained in simulation on many pushes, which can learn limits, heel lift and even stepping, but needs reward design, training time, and gives no guarantee.</p>
+    <p>• A common combination: <b>residual RL</b>, u = −Kx + u<sub>RL</sub>. LQR does the part it is good at; RL learns only the correction where LQR fails.</p>
+    <p class="phys"><b>A check that ties them together:</b> train RL on small pushes with the quadratic cost, and its learned cost-to-go comes out close to xᵀPx. LQR is the answer RL would find, in the region where the model is linear and the cost is quadratic. That is why the rest of this lab uses RL's words.</p>`],
+
+  ['2 · the RL dictionary', 'intro', ['th', 'om', 't'], () => {
     const sol = solve();
-    return `<p class="goal"><b>Goal:</b> see that LQR is the RL you know, in continuous time, with the value function stored as a 2×2 matrix instead of a table.</p>
-    <p>The pendulum: lean θ (rad), lean rate θ̇ (rad/s), torque u at the pivot. Near upright, θ̈ = (g/l)·θ + u/(m l²) = 9.81·θ + u. As ẋ = Ax + Bu:</p>
+    return `<p class="goal"><b>Goal:</b> match each RL word you know to its LQR word, and fix the words used on every following step.</p>
+    <p>The pendulum: lean θ (rad), lean rate θ̇ (rad/s), torque u at the pivot. Near upright, θ̈ = 9.81·θ + u. Written as ẋ = Ax + Bu:</p>
     <span class="eq">A = [0 1 ; 9.81 0]   B = [0 ; 1]   x = (θ, θ̇)</span>
-    <p><b>Names, fixed for the whole page.</b> Q is used twice in books (state penalty and action-value function), so here:</p>
-    <table class="t"><tr><th>RL word</th><th>here</th><th>for this pendulum</th></tr>
+    <table class="t"><tr><th>RL (pages 52 to 70)</th><th>LQR</th><th>for this pendulum</th></tr>
     <tr><td>state s</td><td class="m">x = (θ, θ̇)</td><td>2 numbers, continuous</td></tr>
     <tr><td>action a</td><td class="m">u (torque)</td><td>1 number</td></tr>
-    <tr><td>reward r(s,a)</td><td class="m">− (xᵀSx + uᵀRu)</td><td>a cost: S = diag(${f(S.p.s1, 1)}, ${f(S.p.s2, 1)}) state penalty, R = ${f(S.p.rr, 2)} effort penalty</td></tr>
-    <tr><td>return Σ γᵗ r</td><td class="m">J = ∫ (xᵀSx + uᵀRu) dt</td><td>sum becomes integral; γ = 1 (step 3 says why that is allowed)</td></tr>
-    <tr><td>state-value V(s)</td><td class="m">V(x) = xᵀPx</td><td>P = ${fm(sol.P)}: 3 numbers replace the whole table</td></tr>
-    <tr><td>action-value Q(s,a)</td><td class="m">H(x, u)</td><td>called the <b>Hamiltonian</b> in control; step 5</td></tr>
-    <tr><td>policy π</td><td class="m">u = −Kx</td><td>K = ${fm([sol.K])}</td></tr>
-    <tr><td>Bellman equation</td><td class="m">0 = min_u H(x, u)</td><td>step 3 (HJB)</td></tr>
-    <tr><td>value iteration</td><td>Riccati iteration</td><td>step 8</td></tr>
-    <tr><td>policy iteration</td><td>Kleinman's algorithm</td><td>step 8</td></tr></table>
-    <p><b>Why the problem is hard.</b> You want the torques that make J smallest. But what you choose is a whole <i>function of time</i> u(t), forever: infinitely many unknowns. No finite list to set a derivative of to zero.</p>
-    <p><b>Bellman's trick, same as in RL.</b> Don't search for the sequence. Build a map: V(x) = the cost still to pay from state x if you act optimally from now on. With the map, each instant is a one-step question: which torque gives the smallest [cost paid now + V of where it takes me]? The long-range planning is inside V.</p>
-    <p class="do"><b>Do:</b> drag t: the pendulum (left) and its dot in the state plane (right) move together. The red dashed path is no torque: it leaves the picture. Change the start θ and θ̇.</p>`; }],
+    <tr><td>reward</td><td class="m">− cost rate</td><td>S = diag(${f(S.p.s1, 1)}, ${f(S.p.s2, 1)}) price of being off, R = ${f(S.p.rr, 2)} price of torque</td></tr>
+    <tr><td>return, γ</td><td class="m">J = ∫ c dt, γ = 1</td><td>sum becomes integral (step 4 says why γ = 1 is fine)</td></tr>
+    <tr><td>V(s), page 59</td><td class="m">cost-to-go V(x) = xᵀPx</td><td>P = ${fm(sol.P)}</td></tr>
+    <tr><td>Q(s,a), page 60</td><td class="m">H(x,u)</td><td>step 6</td></tr>
+    <tr><td>policy π, page 57</td><td class="m">u = −Kx</td><td>K = ${fm([sol.K])}</td></tr>
+    <tr><td>Bellman optimality, page 65</td><td class="m">0 = min over u of H</td><td>step 4</td></tr>
+    <tr><td>value / policy iteration, pages 69 and 70</td><td>Riccati iteration / Kleinman</td><td>step 9</td></tr></table>
+    <p><b>The words, fixed from here on</b> (nothing else: no map, no bowl, no debt):</p>
+    ${TERMS}
+    <p class="do"><b>Do:</b> drag t: the pendulum comes back up; the red dashed line is the same push with no torque.</p>`; }],
 
-  ['2 · the map V(x) = xᵀPx', 'map', ['th', 'om'], () => {
+  ['3 · the cost-to-go V(x) = xᵀPx', 'cost', ['th', 'om'], () => {
     const sol = solve(), P = sol.P, x = X0(), V = quad(P, x), sim = run(sol.K, x, 8);
-    const sit = [['leaning 0.1 rad, not rotating', [.1, 0]], ['upright, rotating forward 0.1 rad/s', [0, .1]], ['leaning forward and falling forward', [.1, .1]], ['leaning forward, already rotating back', [.1, -.1]]];
-    return `<p class="goal"><b>Goal:</b> know what the map is, and check it against a real run.</p>
-    <p><b>Why a bowl, not any landscape.</b> Cost is quadratic and the dynamics are linear. Start from 2x instead of x: the whole run doubles (linear), every cost ×4 (squares). So V(2x) = 4V(x), and the only shape that does that in 2 numbers is a quadratic form xᵀPx. Not assumed; forced.</p>
-    <p><b>You already know this object.</b> Kinetic energy ½ q̇ᵀMq̇: a symmetric matrix sandwiched between a vector and itself, giving one number. <b>P is to cost-still-to-pay what M is to energy.</b> Read it the same way:</p>
-    <span class="eq">P = [${f(P[0][0], 2)}  ${f(P[0][1], 2)} ; ${f(P[1][0], 2)}  ${f(P[1][1], 2)}]
-P₁₁ = cost of leaning alone, P₂₂ = cost of rotating alone,
-P₁₂ = cost of being in trouble two ways at once</span>
-    <table class="t"><tr><th>situation</th><th>x</th><th>V = xᵀPx</th></tr>
-    ${sit.map(([l, z]) => `<tr><td>${l}</td><td class="m">(${z[0]}, ${z[1]})</td><td class="m">${f(quad(P, z), 3)}</td></tr>`).join('')}</table>
-    <p>Same lean, same rate size: ${f(quad(P, [.1, .1]) / quad(P, [.1, -.1]), 2)}× the cost depending on the sign of θ̇. That is P₁₂ = ${f(P[0][1], 2)}: 2·P₁₂·θ·θ̇ is added when both point the same way, subtracted when you are already recovering. Same flavour as M₁₂ in a two-link arm.</p>
-    <p><b>Check against a run.</b> From x = (${f(x[0], 3)}, ${f(x[1], 3)}) the map says V = ${f(V, 4)}. Simulating u = −Kx and adding up xᵀSx + uᵀRu every 2 ms gives <b>${f(sim.total, 4)}</b>.</p>
-    <p class="phys"><b>Sunk cost.</b> Right plot: at every moment, paid so far (dashed) + V(x(t)) (thick) = the same flat line. What you already paid never enters any decision; only V of where you are does. The state carries everything; history can be thrown away (Markov, as in RL).</p>
-    <p class="do"><b>Do:</b> move the start. The dot climbs the rings; the black line on the right stays flat at V(x₀).</p>`; }],
+    return `<p class="goal"><b>Goal:</b> know what V(x) is, why it is quadratic, and check one value against a real run.</p>
+    <p><b>Definition.</b> x is the state right after the push: here θ = ${f(x[0], 3)} rad, θ̇ = ${f(x[1], 3)} rad/s. V(x) = all the cost you <i>will still</i> pay from this moment on, pushing the best way. Only the future. Nothing paid before the push is in it.</p>
+    <p><b>Is the quadratic shape a choice?</b> Two choices are yours: (1) the cost punishes squares (you pick S and R), (2) the model is linear (the approximation of step 1). Given those two, the shape of V is <i>not</i> a choice, it is forced: start from 2x instead of x and the whole run is twice as big (linear), so every cost is 4× (squares). V(2x) = 4·V(x). The only function of 2 numbers that does that is xᵀPx. With RL you make neither choice, and V is whatever shape the network learns.</p>
+    <p><b>Reading P</b>, the same way you read M in kinetic energy ½q̇ᵀMq̇ (a matrix sandwiched between a vector and itself):</p>
+    <span class="eq">V = P₁₁θ² + 2P₁₂θθ̇ + P₂₂θ̇²
+P = [${f(P[0][0], 2)}  ${f(P[0][1], 2)} ; ${f(P[1][0], 2)}  ${f(P[1][1], 2)}]</span>
+    <p>P₁₁: cost-to-go of leaning alone. P₂₂: of rotating alone. P₁₂: the extra when both happen together. Left plot: leaning <i>and</i> falling (+0.1, +0.1) costs ${f(quad(P, [.1, .1]) / quad(P, [.1, -.1]), 2)}× more than leaning while already coming back (+0.1, −0.1). That difference is 4·P₁₂·θ·θ̇.</p>
+    <p><b>Check against a run.</b> V(start) = xᵀPx = ${f(V, 4)}. Simulating the pendulum with u = −Kx and adding up the cost rate every 2 ms: <b>${f(sim.total, 4)}</b>.</p>
+    <p class="phys"><b>Right plot, the key picture for the next steps.</b> At every moment of the run: cost paid so far (dashed) + cost-to-go of where you are now (thick) = the same number, ${f(V, 4)}. As time passes, cost moves from "to go" into "paid", and the total stays the same.</p>
+    <p><b>Honest note:</b> P here is the one found in step 8. At this point it is unknown; steps 4 to 8 find it. The plots only show what the answer will look like.</p>
+    <p class="do"><b>Do:</b> change the start: V changes, the black line stays flat.</p>`; }],
 
-  ['3 · Bellman over a tiny step: where "= 0" comes from', 'bellman', ['th', 'om', 'dt', 'du'], () => {
+  ['4 · Bellman: the property V must have', 'bellman', ['th', 'om', 'dt', 'du'], () => {
     const sol = solve(), x = X0(), s = sys(), { dt, du } = S.p, us = -dot(sol.K, x), u = us + du, xd = xdot(x, u), xn = [x[0] + xd[0] * dt, x[1] + xd[1] * dt];
-    const V = quad(sol.P, x), Vn = quad(sol.P, xn), c = quad(s.Sm, x) + s.r * u * u, dV = 2 * dot(x, mv(sol.P, xd));
-    return `<p class="goal"><b>Goal:</b> get the continuous Bellman equation (HJB) from the discrete one you know, in three lines.</p>
-    <p>Discrete Bellman with a step dt (no γ yet):</p>
-    <span class="eq">V(x) = min over u of [ cost(x,u)·dt + V(x_next) ]
-x_next = x + ẋ·dt,  ẋ = Ax + Bu</span>
-    <p>Your numbers, x = (${f(x[0], 3)}, ${f(x[1], 3)}), dt = ${f(dt, 3)}, u = ${f(u, 3)} (best u* = ${f(us, 3)}):</p>
-    <span class="eq">left:  V(x)                    = ${f(V, 5)}
-right: cost·dt + V(x_next) = ${f(c * dt, 5)} + ${f(Vn, 5)} = ${f(c * dt + Vn, 5)}</span>
-    <p>With u = u* the two sides match up to a gap that shrinks like dt² (make dt small). With any other u the right side is bigger: you pay more. That is the "min".</p>
-    <p><b>Now the three lines.</b> For a small step, Taylor: V(x_next) ≈ V(x) + (dV/dt)·dt. Put it in:</p>
-    <span class="eq">V(x) = min_u [ cost·dt + V(x) + (dV/dt)·dt ]
-   0 = min_u [ cost·dt + (dV/dt)·dt ]      V(x) cancels
-   0 = min_u [ cost + dV/dt ]              divide by dt</span>
-    <p>That is the <b>Hamilton–Jacobi–Bellman equation</b>. The 0 is what is left after V cancels itself. Here: cost = ${f(c, 4)}, dV/dt = ${f(dV, 4)}, sum = ${f(c + dV, 4)}${Math.abs(du) < 1e-9 ? ' (zero, at u*)' : ''}.</p>
-    <p class="phys"><b>Plain reading:</b> at the optimum, the rate you pay now equals the rate your remaining debt V shrinks. Pay 1 per second, debt drops 1 per second. If it didn't close, V would not be the true cost still to pay.</p>
-    <p><b>γ.</b> In RL, γ &lt; 1 keeps the sum finite when rewards never stop. Here a stabilising controller makes x shrink exponentially, so the cost per second dies out and J is finite with γ = 1. Discounting would only add a term −ρV; LQR uses ρ = 0.</p>
-    <p class="do"><b>Do:</b> drag du away from 0: the right bar grows. Shrink dt: the gap at du = 0 goes to zero.</p>`; }],
+    const V = quad(sol.P, x), Vn = quad(sol.P, xn), c = quad(s.Sm, x) + s.r * u * u;
+    return `<p class="goal"><b>Goal:</b> write one condition the unknown V must satisfy. That condition, solved, gives P.</p>
+    <p class="phys"><b>We do not know V or P yet.</b> What we do know is a property any true cost-to-go has, straight from its definition. It is page 65's Bellman optimality equation:</p>
+    <span class="eq">cost-to-go now = min over u of [ cost paid in the next dt
+                                + cost-to-go from where you land ]
+V(x)           = min_u [ c(x,u)·dt + V(x_next) ]</span>
+    <p>V is unknown on both sides. This is not a formula for V, it is a test: "find the V that passes it". Left plot: the thick line at t = 0 (V now) equals the dashed line at dt (paid in the step) plus the thick line at dt (V after).</p>
+    <p>The bars use the P from step 8, only to show the test passes (your push u = ${f(u, 3)}, dt = ${f(dt, 3)}):</p>
+    <span class="eq">V(x)                 = ${f(V, 5)}
+c·dt + V(x_next)     = ${f(c * dt, 5)} + ${f(Vn, 5)} = ${f(c * dt + Vn, 5)}</span>
+    <p>With the best u they agree (up to a small error that shrinks like dt²). With any other push the right side is bigger: you pay more. That is the "min".</p>
+    <p><b>Now the continuous form, from step 3's flat line.</b> Along the best run, cost paid so far + V(x(t)) stays constant. A constant has zero rate of change:</p>
+    <span class="eq">d/dt [ paid so far + V(x(t)) ] = 0
+           c        +   dV/dt     = 0      with the best u
+           c        +   dV/dt     > 0      with any other u
+so   0 = min over u of [ c(x,u) + dV/dt ]</span>
+    <p>That is the <b>Hamilton–Jacobi–Bellman equation</b>. It is the same as the discrete one: write V(x_next) ≈ V(x) + (dV/dt)·dt (Taylor), V(x) cancels from both sides, divide by dt.</p>
+    <p><b>In words:</b> with the best push, the cost-to-go goes down per second by exactly what you pay per second (cost moves from "to go" into "paid", nothing is lost). With a worse push you pay more per second than the cost-to-go goes down.</p>
+    <p><b>γ:</b> in RL γ &lt; 1 keeps an endless sum finite. Here the controller makes x die out, the cost rate dies with it, and J is finite with γ = 1.</p>
+    <p class="do"><b>Do:</b> drag du away from 0: the right bar grows. Shrink dt: the difference at du = 0 goes to zero.</p>`; }],
 
-  ['4 · dV/dt = 2xᵀP(Ax + Bu)', 'slope', ['th', 'om', 'du'], () => {
-    const sol = solve(), P = sol.P, x = X0(), s = sys(), u = -dot(sol.K, x) + S.p.du, xd = xdot(x, u);
-    const a = dot(xd, mv(P, x)), b = dot(x, mv(P, xd)), h = 1e-6, fd = (quad(P, [x[0] + h * xd[0], x[1] + h * xd[1]]) - quad(P, x)) / h;
-    return `<p class="goal"><b>Goal:</b> derive the last term of H. It is only the product rule.</p>
-    <p>V = xᵀPx is a product of three things; P is constant, x moves. Product rule:</p>
-    <span class="eq">dV/dt = ẋᵀPx + xᵀPẋ
-      = ${f(a, 4)} + ${f(b, 4)}</span>
-    <p>The two pieces are <b>the same number</b>. Each is a scalar, a scalar equals its own transpose, and P = Pᵀ:</p>
-    <span class="eq">(ẋᵀPx)ᵀ = xᵀPᵀẋ = xᵀPẋ
-so  dV/dt = 2xᵀPẋ = 2xᵀP(Ax + Bu) = ${f(2 * b, 4)}
-check by finite difference [V(x + ẋh) − V(x)]/h = ${f(fd, 4)}</span>
-    <p class="phys"><b>Physical reading:</b> 2Px is the gradient of the map (∇V, "uphill"), ẋ is the velocity. dV/dt = ∇Vᵀẋ = <b>slope × speed</b>, like the rate your height changes when you walk on a hill, or power = force · velocity. Right plot: V along the direction you move, its tangent has exactly that slope.</p>
-    <p>Split the velocity: <b>Ax</b> = what gravity does (red arrow, you can't change it), <b>Bu</b> = what the torque does (blue, only vertical: torque changes θ̇, never θ directly, because B = [0; 1]).</p>
-    <span class="eq">ẋ = Ax + Bu = (${f(mv(s.A, x)[0], 3)}, ${f(mv(s.A, x)[1], 3)}) + (0, ${f(u, 3)}) = (${f(xd[0], 3)}, ${f(xd[1], 3)})</span>
-    <p class="do"><b>Do:</b> drag du: the blue arrow changes length, ẋ turns, the tangent slope changes. At du = 0 it is exactly −cost (step 3).</p>`; }],
+  ['5 · dV/dt = 2xᵀP(Ax + Bu)', 'slope', ['t'], () => {
+    const sol = solve(), P = sol.P, s = sys(), sim = run(sol.K, X0(), 8), i = Math.round(S.p.t / sim.h), x = sim.xs[i], u = -dot(sol.K, x), xd = xdot(x, u);
+    const g = mv(P, x).map(v => 2 * v), d = dot(g, xd), c = quad(s.Sm, x) + s.r * u * u;
+    return `<p class="goal"><b>Goal:</b> write dV/dt in x and u, so step 4's condition becomes an equation for P.</p>
+    <p><b>Chain rule, in words.</b> V depends on θ and θ̇. Per second, θ changes by θ̇ and θ̇ changes by θ̈. So</p>
+    <span class="eq">dV/dt = (∂V/∂θ)·θ̇ + (∂V/∂θ̇)·θ̈
+        how much V changes per unit θ × how fast θ changes
+      + how much V changes per unit θ̇ × how fast θ̇ changes</span>
+    <p>For V = P₁₁θ² + 2P₁₂θθ̇ + P₂₂θ̇²: ∂V/∂θ = 2(P₁₁θ + P₁₂θ̇), ∂V/∂θ̇ = 2(P₁₂θ + P₂₂θ̇). Together that is the vector 2Px. And (θ̇, θ̈) is ẋ = Ax + Bu. So</p>
+    <span class="eq">dV/dt = (2Px)ᵀ ẋ = 2xᵀP(Ax + Bu)</span>
+    <p>(The same by the product rule: dV/dt = ẋᵀPx + xᵀPẋ, and the two terms are equal numbers because P = Pᵀ.)</p>
+    <p><b>Your numbers at t = ${f(S.p.t, 2)} s</b> on the run (left plot):</p>
+    <span class="eq">x = (${f(x[0], 4)}, ${f(x[1], 4)}),  u = ${f(u, 3)},  ẋ = (θ̇, θ̈) = (${f(xd[0], 4)}, ${f(xd[1], 4)})
+∂V/∂θ  = ${f(g[0], 3)}   ×  θ̇ = ${f(xd[0], 4)}   →  ${f(g[0] * xd[0], 4)}
+∂V/∂θ̇ = ${f(g[1], 3)}   ×  θ̈ = ${f(xd[1], 4)}   →  ${f(g[1] * xd[1], 4)}
+dV/dt  = ${f(d, 4)} per second
+cost rate c = ${f(c, 4)} per second;   c + dV/dt = ${f(c + d, 5)}</span>
+    <p class="phys"><b>Physical meaning:</b> dV/dt is the slope of the cost-to-go curve in time (left plot, dashed tangent). It is negative: as the pendulum comes back, there is less left to pay. Right plot: the cost rate you pay (orange) and −dV/dt (purple dots) lie on top of each other at every moment. That is step 4's c + dV/dt = 0, now with a formula for dV/dt.</p>
+    <p class="do"><b>Do:</b> drag t: the tangent follows the curve; c + dV/dt stays 0.</p>`; }],
 
-  ['5 · H(x, u): the action-value function', 'hpar', ['th', 'om', 'du'], () => {
+  ['6 · H(x,u): the score of a push', 'hpar', ['th', 'om', 'du'], () => {
     const sol = solve(), P = sol.P, x = X0(), s = sys(), u = -dot(sol.K, x) + S.p.du, z = [x[0], x[1], u];
     const PA = mul(P, s.A), AtP = mul(T(s.A), P), top = add(s.Sm, AtP, PA), PB = [P[0][1], P[1][1]];
     const MH = [[top[0][0], top[0][1], PB[0]], [top[1][0], top[1][1], PB[1]], [PB[0], PB[1], s.r]];
-    const H3 = quad(s.Sm, x) + s.r * u * u + 2 * dot(x, mv(P, xdot(x, u))), Hb = dot(z, MH.map(r => dot(r, z)));
-    return `<p class="goal"><b>Goal:</b> put the pieces into one function of x and u, the continuous-time action-value function. Name: H (Hamiltonian).</p>
-    <span class="eq">H(x,u) = xᵀSx + uᵀRu + 2xᵀP(Ax + Bu)
-        state cost  effort   rate the debt changes (step 4)
-Bellman (step 3):  0 = min over u of H(x,u)
-and V(x) = min_u [...] is the RL identity  V = min_a Q</span>
-    <p><b>Grouping.</b> Distribute: 2xᵀP(Ax + Bu) = 2xᵀPAx + 2xᵀPBu. The first piece is a scalar, so it equals its transpose xᵀAᵀPx; write it as half of each:</p>
-    <span class="eq">2xᵀPAx = xᵀPAx + xᵀAᵀPx = xᵀ(PA + AᵀP)x
-   = ${f(2 * dot(x, mv(PA, x)), 4)}   =   ${f(quad(add(PA, AtP), x), 4)}</span>
-    <p>That is the only reason AᵀP + PA appears in Riccati: making the form symmetric. Now H has three kinds of term: only x, x with u, only u. Stack z = [x; u]:</p>
-    <span class="eq">H = zᵀ [ S + AᵀP + PA   PB ; BᵀP   R ] z
-
+    const c = quad(s.Sm, x) + s.r * u * u, d = 2 * dot(x, mv(P, xdot(x, u)));
+    return `<p class="goal"><b>Goal:</b> one function that scores any push u at state x. It is the continuous-time action-value function (page 60's Q).</p>
+    <span class="eq">H(x,u) = c(x,u) + dV/dt
+       = xᵀSx + uᵀRu  +  2xᵀP(Ax + Bu)
+         cost rate now     change of the cost-to-go it causes</span>
+    <p>Step 4 says: 0 = min over u of H. So the best push scores exactly 0, and every other push scores more than 0. Your push u = ${f(u, 3)}: cost rate ${f(c, 4)}, dV/dt ${f(d, 4)}, H = ${f(c + d, 4)}.</p>
+    <p class="phys"><b>The plot is the trade-off.</b> More torque costs more <i>now</i> (orange parabola, uᵀRu), but makes the cost-to-go fall faster (green line goes down). Their sum (black) has one lowest point: the best push, where H = 0.</p>
+    <p><b>Grouping, for step 7.</b> 2xᵀPAx is a number, so it equals its transpose xᵀAᵀPx; write it as half of each: 2xᵀPAx = xᵀ(PA + AᵀP)x. That is the only reason AᵀP + PA appears in the Riccati equation. Then H is one quadratic in the stacked vector [x; u]:</p>
+    <span class="eq">H = [x;u]ᵀ [ S + AᵀP + PA   PB ; BᵀP   R ] [x;u]
       [ ${MH[0].map(v => f(v, 2).padStart(7)).join(' ')} ]
     = [ ${MH[1].map(v => f(v, 2).padStart(7)).join(' ')} ]   (θ, θ̇ | u)
-      [ ${MH[2].map(v => f(v, 2).padStart(7)).join(' ')} ]</span>
-    <p>At your x, u: three-term form ${f(H3, 5)}, block form ${f(Hb, 5)}. Same number.</p>
-    <p class="phys"><b>The picture:</b> the action-value function is one bowl over state <i>and</i> action together. Fix x, and it is a parabola in u (left plot). Its lowest point is at H = 0: that is Bellman.</p>
-    <p class="do"><b>Do:</b> drag du: the orange dot rides the parabola, always above 0. Move x: the parabola shifts, its bottom stays at 0.</p>`; }],
+      [ ${MH[2].map(v => f(v, 2).padStart(7)).join(' ')} ]
+check: ${f(c + d, 5)} = ${f(dot(z, MH.map(r => dot(r, z))), 5)}</span>
+    <p class="do"><b>Do:</b> drag du: the orange dot rides the black curve and never goes below 0.</p>`; }],
 
-  ['6 · minimise over u: complete the square → K', 'square', ['th', 'om', 'rr'], () => {
+  ['7 · the best push: complete the square → K', 'square', ['th', 'om', 'rr'], () => {
     const sol = solve(), P = sol.P, x = X0(), s = sys(), bb = P[1][0] * x[0] + P[1][1] * x[1];
     const row = r => { const o = { ...S.p, rr: r }, z = solve(o); return `<tr><td class="m">${r}</td><td class="m">${fm([z.K])}</td><td class="m">${z.poles.map(fpole).join(', ')}</td></tr>`; };
-    return `<p class="goal"><b>Goal:</b> find the best u and what is left after using it. Both come from one move: completing the square.</p>
-    <p><b>Scalar first.</b> a·u² + 2b·u = a·(u + b/a)² − b²/a. The square is ≥ 0, zero only at u = −b/a. So minimum at u* = −b/a, minimum value −b²/a.</p>
-    <p><b>Matrix, same algebra.</b> The u-part of H is uᵀRu + 2xᵀPBu. Call b = BᵀPx (so 2xᵀPBu = 2bᵀu):</p>
+    return `<p class="goal"><b>Goal:</b> find the lowest point of H in u, and what is left of H there.</p>
+    <p><b>One number first.</b> a·u² + 2b·u = a·(u + b/a)² − b²/a. The square is never negative, and zero only at u = −b/a. So the lowest point is u* = −b/a, and the value there is −b²/a.</p>
+    <p><b>Same with matrices.</b> The part of H with u in it is uᵀRu + 2xᵀPBu. Call b = BᵀPx:</p>
     <span class="eq">uᵀRu + 2bᵀu = (u + R⁻¹b)ᵀ R (u + R⁻¹b) − bᵀR⁻¹b
-a → R,  b → BᵀPx,  −b²/a → −xᵀPBR⁻¹BᵀPx</span>
-    <span class="eq">u* = −R⁻¹BᵀP x = −K x,     K = R⁻¹BᵀP
-here BᵀPx = ${f(P[1][0], 2)}·${f(x[0], 3)} + ${f(P[1][1], 2)}·${f(x[1], 3)} = ${f(bb, 4)},  u* = −${f(bb, 4)}/${f(s.r, 2)} = ${f(-bb / s.r, 4)}
-leftover  −(BᵀPx)²/R = ${f(-bb * bb / s.r, 4)}</span>
+u* = −R⁻¹BᵀP x = −Kx,      K = R⁻¹BᵀP
+here: BᵀPx = ${f(bb, 4)},  u* = ${f(-bb / s.r, 4)},  leftover −(BᵀPx)²/R = ${f(-bb * bb / s.r, 4)}</span>
     <p>(Calculus gives the same: ∂H/∂u = 2Ru + 2BᵀPx = 0.)</p>
-    <p class="phys"><b>Read K = R⁻¹BᵀP right to left, like τ = JᵀF:</b> <b>Px</b> = uphill direction of the map. <b>Bᵀ</b> = the Jᵀ of control: B maps torque into state motion as J maps joint rates to tip motion, so Bᵀ asks "how much leverage does each actuator have on that direction?" <b>R⁻¹</b> = divide by the price. Find uphill, ask each motor its leverage, use each in inverse proportion to its cost. Same shape as the pseudo-inverse: multiply by the arm, divide by the arm squared.</p>
-    <p>Here B = [0; 1], so BᵀP just picks <b>P's second row</b>: K = ${fm([sol.K])} = row 2 of P divided by R. The torque only reaches θ̇ (right plot, green arrow).</p>
+    <p class="phys"><b>Read K = R⁻¹BᵀP like τ = JᵀF.</b> Px: how fast the cost-to-go grows in each state direction. Bᵀ: how much the torque can reach each direction (B maps torque into state motion as J maps joint rates to tip motion). R⁻¹: divide by the price of torque. Here B = [0; 1], so Bᵀ just picks <b>row 2 of P</b> (right): the torque only reaches θ̇.</p>
     <table class="t"><tr><th>R</th><th>K</th><th>closed-loop poles</th></tr>${[0.1, 1, 10].map(row).join('')}</table>
-    <p>Cheap torque: bigger K, faster poles. Expensive: smaller K, slower.</p>
-    <p class="do"><b>Do:</b> drag R. The parabola narrows or widens; u* and the leftover move.</p>`; }],
+    <p>Cheap torque (small R): bigger K, faster return. Expensive: smaller K, slower.</p>
+    <p class="do"><b>Do:</b> drag R: the parabola changes width; u* and the leftover move.</p>`; }],
 
-  ['7 · nothing left over = the Riccati equation', 'leftover', ['al', 'th', 'om'], () => {
-    const sol = solve(), s = sys(), P = sol.P, Lt = leftover(sc(P, S.p.al), S.p), Lr = sol.res;
-    return `<p class="goal"><b>Goal:</b> see the Riccati equation as a self-consistency test on the bowl, not a new idea.</p>
-    <p>Put u* back into Bellman 0 = min_u H. The x-only block stays, the u-part becomes its leftover:</p>
-    <span class="eq">0 = xᵀ(S + AᵀP + PA)x − xᵀPBR⁻¹BᵀPx
-  = xᵀ [ S + AᵀP + PA − PBR⁻¹BᵀP ] x     for every x</span>
-    <p>A symmetric matrix that gives 0 for <i>every</i> x must itself be 0:</p>
-    <span class="eq">AᵀP + PA − PBR⁻¹BᵀP + S = 0       (algebraic Riccati equation)
-at the solution: leftover = ${fm(Lr, 6)}</span>
-    <p>On the block matrix of step 5 this leftover is the <b>Schur complement</b> of R: completing the square on a block matrix. Minimising out u = taking the Schur complement. Riccati = the Schur complement is zero.</p>
+  ['8 · nothing left over = the Riccati equation', 'leftover', ['al', 'th', 'om'], () => {
+    const sol = solve(), P = sol.P, Lt = leftover(sc(P, S.p.al), S.p), x0 = X0(), Pt = sc(P, S.p.al), sim = run(gainOf(Pt, S.p), x0, 10);
+    return `<p class="goal"><b>Goal:</b> get the equation for P, and see what it means on a run.</p>
+    <p>Put u* back into H. The part without u stays; the u-part becomes its leftover (step 7). Step 4 says the result is 0:</p>
+    <span class="eq">0 = xᵀ(S + AᵀP + PA)x − xᵀPBR⁻¹BᵀPx = xᵀ [ S + AᵀP + PA − PBR⁻¹BᵀP ] x</span>
+    <p>This must hold for <i>every</i> state x. A symmetric matrix that gives 0 for every x is the zero matrix:</p>
+    <span class="eq">AᵀP + PA − PBR⁻¹BᵀP + S = 0          the Riccati equation
+solved:   P = ${fm(P, 2)}
+leftover: ${fm(sol.res, 6)}</span>
     <table class="t"><tr><th>term</th><th>came from</th></tr>
-    <tr><td class="m">S</td><td>the state penalty, straight from the cost</td></tr>
-    <tr><td class="m">AᵀP + PA</td><td>symmetrising 2xᵀPAx: gravity moving you on the map (step 5)</td></tr>
-    <tr><td class="m">−PBR⁻¹BᵀP</td><td>leftover of completing the square: the credit for having a motor. B = 0 removes it.</td></tr>
-    <tr><td class="m">= 0</td><td>V(x) cancelling itself in Bellman (step 3)</td></tr></table>
-    <p class="phys"><b>Self-consistency.</b> Claim a bowl P. It implies a rule K = R⁻¹BᵀP. Run that rule and add up what it really costs. Honest bowl: <i>paid = promised</i>. Right plot, trial P = ${f(S.p.al, 2)}·P*: leftover = ${fm(Lt, 2)}. Only α = 1 passes. The bowl must predict its own consequences: a fixed point.</p>
-    <p class="do"><b>Do:</b> drag α. Away from 1 the three leftover entries leave zero and the two bars disagree. Below about α = ${f(S.p.gl / P[1][0] * S.p.rr, 2)} the implied rule is too weak and the pendulum falls.</p>`; }],
+    <tr><td class="m">S</td><td>the cost rate of being off (step 2)</td></tr>
+    <tr><td class="m">AᵀP + PA</td><td>the gravity part of dV/dt, symmetrised (steps 5, 6)</td></tr>
+    <tr><td class="m">−PBR⁻¹BᵀP</td><td>the leftover of completing the square: what having a motor saves (step 7)</td></tr>
+    <tr><td class="m">= 0</td><td>c + dV/dt = 0 with the best push (step 4)</td></tr></table>
+    <p class="phys"><b>What it means on a run.</b> Try a wrong P = ${f(S.p.al, 2)}·P*. It promises a cost-to-go xᵀPx and implies a rule K = R⁻¹BᵀP. Run that rule (plot): if P were the true cost-to-go, paid so far + promised cost-to-go would stay flat, as in step 3. ${sim.fell ? 'Here the rule is too weak and the pendulum falls.' : `Here it promised ${f(quad(Pt, x0), 4)} and really paid ${f(sim.total, 4)}.`} Only α = 1 keeps the line flat. Riccati is the condition "the cost-to-go you assumed is the cost-to-go you get". Leftover at this α: ${fm(Lt, 2)}.</p>
+    <p class="do"><b>Do:</b> drag α to 1: the black line becomes flat and promised = paid.</p>`; }],
 
-  ['8 · solving it: value iteration, policy iteration', 'iter', ['tau'], () => {
+  ['9 · solving it: value and policy iteration', 'iter', ['tau'], () => {
     const sol = solve(), bw = backward(), i = Math.min(bw.Ps.length - 1, Math.round(S.p.tau / bw.h)), Pt = bw.Ps[i], Kt = gainOf(Pt, S.p);
-    return `<p class="goal"><b>Goal:</b> the two ways P is computed are the two RL algorithms you know.</p>
-    <p><b>Value iteration.</b> Tabular RL: V is a table, one number per state; sweep the Bellman backup until it stops moving. LQR: V is the matrix P (a quadratic over a continuous plane is fully described by 3 numbers); sweep the backup on P. In continuous time the sweep is the Riccati <i>differential</i> equation run backward from a deadline where nothing is left to pay (P = 0):</p>
-    <span class="eq">dP/dτ = S + AᵀP + PA − PBR⁻¹BᵀP      τ = time left before the deadline
+    return `<p class="goal"><b>Goal:</b> the two ways P is computed are page 70 and page 69.</p>
+    <p><b>Value iteration (page 70).</b> There V was a table and you repeated the Bellman update until it stopped changing. Here V is the matrix P and the update runs on P. Start from a deadline where nothing is left to pay (P = 0) and step backward in time:</p>
+    <span class="eq">dP/dτ = S + AᵀP + PA − PBR⁻¹BᵀP     τ = time left before the deadline
 τ = ${f(S.p.tau, 2)} s:  P = ${fm(Pt, 2)},  K = ${fm([Kt], 2)}
 τ → ∞:      P = ${fm(sol.P, 2)},  K = ${fm([sol.K], 2)}</span>
-    <p>The right side is the leftover of step 7: while it is not zero, P keeps changing. It stops exactly when Riccati holds.</p>
-    <p class="phys"><b>Why K is constant (algebraic, not differential).</b> Infinite horizon: there is always infinitely much future left, so the cost still to pay can't depend on the clock. With a deadline, P and K depend on τ: the left plot is that finite-horizon P(τ) (and K(τ) = R⁻¹BᵀP(τ)); it changes in the last second or so before the deadline. Far from it, it is the constant answer.</p>
-    <p><b>Policy iteration (Kleinman).</b> Start with any rule that does not fall, K₀ = ${fm([sol.its[0].K], 2)}. <i>Evaluate</i> it: solve (A − BK)ᵀP + P(A − BK) + S + KᵀRK = 0 (a linear Lyapunov equation, the exact cost of that rule). <i>Improve</i>: K = R⁻¹BᵀP. Repeat:</p>
+    <p>The right side is step 8's leftover: while it is not zero, P keeps changing; it stops exactly when Riccati holds. With no deadline (τ → ∞) the cost-to-go cannot depend on the clock, so P and K are constant.</p>
+    <p><b>Policy iteration (page 69, Kleinman).</b> Start with any rule that does not fall. Evaluate it: solve (A − BK)ᵀP + P(A − BK) + S + KᵀRK = 0 (the exact cost-to-go of that rule). Improve: K = R⁻¹BᵀP. Repeat:</p>
     <table class="t"><tr><th>round</th><th>K</th><th>P₁₁</th></tr>${sol.its.slice(0, 6).map((z, k) => `<tr><td class="m">${k}</td><td class="m">${fm([z.K], 3)}</td><td class="m">${f(z.P[0][0], 4)}</td></tr>`).join('')}</table>
-    <p class="do"><b>Do:</b> drag τ from 0 up: P grows from 0 and settles on the dashed values after about 1.5 s of "time left".</p>`; }],
+    <p class="do"><b>Do:</b> drag τ up from 0: P grows from 0 and settles on the dashed values.</p>`; }],
 
-  ['9 · the canyon: eigenvectors of P', 'canyon', ['th', 'om', 's1', 's2', 'rr'], () => {
+  ['10 · the shape of the cost-to-go: eigenvectors of P', 'canyon', ['th', 'om', 's1', 's2', 'rr'], () => {
     const sol = solve(), E = eigSym(sol.P), ev = sol.poles, sl = v => f(v[1] / v[0], 3);
-    return `<p class="goal"><b>Goal:</b> see the shape of the map, and why the controller's path runs along its floor.</p>
-    <p>The state plane is 2-D; V is one number per point, so its graph is a bowl in 3-D; the rings of equal cost are ellipses on the plane. Same object as the <b>manipulability ellipse</b> from the SVD of J:</p>
-    <table class="t"><tr><th></th><th>eigenvalue λ</th><th>direction (θ̇ per θ)</th><th>meaning</th></tr>
-    <tr><td class="cbad">steep wall</td><td class="m">${f(E[1].l, 2)}</td><td class="m">${sl(E[1].v)}</td><td>leaning forward <i>and</i> falling forward</td></tr>
-    <tr><td class="cc">floor</td><td class="m">${f(E[0].l, 3)}</td><td class="m">${sl(E[0].v)}</td><td>leaning forward but already rotating back</td></tr></table>
-    <p>Ratio ${f(E[1].l / E[0].l, 0)} : 1, so each ring is √${f(E[1].l / E[0].l, 0)} = ${f(Math.sqrt(E[1].l / E[0].l), 1)} times longer one way than the other (semi-axis ∝ 1/√λ: big eigenvalue, short axis, steep wall). Not a round bowl: a long narrow canyon.</p>
-    <p><b>Now compare with the controlled system's own directions</b> (eigenvectors of A − BK; an eigenvector for pole λ is (1, λ), so its slope is the pole):</p>
-    <span class="eq">canyon floor          slope ${sl(E[0].v)}
-closed-loop modes    ${ev.map(e => e.im ? 'complex (' + fpole(e) + ')' : 'slope ' + f(e.re, 3)).join(',  ')}</span>
-    <p class="phys"><b>They nearly coincide.</b> The flat direction of the cost map is the direction the controlled system travels. If you are already moving the way the controller wants, you are coasting home and barely charged. The expensive directions are the ones that need a fight. So LQR builds a canyon whose floor is the path home, and its law is "always step downhill": the walls throw you onto the floor fast, the floor lets you slide home cheaply. Watch the dots: a quick drop onto the floor, then a slow slide.</p>
-    <p class="do"><b>Do:</b> raise S₁₁ (hate lean more) or lower R: the canyon reshapes and K follows. Start at a point on the floor line: the run barely leaves it.</p>`; }],
+    return `<p class="goal"><b>Goal:</b> see which state directions are expensive, and why the controlled pendulum moves along the cheap one.</p>
+    <p>Rings of equal cost-to-go xᵀPx are ellipses in the (θ, θ̇) plane, the same construction as the manipulability ellipse from the SVD of J:</p>
+    <table class="t"><tr><th></th><th>eigenvalue</th><th>direction (θ̇ per θ)</th><th>meaning</th></tr>
+    <tr><td class="cbad">expensive</td><td class="m">${f(E[1].l, 2)}</td><td class="m">${sl(E[1].v)}</td><td>leaning forward and falling forward</td></tr>
+    <tr><td class="cc">cheap</td><td class="m">${f(E[0].l, 3)}</td><td class="m">${sl(E[0].v)}</td><td>leaning forward and already coming back</td></tr></table>
+    <p>The closed-loop pendulum's own directions (eigenvectors of A − BK; slope = pole): ${ev.map(e => e.im ? fpole(e) : f(e.re, 3)).join(', ')}. They lie almost on the cheap direction ${sl(E[0].v)}: once the pendulum is moving the way the controller wants, little cost is left to pay. The dots of the run drop onto that line fast, then slide home along it.</p>
+    <p class="do"><b>Do:</b> raise S₁₁ or lower R: the ellipses and K change together.</p>`; }],
 
-  ['10 · everything on one page', 'canyon', ['s1', 's2', 'rr'], () => {
+  ['11 · everything in six lines', 'canyon', ['s1', 's2', 'rr'], () => {
     const sol = solve();
-    return `<p class="goal"><b>Goal:</b> the whole derivation in six lines, each with its source.</p>
-    <table class="t"><tr><th>line</th><th>where it came from</th></tr>
-    <tr><td class="m">J = ∫ (xᵀSx + uᵀRu) dt</td><td>the return, as a cost, γ = 1 (step 1, 3)</td></tr>
-    <tr><td class="m">V(x) = xᵀPx</td><td>quadratic cost + linear dynamics (step 2)</td></tr>
-    <tr><td class="m">0 = min_u [xᵀSx + uᵀRu + 2xᵀP(Ax+Bu)]</td><td>discrete Bellman, small dt, V cancels; product rule (steps 3, 4)</td></tr>
-    <tr><td class="m">H = [x;u]ᵀ[S+AᵀP+PA  PB; BᵀP  R][x;u]</td><td>the action-value function, symmetrised (step 5)</td></tr>
-    <tr><td class="m">u* = −R⁻¹BᵀPx = −Kx</td><td>complete the square in u (step 6)</td></tr>
-    <tr><td class="m">AᵀP + PA − PBR⁻¹BᵀP + S = 0</td><td>leftover (Schur complement) must vanish for every x (step 7)</td></tr></table>
-    <p>Pendulum: P = ${fm(sol.P)}, K = ${fm([sol.K])}, poles ${sol.poles.map(fpole).join(', ')}, Riccati leftover ${f(Math.max(...sol.res.flat().map(Math.abs)), 12)}.</p>
-    <p class="phys"><b>In one sentence:</b> the action-value function is one quadratic bowl over state and action; minimising out the action gives the gain; demanding nothing is left over gives Riccati; and the iterations that solve it are value and policy iteration with V stored as a matrix.</p>
-    <p>The Kalman filter is the same equation read in a mirror (A → Aᵀ, B → Cᵀ, S → process noise, R → sensor noise, cost backward → doubt forward). It has its own page at the end of this block, page 173.</p>`; }],
+    return `<p class="goal"><b>Goal:</b> the whole derivation, each line with the step it came from.</p>
+    <table class="t"><tr><th>line</th><th>from</th></tr>
+    <tr><td class="m">J = ∫ (xᵀSx + uᵀRu) dt</td><td>the return as a cost, γ = 1 (steps 2, 4)</td></tr>
+    <tr><td class="m">V(x) = xᵀPx</td><td>linear model + quadratic cost force it (step 3)</td></tr>
+    <tr><td class="m">0 = min_u [c + dV/dt]</td><td>paid so far + cost-to-go stays constant (step 4)</td></tr>
+    <tr><td class="m">dV/dt = 2xᵀP(Ax + Bu)</td><td>chain rule (step 5)</td></tr>
+    <tr><td class="m">u* = −R⁻¹BᵀPx = −Kx</td><td>complete the square in u (step 7)</td></tr>
+    <tr><td class="m">AᵀP + PA − PBR⁻¹BᵀP + S = 0</td><td>what is left must be 0 for every x (step 8)</td></tr></table>
+    <p>Pendulum: P = ${fm(sol.P)}, K = ${fm([sol.K])}, poles ${sol.poles.map(fpole).join(', ')}.</p>
+    <p>The Kalman filter is the same equation with A, B, S, R swapped for Aᵀ, Cᵀ, W, N: page 173.</p>`; }],
 ];
 
 const SL = {
-  th: ['start lean θ (rad)', -0.18, 0.18, 0.005], om: ['start lean rate θ̇ (rad/s)', -0.7, 0.7, 0.01], tau: ['t / τ (s)', 0, 3, 0.01],
+  th: ['start lean θ (rad)', -0.18, 0.18, 0.005], om: ['start lean rate θ̇ (rad/s)', -0.7, 0.7, 0.01], tau: ['τ: time left before the deadline (s)', 0, 3, 0.01], t: ['t: time along the run (s)', 0, 2.5, 0.01],
   dt: ['dt: step size (s)', 0.002, 0.15, 0.001], du: ['du: your push − best push', -3, 3, 0.01],
   s1: ['S₁₁: price of lean', 0.5, 40, 0.5], s2: ['S₂₂: price of lean rate', 0.1, 10, 0.1], rr: ['R: price of torque', 0.1, 10, 0.1],
   al: ['α: trial P = α·P*', 0.55, 1.6, 0.01],

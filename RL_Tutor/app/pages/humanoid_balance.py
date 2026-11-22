@@ -459,17 +459,17 @@ class UpperBodyRecoveryPage(BalancePage):
 
 LQR_RL_EQS = [
     (r"J=\int_0^\infty \left(x^TSx+u^TRu\right)\,dt",
-     "the return, written as a cost; γ = 1 is allowed because x dies out (steps 1, 3)"),
+     "the return, written as a cost; γ = 1 is allowed because x dies out (steps 2, 4)"),
     (r"V(x)=x^TPx",
-     "the state-value function: quadratic cost through linear dynamics stays quadratic (step 2)"),
+     "the cost-to-go: a linear model and a quadratic cost force this shape (step 3)"),
     (r"0=\min_u\ \left[\,x^TSx+u^TRu+2x^TP(Ax+Bu)\,\right]",
-     "Bellman over a step dt, V(x) cancels; the last term is dV/dt by the product rule (steps 3, 4)"),
+     "paid so far + cost-to-go stays constant, so c + dV/dt = 0; dV/dt by the chain rule (steps 4, 5)"),
     (r"H(x,u)=x^T(S+A^TP+PA)\,x+2x^TPBu+u^TRu",
-     "the action-value function (Hamiltonian), with 2xᵀPAx symmetrised (step 5)"),
+     "the score of a push (action-value function, Hamiltonian), with 2xᵀPAx symmetrised (step 6)"),
     (r"u^*=-R^{-1}B^TP\,x=-Kx,\qquad K=R^{-1}B^TP",
-     "complete the square in u (step 6)"),
+     "complete the square in u (step 7)"),
     (r"A^TP+PA-PBR^{-1}B^TP+S=0",
-     "the leftover must vanish for every x: the Riccati equation (step 7)"),
+     "the leftover must vanish for every x: the Riccati equation (step 8)"),
 ]
 
 KALMAN_EQS = [
@@ -494,7 +494,8 @@ class RiccatiPage(BalancePage):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(start_here(
-            "<b>Work this page in the lab, one step at a time.</b> If you know RL you already know LQR: a "
+            "<b>Work this page in the lab, one step at a time.</b> Step 1 says when to use LQR and when RL, for your "
+            "4-joint humanoid and its push recovery. Then: if you know RL you already know LQR: a "
             "state, an action, a cost instead of a reward, a value function V(x) and an action-value function. "
             "The lab derives every term on an inverted pendulum (1 m, 1 kg) with its real numbers: where the "
             "0 in the continuous Bellman equation comes from, why dV/dt = 2xᵀP(Ax + Bu) (the product rule), "
