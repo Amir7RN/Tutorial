@@ -15,10 +15,11 @@ tests/test_upperbody.py checks every claim made here, in both languages.
     167  sagittal plane: from twists to the equations of motion
     168  momentum: why the arms can save a fall
     169  the recovery law: from a push to joint torques
-    170  LQR as continuous-time RL: Bellman, the Hamiltonian, Riccati
-    171  LQR opened up: from -Kx to a torque at each joint
-    172  from this model to MuJoCo and C++
-    173  the Kalman filter: LQR in a mirror
+    170  LQR opened up: from -Kx to a torque at each joint
+    171  from this model to MuJoCo and C++
+    172  the Kalman filter: LQR in a mirror
+
+LQR derived as continuous-time RL (lqr_bellman.html) lives on page 19, the LQR page.
 """
 
 from __future__ import annotations
@@ -114,7 +115,7 @@ class UpperBodyMachinePage(BalancePage):
                 ("Why can both arms be one link?",
                  "In a planar model they are given the same angle, so their masses and inertias simply add. "
                  "The moment one arm does something the other does not (the real robot can), the model "
-                 "needs a tree, which is what MuJoCo gives you on page 172."),
+                 "needs a tree, which is what MuJoCo gives you on page 171."),
                 ("What is M<sub>01</sub> physically?",
                  "The torque the ankle feels when the waist alone accelerates by 1 rad/s²: every mass above "
                  "the waist, times its arm to the ankle, times its arm to the waist, times the cosine between "
@@ -387,7 +388,7 @@ class UpperBodyRecoveryPage(BalancePage):
         laws.add(math_label(r"\tau_u=-K\begin{bmatrix}q\\\dot q\end{bmatrix},\qquad K=R^{-1}B^TP", 15))
         laws.add(body("clipped to the limits. It discovers a hip strategy by itself: while the push is on, the waist "
                       "throws the torso back behind vertical (the legs pay with a faster lean), then reverses and brakes "
-                      "it, and that reaction holds the legs back while the ankle is saturated. Page 171 opens it step by step."))
+                      "it, and that reaction holds the legs back while the ankle is saturated. Page 170 opens it step by step."))
         laws.add(body("<b>2 · The counterweight (looks right, fails).</b> Put the whole-body COM behind the "
                       "ankle in proportion to the lean, through a virtual spring on the upper body's COM and "
                       "page 145's Jᵀ:"))
@@ -431,7 +432,7 @@ class UpperBodyRecoveryPage(BalancePage):
                 ("What does LQR know that the counterweight does not?",
                  "The coupling and the kick. Its A matrix contains M⁻¹ and the gravity stiffness, so it knows "
                  "that moving the torso back pushes the legs forward. It moves the torso back early, while the ankle "
-                 "still has torque in hand, and reverses the waist torque when the ankle saturates (page 171)."),
+                 "still has torque in hand, and reverses the waist torque when the ankle saturates (page 170)."),
                 ("Why does the momentum QP spin the torso?",
                  "Because its target is a rate. As long as the DCM is in front of the foot it asks for forward "
                  "momentum rate, and the torso delivers it by accelerating until the stop. Nothing in a rate "
@@ -457,82 +458,8 @@ class UpperBodyRecoveryPage(BalancePage):
 # 170
 # ==========================================================================
 
-LQR_RL_EQS = [
-    (r"J=\int_0^\infty \left(x^TSx+u^TRu\right)\,dt",
-     "the return, written as a cost; γ = 1 is allowed because x dies out (steps 2, 4)"),
-    (r"V(x)=x^TPx",
-     "the cost-to-go: a linear model and a quadratic cost force this shape (step 3)"),
-    (r"0=\min_u\ \left[\,x^TSx+u^TRu+2x^TP(Ax+Bu)\,\right]",
-     "paid so far + cost-to-go stays constant, so c + dV/dt = 0; dV/dt by the chain rule (steps 4, 5)"),
-    (r"H(x,u)=x^T(S+A^TP+PA)\,x+2x^TPBu+u^TRu",
-     "the score of a push (action-value function, Hamiltonian), with 2xᵀPAx symmetrised (step 6)"),
-    (r"u^*=-R^{-1}B^TP\,x=-Kx,\qquad K=R^{-1}B^TP",
-     "complete the square in u (step 7)"),
-    (r"A^TP+PA-PBR^{-1}B^TP+S=0",
-     "the leftover must vanish for every x: the Riccati equation (step 8)"),
-]
-
-KALMAN_EQS = [
-    (r"\dot\Sigma=A\Sigma+\Sigma A^T+W",
-     "the doubt grows: product rule on e eᵀ, mirror of AᵀP + PA + S"),
-    (r"\Sigma^+=\Sigma^- -\Sigma^-C^T\left(C\Sigma^-C^T+\sigma^2\right)^{-1}C\Sigma^-",
-     "a reading shrinks it: completing the square in y (a Schur complement), mirror of −PBR⁻¹BᵀP"),
-    (r"A\Sigma+\Sigma A^T+W-\Sigma C^TN^{-1}C\Sigma=0",
-     "at rest: page 170's Riccati equation with A, B, S, R → Aᵀ, Cᵀ, W, N"),
-    (r"L=\Sigma C^TN^{-1},\qquad \dot{\hat x}=A\hat x+Bu+L\,(y-C\hat x)",
-     "how much to trust a reading, mirror of K = R⁻¹BᵀP"),
-]
-
-
-class RiccatiPage(BalancePage):
-    TITLE = "LQR as Continuous-Time Reinforcement Learning: Bellman, the Hamiltonian, Riccati"
-    SUBTITLE = ("Before page 171 uses it on the G1: LQR derived as the RL you know, on an inverted pendulum. "
-                "The value function is a matrix P, the action-value function is the Hamiltonian H, and the "
-                "Riccati equation is Bellman's equation with nothing left over.")
-    NOTES = "Riccati"
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.add(start_here(
-            "<b>Work this page in the lab, one step at a time.</b> Step 1 says when to use LQR and when RL, for your "
-            "4-joint humanoid and its push recovery. Then: if you know RL you already know LQR: a "
-            "state, an action, a cost instead of a reward, a value function V(x) and an action-value function. "
-            "The lab derives every term on an inverted pendulum (1 m, 1 kg) with its real numbers: where the "
-            "0 in the continuous Bellman equation comes from, why dV/dt = 2xᵀP(Ax + Bu) (the product rule), "
-            "how completing the square in u gives K = R⁻¹BᵀP, why the leftover being zero is the Riccati "
-            "equation, and why solving it is value iteration or policy iteration. The result to see by the "
-            "end: P = [66.19 20.12; 20.12 6.42], K = [20.12 6.42], and a cost map shaped like a canyon whose "
-            "floor is the path the controller takes home."))
-        self.lab("lqr_bellman.html",
-                 "Lab · LQR as continuous-time RL: the map V, Bellman, the Hamiltonian, completing the square", 1040)
-        self.add(_table(["RL word", "here (fixed for this page and page 173)", "pendulum"], [
-            ["state s", "x = (θ, θ̇)", "lean and lean rate"],
-            ["action a", "u", "torque at the pivot"],
-            ["reward", "−(xᵀSx + uᵀRu); S state penalty, R effort penalty", "S = diag(10, 1), R = 1"],
-            ["return, γ", "J = ∫ (xᵀSx + uᵀRu) dt, γ = 1", "finite because x decays"],
-            ["state-value V(s)", "V(x) = xᵀPx, the cost still to pay", "P = [66.19 20.12; 20.12 6.42]"],
-            ["action-value Q(s,a)", "H(x,u) = xᵀSx + uᵀRu + 2xᵀP(Ax + Bu), the Hamiltonian", "0 at the best u"],
-            ["Bellman equation", "0 = min over u of H(x,u) (HJB)", "V(x) cancels from both sides"],
-            ["greedy policy", "u = −Kx, K = R⁻¹BᵀP (complete the square)", "K = [20.12 6.42]"],
-            ["consistency", "AᵀP + PA − PBR⁻¹BᵀP + S = 0 (Riccati: nothing left over)", "residual 5e-13"],
-            ["value / policy iteration", "Riccati run backward / Kleinman's algorithm", "both reach the same P"],
-        ]))
-        eq = Card("the derivation in six lines, each from the step that made it")
-        for tex, cap in LQR_RL_EQS:
-            eq.add(math_label(tex, 15))
-            eq.add(body(cap, dim=True))
-        self.add(eq)
-        self.lab("riccati_physical.html",
-                 "Lab · optional, the same on one number: heat, a valley, a spring balance, a tank", 1040)
-        self.finish()
-
-
-# ==========================================================================
-# 171
-# ==========================================================================
-
 def lqr_numbers():
-    """Everything page 171 quotes about the LQR design at standing, computed, not typed."""
+    """Everything page 170 quotes about the LQR design at standing, computed, not typed."""
     m, g = ub.PLANES["sagittal"], ub.Gains()
     K, free, A, B, poles = ub.lqr_gain(m, g, [1, 2, 3])
     k = m.core(np.zeros(4))
@@ -635,7 +562,7 @@ class UpperBodyLQRPage(BalancePage):
 
 
 # ==========================================================================
-# 172
+# 171
 # ==========================================================================
 
 MUJOCO_CHECK = r'''
@@ -702,7 +629,7 @@ class UpperBodyProjectPage(BalancePage):
                              "A q̇ from page 168, at the same joint rates"],
                        ["5", "Linearise by finite differences of mj_step (mjd_transitionFD does it for you), "
                              "design K with the same Bryson weights", "the gains have the same signs as the planar K: "
-                             "a forward lean gives a backward waist torque (page 171)"],
+                             "a forward lean gives a backward waist torque (page 170)"],
                        ["6", "Apply the push with xfrc_applied; log lean, link momenta, torques", "the plots of "
                              "page 169: momentum moves to the arms, then returns; find the push at which it falls"],
                        ["7", "Free the base (feet on the ground through contact), keep the legs' joints under a stiff "
@@ -747,28 +674,40 @@ class UpperBodyProjectPage(BalancePage):
 
 
 # ==========================================================================
-# 173
+# 172
 # ==========================================================================
+
+KALMAN_EQS = [
+    (r"\dot\Sigma=A\Sigma+\Sigma A^T+W",
+     "the doubt grows: product rule on e eᵀ, mirror of AᵀP + PA + S"),
+    (r"\Sigma^+=\Sigma^- -\Sigma^-C^T\left(C\Sigma^-C^T+\sigma^2\right)^{-1}C\Sigma^-",
+     "a reading shrinks it: completing the square in y (a Schur complement), mirror of −PBR⁻¹BᵀP"),
+    (r"A\Sigma+\Sigma A^T+W-\Sigma C^TN^{-1}C\Sigma=0",
+     "at rest: page 19's Riccati equation with A, B, S, R → Aᵀ, Cᵀ, W, N"),
+    (r"L=\Sigma C^TN^{-1},\qquad \dot{\hat x}=A\hat x+Bu+L\,(y-C\hat x)",
+     "how much to trust a reading, mirror of K = R⁻¹BᵀP"),
+]
+
 
 class KalmanMirrorPage(BalancePage):
     TITLE = "The Kalman Filter: LQR in a Mirror"
-    SUBTITLE = ("Page 170's pendulum with a sensor that reads only the lean, with noise. The doubt about the "
-                "state is a cloud with covariance Σ; it obeys page 170's Riccati equation with A, B, S, R "
+    SUBTITLE = ("Page 19's pendulum with a sensor that reads only the lean, with noise. The doubt about the "
+                "state is a cloud with covariance Σ; it obeys page 19's Riccati equation with A, B, S, R "
                 "swapped for Aᵀ, Cᵀ, W, N, and runs forward in time instead of backward.")
     NOTES = "Kalman"
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.add(start_here(
-            "<b>Work this page in the lab, after page 170.</b> LQR assumed you know the state. The robot "
+            "<b>Work this page in the lab, after page 19.</b> LQR assumed you know the state. The robot "
             "does not: its sensor reads the lean every 10 ms with noise, and nothing reads the lean rate. The "
-            "lab builds the best guess with the same three moves as page 170: the product rule gives how the "
+            "lab builds the best guess with the same three moves as page 19: the product rule gives how the "
             "doubt Σ grows (AΣ + ΣAᵀ + W); completing the square (a Schur complement) gives how a reading "
             "shrinks it; and at rest the two balance in the same Riccati equation. It ends with the filter "
-            "and page 170's LQR running together on the pendulum."))
+            "and page 19's LQR running together on the pendulum."))
         self.lab("kalman_mirror.html",
                  "Lab · the Kalman filter as LQR in a mirror: a cloud of doubt, a reading, the same Riccati", 1040)
-        self.add(_table(["LQR (page 170)", "Kalman (here)", "meaning"], [
+        self.add(_table(["LQR (page 19)", "Kalman (here)", "meaning"], [
             ["P, cost still to pay", "Σ, doubt (covariance of x − x̂)", "a canyon → a cloud"],
             ["A", "Aᵀ", "same gravity, read the other way"],
             ["B, motor lever", "Cᵀ, sensor lever", "what you can push → what you can see"],
@@ -777,7 +716,7 @@ class KalmanMirrorPage(BalancePage):
             ["K = R⁻¹BᵀP", "L = ΣCᵀN⁻¹", "how hard to push → how much to trust a reading"],
             ["backward from a deadline", "forward from the start", "value iteration → filtering"],
         ]))
-        eq = Card("the filter in four lines, each the mirror of a page 170 line")
+        eq = Card("the filter in four lines, each the mirror of a page 19 line")
         for tex, cap in KALMAN_EQS:
             eq.add(math_label(tex, 15))
             eq.add(body(cap, dim=True))
@@ -788,5 +727,5 @@ class KalmanMirrorPage(BalancePage):
 
 
 BALANCE_PAGES = [UpperBodyMachinePage, UpperBodyDerivePage, UpperBodyMomentumPage,
-                 UpperBodyRecoveryPage, RiccatiPage, UpperBodyLQRPage, UpperBodyProjectPage,
+                 UpperBodyRecoveryPage, UpperBodyLQRPage, UpperBodyProjectPage,
                  KalmanMirrorPage]

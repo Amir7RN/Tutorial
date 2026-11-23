@@ -54,6 +54,7 @@ from ..widgets import (
     title,
 )
 from .base import Page
+from .cpp_course import WebLab
 from .linsys import _splane
 from .motors import slider, slider_row
 
@@ -727,6 +728,30 @@ class StateFeedbackPage(Page):
 # PAGE -- LQR
 # ==========================================================================
 
+# LQR derived as continuous-time RL (the lab at the end of the LQR page)
+LQR_RL_EQS = [
+    (r"J=\int_0^\infty \left(x^TSx+u^TRu\right)\,dt",
+     "the return, written as a cost; γ = 1 is allowed because x dies out (steps 2, 4)"),
+    (r"V(x)=x^TPx",
+     "the cost-to-go: a linear model and a quadratic cost force this shape (step 3)"),
+    (r"0=\min_u\ \left[\,x^TSx+u^TRu+2x^TP(Ax+Bu)\,\right]",
+     "paid so far + cost-to-go stays constant, so c + dV/dt = 0; dV/dt by the chain rule (steps 4, 5)"),
+    (r"H(x,u)=x^T(S+A^TP+PA)\,x+2x^TPBu+u^TRu",
+     "the score of a push (action-value function, Hamiltonian), with 2xᵀPAx symmetrised (step 6)"),
+    (r"u^*=-R^{-1}B^TP\,x=-Kx,\qquad K=R^{-1}B^TP",
+     "complete the square in u (step 7)"),
+    (r"A^TP+PA-PBR^{-1}B^TP+S=0",
+     "the leftover must vanish for every x: the Riccati equation (step 8)"),
+]
+
+
+def _table(head, rows):
+    h = "".join(f"<th align='left' style='padding:4px 10px;color:{theme.TEXT_DIM}'>{x}</th>" for x in head)
+    r = "".join("<tr>" + "".join(f"<td style='padding:4px 10px;vertical-align:top'>{c}</td>" for c in row) + "</tr>"
+                for row in rows)
+    return body(f"<table cellspacing='0'><tr>{h}</tr>{r}</table>")
+
+
 class LQRPage(Page):
     TITLE = "LQR & Optimal Control"
     SUBTITLE = ((
@@ -1038,6 +1063,43 @@ class LQRPage(Page):
             "up, and it still needs anti-windup. Optimality does not repeal "
             "actuator limits.", dim=True))
         self.add(lqi)
+
+        # ==============================================================
+        # LQR as continuous-time RL (was its own page; now part of this one)
+        # ==============================================================
+        self.add(hline())
+        self.add(title("LQR as continuous-time reinforcement learning: Bellman, the Hamiltonian, Riccati"))
+        self.add(callout(
+            "<b>Work this part in the lab, one step at a time.</b> Step 1 says when to use LQR and when RL, for your "
+            "4-joint humanoid and its push recovery. Then: if you know RL you already know LQR: a "
+            "state, an action, a cost instead of a reward, a value function V(x) and an action-value function. "
+            "The lab derives every term on an inverted pendulum (1 m, 1 kg) with its real numbers: where the "
+            "0 in the continuous Bellman equation comes from, why dV/dt = 2xᵀP(Ax + Bu) (the chain rule), "
+            "how completing the square in u gives K = R⁻¹BᵀP, why the leftover being zero is the Riccati "
+            "equation, and why solving it is value iteration or policy iteration. The result to see by the "
+            "end: P = [66.19 20.12; 20.12 6.42] and K = [20.12 6.42]. Page 170 then uses it on the G1.", "key"))
+        self.add(WebLab("lqr_bellman.html", "",
+                        "Lab · LQR as continuous-time RL: the cost-to-go, Bellman, the Hamiltonian, completing the square",
+                        1040))
+        self.add(_table(["RL word", "here (fixed for this page and page 172)", "pendulum"], [
+            ["state s", "x = (θ, θ̇)", "lean and lean rate"],
+            ["action a", "u", "torque at the pivot"],
+            ["reward", "−(xᵀSx + uᵀRu); S state penalty, R effort penalty", "S = diag(10, 1), R = 1"],
+            ["return, γ", "J = ∫ (xᵀSx + uᵀRu) dt, γ = 1", "finite because x decays"],
+            ["state-value V(s)", "V(x) = xᵀPx, the cost still to pay", "P = [66.19 20.12; 20.12 6.42]"],
+            ["action-value Q(s,a)", "H(x,u) = xᵀSx + uᵀRu + 2xᵀP(Ax + Bu), the Hamiltonian", "0 at the best u"],
+            ["Bellman equation", "0 = min over u of H(x,u) (HJB)", "V(x) cancels from both sides"],
+            ["greedy policy", "u = −Kx, K = R⁻¹BᵀP (complete the square)", "K = [20.12 6.42]"],
+            ["consistency", "AᵀP + PA − PBR⁻¹BᵀP + S = 0 (Riccati: nothing left over)", "residual 5e-13"],
+            ["value / policy iteration", "Riccati run backward / Kleinman's algorithm", "both reach the same P"],
+        ]))
+        eq = Card("the derivation in six lines, each from the step that made it")
+        for tex, cap in LQR_RL_EQS:
+            eq.add(math_label(tex, 15))
+            eq.add(body(cap, dim=True))
+        self.add(eq)
+        self.add(WebLab("riccati_physical.html", "",
+                        "Lab · optional, the same on one number: heat, a valley, a spring balance, a tank", 1040))
 
         self.add(callout(
             '<b>Carry forward: three different objects.</b> You choose Q and R (what matters). The solver returns K (what action to take) and P (how much optimal cost remains). For the same model and objective, starting from x₀ costs x₀ᵀPx₀.<br><br>'

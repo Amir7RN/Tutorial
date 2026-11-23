@@ -52,7 +52,7 @@ The numerics are in `ctrlcore/robokin.py` and `ctrlcore/robodyn.py`; checks
 null-space torques produce no hand acceleration, energy conservation, IK,
 force closure) are in `tests/test_robotics.py`.
 
-### Humanoid Balance block (pages 166–173)
+### Humanoid Balance block (pages 166–172)
 
 The G1 upper body as a balance machine, for a MuJoCo push-recovery project. A planar
 legs–torso–arms chain on a pinned ankle (`ctrlcore/upperbody.py`, three planes by one parameter
@@ -60,11 +60,11 @@ set each, joints lockable by column selection), its equations of motion derived 
 step lab, the momentum matrix and the balance identity dH_O/dt = τ_ankle + m g x_c + push,
 and three recovery laws (LQR, counterweight, momentum QP) measured against each other in a live
 3-D simulator (`app/assets/steplab/ub.js`, `ub3d.js`, `g1_upper_body.html`,
-`upper_body_lagrange.html`, `upper_body_recovery.html`), LQR derived as continuous-time RL on page 170
+`upper_body_lagrange.html`, `upper_body_recovery.html`), LQR derived as continuous-time RL on page 19, the LQR page
 (`lqr_bellman.html`: the value function V = xᵀPx, the Hamiltonian as the action-value function, completing the
 square, Riccati as nothing left over, value and policy iteration, the cost canyon; `riccati_physical.html`: the
 same on one number), with the LQR law opened stage by stage
-(A, B, Bryson's Q and R, Riccati, K, and where each torque goes) on page 171 (`lqr_torque_flow.html` and `kalman_encoder.html`: the Kalman filter on a 4-state prosthesis motor with only an encoder, concept first), and the Kalman filter as LQR in a mirror on page 173 (`kalman_mirror.html`: a cloud of doubt,
+(A, B, Bryson's Q and R, Riccati, K, and where each torque goes) on page 170 (`lqr_torque_flow.html` and `kalman_encoder.html`: the Kalman filter on a 4-state prosthesis motor with only an encoder, concept first), and the Kalman filter as LQR in a mirror on page 172 (`kalman_mirror.html`: a cloud of doubt,
 the Schur-complement update, the same Riccati equation; `riccati_tutor.html`: both by algebra on one number).
 `tests/test_upperbody.py` checks the
 model against the Newton–Euler arm, the identities, the JavaScript port under node, and the

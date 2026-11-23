@@ -302,7 +302,7 @@ const PLOTS = {
       c.strokeStyle = css(col); c.lineWidth = 2; c.fillStyle = css('--inset'); c.beginPath(); c.roundRect ? c.roundRect(x * W, y * H, w * W, h * H, 8) : c.rect(x * W, y * H, w * W, h * H); c.fill(); c.stroke();
       s.split('\n').forEach((l, i, A) => text(c, l, (x + w / 2) * W, (y + h / 2) * H + (i - (A.length - 1) / 2) * 16 + 4, i ? '--ink' : col, 'center', 12, !i || bold));
     };
-    text(c, 'one number                                   eight numbers (the G1 on page 171)', W * .5, H * .06, '--muted', 'center', 12, true);
+    text(c, 'one number                                   eight numbers (the G1 on page 170)', W * .5, H * .06, '--muted', 'center', 12, true);
     const rows = [['stretch', '--e', '2a·p', 'AᵀP + PA', 'gravity, the ankle spring and the links\nmove every error into every other'],
       ['fill', '--b', 'q', 'Q', 'heat per second of each error\n(Bryson prices)'],
       ['drain', '--c', 'b²p²/r', 'P B R⁻¹ Bᵀ P', 'valley slope seen by each motor,\nsquared, divided by its price'],
@@ -391,7 +391,7 @@ const STEPS = [
     <p>Motor off (u = 0) the tilt feeds itself, so it grows exponentially: x(t) = e<sup>a·t</sup>. You can check each with a calculator:</p>
     <table class="t"><tr><th>t (s)</th>${tb.map(s => `<td class="m">${s}</td>`).join('')}</tr><tr><th>x = e<sup>${f(a, 1)}·t</sup></th>${tb.map(s => `<td class="m">${f(Math.exp(a * s), 2)}°</td>`).join('')}</tr></table>
     <p>With a push: at 1°, push u = −3 gives ẋ = ${f(a, 1)}·1 + ${f(b, 1)}·(−3) = <b>${f(a - 3 * b, 1)} °/s</b>: ${a - 3 * b < 0 ? 'negative, the tilt shrinks' : 'still positive, the push is too weak'}. Now at t = ${f(t, 2)} s: motor off ${f(Math.exp(a * t), 2)}°, with u = −3·x ${f(Math.exp((a - 3 * b) * t), 3)}°.</p>
-    <p class="phys"><b>On the G1:</b> a becomes the matrix A (gravity minus the ankle spring, the −80.5 slope of page 171 step 4, divided by inertia) and b becomes B (one N·m of motor torque, divided by inertia).</p>
+    <p class="phys"><b>On the G1:</b> a becomes the matrix A (gravity minus the ankle spring, the −80.5 slope of page 170 step 4, divided by inertia) and b becomes B (one N·m of motor torque, divided by inertia).</p>
     <p class="do"><b>Do:</b> drag t and watch the red stick fall. Then raise a (stronger gravity): the stick falls sooner.</p>`; }],
 
   ['2 · heat: what a run costs', 'heat', ['k', 'q', 'r'], () => {
@@ -406,7 +406,7 @@ const STEPS = [
     <table class="t"><tr><th>k</th><th>tilt heat</th><th>motor heat</th><th>J</th></tr>
     ${list.map(v => { const s = simRule(v); return `<tr><td class="m">${f(v, 3)}</td><td class="m">${f(s.tilt, 3)}</td><td class="m">${f(s.motor, 3)}</td><td class="m">${f(s.total, 3)}</td></tr>`; }).join('')}</table>
     <p>The trade: a soft rule (small k) lets the tilt linger, so tilt heat; a hard rule (big k) makes huge pushes, so motor heat. One k in between burns least (it is in the table, ${f(best().ks, 3)}). The next steps find it <i>without</i> trying every k.</p>
-    <p class="phys"><b>q and r are yours.</b> They are the prices that say how much you hate tilt versus motor heat. Nothing measures them; page 171 sets them by Bryson's rule.</p>
+    <p class="phys"><b>q and r are yours.</b> They are the prices that say how much you hate tilt versus motor heat. Nothing measures them; page 170 sets them by Bryson's rule.</p>
     <p class="do"><b>Do:</b> drag k from 2.5 to 8 and watch the red area shrink while the orange area grows.</p>`; }],
 
   ['3 · heat still to come: a valley', 'valley', ['t', 'k'], () => {
@@ -480,7 +480,7 @@ ${f(q, 2)} + ${f(2 * a, 2)}·${f(B.ps, 3)} = ${f(q + 2 * a * B.ps, 3)}      ${f(
     <p class="do"><b>Do:</b> drag τ and watch the tank fill. Raise a (stronger gravity, more stretch): the level and the push rise. Raise r (dearer motor, weaker drain): the level rises too, but the push k = b·p/r falls.</p>`; }],
 
   ['7 · the same tank in matrices', 'matrix', [], () => `
-    <p class="goal"><b>Goal:</b> recognise each term of the matrix equation of page 171 as the same flow.</p>
+    <p class="goal"><b>Goal:</b> recognise each term of the matrix equation of page 170 as the same flow.</p>
     <span class="eq">Aᵀ P + P A   +   Q   −   P B R⁻¹ Bᵀ P   =   0
   stretch         fill      drain</span>
     <p><b>P</b> (8 × 8) is the valley in eight directions: heat to come = xᵀ P x. Its diagonal is the steepness along each state alone. The off-diagonal says how two errors combine: a forward lean with the torso back can cost less than either alone.</p>
@@ -547,7 +547,7 @@ with the tank at rest: L = ${f(K.ss, 3)} × ${f(c, 2)} / ${f(rn, 2)} = ${f(K.Ls,
     <tr><td>at rest</td><td class="m">p = ${f(B.ps, 3)}</td><td class="m">Σ = ${f(K.ss, 3)}</td></tr>
     <tr><td>gain</td><td class="m">k = b·p/r = ${f(B.ks, 3)}</td><td class="m">L = c·Σ/r = ${f(K.Ls, 3)}</td></tr>
     <tr><td>matrices</td><td class="m">AᵀP + PA + Q − PBR⁻¹BᵀP = 0</td><td class="m">AΣ + ΣAᵀ + Q − ΣCᵀR⁻¹CΣ = 0</td></tr></table>
-    <p>On the G1 the two work as a pair: the Kalman filter turns encoders and the IMU into the guess x̂ (8 numbers), and LQR pushes with u = −K x̂. Page 171 does the LQR half on the real model.</p>
+    <p>On the G1 the two work as a pair: the Kalman filter turns encoders and the IMU into the guess x̂ (8 numbers), and LQR pushes with u = −K x̂. Page 170 does the LQR half on the real model.</p>
     <p class="do"><b>Do:</b> go back to step 6 or 9 and change a: both tanks rise with stronger gravity, for the same reason.</p>`; }],
 ];
 

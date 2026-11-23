@@ -356,7 +356,7 @@ const STEPS = [
   ['1 · LQR or RL? (your humanoid)', 'lin', [], () => `<p class="goal"><b>Goal:</b> know when to use LQR and when RL, before deriving anything.</p>
     <p>Both answer the same question: <i>which torque, in which state, makes the total cost (or reward) best?</i> They differ in what they need and where they work.</p>
     <table class="t"><tr><th></th><th>LQR</th><th>RL</th></tr>
-    <tr><td>needs</td><td>a model ẋ = Ax + Bu (from M, c, g, linearised at standing, page 171)</td><td>no model: it learns from experience, millions of simulated pushes</td></tr>
+    <tr><td>needs</td><td>a model ẋ = Ax + Bu (from M, c, g, linearised at standing, page 170)</td><td>no model: it learns from experience, millions of simulated pushes</td></tr>
     <tr><td>cost</td><td>quadratic only: xᵀSx + uᵀRu</td><td>any reward: "+1 per second standing, −100 if it falls", limits, energy</td></tr>
     <tr><td>cost-to-go V</td><td>exactly xᵀPx: 3 numbers here, 36 for the G1's 8 states</td><td>a neural network with thousands of weights, approximately</td></tr>
     <tr><td>found by</td><td>one equation (Riccati), milliseconds</td><td>training, hours</td></tr>
@@ -368,7 +368,7 @@ const STEPS = [
     <p>1. <b>The model.</b> Gravity pulls with sin θ, the linear model uses θ. Error: 0.5% at 10°, 2.0% at 20°, 3.4% at 26°, 4.5% at 30° (left plots). With several joints, M(q) also changes with the posture and Coriolis terms (∝ q̇²) appear when the arms swing fast. Rough rule: the linear model is good to about 15 to 20°.</p>
     <p>2. <b>The limits.</b> Your 4-joint G1 plane (ankle spring-damper, waist, shoulder, elbow) on page 169: LQR with the upper body stands after an 80 N push with a peak lean of only <b>8.4°</b>, and falls at 85 N. The lean never gets near where sin θ ≠ θ matters. It falls because the ankle torque is capped by the foot (m·g × 0.10 m), the waist at 88 N·m and the arms at 50 N·m: LQR asks for more than they can give.</p>
     <p><b>So for your humanoid:</b></p>
-    <p>• <b>Start with LQR</b> (pages 169, 171). It is exact for small and medium pushes, computed in milliseconds, and you can read why each joint does what it does. Measure in MuJoCo the largest push it survives.</p>
+    <p>• <b>Start with LQR</b> (pages 169, 170). It is exact for small and medium pushes, computed in milliseconds, and you can read why each joint does what it does. Measure in MuJoCo the largest push it survives.</p>
     <p>• <b>Beyond that the problem is limits and contact</b> (the heel lifts, a step is needed), not angle. Options, in order of effort: page 169's momentum QP (LQR's idea with the limits inside); MPC (the same quadratic cost, limits as constraints, re-solved every few ms); RL trained in simulation on many pushes, which can learn limits, heel lift and even stepping, but needs reward design, training time, and gives no guarantee.</p>
     <p>• A common combination: <b>residual RL</b>, u = −Kx + u<sub>RL</sub>. LQR does the part it is good at; RL learns only the correction where LQR fails.</p>
     <p class="phys"><b>A check that ties them together:</b> train RL on small pushes with the quadratic cost, and its learned cost-to-go comes out close to xᵀPx. LQR is the answer RL would find, in the region where the model is linear and the cost is quadratic. That is why the rest of this lab uses RL's words.</p>`],
@@ -533,7 +533,7 @@ leftover: ${fm(sol.res, 6)}</span>
     <tr><td class="m">u* = −R⁻¹BᵀPx = −Kx</td><td>complete the square in u (step 7)</td></tr>
     <tr><td class="m">AᵀP + PA − PBR⁻¹BᵀP + S = 0</td><td>what is left must be 0 for every x (step 8)</td></tr></table>
     <p>Pendulum: P = ${fm(sol.P)}, K = ${fm([sol.K])}, poles ${sol.poles.map(fpole).join(', ')}.</p>
-    <p>The Kalman filter is the same equation with A, B, S, R swapped for Aᵀ, Cᵀ, W, N: page 173.</p>`; }],
+    <p>The Kalman filter is the same equation with A, B, S, R swapped for Aᵀ, Cᵀ, W, N: page 172.</p>`; }],
 ];
 
 const SL = {

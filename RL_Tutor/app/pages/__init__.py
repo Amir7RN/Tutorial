@@ -107,10 +107,9 @@ HUMANOID BALANCE
    168     momentum about the ankle, the momentum matrix, why the arms help
    169     the recovery law: LQR vs counterweight vs momentum QP, measured
            (a live push-recovery lab)
-   170     LQR as continuous-time RL: Bellman, the Hamiltonian, Riccati (step lab)
-   171     LQR opened up: A, B, Bryson, Riccati, K, and where each torque goes
-   172     from this model to MuJoCo and C++: the project plan
-   173     the Kalman filter as LQR in a mirror (step lab)
+   170     LQR opened up: A, B, Bryson, Riccati, K, and where each torque goes
+   171     from this model to MuJoCo and C++: the project plan
+   172     the Kalman filter as LQR in a mirror (step lab)
 
 The mechanics block is appended rather than inserted so that every earlier
 page keeps its number. It derives the plant the control half assumed: where
@@ -323,7 +322,7 @@ PAGE_CLASSES = [
     StabilisingPage,       # 16  root locus, and why D is the term that saves you
     LeadLagPage,           # 17  lead, lag, notch -- and why notches betray you
     StateFeedbackPage,     # 18  what a state is; u = -Kx; place all n poles
-    LQRPage,               # 19  name a price instead; Q, R, and P = V(s)
+    LQRPage,               # 19  name a price instead; Q, R, P = V(s); LQR as continuous-time RL
     ObserverPage,          # 20  estimate what you cannot measure; disturbance obs
     # ---- Capstone: everything above, spent on two real machines -----------
     BipedSystemsPage,      # 21  six joints, three unstable eigenvalues
@@ -504,7 +503,7 @@ PAGE_CLASSES = [
     # MuJoCo push-recovery project. Planar dynamics derived by hand, momentum,
     # the recovery law, and the path to MuJoCo and C++ (ctrlcore/upperbody.py).
     # ======================================================================
-    *BALANCE_PAGES,        # 166-173 machine, derivation, momentum, recovery law, LQR as RL, LQR, project, Kalman
+    *BALANCE_PAGES,        # 166-172 machine, derivation, momentum, recovery law, LQR, project, Kalman
 ]
 
 # Stamp each class with its 1-based position. Page headers and the sidebar read
